@@ -1140,7 +1140,7 @@ func TestLoadSettingsParsesWebSearchEndpoint(t *testing.T) {
 	mustWrite(t, filepath.Join(project, "config", "config.yaml"), `webSearch:
   endpoint: https://cn.bing.com/search
 `)
-	loaded := LoadSettings(project)
+	loaded := LoadSettingsFile(filepath.Join(project, "config", "config.yaml"))
 	if loaded.WebSearch == nil || loaded.WebSearch.Endpoint != "https://cn.bing.com/search" {
 		t.Fatalf("webSearch = %+v", loaded.WebSearch)
 	}
