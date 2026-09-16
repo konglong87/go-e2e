@@ -90,6 +90,17 @@ jobs:
           go install github.com/wailsapp/wails/v2/cmd/wails@v2.10.2
           if ($LASTEXITCODE -ne 0) { throw "Wails CLI installation failed" }
 
+      - name: Install NSIS
+        shell: pwsh
+        run: |
+          choco install nsis --no-progress --yes
+          if ($LASTEXITCODE -ne 0) { throw "NSIS installation failed" }
+          $nsis = Join-Path ${env:ProgramFiles(x86)} "NSIS"
+          if (-not (Test-Path (Join-Path $nsis "makensis.exe"))) {
+            throw "NSIS installation did not provide makensis.exe"
+          }
+          "$nsis" >> $env:GITHUB_PATH
+
       - name: Packaging regression tests
         shell: pwsh
         run: |
