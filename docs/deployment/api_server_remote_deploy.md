@@ -5,8 +5,8 @@
 ## 1. 准备项目
 
 ```bash
-git clone git@github.com:konglong87/golang-cc.git golang-cc
-cd golang-cc
+git clone git@github.com:konglong87/go-e2e.git go-e2e
+cd go-e2e
 
 go version
 go mod download

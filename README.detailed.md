@@ -46,8 +46,8 @@ version、Git revision、dirty 状态和 build time。所以任何一条路径�
 ### 1. 从源码安装到 PATH（推荐）
 
 ```bash
-git clone git@github.com:konglong87/golang-cc.git
-cd golang-cc
+git clone git@github.com:konglong87/go-e2e.git
+cd go-e2e
 scripts/install.sh
 
 ~/.local/bin/golang-cc --version    # v0.1.48-go
@@ -74,7 +74,7 @@ tar -xzf golang-cc_<tag>_darwin_arm64.tar.gz
 install -m 0755 golang-cc_<tag>_darwin_arm64/golang-cc ~/.local/bin/
 ```
 
-> 两个前提说清楚：本仓库当前**不是公开仓库**，Release 只有有仓库权限的人能下载；
+> 两个前提说清楚：Release 产物是否可下载取决于仓库当前的公开状态和 Release 设置；
 > **这条链路落地之前打的 tag 一个产物都没有**（`git tag` 至今 40 个），要旧版本请 checkout
 > 该 tag 后走路径 1 或 3。
 
@@ -101,16 +101,16 @@ bin/golang-cc --version
   `go install pkg@version` 不应用 replace 指令，所以拉下来的模块解析不了 termenv。
   未传 `-ldflags` 时的版本已由统一 Build Identity 回退到 Go module build info 解决。
   记录在 [docs/todo.md](docs/todo.md) TODO-088。
-- **`curl | sh` 和 `brew install` 没做**：两者都需要一个公开可下载的产物地址，而 Release 现在
-  要仓库权限。现在写出来就是一条跑不通的命令，等仓库公开再补（TODO-087）。
+- **`curl | sh` 和 `brew install` 没做**：两者都需要稳定的公开可下载产物地址和安装升级策略，
+  当前仍保留为 TODO-087。
 
 ## 快速开始
 
 不装也能直接从源码跑：
 
 ```bash
-git clone git@github.com:konglong87/golang-cc.git
-cd golang-cc
+git clone git@github.com:konglong87/go-e2e.git
+cd go-e2e
 export ANTHROPIC_API_KEY="your-api-key"
 
 go run ./cmd/golang-cc --version
