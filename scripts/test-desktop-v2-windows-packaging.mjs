@@ -84,7 +84,7 @@ test("SQLite packaging forces CGO and restores the caller environment", () => {
   assert.match(workflow, /Get-Command gcc -CommandType Application -ErrorAction Stop/);
   assert.match(workflow, /-dumpmachine/);
   assert.match(workflow, /x86_64-w64-mingw32/);
-  assert.match(workflow, /"CC=gcc" >> \$env:GITHUB_ENV/);
+  assert.match(workflow, /"CC=\$\(\$compiler\.Source\)" >> \$env:GITHUB_ENV/);
   assert.match(workflow, /go version -m/);
   assert.match(workflow, /Installed sidecar was built without CGO/);
 });
