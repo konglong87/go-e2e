@@ -1,0 +1,13 @@
+build/*
+!build/windows/
+build/windows/*
+!build/windows/installer/
+build/windows/installer/*
+!build/windows/installer/project.nsi
+golang-cc
+golang-cc.exe
+assets/
+!frontend/dist/
+frontend/dist/*
+!frontend/dist/.gitkeep
+frontend/wailsjs/

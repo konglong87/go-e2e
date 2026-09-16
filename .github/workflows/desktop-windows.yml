@@ -1,0 +1,175 @@
+name: Desktop Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+    paths:
+      - "desktop-v2/**"
+      - "web/**"
+      - "internal/**"
+      - "cmd/**"
+      - "scripts/build-desktop-v2-windows.ps1"
+      - "scripts/test-desktop-v2-windows-packaging.mjs"
+      - ".github/workflows/desktop-windows.yml"
+      - "go.mod"
+      - "go.sum"
+      - ".tool-versions"
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build go-e2e Windows installer
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read Go version
+        id: go
+        shell: pwsh
+        run: |
+          $version = (Get-Content .tool-versions | Where-Object { $_ -match '^golang\s+' } | ForEach-Object { ($_ -split '\s+')[1] } | Select-Object -First 1)
+          if (-not $version) {
+            throw ".tool-versions does not define a Go version"
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ steps.go.outputs.version }}
+          cache: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: web
+        run: npm ci --legacy-peer-deps
+
+      - name: Verify native Windows amd64 C compiler
+        shell: pwsh
+        run: |
+          # Use the runner's native MinGW-w64 GCC, not MSVC or an MSYS POSIX compiler.
+          $compiler = Get-Command gcc -CommandType Application -ErrorAction Stop
+          $target = & $compiler.Source -dumpmachine
+          if ($LASTEXITCODE -ne 0) { throw "GCC target probe failed" }
+          if ($target.Trim() -ne "x86_64-w64-mingw32") {
+            throw "SQLite requires a Windows amd64 C compiler; got: $target"
+          }
+          "CC=gcc" >> $env:GITHUB_ENV
+          "CGO_ENABLED=1" >> $env:GITHUB_ENV
+
+      - name: Install Wails CLI
+        shell: pwsh
+        run: |
+          go install github.com/wailsapp/wails/v2/cmd/wails@v2.10.2
+          if ($LASTEXITCODE -ne 0) { throw "Wails CLI installation failed" }
+
+      - name: Packaging regression tests
+        shell: pwsh
+        run: |
+          node scripts/test-desktop-v2-windows-packaging.mjs --require-pwsh
+          if ($LASTEXITCODE -ne 0) { throw "Packaging regression tests failed" }
+
+      - name: Build installer
+        shell: pwsh
+        run: ./scripts/build-desktop-v2-windows.ps1
+
+      - name: Install, read back payload, and uninstall
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $installer = (Resolve-Path "dist/go-e2e-setup.exe").Path
+          $installDir = Join-Path $env:RUNNER_TEMP ("go-e2e packaging " + [guid]::NewGuid())
+          $registryKey = "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\go-e2ego-e2e"
+          $shortcuts = @(
+            (Join-Path ([Environment]::GetFolderPath("CommonPrograms")) "go-e2e.lnk"),
+            (Join-Path ([Environment]::GetFolderPath("CommonDesktopDirectory")) "go-e2e.lnk")
+          )
+          # Never replace an existing installation or its shortcuts.
+          foreach ($path in @($registryKey, $installDir) + $shortcuts) {
+            if (Test-Path $path) { throw "Refusing to overwrite existing state: $path" }
+          }
+          New-Item $installDir -ItemType Directory | Out-Null
+          $sentinel = Join-Path $installDir "user-data.txt"
+          Set-Content $sentinel "preserve me"
+          $sentinelHash = (Get-FileHash $sentinel).Hash
+          $payload = @{
+            "go-e2e-desktop.exe" = "desktop-v2/build/bin/go-e2e-desktop.exe"
+            "golang-cc.exe" = "desktop-v2/golang-cc.exe"
+          }
+          try {
+            # NSIS /D must be the last argument, without quotes even when it contains spaces.
+            $process = Start-Process $installer -ArgumentList "/S /D=$installDir" -Wait -PassThru
+            if ($process.ExitCode -ne 0) { throw "Install failed: $($process.ExitCode)" }
+            foreach ($name in $payload.Keys) {
+              $installed = Join-Path $installDir $name
+              if ((Get-FileHash $installed).Hash -ne (Get-FileHash $payload[$name]).Hash) {
+                throw "Installed payload mismatch: $name"
+              }
+            }
+            $buildInfo = go version -m (Join-Path $installDir "golang-cc.exe")
+            if ($LASTEXITCODE -ne 0) { throw "Cannot read installed sidecar build settings" }
+            if (($buildInfo -join "`n") -notmatch '\bCGO_ENABLED=1\b') {
+              throw "Installed sidecar was built without CGO; SQLite would be unavailable"
+            }
+            if (-not (Test-Path $registryKey)) { throw "Missing uninstall registration" }
+            if (-not (Test-Path (Join-Path $installDir "uninstall.exe") -PathType Leaf)) {
+              throw "Missing uninstaller"
+            }
+            foreach ($path in $shortcuts) {
+              if (-not (Test-Path $path)) { throw "Missing shortcut: $path" }
+            }
+            Get-FileHash $installer -Algorithm SHA256 | Format-List
+          }
+          finally {
+            $uninstaller = Join-Path $installDir "uninstall.exe"
+            if (Test-Path $uninstaller) {
+              # _?= prevents NSIS spawning an unwaited temporary uninstaller.
+              $process = Start-Process $uninstaller -ArgumentList "/S _?=$installDir" -Wait -PassThru
+              if ($process.ExitCode -ne 0) { throw "Uninstall failed: $($process.ExitCode)" }
+              foreach ($name in $payload.Keys) {
+                if (Test-Path (Join-Path $installDir $name)) { throw "Payload survived uninstall: $name" }
+              }
+              foreach ($path in @($registryKey) + $shortcuts) {
+                if (Test-Path $path) { throw "Uninstall left registration/shortcut: $path" }
+              }
+              if ((Get-FileHash $sentinel).Hash -ne $sentinelHash) { throw "Uninstall changed user data" }
+              # _?= can leave the executing uninstaller; only remove this test-owned file.
+              Remove-Item $uninstaller -ErrorAction SilentlyContinue
+            }
+            Remove-Item $sentinel
+            # Delete only an empty test directory; unexpected files should fail, not prompt.
+            [System.IO.Directory]::Delete($installDir)
+          }
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-e2e-windows-installer
+          path: dist/go-e2e-setup.exe
+          if-no-files-found: error
+
+      - name: Attach installer to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload $env:GITHUB_REF_NAME dist/go-e2e-setup.exe --clobber

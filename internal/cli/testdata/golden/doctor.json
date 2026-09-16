@@ -1,0 +1,20 @@
+{
+  "baseURL": "https://api.anthropic.com",
+  "config": {
+    "globalSettingsPath": "<HOME>/.golang-cc/settings.json",
+    "sessionRoot": "<HOME>/.golang-cc"
+  },
+  "defaultModel": "claude-sonnet-4-6",
+  "gitAvailable": "<bool>",
+  "hasAPIKey": false,
+  "runtime": "go",
+  "settings": {
+    "mcpServers": 0,
+    "permissionAllow": 0,
+    "permissionDeny": 0,
+    "permissionMode": "",
+    "sources": null
+  },
+  "shell": "/bin/sh",
+  "version": "test-version"
+}

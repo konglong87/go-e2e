@@ -1,0 +1,7 @@
+build/
+golang-cc
+assets/
+!frontend/dist/
+frontend/dist/*
+!frontend/dist/.gitkeep
+frontend/wailsjs/

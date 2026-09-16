@@ -1,0 +1,6 @@
+# Copy these fields into project settings only to intentionally select Anthropic.
+model: claude-sonnet-4-6
+provider: anthropic
+providerProtocol: anthropic-messages
+env:
+  ANTHROPIC_BASE_URL: https://api.anthropic.com

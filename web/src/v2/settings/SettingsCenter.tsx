@@ -1,0 +1,155 @@
+import { ArrowLeft, Bot, Brain, ChevronRight, Cpu, FileJson2, Layers, ListChecks, Monitor, PanelLeft, Settings2, ShieldCheck, Sparkles, Star, Users, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, type JSX } from "react";
+import { useI18n } from "../../lib/i18n";
+import type { IdentityConfig } from "../../lib/types";
+import type { SessionRef, SettingsSection } from "../routes";
+import { useSessionControlClient } from "../api/sessionControlClient";
+import type { WebUIV2Theme } from "../components/SettingsDrawer";
+import { AgentSettingsPanel } from "./AgentSettingsPanel";
+import { PromptManager } from "./PromptManager";
+import { ProfileSettingsPanel } from "./ProfileSettingsPanel";
+import { SettingsDocumentPanel } from "./SettingsDocumentPanel";
+import { useGlobalSettingsDraft } from "./globalSettingsDraft";
+import { EffectiveSettingsPanel } from "./EffectiveSettingsPanel";
+import { P2ManagementPanel } from "./P2ManagementPanel";
+import { AgentTeamsPanel } from "../../components/AgentTeamsPanel";
+import { ProvisioningWizard } from "../../components/provisioning/ProvisioningWizard";
+import { CURRENT_SETTINGS_ENVIRONMENT, settingsEnvironmentIdentity, useSettingsEnvironments, type SettingsEnvironment } from "./settingsEnvironments";
+import brandLogo from "../assets/go-e2e-mark.svg";
+import "./settingsCenter.css";
+
+const navigation = [
+  { key: "general", icon: Settings2, zh: "通用设置", en: "General", description: ["管理语言、外观与界面偏好。", "Manage language, appearance and interface preferences."] },
+  { key: "agent", icon: Bot, zh: "智能体设置", en: "Agents", description: ["为不同入口选择已发布的智能体配置。", "Assign published agent profiles to your surfaces."] },
+  { key: "profiles", icon: Layers, zh: "Profile 管理", en: "Profiles", description: ["管理智能体定义、能力边界与发布版本。", "Manage agent definitions, capabilities and published versions."] },
+  { key: "prompts", icon: Star, zh: "常用提示词", en: "Common prompts", description: ["维护可复用的提示词模板。", "Maintain reusable prompt templates."] },
+  { key: "memory", icon: Brain, zh: "Memory 管理", en: "Memory", description: ["查看和维护桌面端持久记忆。", "View and maintain desktop memory."] },
+  { key: "skills", icon: Sparkles, zh: "Skills 管理", en: "Skills", description: ["查看和维护可注入的技能内容。", "View and maintain injectable skills."] },
+  { key: "teams", icon: Users, zh: "Teams 管理", en: "Teams", description: ["编排多个 Profile 的协作团队。", "Compose collaborative teams from profiles."] },
+  { key: "provisioning", icon: Monitor, zh: "渠道 Worker", en: "Channel workers", description: ["查看渠道账号和 Worker 运行状态。", "Inspect channel accounts and worker runtime status."] },
+  { key: "models", icon: Cpu, zh: "大模型设置", en: "Models", description: ["配置供应商、默认模型与备用路由。与全局 JSON 共用草稿。", "Configure providers, default models and fallback routes in the shared settings draft."] },
+  { key: "json", icon: FileJson2, zh: "全局 Settings JSON", en: "Settings JSON", description: ["编辑全局配置文档，与大模型表单保持同步。", "Edit the global settings document, synchronized with the model form."] },
+  { key: "effective", icon: ListChecks, zh: "生效配置", en: "Effective configuration", description: ["核对文件解析结果、服务启动快照及会话运行配置。", "Compare resolved files, server startup defaults and session configuration."] }
+] as const;
+
+const currentEnvironmentSections = new Set<SettingsSection>(["prompts", "memory", "skills", "teams", "provisioning"]);
+
+type Props = {
+  identity: IdentityConfig;
+  section: SettingsSection;
+  onSectionChange: (section: SettingsSection) => void;
+  onBack: () => void;
+  onDirtyChange: (dirty: boolean) => void;
+  theme: WebUIV2Theme;
+  onThemeChange: (theme: WebUIV2Theme) => void;
+  inspectorOpen: boolean;
+  onInspectorChange: (open: boolean) => void;
+  selectedRef: SessionRef | null;
+  onOpenSession: (ref: SessionRef) => void;
+};
+
+export function SettingsCenter(props: Props): JSX.Element {
+  const { language } = useI18n();
+  const zh = language === "zh";
+  const environments = useSettingsEnvironments(props.identity);
+  const [environmentID, setEnvironmentID] = useState(CURRENT_SETTINGS_ENVIRONMENT);
+  const [dirty, setDirty] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const fallback: SettingsEnvironment = { id: CURRENT_SETTINGS_ENVIRONMENT, label: zh ? "Web 对话" : "Web chat", database: "", tenant_key: props.identity.tenantKey, user_id: props.identity.userId, api_path: "", available: true };
+  const items = environments.data?.environments || [fallback];
+  const environment = items.find((item) => item.id === environmentID);
+  const environmentKey = environment?.id;
+  const environmentAPIPath = environment?.api_path;
+  // Catalog refreshes must not replace the connection object and reset editors.
+  const identity = useMemo(() => environmentKey ? settingsEnvironmentIdentity(props.identity, { id: environmentKey, api_path: environmentAPIPath || "" }) : props.identity, [props.identity, environmentKey, environmentAPIPath]);
+  const dirtyChanged = useCallback((value: boolean) => { setDirty(value); props.onDirtyChange(value); }, [props.onDirtyChange]);
+  function switchEnvironment(next: string): void {
+    if (busy || next === environmentID) return;
+    if (dirty && !window.confirm(zh ? "切换环境将放弃未保存的修改，继续？" : "Switch environments and discard unsaved changes?")) return;
+    setDirty(false); props.onDirtyChange(false); setEnvironmentID(next);
+  }
+  const selector = <label className="settings-environment-selector"><span>{zh ? "设置环境" : "Settings environment"}</span><select aria-label={zh ? "设置环境" : "Settings environment"} value={environmentID} disabled={busy || environments.isPending} onChange={(event) => switchEnvironment(event.target.value)}>{items.map((item) => <option key={item.id} value={item.id} disabled={!item.available}>{item.id === CURRENT_SETTINGS_ENVIRONMENT ? (zh ? "Web 对话" : "Web chat") : item.label}{!item.available ? (zh ? "（连接不可用）" : " (unavailable)") : ""}</option>)}</select><small>{environment?.database || (zh ? "当前服务" : "Current server")}</small><small>{environment?.tenant_key} / {environment?.user_id}</small>{environments.error ? <span role="alert">{zh ? "环境目录读取失败" : "Environment catalog unavailable"}</span> : null}</label>;
+  if (!environment) return <section className="webui2-settings-center"><aside className="settings-navigation">{selector}<button type="button" onClick={() => switchEnvironment(CURRENT_SETTINGS_ENVIRONMENT)}>{zh ? "返回当前环境" : "Return to current environment"}</button></aside><p role="alert">{zh ? "所选环境不再可用，请重新选择。" : "Selected environment is no longer available."}</p></section>;
+  return <SettingsEnvironmentContent key={environment.id} {...props} identity={identity} globalIdentity={props.identity} environment={environment} selector={selector} settingsPath={environments.data?.global_settings_path || ""} sharedSettings={Boolean(environments.data?.global_settings_shared)} onDirtyChange={dirtyChanged} onBusyChange={setBusy} />;
+}
+
+function SettingsEnvironmentContent(props: Props & { globalIdentity: IdentityConfig; environment: SettingsEnvironment; selector: JSX.Element; settingsPath: string; sharedSettings: boolean; onBusyChange: (busy: boolean) => void }): JSX.Element {
+  const { identity, section, onSectionChange, onBack, onDirtyChange, selectedRef, onOpenSession } = props;
+  const { language } = useI18n();
+  const zh = language === "zh";
+  const [navOpen, setNavOpen] = useState(false);
+  const [visited, setVisited] = useState(() => new Set<SettingsSection>([section]));
+  const [profileDirty, setProfileDirty] = useState(false);
+  const [agentDirty, setAgentDirty] = useState(false);
+  const [profileBusy, setProfileBusy] = useState(false);
+  const [agentBusy, setAgentBusy] = useState(false);
+  const [profileRevision, setProfileRevision] = useState(0);
+  const [navigationError, setNavigationError] = useState("");
+  const draft = useGlobalSettingsDraft(props.globalIdentity, visited.has("models") || visited.has("json"));
+  const sessionClient = useSessionControlClient();
+  const isolated = props.environment.id !== CURRENT_SETTINGS_ENVIRONMENT;
+  const sectionAvailable = !isolated || !currentEnvironmentSections.has(section);
+  const busy = draft.busy || profileBusy || agentBusy;
+  const dirty = draft.dirty || profileDirty || agentDirty;
+  const item = navigation.find((candidate) => candidate.key === section)!;
+  const profilesChanged = useCallback(() => setProfileRevision((revision) => revision + 1), []);
+
+  useEffect(() => { setVisited((previous) => previous.has(section) ? previous : new Set([...previous, section])); setNavOpen(false); }, [section]);
+  useEffect(() => { onDirtyChange(dirty || busy); props.onBusyChange(busy); }, [dirty, busy, onDirtyChange, props.onBusyChange]);
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent): void => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+
+  const openProfileSession = useCallback((sessionID: number): void => {
+    void sessionClient.list(identity, { query: "", statuses: [] }).then((sessions) => {
+      const session = sessions.find((entry) => entry.id === sessionID && entry.source === "tenant");
+      if (session) onOpenSession(session.ref);
+      else setNavigationError(zh ? "会话不在当前可访问列表中。" : "Session is not in the accessible list.");
+    }).catch(() => setNavigationError(zh ? "会话读取失败" : "Unable to load session"));
+  }, [sessionClient, identity, onOpenSession, zh]);
+
+  return <section aria-label={zh ? "设置中心" : "Settings center"} className="webui2-settings-center">
+    {navOpen ? <button type="button" className="settings-nav-backdrop" aria-label={zh ? "关闭设置导航" : "Close settings navigation"} onClick={() => setNavOpen(false)} /> : null}
+    <aside className="settings-navigation" data-open={navOpen}>
+      <div className="settings-brand"><img alt="" src={brandLogo} /><span>go-e2e</span><button className="settings-mobile-nav-close settings-icon-button" aria-label={zh ? "关闭设置导航" : "Close settings navigation"} onClick={() => setNavOpen(false)} type="button"><X size={18} /></button></div>
+      <button className="settings-back" onClick={onBack} type="button"><ArrowLeft size={16} />{zh ? "返回会话" : "Back to chat"}</button>
+      {props.selector}
+      <div className="settings-nav-label">{zh ? "工作区设置" : "Workspace settings"}</div>
+      <nav aria-label={zh ? "设置分类" : "Settings categories"}>{navigation.map(({ key, icon: Icon, zh: chinese, en }) => <button aria-current={section === key ? "page" : undefined} disabled={isolated && currentEnvironmentSections.has(key)} title={isolated && currentEnvironmentSections.has(key) ? (zh ? "此环境不支持该设置" : "Unavailable in this environment") : undefined} className={key === "json" ? "settings-nav-advanced" : undefined} key={key} onClick={() => onSectionChange(key)} type="button"><Icon aria-hidden="true" size={17} /><span>{zh ? chinese : en}</span>{((key === "models" || key === "json") && draft.dirty) || (key === "profiles" && profileDirty) || (key === "agent" && agentDirty) ? <span role="img" aria-label={zh ? "未保存" : "Unsaved"} className="settings-dirty-dot" /> : null}</button>)}</nav>
+      <div className="settings-identity"><span className="settings-avatar">{(props.environment.user_id || "U").slice(0, 1).toUpperCase()}</span><div><strong>{props.environment.tenant_key}</strong><small>{props.environment.user_id}</small></div></div>
+    </aside>
+    <div className="settings-main">
+      <header className="settings-topbar"><div className="settings-breadcrumb"><button className="settings-mobile-nav-open settings-icon-button" aria-label={zh ? "打开设置导航" : "Open settings navigation"} title={zh ? "设置导航" : "Settings navigation"} onClick={() => setNavOpen(true)} type="button"><PanelLeft size={18} /></button><span>{zh ? "设置" : "Settings"}</span><ChevronRight size={13} /><strong>{zh ? item.zh : item.en}</strong></div><span className="settings-scope"><Monitor size={14} />{identity.apiBase ? new URL(identity.apiBase, window.location.origin).host : window.location.host}</span></header>
+      <div className="settings-content">
+        <div className="settings-active-environment">{zh ? "设置环境" : "Settings environment"}: <strong>{isolated ? props.environment.label : (zh ? "Web 对话" : "Web chat")}</strong></div>
+        <div className="settings-page-heading"><div><h1>{zh ? item.zh : item.en}</h1><p>{item.description[zh ? 0 : 1]}</p></div>{dirty ? <span className="settings-badge settings-badge-warning">{zh ? "有未保存的更改" : "Unsaved changes"}</span> : null}</div>
+        {props.settingsPath && (section === "models" || section === "json" || section === "effective") ? <div className="settings-environment-notice"><strong>{props.sharedSettings ? (zh ? "全局配置由 Web 服务与渠道 Worker 共用" : "Global settings shared by Web and channel workers") : (zh ? "全局配置文件" : "Global settings file")}</strong><code>{props.settingsPath}</code>{props.sharedSettings ? <span>{zh ? "保存影响共用此文件的服务；运行中的任务不变，部分配置需重启对应服务生效。" : "Saving affects services sharing this file. Active runs are unchanged; some settings require a service restart."}</span> : null}{isolated && section === "effective" ? <span>{zh ? "启动快照来自当前管理服务，不代表 screen worker 的进程内配置。" : "Startup snapshot belongs to this management service, not the screen workers."}</span> : null}</div> : null}
+        {navigationError ? <p role="alert" className="settings-error">{navigationError}</p> : null}
+        {!sectionAvailable ? <p role="alert" className="settings-environment-notice">{zh ? "此环境不支持该设置，请选择 Web 对话环境。" : "This section is unavailable in this environment. Select the Web chat environment."}</p> : null}
+        {visited.has("general") ? <div hidden={section !== "general"}><GeneralSettings {...props} identity={{ ...identity, tenantKey: props.environment.tenant_key, userId: props.environment.user_id }} /></div> : null}
+        {visited.has("agent") ? <div hidden={section !== "agent"}><AgentSettingsPanel identity={identity} onDirtyChange={setAgentDirty} onBusyChange={setAgentBusy} refreshVersion={profileRevision} /></div> : null}
+        {visited.has("profiles") ? <div hidden={section !== "profiles"}><ProfileSettingsPanel identity={identity} onDirtyChange={setProfileDirty} onBusyChange={setProfileBusy} isolatedEnvironment={isolated} onOpenSession={isolated ? undefined : openProfileSession} onDataChanged={profilesChanged} /></div> : null}
+        {sectionAvailable && section === "prompts" ? <PromptManager identity={identity} /> : null}
+        {sectionAvailable && (section === "memory" || section === "skills") ? <P2ManagementPanel identity={identity} section={section} /> : null}
+        {sectionAvailable && section === "teams" ? <AgentTeamsPanel identity={identity} onStatus={setNavigationError} onDataChanged={profilesChanged} /> : null}
+        {sectionAvailable && section === "provisioning" ? <ProvisioningWizard identity={identity} onStatus={setNavigationError} /> : null}
+        {section === "models" || section === "json" ? <SettingsDocumentPanel draft={draft} view={section} /> : null}
+        {section === "effective" ? <EffectiveSettingsPanel identity={props.globalIdentity} selectedRef={isolated ? null : selectedRef} /> : null}
+      </div>
+    </div>
+  </section>;
+}
+
+function GeneralSettings({ identity, theme, onThemeChange, inspectorOpen, onInspectorChange }: Props): JSX.Element {
+  const { language, setLanguage, t } = useI18n();
+  const zh = language === "zh";
+  return <div className="settings-general">
+    <section className="settings-section"><h2>{zh ? "语言" : "Language"}</h2><div className="settings-form-grid"><label>{t("webui2.language")}<select aria-label={t("webui2.language")} value={language} onChange={(event) => setLanguage(event.target.value === "zh" ? "zh" : "en")}><option value="zh">简体中文</option><option value="en">English</option></select></label></div></section>
+    <section className="settings-section"><h2>{zh ? "外观" : "Appearance"}</h2><fieldset aria-label={t("webui2.theme")} className="settings-theme-options">{(["light", "dark"] as const).map((value) => <button aria-pressed={theme === value} key={value} onClick={() => onThemeChange(value)} type="button"><span aria-hidden="true" className="settings-theme-sample" data-theme={value}><span /></span>{t(`webui2.theme${value === "light" ? "Light" : "Dark"}`)}</button>)}</fieldset></section>
+    <section className="settings-section"><h2>{zh ? "对话界面" : "Conversation"}</h2><div className="settings-preference-row"><div><strong>{zh ? "Inspector 默认展开" : "Open Inspector by default"}</strong><p>{zh ? "查看会话活动、上下文与运行详情。" : "Show activity, context and run details."}</p></div><input aria-label={t("webui2.inspector")} aria-checked={inspectorOpen} checked={inspectorOpen} onChange={(event) => onInspectorChange(event.target.checked)} type="checkbox" role="switch" /></div></section>
+    <section className="settings-section"><h2>{zh ? "连接身份" : "Connection identity"}</h2><dl className="settings-identity-fields"><div><dt>{zh ? "租户" : "Tenant"}</dt><dd>{identity.tenantKey || "—"}</dd></div><div><dt>{zh ? "用户" : "User"}</dt><dd>{identity.userId || "—"}</dd></div></dl><div className="settings-notice"><ShieldCheck size={16} /><span>{identity.apiToken ? t("webui2.authTokenPresent") : t("webui2.authTokenMissing")}</span><span>{identity.mobileJwt ? t("webui2.authMobilePresent") : t("webui2.authMobileMissing")}</span></div></section>
+  </div>;
+}

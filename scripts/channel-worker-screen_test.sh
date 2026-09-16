@@ -1,0 +1,198 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT="${ROOT}/scripts/channel-worker-screen.sh"
+TEST_ROOT="$(mktemp -d)"
+TEST_HOME="${TEST_ROOT}/home"
+FAKE_BIN="${TEST_ROOT}/bin"
+FAKE_SCREEN_STATE="${TEST_ROOT}/screen"
+WORKER_NAME="persist-test-$$"
+LEGACY_WORKER_NAME="legacy-test-$$"
+STALE_LOCK_WORKER_NAME="stale-lock-test-$$"
+PERSISTENT_STATE_DIR="${TEST_HOME}/.golang-cc/channel-workers"
+WORKER_BINARY="${PERSISTENT_STATE_DIR}/golang-cc-channel-worker-${WORKER_NAME}"
+LEGACY_WORKER_BINARY="${PERSISTENT_STATE_DIR}/golang-cc-channel-worker-${LEGACY_WORKER_NAME}"
+STALE_LOCK_WORKER_BINARY="${PERSISTENT_STATE_DIR}/golang-cc-channel-worker-${STALE_LOCK_WORKER_NAME}"
+LEGACY_STATE_DIR="/tmp/golang-cc-channel-workers"
+
+cleanup() {
+  rm -rf "${TEST_ROOT}"
+  rm -f "${LEGACY_STATE_DIR}/${WORKER_NAME}.env"
+  rm -f "${LEGACY_STATE_DIR}/${WORKER_NAME}.run.sh"
+  rm -f "${LEGACY_STATE_DIR}/${WORKER_NAME}.log"
+  rm -f "${LEGACY_STATE_DIR}/golang-cc-channel-worker-${WORKER_NAME}"
+  rm -f "${LEGACY_STATE_DIR}/${LEGACY_WORKER_NAME}.env"
+  rm -f "${LEGACY_STATE_DIR}/${LEGACY_WORKER_NAME}.run.sh"
+  rm -f "${LEGACY_STATE_DIR}/${LEGACY_WORKER_NAME}.log"
+  rm -f "${LEGACY_STATE_DIR}/golang-cc-channel-worker-${LEGACY_WORKER_NAME}"
+  rm -f "${LEGACY_STATE_DIR}/accounts/91-92/owner"
+  rmdir "${LEGACY_STATE_DIR}/accounts/91-92" 2>/dev/null || true
+  rm -f "${LEGACY_STATE_DIR}/accounts/94-95/owner"
+  rmdir "${LEGACY_STATE_DIR}/accounts/94-95" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+mkdir -p "${TEST_HOME}" "${FAKE_BIN}"
+
+cat >"${FAKE_BIN}/go" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+output=""
+while (($#)); do
+  if [[ "$1" == "-o" ]]; then
+    output="$2"
+    break
+  fi
+  shift
+done
+[[ -n "${output}" ]]
+mkdir -p "$(dirname "${output}")"
+: >"${output}"
+EOF
+
+cat >"${FAKE_BIN}/screen" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+case "${1:-}" in
+  -ls)
+    if [[ -f "${FAKE_SCREEN_STATE}" ]]; then
+      printf '4242.%s\n' "$(cat "${FAKE_SCREEN_STATE}")"
+    fi
+    ;;
+  -dmS)
+    printf '%s\n' "$2" >"${FAKE_SCREEN_STATE}"
+    ;;
+  -S)
+    rm -f "${FAKE_SCREEN_STATE}"
+    ;;
+esac
+EOF
+
+cat >"${FAKE_BIN}/ps" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ -f "${FAKE_SCREEN_STATE}" ]]; then
+  printf '4242 %s channels run GOLANG_CC_CHANNEL_ACCOUNT_ID=92\n' "${FAKE_WORKER_BINARY}"
+fi
+EOF
+
+chmod +x "${FAKE_BIN}/go" "${FAKE_BIN}/screen" "${FAKE_BIN}/ps"
+
+common_env=(
+  "PATH=${FAKE_BIN}:/usr/bin:/bin"
+  "HOME=${TEST_HOME}"
+  "FAKE_SCREEN_STATE=${FAKE_SCREEN_STATE}"
+  "FAKE_WORKER_BINARY=${WORKER_BINARY}"
+  "GOLANG_CC_CHANNEL_WORKER_NAME=${WORKER_NAME}"
+)
+
+env -i "${common_env[@]}" \
+  GOLANG_CC_CHANNEL_WORKER_BINARY="${WORKER_BINARY}" \
+  GOLANG_CC_MYSQL_DSN='test-dsn' \
+  GOLANG_CC_FEISHU_CREDENTIAL_FILE='test-credentials.json' \
+  GOLANG_CC_CHANNEL_TENANT_ID=91 \
+  GOLANG_CC_CHANNEL_ACCOUNT_ID=92 \
+  GOLANG_CC_CHANNEL_ACCOUNT_KEY='persistent-worker' \
+  GOLANG_CC_CHANNEL_USER_ID=93 \
+  GOLANG_CC_CHANNEL_PAYLOAD_KEY='test-payload-key' \
+  /bin/bash "${SCRIPT}" start >/dev/null
+
+CONFIG_FILE="${PERSISTENT_STATE_DIR}/${WORKER_NAME}.env"
+[[ -f "${CONFIG_FILE}" ]] || {
+  echo "expected persistent worker config at ${CONFIG_FILE}" >&2
+  exit 1
+}
+[[ "$(stat -f '%Sp' "${CONFIG_FILE}")" == '-rw-------' ]]
+
+env -i "${common_env[@]}" /bin/bash "${SCRIPT}" stop >/dev/null
+[[ -f "${CONFIG_FILE}" ]] || {
+  echo "stop removed persistent worker config" >&2
+  exit 1
+}
+
+# A fresh login shell after reboot has only HOME and the worker name. The
+# launcher must recover every required setting from the durable config.
+env -i "${common_env[@]}" /bin/bash "${SCRIPT}" start >/dev/null
+env -i "${common_env[@]}" /bin/bash "${SCRIPT}" status >/dev/null
+env -i "${common_env[@]}" /bin/bash "${SCRIPT}" stop >/dev/null
+
+env -i "${common_env[@]}" \
+  GOLANG_CC_CHANNEL_MODEL_PROVIDER='updated-provider' \
+  GOLANG_CC_CHANNEL_MODEL='updated-model' \
+  /bin/bash "${SCRIPT}" start >/dev/null
+grep -q '^GOLANG_CC_CHANNEL_MODEL_PROVIDER=updated-provider$' "${CONFIG_FILE}"
+grep -q '^GOLANG_CC_CHANNEL_MODEL=updated-model$' "${CONFIG_FILE}"
+env -i "${common_env[@]}" /bin/bash "${SCRIPT}" stop >/dev/null
+
+mkdir -p "${LEGACY_STATE_DIR}"
+cat >"${LEGACY_STATE_DIR}/${LEGACY_WORKER_NAME}.env" <<EOF
+GOLANG_CC_MYSQL_DSN=test-dsn
+GOLANG_CC_FEISHU_CREDENTIAL_FILE=test-credentials.json
+GOLANG_CC_CHANNEL_TENANT_ID=94
+GOLANG_CC_CHANNEL_ACCOUNT_ID=95
+GOLANG_CC_CHANNEL_ACCOUNT_KEY=legacy-worker
+GOLANG_CC_CHANNEL_USER_ID=96
+GOLANG_CC_CHANNEL_PAYLOAD_KEY=test-payload-key
+WORKSPACE=${ROOT}
+GOLANG_CC_CHANNEL_WORKSPACE_ROOTS=${ROOT}
+GOLANG_CC_CHANNEL_PERMISSION_MODE=ask
+GOLANG_CC_CHANNEL_SETTINGS=
+GOLANG_CC_CHANNEL_SETTINGS_FILE=
+GOLANG_CC_CONFIG_DIR=
+GOLANG_CC_CHANNEL_MODEL_PROVIDER=jiuan-responses-gpt-5.6sol
+GOLANG_CC_CHANNEL_MODEL=gpt-5.6-sol
+EOF
+chmod 600 "${LEGACY_STATE_DIR}/${LEGACY_WORKER_NAME}.env"
+
+legacy_env=(
+  "PATH=${FAKE_BIN}:/usr/bin:/bin"
+  "HOME=${TEST_HOME}"
+  "FAKE_SCREEN_STATE=${FAKE_SCREEN_STATE}"
+  "FAKE_WORKER_BINARY=${LEGACY_WORKER_BINARY}"
+  "GOLANG_CC_CHANNEL_WORKER_NAME=${LEGACY_WORKER_NAME}"
+)
+env -i "${legacy_env[@]}" /bin/bash "${SCRIPT}" start >/dev/null
+[[ -f "${PERSISTENT_STATE_DIR}/${LEGACY_WORKER_NAME}.env" ]] || {
+  echo "legacy worker config was not migrated" >&2
+  exit 1
+}
+[[ ! -f "${LEGACY_STATE_DIR}/${LEGACY_WORKER_NAME}.env" ]] || {
+  echo "legacy worker config remains in temporary storage" >&2
+  exit 1
+}
+env -i "${legacy_env[@]}" /bin/bash "${SCRIPT}" status >/dev/null
+env -i "${legacy_env[@]}" /bin/bash "${SCRIPT}" stop >/dev/null
+
+cat >"${PERSISTENT_STATE_DIR}/${STALE_LOCK_WORKER_NAME}.env" <<EOF
+GOLANG_CC_MYSQL_DSN=test-dsn
+GOLANG_CC_FEISHU_CREDENTIAL_FILE=test-credentials.json
+GOLANG_CC_CHANNEL_TENANT_ID=97
+GOLANG_CC_CHANNEL_ACCOUNT_ID=98
+GOLANG_CC_CHANNEL_ACCOUNT_KEY=stale-lock-worker
+GOLANG_CC_CHANNEL_USER_ID=99
+GOLANG_CC_CHANNEL_PAYLOAD_KEY=test-payload-key
+WORKSPACE=${ROOT}
+GOLANG_CC_CHANNEL_WORKSPACE_ROOTS=${ROOT}
+GOLANG_CC_CHANNEL_PERMISSION_MODE=ask
+GOLANG_CC_CHANNEL_SETTINGS=
+GOLANG_CC_CHANNEL_SETTINGS_FILE=
+GOLANG_CC_CONFIG_DIR=
+GOLANG_CC_CHANNEL_MODEL_PROVIDER=jiuan-responses-gpt-5.6sol
+GOLANG_CC_CHANNEL_MODEL=gpt-5.6-sol
+EOF
+chmod 600 "${PERSISTENT_STATE_DIR}/${STALE_LOCK_WORKER_NAME}.env"
+mkdir -p "${PERSISTENT_STATE_DIR}/accounts/97-98"
+printf '%s\n%s\n%s\n' 'old-screen-after-reboot' "${STALE_LOCK_WORKER_NAME}" "$$" >"${PERSISTENT_STATE_DIR}/accounts/97-98/owner"
+
+stale_lock_env=(
+  "PATH=${FAKE_BIN}:/usr/bin:/bin"
+  "HOME=${TEST_HOME}"
+  "FAKE_SCREEN_STATE=${FAKE_SCREEN_STATE}"
+  "FAKE_WORKER_BINARY=${STALE_LOCK_WORKER_BINARY}"
+  "GOLANG_CC_CHANNEL_WORKER_NAME=${STALE_LOCK_WORKER_NAME}"
+)
+env -i "${stale_lock_env[@]}" /bin/bash "${SCRIPT}" start >/dev/null
+env -i "${stale_lock_env[@]}" /bin/bash "${SCRIPT}" status >/dev/null
+
+echo "channel-worker persistent recovery test passed"

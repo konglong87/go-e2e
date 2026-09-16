@@ -1,0 +1,363 @@
+import { MessageSquare, PanelLeftOpen, Plus, RefreshCw, Shield } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type JSX } from "react";
+import { useSessionConversations } from "./api/useSessionConversations";
+import type { StreamState } from "../hooks/useAgentTaskStream";
+import { sessionRetryInput } from "./api/sessionRetry";
+import { PendingQueueSettingsButton, SessionPendingQueue } from "./components/SessionPendingQueue";
+import { useQueryClient } from "@tanstack/react-query";
+import { CommandPalette, type Command } from "../components/AgentCommandPalette";
+import { sessionRuntimeConfig, useRuntimeCatalog, useSessionRuntimeDetails } from "./api/useSessionRuntime";
+import { collectConversationNextSteps, conversationRuntimeMetrics } from "./components/conversationViewModel";
+import type { ComposerRuntimeValue } from "./components/composerRuntimeControls";
+import { useI18n } from "../lib/i18n";
+import { isDesktopV2Host } from "../lib/config";
+import type { IdentityConfig, PendingInputSideChatResponse } from "../lib/types";
+import { createHTTPSessionControlClient } from "./api/httpSessionControlClient";
+import { SessionControlClientProvider, sessionControlErrorCode, useSessionControlClient, type SessionControlClient } from "./api/sessionControlClient";
+import { useArchiveSession, useSendSession, useSessionDetail, useSessionList, useStopSession } from "./api/sessionControlQueries";
+import { Composer, type ComposerDraft } from "./components/Composer";
+import { EmptyState } from "./components/EmptyState";
+import { SessionSidebar } from "./components/SessionSidebar";
+import { ConversationWorkspace } from "./components/ConversationWorkspace";
+import { Inspector, type InspectorTab } from "./components/Inspector";
+import { NewSessionDialog } from "./components/NewSessionDialog";
+import { loadWebUIV2Theme, saveWebUIV2Theme, type WebUIV2Theme } from "./components/SettingsDrawer";
+import { SettingsCenter } from "./settings/SettingsCenter";
+import { DESKTOP_CONFIG_VERIFIED_KEY } from "./settings/globalSettingsDraft";
+import { loadInspectorPreference, saveInspectorPreference } from "./settings/preferences";
+import { parseWebUIV2Route, settingsReturnSession, webUIV2SettingsPath, webUIV2SessionPath, type SettingsSection, type SessionRef, type WebUIV2Route } from "./routes";
+import type { OperationResult, SessionListFilters, SessionMessage, SessionStatus, SessionSummary } from "./types";
+import "./styles.css";
+import "./components/thinkingMessage.css";
+import goE2E from "./assets/go-e2e-animation.svg";
+
+type RouteState = {
+  route: WebUIV2Route;
+  selectedRef: SessionRef | null;
+};
+
+const ACTIVE_RUNTIME_STATUSES = new Set<SessionStatus>(["running", "queued", "waiting_permission", "waiting_input"]);
+
+function routeState(pathname: string): RouteState {
+  const route = parseWebUIV2Route(pathname, import.meta.env.VITE_DESKTOP_UI_VERSION === "2");
+  return { route, selectedRef: route.kind === "session" ? route.ref : route.kind === "settings" ? settingsReturnSession(window.location.search) : null };
+}
+
+export function WebUIV2App({ identity, client: providedClient }: { identity: IdentityConfig; client?: SessionControlClient }): JSX.Element {
+  const [httpClient] = useState(createHTTPSessionControlClient);
+  return <SessionControlClientProvider client={providedClient ?? httpClient}><WebUIV2RouteShell key={JSON.stringify([identity.apiBase, identity.tenantKey, identity.userId])} identity={identity} /></SessionControlClientProvider>;
+}
+
+function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Element {
+  const { t } = useI18n();
+  const { language } = useI18n();
+  const queryClient = useQueryClient();
+  const client = useSessionControlClient();
+  const drafts = useRef(new Map<SessionRef, ComposerDraft>());
+  const [state, setState] = useState<RouteState>(() => routeState(window.location.pathname));
+  const [filters, setFilters] = useState<SessionListFilters>({ query: "", statuses: [] });
+  const settingsOpen = state.route.kind === "settings";
+  const settingsDirty = useRef(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [newSessionOpen, setNewSessionOpen] = useState(false);
+  const [commandsOpen, setCommandsOpen] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(loadInspectorPreference);
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("activity");
+  const [theme, setTheme] = useState<WebUIV2Theme>(() => loadWebUIV2Theme());
+  const [onboardingOpen, setOnboardingOpen] = useState(() => import.meta.env.VITE_DESKTOP_UI_VERSION === "2" && localStorage.getItem("go-e2e.desktop.onboarding.v1") !== "done");
+  const [errorCode, setErrorCode] = useState("");
+  const isDesktop = isDesktopV2Host();
+  const [readyToken, setReadyToken] = useState<string | null>(null);
+  const desktopReady = !isDesktop || Boolean(identity.apiToken && readyToken === identity.apiToken);
+  const [desktopError, setDesktopError] = useState(false);
+  const refSearch = completeSessionRef(filters.query);
+  const sessionList = useSessionList(identity, refSearch ? { ...filters, query: "" } : filters, desktopReady);
+  const stop = useStopSession(identity);
+  const archive = useArchiveSession(identity);
+  const sessions = sessionList.data ?? [];
+  const allSessions = useSessionList(identity, { query: "", statuses: [] }, desktopReady);
+  const stream = useSessionConversations(identity, allSessions.data ?? [], state.selectedRef, desktopReady);
+
+  useEffect(() => {
+    if (!isDesktop || !identity.apiToken) return;
+    let active = true;
+    let controller: AbortController | undefined;
+    const check = async (): Promise<void> => {
+      controller?.abort();
+      controller = new AbortController();
+      try {
+        const headers = { Authorization: `Bearer ${identity.apiToken}` };
+        const timeout = window.setTimeout(() => controller?.abort(), 1500);
+        const health = await fetch(`${identity.apiBase}/health`, { headers, signal: controller.signal });
+        const ready = await fetch(`${identity.apiBase}/readyz`, { headers, signal: controller.signal });
+        window.clearTimeout(timeout);
+        if (active) {
+          setReadyToken(health.ok && ready.ok ? identity.apiToken : null);
+          setDesktopError(!(health.ok && ready.ok));
+        }
+      } catch {
+        if (active && !controller.signal.aborted) {
+          setReadyToken(null);
+          setDesktopError(true);
+        }
+      }
+    };
+    void check();
+    const timer = window.setInterval(() => void check(), 2000);
+    return () => { active = false; window.clearInterval(timer); controller?.abort(); };
+  }, [identity.apiBase, identity.apiToken, isDesktop]);
+
+  const selectSession = useCallback((ref: SessionRef): void => {
+    if (settingsDirty.current && !window.confirm(language === "zh" ? "放弃尚未保存的设置并返回会话？" : "Discard unsaved settings and return to the session?")) return;
+    settingsDirty.current = false;
+    window.history.pushState({}, "", webUIV2SessionPath(ref));
+    setState({ route: { kind: "session", ref }, selectedRef: ref });
+    setErrorCode("");
+    setSidebarOpen(false);
+  }, [language]);
+
+  function openSettings(section: SettingsSection = "general"): void {
+    window.history.pushState({}, "", webUIV2SettingsPath(section, state.selectedRef));
+    setState((current) => ({ ...current, route: { kind: "settings", section } }));
+    setSidebarOpen(false);
+  }
+
+  function finishOnboarding(): void {
+    localStorage.setItem("go-e2e.desktop.onboarding.v1", "done");
+    setOnboardingOpen(false);
+  }
+
+  function startOnboardingSession(): void {
+    if (localStorage.getItem(DESKTOP_CONFIG_VERIFIED_KEY) !== "true") {
+      finishOnboarding();
+      openSettings("models");
+      return;
+    }
+    finishOnboarding();
+    openNewSession();
+  }
+
+  function closeSettings(): void {
+    if (settingsDirty.current && !window.confirm(language === "zh" ? "放弃尚未保存的设置并返回会话？" : "Discard unsaved settings and return to the session?")) return;
+    settingsDirty.current = false;
+    const ref = state.selectedRef;
+    window.history.pushState({}, "", ref ? webUIV2SessionPath(ref) : "/webui/v2");
+    setState({ route: ref ? { kind: "session", ref } : { kind: "index" }, selectedRef: ref });
+  }
+
+  function changeTheme(next: WebUIV2Theme): void {
+    saveWebUIV2Theme(next);
+    setTheme(next);
+  }
+
+  function changeInspector(open: boolean): void {
+    saveInspectorPreference(open);
+    setInspectorOpen(open);
+  }
+
+  function openNewSession(): void {
+    if (isDesktop && !desktopReady) return;
+    if (import.meta.env.VITE_DESKTOP_UI_VERSION === "2" && localStorage.getItem(DESKTOP_CONFIG_VERIFIED_KEY) !== "true") {
+      openSettings("models");
+      return;
+    }
+    setSidebarOpen(false);
+    setNewSessionOpen(true);
+  }
+
+  function retryDesktopConnection(): void {
+    setDesktopError(false);
+    setReadyToken(null);
+  }
+
+  function handleCreated(result: OperationResult): void {
+    setNewSessionOpen(false);
+    selectSession(result.session.ref);
+    window.requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(".webui2-composer textarea")?.focus());
+  }
+
+  useEffect(() => {
+    function restoreRoute() {
+      const next = routeState(window.location.pathname);
+      if (state.route.kind === "settings" && next.route.kind !== "settings" && settingsDirty.current && !window.confirm(language === "zh" ? "放弃尚未保存的设置？" : "Discard unsaved settings?")) {
+        window.history.pushState({}, "", webUIV2SettingsPath(state.route.section, state.selectedRef));
+        return;
+      }
+      if (next.route.kind !== "settings") settingsDirty.current = false;
+      setState(next);
+      setErrorCode("");
+    }
+
+    window.addEventListener("popstate", restoreRoute);
+    return () => window.removeEventListener("popstate", restoreRoute);
+  }, [state, language]);
+
+  useEffect(() => {
+    if (!refSearch || settingsOpen || state.selectedRef === refSearch) return;
+    let current = true;
+    void client.get(identity, refSearch).then(() => {
+      if (current) selectSession(refSearch);
+    }).catch((error: unknown) => {
+      if (current) setErrorCode(sessionControlErrorCode(error));
+    });
+    return () => { current = false; };
+  }, [client, identity, refSearch, selectSession, settingsOpen, state.selectedRef]);
+
+  function recoverToIndex(): void {
+    window.history.replaceState({}, "", "/webui/v2");
+    setState({ route: { kind: "index" }, selectedRef: null });
+    setErrorCode("");
+  }
+
+  function handleStop(ref: SessionRef): void {
+    stop.mutate({ ref }, { onError: (error) => setErrorCode(sessionControlErrorCode(error)) });
+  }
+
+  function handleArchive(ref: SessionRef): void {
+    archive.mutate({ ref }, { onError: (error) => setErrorCode(sessionControlErrorCode(error)) });
+  }
+
+  useEffect(() => {
+    function handleCommandKey(event: KeyboardEvent) {
+      if (settingsOpen) return;
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); setCommandsOpen((open) => !open); }
+    }
+    window.addEventListener("keydown", handleCommandKey);
+    return () => window.removeEventListener("keydown", handleCommandKey);
+  }, [settingsOpen]);
+
+  const commands: Command[] = [
+    { id: "new", label: t("webui2.newSession"), section: language === "zh" ? "操作" : "Actions", icon: <Plus size={16} />, run: openNewSession },
+    { id: "refresh", label: language === "zh" ? "刷新会话" : "Refresh sessions", section: language === "zh" ? "操作" : "Actions", icon: <RefreshCw size={16} />, run: () => { void queryClient.invalidateQueries({ queryKey: ["session-control"] }); } },
+    { id: "permissions", label: language === "zh" ? "权限记录" : "Permissions", section: language === "zh" ? "操作" : "Actions", icon: <Shield size={16} />, run: () => { setInspectorOpen(true); setInspectorTab("activity"); } },
+    ...(allSessions.data ?? sessions).map((session) => ({ id: session.ref, label: session.title, section: session.cwd || t("webui2.sessions"), keywords: session.ref, icon: <MessageSquare size={16} />, run: () => selectSession(session.ref) }))
+  ];
+
+  return <main aria-label={t("webui2.workspace")} className="webui2-page" data-inspector-open={inspectorOpen} data-session-ref={state.selectedRef ?? undefined} data-sidebar-open={sidebarOpen} data-theme={theme}>
+    {isDesktop && !desktopReady ? <section className="webui2-desktop-readiness" role="status">
+      <strong>{desktopError ? (language === "zh" ? "本地服务连接失败" : "Unable to connect to the local service") : (language === "zh" ? "正在连接本地会话服务…" : "Connecting to the local session service…")}</strong>
+      {desktopError ? <button type="button" onClick={retryDesktopConnection}>{language === "zh" ? "重试" : "Retry"}</button> : null}
+    </section> : null}
+    <div className="webui2-chat-shell" hidden={settingsOpen} inert={settingsOpen}>
+    <SessionSidebar
+      filters={filters}
+      onContextDragStart={() => undefined}
+      onFiltersChange={setFilters}
+      onMobileClose={() => setSidebarOpen(false)}
+      onCreateSession={openNewSession}
+      onOpenSettings={() => openSettings()}
+      onArchive={handleArchive}
+      onStop={handleStop}
+      onSelect={selectSession}
+      selectedRef={state.selectedRef}
+      sessions={sessions}
+    />
+    {sidebarOpen ? <button aria-label={t("webui2.closeSessions")} className="webui2-mobile-sidebar-backdrop" onClick={() => setSidebarOpen(false)} tabIndex={-1} type="button" /> : null}
+    <button aria-controls="webui2-session-sidebar" aria-expanded={sidebarOpen} aria-label={t("webui2.openSessions")} className="webui2-mobile-sidebar-open" onClick={() => setSidebarOpen(true)} title={t("webui2.openSessions")} type="button"><PanelLeftOpen aria-hidden="true" size={18} /></button>
+    <div className="webui2-content">
+      <section className="webui2-workspace">
+        {state.route.kind === "invalid" ? <div className="webui2-route-error" role="alert"><p>{t("webui2.invalidRoute")}</p><button onClick={recoverToIndex} type="button">{t("webui2.backToSessions")}</button></div> : null}
+        {state.route.kind === "index" && !sessionList.isLoading && !sessionList.isError ? <EmptyState onCreateSession={openNewSession} /> : null}
+        {state.selectedRef ? <SelectedSessionWorkspace key={state.selectedRef} drafts={drafts.current} availableSources={allSessions.data ?? sessions} identity={identity} onSelectSession={selectSession} onCreateSession={openNewSession} onOpenInspector={() => setInspectorOpen(true)} selectedRef={state.selectedRef} streamState={stream.state} ready={desktopReady} /> : null}
+        {sessionList.isLoading ? <p className="webui2-workspace-empty">{t("webui2.loading")}</p> : null}
+        {sessionList.isError ? <p className="webui2-workspace-empty" role="alert">{t(`webui2.error.${sessionControlErrorCode(sessionList.error)}`)}</p> : null}
+        {errorCode ? <p role="alert">{t(`webui2.error.${errorCode}`)}</p> : null}
+        {stream.error ? <p role="alert">{t(`webui2.error.${stream.error}`)}</p> : null}
+      </section>
+      {state.selectedRef && desktopReady ? <SelectedSessionInspector identity={identity} onClose={() => setInspectorOpen(false)} onTabChange={setInspectorTab} open={inspectorOpen} selectedRef={state.selectedRef} tab={inspectorTab} /> : null}
+    </div>
+    <NewSessionDialog identity={identity} defaultCWD={(allSessions.data ?? sessions).find((session) => session.ref === state.selectedRef)?.cwd} onClose={() => setNewSessionOpen(false)} onCreated={handleCreated} open={newSessionOpen} />
+    <CommandPalette open={commandsOpen} onClose={() => setCommandsOpen(false)} commands={commands} placeholder={language === "zh" ? "搜索会话或操作" : "Search sessions or actions"} emptyLabel={t("webui2.emptySessions")} ariaLabel={language === "zh" ? "命令面板" : "Command palette"} />
+    </div>
+    {state.route.kind === "settings" && desktopReady ? <SettingsCenter identity={identity} section={state.route.section} onSectionChange={openSettings} onBack={closeSettings} onDirtyChange={(dirty) => { settingsDirty.current = dirty; }} theme={theme} onThemeChange={changeTheme} inspectorOpen={inspectorOpen} onInspectorChange={changeInspector} selectedRef={state.selectedRef} onOpenSession={selectSession} /> : null}
+    {onboardingOpen && state.route.kind !== "settings" ? <section className="webui2-onboarding-backdrop" role="dialog" aria-modal="true" aria-labelledby="webui2-onboarding-title">
+      <div className="webui2-onboarding">
+        <img src={goE2E} alt="go-e2e" />
+        <p className="webui2-onboarding-kicker">{language === "zh" ? "欢迎使用" : "Welcome to"}</p>
+        <h1 id="webui2-onboarding-title">go-e2e</h1>
+        <p>{language === "zh" ? "你的桌面 AI 工作台已经准备好了。" : "Your desktop AI workspace is ready."}</p>
+        <div className="webui2-onboarding-steps">
+          <span><strong>1</strong>{language === "zh" ? "确认工作区" : "Workspace selected"}</span>
+          <span><strong>2</strong>{language === "zh" ? "配置模型" : "Configure a model"}</span>
+          <span><strong>3</strong>{language === "zh" ? "开始对话" : "Start chatting"}</span>
+        </div>
+        <div className="webui2-onboarding-actions">
+          <button type="button" onClick={startOnboardingSession}>{language === "zh" ? "开始新会话" : "Start a session"}</button>
+          <button type="button" className="secondary" onClick={() => { finishOnboarding(); openSettings("models"); }}>{language === "zh" ? "先配置模型" : "Configure model first"}</button>
+        </div>
+      </div>
+    </section> : null}
+  </main>;
+}
+
+function SelectedSessionWorkspace({ drafts, availableSources, identity, onSelectSession, onCreateSession, onOpenInspector, selectedRef, streamState, ready }: { drafts: Map<SessionRef, ComposerDraft>; availableSources: SessionSummary[]; identity: IdentityConfig; onSelectSession: (ref: SessionRef) => void; onCreateSession: () => void; onOpenInspector: () => void; selectedRef: SessionRef; streamState: StreamState; ready: boolean }): JSX.Element {
+  const sessionDetail = useSessionDetail(identity, selectedRef, ready);
+  const send = useSendSession(identity);
+  const stop = useStopSession(identity);
+  const detail = sessionDetail.data;
+  const client = useSessionControlClient();
+  const runtimeDetails = useSessionRuntimeDetails(identity, detail, Boolean(client.subscribe));
+  const catalog = useRuntimeCatalog(identity, Boolean(client.subscribe));
+  const [runtimeDraft, setRuntimeDraft] = useState<ComposerRuntimeValue | null>(null);
+  const [queueBusy, setQueueBusy] = useState(false);
+  const retryInFlight = useRef(false);
+  const retryKeys = useRef(new Map<string, string>());
+  const [retryError, setRetryError] = useState("");
+  const { t } = useI18n();
+  const { language } = useI18n();
+  const runtimeBusy = queueBusy || Boolean(detail && ACTIVE_RUNTIME_STATUSES.has(detail.status));
+  // Another client may start this session after the local next-run draft was edited.
+  // Queued messages must follow that active Run; retain the draft for the next idle turn.
+  const runtimeValue = (runtimeBusy ? null : runtimeDraft) ?? (detail ? sessionRuntimeConfig(detail, runtimeDetails.data) : { provider: "", model: "", permissionMode: "", effort: "", promptMode: "" });
+  async function retry(message: SessionMessage) {
+    if (!detail || retryInFlight.current || send.isPending) return;
+    const fingerprint = JSON.stringify([message.id, runtimeValue]);
+    const key = retryKeys.current.get(fingerprint) ?? crypto.randomUUID();
+    let input: ReturnType<typeof sessionRetryInput>;
+    try { input = sessionRetryInput(detail, message, key); }
+    catch (error) { setRetryError(sessionControlErrorCode(error)); return; }
+    if (!input) return;
+    retryKeys.current.set(fingerprint, key);
+    retryInFlight.current = true;
+    setRetryError("");
+    try { await send.mutateAsync({ ...input, ...runtimeValue }); retryKeys.current.delete(fingerprint); setRuntimeDraft(null); }
+    catch (error) { setRetryError(sessionControlErrorCode(error)); }
+    finally { retryInFlight.current = false; }
+  }
+  if (sessionDetail.isError) return <p role="alert">{t(`webui2.error.${sessionControlErrorCode(sessionDetail.error)}`)}</p>;
+  const taskID = detail?.activeRunID || Number(detail?.runs.at(-1)?.id) || undefined;
+  const metrics = detail ? conversationRuntimeMetrics(detail, runtimeDetails.data) : {};
+  const locked = send.isPending || runtimeBusy || !detail || detail.source === "local" || ["blocked", "archived"].includes(detail.status);
+  const providerOptions = (catalog.providers.data ?? []).map((provider) => ({ value: provider.name, label: `${provider.name} · ${provider.model}`, triggerLabel: provider.name }));
+  if (runtimeValue.provider && !providerOptions.some((option) => option.value === runtimeValue.provider)) providerOptions.unshift({ value: runtimeValue.provider, label: runtimeValue.provider, triggerLabel: runtimeValue.provider });
+  if (!runtimeValue.provider) providerOptions.unshift({ value: "", label: language === "zh" ? "默认 Provider" : "Default provider", triggerLabel: "Provider" });
+  const modelOptions = [...new Set([runtimeValue.model, catalog.status.data?.model, ...(catalog.providers.data ?? []).map((provider) => provider.model), ...(catalog.models.data ?? [])].filter((model): model is string => Boolean(model)))].map((model) => ({ value: model, label: model }));
+  async function openSideChat(result: PendingInputSideChatResponse) {
+    const list = await client.list(identity, { query: "", statuses: [] });
+    const session = list.find((item) => item.id === result.session_id);
+    if (!session) throw new Error("Side chat session not found");
+    onSelectSession(session.ref);
+  }
+  const queueScope = { identity, sessionRef: selectedRef, taskID, revision: detail?.cursor };
+  return <>
+    {retryError ? <p role="alert">{t(`webui2.error.${retryError}`)}</p> : null}
+    <ConversationWorkspace identity={identity} runtimeDetails={runtimeDetails.data} streamState={streamState} onRetry={send.isPending ? undefined : (message) => void retry(message)} composer={detail ? <Composer key={selectedRef} drafts={drafts} availableSources={availableSources} identity={identity} cwd={detail.cwd} disabled={send.isPending}
+      runtimeControls={{ value: runtimeValue, providerOptions, modelOptions, locked, onChange: (next) => { if (locked) return; const provider = catalog.providers.data?.find((item) => item.name === next.provider); setRuntimeDraft(next.provider !== runtimeValue.provider && provider?.model ? { ...next, model: provider.model } : next); }, contextPercent: metrics.contextPercent ?? null, cacheHitPercent: metrics.cacheHitPercent ?? null }}
+      nextStepSuggestions={collectConversationNextSteps(detail.events ?? [])}
+      queuePanel={client.subscribe && detail.source === "tenant" ? <SessionPendingQueue {...queueScope} onBusyChange={setQueueBusy} onOpenSession={openSideChat} /> : null}
+      queueSettings={client.subscribe && detail.source === "tenant" ? <PendingQueueSettingsButton {...queueScope} /> : null}
+      onSend={(input) => send.mutateAsync(input)} onSent={() => setRuntimeDraft(null)} onStopRequested={() => stop.mutateAsync({ ref: selectedRef }).then(() => undefined)} sessionStatus={detail.status} targetRef={selectedRef} /> : null} detail={detail} onCreateSession={onCreateSession} onOpenInspector={onOpenInspector} selectedRef={selectedRef} />
+  </>;
+}
+
+function SelectedSessionInspector({ identity, onClose, onTabChange, open, selectedRef, tab }: { identity: IdentityConfig; onClose: () => void; onTabChange: (tab: InspectorTab) => void; open: boolean; selectedRef: SessionRef; tab: InspectorTab }): JSX.Element {
+  const sessionDetail = useSessionDetail(identity, selectedRef, true);
+  const client = useSessionControlClient();
+  const runtimeDetails = useSessionRuntimeDetails(identity, sessionDetail.data, Boolean(client.subscribe));
+  return <Inspector identity={identity} runtimeDetails={runtimeDetails.data} detail={sessionDetail.data} onClose={onClose} onTabChange={onTabChange} open={open} tab={tab} />;
+}
+
+function completeSessionRef(value: string): SessionRef | null {
+  const parsed = parseWebUIV2Route(`/webui/v2/sessions/${encodeURIComponent(value.trim())}`);
+  return parsed.kind === "session" ? parsed.ref : null;
+}

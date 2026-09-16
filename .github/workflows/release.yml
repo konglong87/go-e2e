@@ -1,0 +1,105 @@
+name: Release
+
+# AUDIT-P1-30：仓库有 48 个 tag，却从来没有一个可下载的产物 —— 拿到仓库的人只能
+# 自己 `go build`。这个 workflow 把 tag 变成真正的发布物。
+#
+# 刻意独立成一个文件而不是塞进 ci.yml：ci.yml 的 build/test/govulncheck/web/swagger
+# 五个 job 是每次 push 的质量门，发布链路只在打 tag 时跑，两者失败的含义完全不同。
+on:
+  push:
+    tags: ['v*']
+  # 不打 tag 也能跑一遍，产物走 artifact 不进 Release，用来验证发布链路本身没烂。
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: 多平台产物 / 发布
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # scripts/build.sh 用 `git describe --tags` 注入版本，浅克隆拿不到 tag，
+          # 产物会全部变成一个裸 sha。
+          fetch-depth: 0
+
+      # Go 版本从 .tool-versions 读，而不是在这里再写一遍数字。ci.yml 的
+      # GO_VERSION、asdf 和这条链路因此共用同一个来源，不会出现第三个版本源。
+      - name: 解析 .tool-versions 中的 Go 版本
+        id: go
+        run: |
+          version="$(awk '$1 == "golang" { print $2; exit }' .tool-versions)"
+          if [ -z "$version" ]; then
+            echo "::error::.tool-versions 里没有 golang 行"
+            exit 1
+          fi
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ steps.go.outputs.version }}
+          cache: true
+
+      # 先固定版本号再传给 release.sh：后面的校验步骤要按同一个字符串拼产物文件名，
+      # 不能各自再算一次 git describe。
+      - name: 固定产物版本号
+        id: version
+        run: echo "version=$(git describe --tags --always --dirty)" >>"$GITHUB_OUTPUT"
+
+      - name: 构建多平台产物
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: scripts/release.sh
+
+      - name: 发布包包含许可证
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          stage="golang-cc_${VERSION}_linux_amd64"
+          workdir="$(mktemp -d)"
+          tar -xzf "dist/${stage}.tar.gz" -C "$workdir"
+          test -s "$workdir/$stage/LICENSE"
+          test -s "$workdir/$stage/THIRD_PARTY_LICENSES/termenv/LICENSE"
+
+      # 发布前自证：产物解开能跑，且 --version 是真实版本而不是 dev。
+      # 这正是 AUDIT-P1-30 的验收点，放进 CI 才不会随时间退化。
+      - name: linux 产物能跑且 --version 是真实版本
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          stage="golang-cc_${VERSION}_linux_amd64"
+          workdir="$(mktemp -d)"
+          tar -xzf "dist/${stage}.tar.gz" -C "$workdir"
+          output="$("$workdir/$stage/golang-cc" --version)"
+          echo "$output"
+          case "$output" in
+            *"$VERSION"*) ;;
+            *)
+              echo "::error::产物 --version 输出 '$output'，不含期望的版本 $VERSION"
+              exit 1
+              ;;
+          esac
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: golang-cc-${{ steps.version.outputs.version }}
+          path: dist/
+          if-no-files-found: error
+
+      # 只有 tag 才建 Release。GITHUB_TOKEN 是 Actions 自带的，不需要额外账号或密钥。
+      - name: 创建 GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            dist/*.tar.gz dist/*.zip dist/SHA256SUMS
