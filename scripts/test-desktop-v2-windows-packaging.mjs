@@ -12,7 +12,7 @@ import { test } from "node:test";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const buildPath = "scripts/build-desktop-v2-windows.ps1";
 const templatePath = "desktop-v2/build/windows/installer/project.nsi";
-const read = (name) => readFileSync(path.join(root, name), "utf8");
+const read = (name) => readFileSync(path.join(root, name), "utf8").replaceAll("\r\n", "\n");
 const build = read(buildPath);
 const template = read(templatePath);
 const workflow = read(".github/workflows/desktop-windows.yml");
