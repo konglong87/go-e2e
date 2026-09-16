@@ -66,14 +66,22 @@ jobs:
       - name: Verify native Windows amd64 C compiler
         shell: pwsh
         run: |
-          # Use the runner's native MinGW-w64 GCC, not MSVC or an MSYS POSIX compiler.
-          $compiler = Get-Command gcc -CommandType Application -ErrorAction Stop
-          $target = & $compiler.Source -dumpmachine
-          if ($LASTEXITCODE -ne 0) { throw "GCC target probe failed" }
-          if ($target.Trim() -ne "x86_64-w64-mingw32") {
-            throw "SQLite requires a Windows amd64 C compiler; got: $target"
+          # The runner can expose both native MinGW and Strawberry/MSYS gcc.
+          # Probe every candidate instead of invoking a multi-valued Source property.
+          $compiler = $null
+          $target = $null
+          foreach ($candidate in @(Get-Command gcc -CommandType Application -ErrorAction Stop)) {
+            $candidateTarget = (& $candidate.Source -dumpmachine | Out-String).Trim()
+            if ($LASTEXITCODE -eq 0 -and $candidateTarget -eq "x86_64-w64-mingw32") {
+              $compiler = $candidate
+              $target = $candidateTarget
+              break
+            }
           }
-          "CC=gcc" >> $env:GITHUB_ENV
+          if ($null -eq $compiler) {
+            throw "SQLite requires a Windows amd64 C compiler; no x86_64-w64-mingw32 gcc was found"
+          }
+          "CC=$($compiler.Source)" >> $env:GITHUB_ENV
           "CGO_ENABLED=1" >> $env:GITHUB_ENV
 
       - name: Install Wails CLI
