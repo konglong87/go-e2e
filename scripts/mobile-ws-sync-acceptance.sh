@@ -3,7 +3,7 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/product-env.sh"
 
 
-TEST_PATTERN="${GOLANG_CC_MOBILE_WS_ACCEPTANCE_PATTERN:-TestMobileWebSocketMultiDeviceReceivesSubscribedStreamEvents|TestMobileWebSocketReceivesSubscribedStreamEvents|TestMobileStreamRegistryCancelIsScopedToPrincipal}"
+TEST_PATTERN="${GO_E2E_MOBILE_WS_ACCEPTANCE_PATTERN:-TestMobileWebSocketMultiDeviceReceivesSubscribedStreamEvents|TestMobileWebSocketReceivesSubscribedStreamEvents|TestMobileStreamRegistryCancelIsScopedToPrincipal}"
 
 echo "Running mobile WebSocket multi-device sync acceptance"
 go test ./internal/server -run "$TEST_PATTERN" -count=1

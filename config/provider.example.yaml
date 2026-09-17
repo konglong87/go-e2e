@@ -1,6 +1,6 @@
-# Copy these fields into project settings only to intentionally select Anthropic.
-model: claude-sonnet-4-6
-provider: anthropic
-providerProtocol: anthropic-messages
-env:
-  ANTHROPIC_BASE_URL: https://api.anthropic.com
+# Copy these fields into the global settings file to configure a provider.
+model: model-id
+provider: custom
+providerProtocol: openai-chat-completions
+baseURL: https://model.example.com/v1
+apiKey: replace-me

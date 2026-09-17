@@ -28,7 +28,7 @@ cat > "$transcript_path" <<JSONL
 {"type":"content_replacement","replacements":[{"kind":"tool-result","tool_use_id":"toolu_resume_acceptance","replacement":"$REPLACEMENT_TEXT"}]}
 JSONL
 
-export GOLANG_CC_CONFIG_DIR="$CONFIG_DIR"
+export GO_E2E_CONFIG_DIR="$CONFIG_DIR"
 
 RESUME_PROMPT="继续上一轮，只用一句话说明 resume replacement 已生效。不要修改文件。"
 

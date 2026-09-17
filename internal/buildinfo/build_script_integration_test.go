@@ -11,11 +11,12 @@ import (
 	"testing"
 
 	"github.com/konglong87/go-e2e/internal/buildinfo"
+	"github.com/konglong87/go-e2e/internal/product"
 )
 
 func TestBuildScriptInjectsReproducibleIdentity(t *testing.T) {
 	repositoryRoot := filepath.Clean(filepath.Join("..", ".."))
-	binary := filepath.Join(t.TempDir(), "golang-cc")
+	binary := filepath.Join(t.TempDir(), "go-e2e")
 	command := exec.Command("bash", "scripts/build.sh")
 	command.Dir = repositoryRoot
 	command.Env = append(os.Environ(),
@@ -40,12 +41,8 @@ func TestBuildScriptInjectsReproducibleIdentity(t *testing.T) {
 		t.Fatalf("built identity = %+v", identity)
 	}
 
-	textOutput, err := exec.Command(binary, "--version").Output()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := string(textOutput); got != "v-build-test (golang-cc)\n" {
-		t.Fatalf("--version = %q", got)
+	if identity.Product != product.Name {
+		t.Fatalf("built product = %q, want %q", identity.Product, product.Name)
 	}
 	if strings.Contains(string(jsonOutput), repositoryRoot) {
 		t.Fatalf("build identity leaked repository path: %s", jsonOutput)

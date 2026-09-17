@@ -18,7 +18,8 @@ const (
 )
 
 // ValidateSettings checks route contracts; credentials and remote model availability
-// are deliberately not required, because settings can be completed by other scopes.
+// are deliberately not required so the settings editor can repair an incomplete
+// document. Runtime route validation is performed by Config.ValidateProviderRoute.
 func ValidateSettings(settings Settings) []SettingsIssue {
 	issues := []SettingsIssue{}
 	add := func(field, code, message string) { issues = append(issues, SettingsIssue{field, code, message}) }
@@ -35,7 +36,7 @@ func ValidateSettings(settings Settings) []SettingsIssue {
 			add(field, SettingsIssueRoute, err.Error())
 		}
 	}
-	kind := firstNonEmpty(settings.Env["GOLANG_CC_PROVIDER"], settings.Env["CLAUDE_CODE_PROVIDER"], settings.Provider)
+	kind := settings.Provider
 	validateRoute("providerProtocol", kind, settings.ProviderProtocol, settings.Responses)
 	if settings.Model != "" && strings.TrimSpace(settings.Model) == "" {
 		add("model", SettingsIssueValue, "model must not be whitespace")
@@ -79,8 +80,8 @@ func InspectSettings(cwd string) (LoadedSettings, map[string]string) {
 			for _, field := range []string{"model", "providerProtocol", "responses.stateMode", "responses.store"} {
 				delete(sources, field)
 			}
-			for _, key := range providerRouteEnvKeys {
-				delete(sources, "env."+key)
+			for _, key := range providerRouteKeys {
+				delete(sources, key)
 			}
 		}
 		if settings.ProviderProtocol != "" && normalizeProviderProtocol(settings.ProviderProtocol) != normalizeProviderProtocol(loaded.ProviderProtocol) {
@@ -92,9 +93,9 @@ func InspectSettings(cwd string) (LoadedSettings, map[string]string) {
 				sources[field] = path
 			}
 		}
-		for _, key := range providerRouteEnvKeys {
-			if _, ok := settings.Env[key]; ok {
-				sources["env."+key] = path
+		for _, key := range providerRouteKeys {
+			if value := providerRouteValue(settings, key); value != "" {
+				sources[key] = path
 			}
 		}
 		if settings.Responses != nil {
@@ -110,4 +111,17 @@ func InspectSettings(cwd string) (LoadedSettings, map[string]string) {
 		loaded.Sources = append(loaded.Sources, path)
 	}
 	return loaded, sources
+}
+
+func providerRouteValue(settings Settings, key string) string {
+	switch key {
+	case "baseURL":
+		return settings.BaseURL
+	case "apiKey":
+		return settings.APIKey
+	case "authToken":
+		return settings.AuthToken
+	default:
+		return ""
+	}
 }

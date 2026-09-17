@@ -3425,7 +3425,7 @@ func TestTenantAgentTaskMessageResolvesInitSlashCommand(t *testing.T) {
 	waitForTestCondition(t, func() bool {
 		gotReqMu.Lock()
 		defer gotReqMu.Unlock()
-		return strings.Contains(gotReq.Prompt, "create or improve `golang-cc.md`")
+		return strings.Contains(gotReq.Prompt, "create or improve `go-e2e.md`")
 	})
 	if gotReq.Prompt == "/init" || !strings.Contains(gotReq.Prompt, "Start the file with exactly this header") {
 		t.Fatalf("slash command was not resolved: %+v", gotReq)
@@ -4304,7 +4304,7 @@ func TestAgentSlashCommandsEndpoint(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), `"name":"init"`) || !strings.Contains(rec.Body.String(), `golang-cc.md`) {
+	if !strings.Contains(rec.Body.String(), `"name":"init"`) || !strings.Contains(rec.Body.String(), `go-e2e.md`) {
 		t.Fatalf("init slash command missing: %s", rec.Body.String())
 	}
 }

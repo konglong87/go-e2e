@@ -122,6 +122,36 @@ func TestGlobalSettingsPutPreservesUnknownFields(t *testing.T) {
 	}
 }
 
+func TestGlobalSettingsPutPreservesOmittedUnknownFieldsOnPartialWrite(t *testing.T) {
+	handler, path := settingsTestHandler(t, "")
+	original := `{"model":"old","futureField":{"nested":true},"futureList":[{"value":1,"unknown":"keep"}]}`
+	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+		t.Fatal(err)
+	}
+	rec := doSettings(t, handler, http.MethodPut, "", `{"model":"new"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	var stored map[string]any
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(data, &stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored["model"] != "new" {
+		t.Fatalf("model = %v, want new", stored["model"])
+	}
+	if stored["futureField"].(map[string]any)["nested"] != true {
+		t.Fatalf("omitted unknown object was lost: %v", stored["futureField"])
+	}
+	item := stored["futureList"].([]any)[0].(map[string]any)
+	if item["unknown"] != "keep" {
+		t.Fatalf("omitted unknown list field was lost: %v", item)
+	}
+}
+
 func TestGlobalSettingsPutRejectsInvalidJSON(t *testing.T) {
 	handler, path := settingsTestHandler(t, "")
 	original := `{"model":"keep-me"}`

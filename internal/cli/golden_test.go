@@ -635,8 +635,7 @@ func startGoldenAnthropicServer(t *testing.T) {
 		}, "\n")))
 	}))
 	t.Cleanup(server.Close)
-	t.Setenv("ANTHROPIC_API_KEY", "golden-key")
-	t.Setenv("ANTHROPIC_BASE_URL", server.URL)
+	configureTestProvider(t, server.URL, "golden-key")
 }
 
 func assertGolden(t *testing.T, name string, got string) {
@@ -646,6 +645,11 @@ func assertGolden(t *testing.T, name string, got string) {
 		t.Fatal("runtime.Caller failed")
 	}
 	path := filepath.Join(filepath.Dir(file), "testdata", "golden", name)
+	if os.Getenv("GO_E2E_UPDATE_GOLDEN") == "1" {
+		if err := os.WriteFile(path, []byte(strings.TrimRight(got, "\n")+"\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read golden %s: %v", name, err)

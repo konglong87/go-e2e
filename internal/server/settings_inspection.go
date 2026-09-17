@@ -59,11 +59,6 @@ func validateSettingsDocument(body []byte) []config.SettingsIssue {
 		}
 		return []config.SettingsIssue{{Field: field, Code: settingsIssueType, Message: "value does not match the settings field type"}}
 	}
-	// Primary routing follows the same process-env precedence as the runtime.
-	// Otherwise a protocol-only document completed by GOLANG_CC_PROVIDER would
-	// be rejected despite being runnable by this server.
-	resolved := (config.Config{}).WithRuntimeSettings(settings)
-	settings.Provider, settings.Env = resolved.Provider, nil
 	return config.ValidateSettings(settings)
 }
 
@@ -96,7 +91,7 @@ func settingsValidateGin(opts Options) gin.HandlerFunc {
 }
 
 func readStoredSettingsDocument() (map[string]any, error) {
-	raw, _, exists, err := config.ReadGlobalSettingsRaw()
+	raw, _, exists, err := config.ReadGlobalSettings()
 	if err != nil {
 		return nil, errors.New("cannot read current global settings")
 	}

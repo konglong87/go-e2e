@@ -135,7 +135,7 @@ func TestSettingsRestoreProviderSecretsByNameAfterReorder(t *testing.T) {
 func TestSettingsEffectiveUsesGlobalSourceAndStartupAllowlist(t *testing.T) {
 	dir, workspace := t.TempDir(), t.TempDir()
 	t.Setenv("GOLANG_CC_CONFIG_DIR", dir)
-	if err := os.WriteFile(filepath.Join(dir, "settings.json"), []byte(`{"provider":"anthropic","model":"global","env":{"ANTHROPIC_API_KEY":"private"}}`), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "settings.json"), []byte(`{"provider":"anthropic","model":"global","baseURL":"https://example.test/v1","apiKey":"private"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	projectDir := filepath.Join(workspace, ".golang-cc")
@@ -155,7 +155,7 @@ func TestSettingsEffectiveUsesGlobalSourceAndStartupAllowlist(t *testing.T) {
 	if result.FileResolved.Doc["model"] != "global" || result.FileResolved.RouteSources["model"] != filepath.Join(dir, "settings.json") {
 		t.Fatalf("wrong file sources: %+v", result.FileResolved)
 	}
-	if result.FileResolved.RouteSources["env.ANTHROPIC_API_KEY"] != filepath.Join(dir, "settings.json") {
+	if result.FileResolved.RouteSources["apiKey"] != filepath.Join(dir, "settings.json") {
 		t.Fatal("global credential source lost")
 	}
 	if result.ProcessSnapshot.Kind != "startup" || result.ProcessSnapshot.Doc["model"] != "startup" || result.ProcessSnapshot.ActiveRunConfigKnown {
@@ -220,7 +220,7 @@ func TestSettingsUnnamedProviderCredentialsFollowUniqueRouteIdentity(t *testing.
 func TestSettingsEffectiveMasksFileURLsAndSanitizesStartupURL(t *testing.T) {
 	dir, workspace := t.TempDir(), t.TempDir()
 	t.Setenv("GOLANG_CC_CONFIG_DIR", dir)
-	settings := `{"env":{"ANTHROPIC_BASE_URL":"https://user:password@example.com/v1?token=secret-query"},"fallback":{"providers":[{"name":"custom","baseURL":"https://other.example/v1?api_key=another-secret"}]}}`
+	settings := `{"baseURL":"https://user:password@example.com/v1?token=secret-query","fallback":{"providers":[{"name":"custom","baseURL":"https://other.example/v1?api_key=another-secret"}]}}`
 	if err := os.WriteFile(filepath.Join(dir, "settings.json"), []byte(settings), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -238,27 +238,27 @@ func TestSettingsEffectiveMasksFileURLsAndSanitizesStartupURL(t *testing.T) {
 	if result.ProcessSnapshot.Doc["baseURL"] != "https://example.com/v1" {
 		t.Fatalf("startup URL not sanitized: %v", result.ProcessSnapshot.Doc["baseURL"])
 	}
-	if result.FileResolved.Doc["env"].(map[string]any)["ANTHROPIC_BASE_URL"] != settingsSecretSentinel {
+	if result.FileResolved.Doc["baseURL"] != settingsSecretSentinel {
 		t.Fatal("file URL was not masked")
 	}
 }
 
-func TestSettingsValidationUsesProcessProviderPrecedence(t *testing.T) {
+func TestSettingsValidationIgnoresProcessProviderEnvironment(t *testing.T) {
 	handler, _ := settingsTestHandler(t, "")
 	t.Setenv("GOLANG_CC_PROVIDER", "custom")
 	t.Setenv("CLAUDE_CODE_PROVIDER", "")
-	body := `{"providerProtocol":"openai-responses","responses":{"stateMode":"stateless","store":false}}`
+	body := `{"provider":"custom","baseURL":"https://example.test/v1","apiKey":"key","providerProtocol":"openai-responses","responses":{"stateMode":"stateless","store":false}}`
 	rec := settingsRequest(handler, http.MethodPost, "/runtime/settings/validate", body, "", "")
 	var result SettingsValidationResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil || !result.Valid {
-		t.Fatalf("valid env route rejected: %s", rec.Body.String())
+		t.Fatalf("valid canonical route rejected: %s", rec.Body.String())
 	}
 	if rec := doSettings(t, handler, http.MethodPut, "", body); rec.Code != http.StatusOK {
-		t.Fatalf("valid env route could not save: %s", rec.Body.String())
+		t.Fatalf("valid canonical route could not save: %s", rec.Body.String())
 	}
 	t.Setenv("GOLANG_CC_PROVIDER", "anthropic")
-	if rec := doSettings(t, handler, http.MethodPut, "", body); rec.Code != http.StatusBadRequest {
-		t.Fatalf("incompatible env route accepted: %s", rec.Body.String())
+	if rec := doSettings(t, handler, http.MethodPut, "", body); rec.Code != http.StatusOK {
+		t.Fatalf("process provider environment changed canonical route: %s", rec.Body.String())
 	}
 }
 
@@ -312,7 +312,7 @@ func TestSettingsProviderProbeRestoresCredentialAndDoesNotSave(t *testing.T) {
 		writeJSON(w, map[string]any{"data": []any{}})
 	}))
 	defer provider.Close()
-	stored := `{"provider":"openai","env":{"ANTHROPIC_API_KEY":"stored-key","ANTHROPIC_BASE_URL":"` + provider.URL + `/v1"}}`
+	stored := `{"provider":"openai","apiKey":"stored-key","baseURL":"` + provider.URL + `/v1"}`
 	if err := os.WriteFile(path, []byte(stored), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -338,7 +338,7 @@ func TestSettingsProviderProbeDoesNotFollowRedirect(t *testing.T) {
 	defer target.Close()
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, target.URL, http.StatusFound) }))
 	defer provider.Close()
-	body := `{"doc":{"provider":"openai","env":{"ANTHROPIC_BASE_URL":"` + provider.URL + `/v1","ANTHROPIC_API_KEY":"secret"}}}`
+	body := `{"doc":{"provider":"openai","baseURL":"` + provider.URL + `/v1","apiKey":"secret"}}`
 	rec := settingsRequest(handler, http.MethodPost, "/runtime/settings/test-provider", body, "", "")
 	var result SettingsProviderTestResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil || result.OK || result.StatusCode != http.StatusFound {
@@ -366,7 +366,7 @@ func TestWebUIV2SettingsReadSameGlobalFile(t *testing.T) {
 				t.Setenv("GOLANG_CC_CONFIG_DIR", globalDir)
 			}
 			path := filepath.Join(globalDir, "settings.json")
-			mustWriteServerTest(t, path, `{"provider":"anthropic","model":"global-only","env":{"ANTHROPIC_API_KEY":"secret-must-not-leak"}}`)
+			mustWriteServerTest(t, path, `{"provider":"anthropic","model":"global-only","baseURL":"https://example.test/v1","apiKey":"secret-must-not-leak"}`)
 			mustWriteServerTest(t, filepath.Join(workspace, ".golang-cc", "settings.json"), `{"model":"ignored-project"}`)
 			mustWriteServerTest(t, filepath.Join(workspace, "config", "config.yaml"), "model: ignored-yaml\n")
 			handler := NewHandler(Options{AuthToken: "test-token", Workspace: workspace}, func(context.Context, QueryRequest) (query.Result, error) { return query.Result{}, nil })

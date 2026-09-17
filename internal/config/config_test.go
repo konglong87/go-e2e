@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -326,7 +327,7 @@ func TestResolveImageGenerationRejectsMissingCredentials(t *testing.T) {
 	}
 }
 
-func TestResolveImageGenerationUsesClaudeCodeAuthTokenFallback(t *testing.T) {
+func TestResolveImageGenerationDoesNotUseClaudeCodeAuthTokenFallback(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("GOLANG_CC_CONFIG_DIR", "")
@@ -335,12 +336,8 @@ func TestResolveImageGenerationUsesClaudeCodeAuthTokenFallback(t *testing.T) {
 	t.Setenv("CLAUDE_CODE_AUTH_TOKEN", "claude-auth")
 	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
 	mustWrite(t, filepath.Join(home, ".golang-cc", "settings.json"), `{"imageGeneration":{"enabled":true,"provider":"jiuan"},"fallback":{"providers":[{"name":"jiuan","baseURL":"https://jiuan.example/v1"}]}}`)
-	resolved, err := ResolveImageGeneration(t.TempDir())
-	if err != nil {
-		t.Fatalf("ResolveImageGeneration() error = %v", err)
-	}
-	if resolved.AuthToken != "claude-auth" {
-		t.Fatalf("AuthToken = %q, want CLAUDE_CODE_AUTH_TOKEN fallback", resolved.AuthToken)
+	if _, err := ResolveImageGeneration(t.TempDir()); err == nil || !strings.Contains(err.Error(), "credential") {
+		t.Fatalf("ResolveImageGeneration() error = %v, want missing credential", err)
 	}
 }
 
@@ -685,8 +682,8 @@ func TestAvailableModelsFallsBackToKnownModels(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("CLAUDE_CODE_MODEL", "")
 	got := AvailableModels(t.TempDir())
-	if strings.Join(got, ",") != strings.Join(KnownModels, ",") {
-		t.Fatalf("AvailableModels = %q, want built-in catalog %q", strings.Join(got, ","), strings.Join(KnownModels, ","))
+	if len(got) != 0 {
+		t.Fatalf("AvailableModels = %q, want no implicit Anthropic catalog", strings.Join(got, ","))
 	}
 }
 
@@ -703,16 +700,50 @@ func TestGlobalSettingsPathUsesGolangCCDirectory(t *testing.T) {
 		t.Fatalf("GlobalSettingsPath = %q, want %q", path, want)
 	}
 
-	settings := Settings{Env: map[string]string{"ANTHROPIC_API_KEY": "from-golang-cc"}}
+	settings := Settings{Provider: "custom", BaseURL: "https://example.test/v1", APIKey: "from-golang-cc"}
 	if err := SaveGlobalSettings(settings); err != nil {
 		t.Fatal(err)
 	}
 	loaded := LoadGlobalSettings()
-	if loaded.Env["ANTHROPIC_API_KEY"] != "from-golang-cc" {
-		t.Fatalf("loaded env = %+v", loaded.Env)
+	if loaded.APIKey != "from-golang-cc" {
+		t.Fatalf("loaded api key = %q", loaded.APIKey)
 	}
 	if _, err := os.Stat(filepath.Join(home, ".claude", "settings.json")); !os.IsNotExist(err) {
 		t.Fatalf("legacy settings should not be written, err=%v", err)
+	}
+}
+
+func TestSaveGlobalSettingsPreservesUnknownFields(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	path, err := GlobalSettingsPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, path, `{"model":"old","future":{"nested":{"keep":true}},"mcpServers":{"future":{"command":"x","unknown":7}}}`)
+
+	next := LoadGlobalSettings()
+	next.Model = "new"
+	if err := SaveGlobalSettings(next); err != nil {
+		t.Fatal(err)
+	}
+	var stored map[string]any
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(data, &stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored["model"] != "new" {
+		t.Fatalf("model = %v, want new", stored["model"])
+	}
+	if stored["future"].(map[string]any)["nested"].(map[string]any)["keep"] != true {
+		t.Fatalf("unknown nested field was lost: %v", stored["future"])
+	}
+	futureServer := stored["mcpServers"].(map[string]any)["future"].(map[string]any)
+	if futureServer["unknown"] != float64(7) {
+		t.Fatalf("unknown map entry field was lost: %v", futureServer)
 	}
 }
 
@@ -735,7 +766,7 @@ func TestLoadSettingsReadsConfiguredGlobalConfigRoot(t *testing.T) {
 	}
 }
 
-func TestLoadForCWDUsesSettingsEnvButRealEnvWins(t *testing.T) {
+func TestLoadForCWDUsesCanonicalSettingsAndIgnoresProviderEnv(t *testing.T) {
 	home := t.TempDir()
 	project := t.TempDir()
 	t.Setenv("GOLANG_CC_CONFIG_DIR", filepath.Join(project, ".claude"))
@@ -744,17 +775,16 @@ func TestLoadForCWDUsesSettingsEnvButRealEnvWins(t *testing.T) {
 	t.Setenv("ANTHROPIC_BASE_URL", "")
 
 	mustWrite(t, filepath.Join(project, ".claude", "settings.json"), `{
-	  "env": {
-	    "ANTHROPIC_API_KEY": "from-settings",
-	    "ANTHROPIC_BASE_URL": "https://example.test/"
-	  }
+	  "provider": "custom",
+	  "baseURL": "https://example.test/",
+	  "apiKey": "from-settings"
 	}`)
 	cfg := LoadForCWD(project)
-	if cfg.APIKey != "from-env" {
-		t.Fatalf("APIKey = %q, want from-env", cfg.APIKey)
+	if cfg.APIKey != "from-settings" {
+		t.Fatalf("APIKey = %q, want canonical settings value", cfg.APIKey)
 	}
 	if cfg.BaseURL != "https://example.test" {
-		t.Fatalf("BaseURL = %q, want trimmed settings URL", cfg.BaseURL)
+		t.Fatalf("BaseURL = %q, want trimmed canonical settings URL", cfg.BaseURL)
 	}
 }
 
@@ -995,11 +1025,11 @@ func TestMultimodalModelForUsesConfiguredModalityModels(t *testing.T) {
 	settings := Settings{Multimodal: &MultimodalSettings{
 		DefaultModel: "default-mm",
 		Models: map[string]string{
-			"image": "${IMAGE_MODEL}",
+			"image": "vision-configured-model",
 			"audio": "audio-model",
 		},
 	}}
-	if got := MultimodalModelFor(settings, "primary", "image/png"); got != "vision-env-model" {
+	if got := MultimodalModelFor(settings, "primary", "image/png"); got != "vision-configured-model" {
 		t.Fatalf("image model = %q", got)
 	}
 	if got := MultimodalModelFor(settings, "primary", "voice"); got != "audio-model" {
@@ -1067,19 +1097,18 @@ func TestLoadForCWDSupportsAuthTokenAliases(t *testing.T) {
 	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
 
 	mustWrite(t, filepath.Join(project, ".claude", "settings.json"), `{
-	  "env": {
-	    "ANTHROPIC_AUTH_TOKEN": "from-settings"
-	  }
+	  "provider": "anthropic",
+	  "baseURL": "https://api.example.test",
+	  "authToken": "from-settings"
 	}`)
 	cfg := LoadForCWD(project)
-	if cfg.AuthToken != "from-env" {
-		t.Fatalf("AuthToken = %q, want from-env", cfg.AuthToken)
+	if cfg.AuthToken != "from-settings" {
+		t.Fatalf("AuthToken = %q, want canonical settings value", cfg.AuthToken)
 	}
 
-	t.Setenv("CLAUDE_CODE_AUTH_TOKEN", "")
 	cfg = LoadForCWD(project)
 	if cfg.AuthToken != "from-settings" {
-		t.Fatalf("AuthToken = %q, want from-settings", cfg.AuthToken)
+		t.Fatalf("AuthToken = %q after env removal, want canonical settings value", cfg.AuthToken)
 	}
 }
 
@@ -1263,8 +1292,8 @@ func TestLoadForCWDReadsPrimaryProviderType(t *testing.T) {
 
 	t.Setenv("GOLANG_CC_PROVIDER", "anthropic-compatible")
 	cfg = LoadForCWD(project)
-	if cfg.Provider != "anthropic-compatible" {
-		t.Fatalf("Provider = %q, want env override", cfg.Provider)
+	if cfg.Provider != "custom" {
+		t.Fatalf("Provider = %q, want canonical settings value", cfg.Provider)
 	}
 }
 
@@ -1280,14 +1309,14 @@ func TestResolveModelPriority(t *testing.T) {
 	if got := ResolveModel(project, "flag-model"); got != "flag-model" {
 		t.Fatalf("explicit model = %q", got)
 	}
-	if got := ResolveModel(project, ""); got != "env-model" {
-		t.Fatalf("project YAML must not override environment: %q", got)
+	if got := ResolveModel(project, ""); got != "global-model" {
+		t.Fatalf("process model environment must not override global settings: %q", got)
 	}
 	if err := os.Remove(filepath.Join(project, "config", "config.yaml")); err != nil {
 		t.Fatal(err)
 	}
-	if got := ResolveModel(project, ""); got != "env-model" {
-		t.Fatalf("env model = %q", got)
+	if got := ResolveModel(project, ""); got != "global-model" {
+		t.Fatalf("global model = %q", got)
 	}
 	t.Setenv("CLAUDE_CODE_MODEL", "")
 	if got := ResolveModel(project, ""); got != "global-model" {
@@ -1298,7 +1327,7 @@ func TestResolveModelPriority(t *testing.T) {
 // With no explicit/project/env/top-level model but a configured provider, the
 // resolved default should be that provider's model, not the built-in Anthropic
 // model (provider neutrality P1③).
-func TestResolveModelFallsBackToConfiguredProviderModel(t *testing.T) {
+func TestResolveModelDoesNotFallBackToConfiguredProviderModel(t *testing.T) {
 	home := t.TempDir()
 	project := t.TempDir()
 	t.Setenv("HOME", home)
@@ -1308,8 +1337,8 @@ func TestResolveModelFallsBackToConfiguredProviderModel(t *testing.T) {
 	    {"name": "glm", "type": "custom", "baseURL": "https://x", "apiKey": "y", "model": "glm-5.1"}
 	  ]}
 	}`)
-	if got := ResolveModel(project, ""); got != "glm-5.1" {
-		t.Fatalf("ResolveModel = %q, want glm-5.1 (first configured provider model, not the Anthropic default)", got)
+	if got := ResolveModel(project, ""); got != "" {
+		t.Fatalf("ResolveModel = %q, want no implicit provider model", got)
 	}
 }
 
@@ -1320,14 +1349,14 @@ func TestLoadForCWDBuildsFallbackProviders(t *testing.T) {
 	t.Setenv("GOLANG_CC_ENV", "")
 	isolateAmbientProviderEnv(t)
 	t.Setenv("BACKUP_KEY", "expanded-key")
-	mustWrite(t, filepath.Join(project, "config", "settings.json"), `{"env":{"ANTHROPIC_API_KEY":"primary-key"},"fallback":{"enabled":true,"providers":[{"name":"provider1","type":"anthropic","baseURL":"https://provider1.example.test/","apiKey":"${BACKUP_KEY}","model":"fallback-model"},{"name":"provider2","type":"anthropic-compatible","baseURL":"https://provider2.example.test"}]}}`)
+	mustWrite(t, filepath.Join(project, "config", "settings.json"), `{"provider":"anthropic","baseURL":"https://primary.example.test","apiKey":"primary-key","fallback":{"enabled":true,"providers":[{"name":"provider1","type":"anthropic","baseURL":"https://provider1.example.test/","apiKey":"${BACKUP_KEY}","model":"fallback-model"},{"name":"provider2","type":"anthropic-compatible","baseURL":"https://provider2.example.test"}]}}`)
 
 	cfg := LoadForCWD(project)
 	if len(cfg.FallbackProviders) != 2 {
 		t.Fatalf("fallback providers = %+v", cfg.FallbackProviders)
 	}
 	first := cfg.FallbackProviders[0]
-	if first.Name != "provider1" || first.BaseURL != "https://provider1.example.test" || first.APIKey != "expanded-key" || first.Model != "fallback-model" {
+	if first.Name != "provider1" || first.BaseURL != "https://provider1.example.test" || first.APIKey != "${BACKUP_KEY}" || first.Model != "fallback-model" {
 		t.Fatalf("first provider = %+v", first)
 	}
 	second := cfg.FallbackProviders[1]
@@ -1343,14 +1372,14 @@ func TestFallbackProviderExplicitUnsetEnvDoesNotInheritPrimaryAuth(t *testing.T)
 	t.Setenv("GOLANG_CC_ENV", "")
 	isolateAmbientProviderEnv(t)
 	t.Setenv("MISSING_BACKUP_KEY", "")
-	mustWrite(t, filepath.Join(project, "config", "settings.json"), `{"env":{"ANTHROPIC_API_KEY":"primary-key"},"fallback":{"enabled":true,"providers":[{"name":"provider1","baseURL":"https://provider1.example.test","apiKey":"${MISSING_BACKUP_KEY}"},{"name":"provider2","baseURL":"https://provider2.example.test"}]}}`)
+	mustWrite(t, filepath.Join(project, "config", "settings.json"), `{"provider":"anthropic","baseURL":"https://primary.example.test","apiKey":"primary-key","fallback":{"enabled":true,"providers":[{"name":"provider1","baseURL":"https://provider1.example.test","apiKey":"${MISSING_BACKUP_KEY}"},{"name":"provider2","baseURL":"https://provider2.example.test"}]}}`)
 
 	cfg := LoadForCWD(project)
 	if len(cfg.FallbackProviders) != 2 {
 		t.Fatalf("fallback providers = %+v", cfg.FallbackProviders)
 	}
-	if cfg.FallbackProviders[0].APIKey != "" {
-		t.Fatalf("explicit empty provider key inherited primary auth: %+v", cfg.FallbackProviders[0])
+	if cfg.FallbackProviders[0].APIKey != "${MISSING_BACKUP_KEY}" {
+		t.Fatalf("explicit environment reference was changed: %+v", cfg.FallbackProviders[0])
 	}
 	if cfg.FallbackProviders[1].APIKey != "primary-key" {
 		t.Fatalf("omitted provider key did not inherit primary auth: %+v", cfg.FallbackProviders[1])
@@ -1401,8 +1430,8 @@ fallback:
 		t.Fatalf("non-matching local provider changed: %+v", cfg.FallbackProviders[0])
 	}
 	got := cfg.FallbackProviders[1]
-	if got.Name != "sensenova-deepseek-v4-flash" || got.APIKey != "global-sensenova-key" || got.Model != "deepseek-v4-flash" {
-		t.Fatalf("matching global auth was not preserved: %+v", got)
+	if got.Name != "sensenova-deepseek-v4-flash" || got.APIKey != "${SENSENOVA_API_KEY}" || got.Model != "deepseek-v4-flash" {
+		t.Fatalf("external credential reference was expanded or replaced: %+v", got)
 	}
 }
 
@@ -1518,11 +1547,9 @@ func TestConfigWithRuntimeSettingsRebuildsProviderFields(t *testing.T) {
 		Provider:         "custom",
 		ProviderProtocol: ProviderProtocolOpenAIResponses,
 		Responses:        &ResponsesProviderSettings{StateMode: ResponsesStateModeStateless, Store: &store},
-		Env: map[string]string{
-			"ANTHROPIC_API_KEY":  "runtime-key",
-			"ANTHROPIC_BASE_URL": "https://responses.example.test/v1/",
-		},
-		Fallback: &FallbackSettings{Providers: []ProviderConfig{{Name: "inherited", Type: "custom"}}},
+		BaseURL:          "https://responses.example.test/v1/",
+		APIKey:           "runtime-key",
+		Fallback:         &FallbackSettings{Providers: []ProviderConfig{{Name: "inherited", Type: "custom"}}},
 	}
 
 	next := (Config{Provider: "anthropic", BaseURL: "https://api.anthropic.com", APIKey: "old-key"}).WithRuntimeSettings(settings)
@@ -1540,21 +1567,21 @@ func TestConfigWithRuntimeSettingsRebuildsProviderFields(t *testing.T) {
 	}
 }
 
-func TestConfigWithRuntimeSettingsKeepsEnvironmentProviderPrecedence(t *testing.T) {
+func TestConfigWithRuntimeSettingsIgnoresProviderEnvironment(t *testing.T) {
 	t.Setenv("GOLANG_CC_PROVIDER", "openai-compatible")
 	t.Setenv("ANTHROPIC_BASE_URL", "https://environment.example.test/v1/")
 	t.Setenv("ANTHROPIC_API_KEY", "environment-key")
 
 	next := (Config{}).WithRuntimeSettings(Settings{
-		Provider: "custom",
+		Provider: "custom", BaseURL: "https://settings.example.test", APIKey: "settings-key",
 		Env: map[string]string{
 			"GOLANG_CC_PROVIDER": "anthropic",
 			"ANTHROPIC_BASE_URL": "https://settings.example.test",
 			"ANTHROPIC_API_KEY":  "settings-key",
 		},
 	})
-	if next.Provider != "openai-compatible" || next.BaseURL != "https://environment.example.test/v1" || next.APIKey != "environment-key" {
-		t.Fatalf("environment precedence lost: provider=%q baseURL=%q apiKey=%q", next.Provider, next.BaseURL, next.APIKey)
+	if next.Provider != "custom" || next.BaseURL != "https://settings.example.test" || next.APIKey != "settings-key" {
+		t.Fatalf("environment overrode canonical route: provider=%q baseURL=%q apiKey=%q", next.Provider, next.BaseURL, next.APIKey)
 	}
 }
 
@@ -1577,14 +1604,14 @@ func TestConfigWithRuntimeSettingsPreservesExplicitProviderFieldsWithoutOverride
 	}
 }
 
-func TestConfigWithRuntimeSettingsPreservesLegacyOpenAIDefaultURL(t *testing.T) {
+func TestConfigWithRuntimeSettingsReportsMissingRoute(t *testing.T) {
 	for _, key := range []string{"ANTHROPIC_BASE_URL", "GOLANG_CC_PROVIDER", "CLAUDE_CODE_PROVIDER"} {
 		t.Setenv(key, "")
 	}
 
-	next := (Config{Provider: "openai", BaseURL: openAIDefaultBaseURL}).WithRuntimeSettings(Settings{Provider: "openai"})
-	if next.BaseURL != openAIDefaultBaseURL {
-		t.Fatalf("legacy OpenAI base URL = %q, want %q", next.BaseURL, openAIDefaultBaseURL)
+	next := (Config{}).WithRuntimeSettings(Settings{Provider: "openai"})
+	if next.ConfigurationError == "" || !strings.Contains(next.ConfigurationError, "baseURL") {
+		t.Fatalf("missing route error = %q", next.ConfigurationError)
 	}
 }
 

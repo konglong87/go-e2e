@@ -288,13 +288,13 @@ func parseArgs(args []string) (options, []string, error) {
 			opts.rewindFiles = v
 		case "--fork-session":
 			opts.forkSession = true
-		case "--session-id":
-			v, err := flagValue(args, &i, "--session-id")
+		case "--session-id", "--sessionId":
+			v, err := flagValue(args, &i, arg)
 			if err != nil {
 				return opts, nil, err
 			}
 			if !session.IsValidID(v) {
-				return opts, nil, fmt.Errorf("invalid --session-id: %s", v)
+				return opts, nil, fmt.Errorf("invalid %s: %s", arg, v)
 			}
 			opts.sessionID = v
 		case "-n", "--name":

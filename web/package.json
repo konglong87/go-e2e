@@ -1,5 +1,5 @@
 {
-  "name": "golang-cc-webui",
+  "name": "go-e2e-webui",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -15,14 +15,16 @@
     "generate:api-types": "node scripts/generate-openapi-types.mjs",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "test:e2e:live": "GOLANG_CC_WEBUI_LIVE_E2E=1 playwright test --project chromium-live",
+    "test:e2e:live": "GO_E2E_WEBUI_LIVE_E2E=1 GOLANG_CC_WEBUI_LIVE_E2E=1 playwright test --project chromium-live",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.0",
+    "@types/three": "^0.186.0",
     "lucide-react": "^1.18.0",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "three": "^0.186.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.5",

@@ -31,7 +31,7 @@ Flags:
                          <run-log>.score.json.
   --model <name>         Optional model override passed to golang-cc --model.
   --prompt-profile <name>
-                         GOLANG_CC_PROMPT_PROFILE value.
+                         GO_E2E_PROMPT_PROFILE value.
   --max-tokens <n>       Maximum model output tokens per turn. Default: 16000.
   --verify-only          Verify existing dump/run-log and write score report.
   --force                Remove existing dump/log before running.

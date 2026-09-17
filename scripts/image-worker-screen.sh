@@ -2,25 +2,26 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "${ROOT}/scripts/lib/product-env.sh"
 ACTION="${1:-start}"
-if [[ "${GOLANG_CC_IMAGE_WORKER_NAME+x}" == x ]]; then
-  WORKER_NAME="${GOLANG_CC_IMAGE_WORKER_NAME}"
+if [[ "${GO_E2E_IMAGE_WORKER_NAME+x}" == x ]]; then
+  WORKER_NAME="${GO_E2E_IMAGE_WORKER_NAME}"
 else
   WORKER_NAME=""
 fi
 if [[ -z "${WORKER_NAME}" || ! "${WORKER_NAME}" =~ ^[A-Za-z0-9_.@-]{1,64}$ ]]; then
-  echo "image-worker-screen requires GOLANG_CC_IMAGE_WORKER_NAME (1-64 characters using only A-Za-z0-9_.@-)" >&2
+  echo "image-worker-screen requires GO_E2E_IMAGE_WORKER_NAME (1-64 characters using only A-Za-z0-9_.@-)" >&2
   exit 2
 fi
-STATE_DIR="${GOLANG_CC_IMAGE_WORKER_STATE_DIR:-/tmp/golang-cc-image-workers}"
-BINARY="${GOLANG_CC_IMAGE_WORKER_BINARY:-${STATE_DIR}/golang-cc-image-worker-${WORKER_NAME}}"
-SCREEN_NAME="${GOLANG_CC_IMAGE_WORKER_SCREEN:-golang-cc-image-${WORKER_NAME}}"
-LOG_FILE="${GOLANG_CC_IMAGE_WORKER_LOG:-${STATE_DIR}/${WORKER_NAME}.log}"
+STATE_DIR="${GO_E2E_IMAGE_WORKER_STATE_DIR:-${HOME}/.golang-cc/image-workers}"
+BINARY="${GO_E2E_IMAGE_WORKER_BINARY:-${STATE_DIR}/go-e2e-image-worker-${WORKER_NAME}}"
+SCREEN_NAME="${GO_E2E_IMAGE_WORKER_SCREEN:-go-e2e-image-${WORKER_NAME}}"
+LOG_FILE="${GO_E2E_IMAGE_WORKER_LOG:-${STATE_DIR}/${WORKER_NAME}.log}"
 ENV_FILE="${STATE_DIR}/${WORKER_NAME}.env"
 RUNNER_FILE="${STATE_DIR}/${WORKER_NAME}.run.sh"
-READY_FILE="${GOLANG_CC_IMAGE_WORKER_READY_FILE:-${STATE_DIR}/${WORKER_NAME}.ready.json}"
-WORKSPACE="${GOLANG_CC_IMAGE_WORKER_WORKSPACE:-${ROOT}}"
-SETTINGS_FILE="${GOLANG_CC_IMAGE_WORKER_SETTINGS_FILE:-${HOME}/.golang-cc/settings.json}"
+READY_FILE="${GO_E2E_IMAGE_WORKER_READY_FILE:-${STATE_DIR}/${WORKER_NAME}.ready.json}"
+WORKSPACE="${GO_E2E_IMAGE_WORKER_WORKSPACE:-${ROOT}}"
+SETTINGS_FILE="${GO_E2E_IMAGE_WORKER_SETTINGS_FILE:-${HOME}/.golang-cc/settings.json}"
 
 need() {
   command -v "$1" >/dev/null 2>&1 || { echo "image-worker-screen requires $1" >&2; exit 2; }
@@ -92,8 +93,8 @@ write_env_value() {
 }
 
 preflight_worker() {
-  require_env GOLANG_CC_MYSQL_DSN
-  require_env GOLANG_CC_IMAGE_WORKER_TENANT_ID
+  require_env GO_E2E_MYSQL_DSN
+  require_env GO_E2E_IMAGE_WORKER_TENANT_ID
   need go
   need screen
   if [[ ! -f "${SETTINGS_FILE}" ]]; then
@@ -107,7 +108,7 @@ preflight_worker() {
 build_worker() {
   (
     cd "${ROOT}"
-    go build -o "${BINARY}.tmp" ./cmd/golang-cc
+    go build -o "${BINARY}.tmp" ./cmd/go-e2e
   )
   mv "${BINARY}.tmp" "${BINARY}"
   chmod 700 "${BINARY}"
@@ -118,20 +119,20 @@ write_worker_runtime_files() {
   umask 077
   {
     for key in \
-      GOLANG_CC_MYSQL_DSN \
-      GOLANG_CC_IMAGE_WORKER_TENANT_ID \
+      GO_E2E_MYSQL_DSN \
+      GO_E2E_IMAGE_WORKER_TENANT_ID \
       ANTHROPIC_API_KEY \
       ANTHROPIC_AUTH_TOKEN \
       CLAUDE_CODE_AUTH_TOKEN \
       CLAUDE_CODE_OAUTH_TOKEN \
-      GOLANG_CC_CONFIG_DIR \
-      GOLANG_CC_LOG_LEVEL; do
+      GO_E2E_CONFIG_DIR \
+      GO_E2E_LOG_LEVEL; do
       write_env_value "${key}"
     done
-    printf 'GOLANG_CC_IMAGE_WORKER_NAME=%q\n' "${WORKER_NAME}"
-    printf 'GOLANG_CC_IMAGE_WORKER_READY_FILE=%q\n' "${READY_FILE}"
+    printf 'GO_E2E_IMAGE_WORKER_NAME=%q\n' "${WORKER_NAME}"
+    printf 'GO_E2E_IMAGE_WORKER_READY_FILE=%q\n' "${READY_FILE}"
     printf 'WORKSPACE=%q\n' "${WORKSPACE}"
-    printf 'GOLANG_CC_IMAGE_WORKER_SETTINGS_FILE=%q\n' "${SETTINGS_FILE}"
+    printf 'GO_E2E_IMAGE_WORKER_SETTINGS_FILE=%q\n' "${SETTINGS_FILE}"
   } >"${ENV_FILE}"
   chmod 600 "${ENV_FILE}"
   : >"${LOG_FILE}"
@@ -142,7 +143,7 @@ set -euo pipefail
 set -a
 . '${ENV_FILE}'
 set +a
-exec '${BINARY}' --cwd "\${WORKSPACE}" --settings "\${GOLANG_CC_IMAGE_WORKER_SETTINGS_FILE}" image-worker run >>'${LOG_FILE}' 2>&1
+exec '${BINARY}' --cwd "\${WORKSPACE}" --settings "\${GO_E2E_IMAGE_WORKER_SETTINGS_FILE}" image-worker run >>'${LOG_FILE}' 2>&1
 EOF
   chmod 700 "${RUNNER_FILE}"
 }

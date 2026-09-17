@@ -1,26 +1,24 @@
-model: claude-sonnet-4-6
-provider: anthropic
+model: model-id
+provider: custom
 effort: high
 outputStyle: default # default|Explanatory|Learning|custom style name from .claude/output-styles
 language: "" # e.g. Chinese, English
 
-env:
-  ANTHROPIC_BASE_URL: https://api.anthropic.com
-  ANTHROPIC_API_KEY: "replace-with-your-api-key"
-  ANTHROPIC_AUTH_TOKEN: ""
+baseURL: https://model.example.com/v1
+apiKey: "replace-with-provider-key"
   # Optional mobile attachment upload signing. Works with S3, MinIO, or
   # S3-compatible OSS gateways when api-server mode enables mobile chat.
-  GOLANG_CC_MOBILE_S3_ENDPOINT: https://s3.example.test
-  GOLANG_CC_MOBILE_S3_REGION: us-east-1
-  GOLANG_CC_MOBILE_S3_BUCKET: mobile-uploads
-  GOLANG_CC_MOBILE_S3_ACCESS_KEY: "replace-with-access-key"
-  GOLANG_CC_MOBILE_S3_SECRET_KEY: "replace-with-secret-key"
-  GOLANG_CC_MOBILE_S3_PREFIX: uploads
-  GOLANG_CC_MOBILE_S3_PUBLIC_BASE_URL: https://cdn.example.test/mobile
-  GOLANG_CC_TELEMETRY_EXPORT_URL: ""
-  GOLANG_CC_TELEMETRY_EXPORT_TOKEN: ""
-  GOLANG_CC_TELEMETRY_EXPORT_FORMAT: "" # json|otel|datadog
-  GOLANG_CC_TELEMETRY_EXPORT_SERVICE: golang-cc
+  GO_E2E_MOBILE_S3_ENDPOINT: https://s3.example.test
+  GO_E2E_MOBILE_S3_REGION: us-east-1
+  GO_E2E_MOBILE_S3_BUCKET: mobile-uploads
+  GO_E2E_MOBILE_S3_ACCESS_KEY: "replace-with-access-key"
+  GO_E2E_MOBILE_S3_SECRET_KEY: "replace-with-secret-key"
+  GO_E2E_MOBILE_S3_PREFIX: uploads
+  GO_E2E_MOBILE_S3_PUBLIC_BASE_URL: https://cdn.example.test/mobile
+  GO_E2E_TELEMETRY_EXPORT_URL: ""
+  GO_E2E_TELEMETRY_EXPORT_TOKEN: ""
+  GO_E2E_TELEMETRY_EXPORT_FORMAT: "" # json|otel|datadog
+  GO_E2E_TELEMETRY_EXPORT_SERVICE: go-e2e
 
 webSearch:
   endpoint: https://cn.bing.com/search
@@ -29,17 +27,17 @@ fallback:
   enabled: true
   providers:
     - name: provider1
-      type: anthropic
-      baseURL: https://api.anthropic.com
-      apiKey: ${ANTHROPIC_API_KEY_BACKUP}
-      model: claude-sonnet-4-6
+      type: custom
+      baseURL: https://backup-model.example.com/v1
+      apiKey: ${BACKUP_PROVIDER_KEY}
+      model: backup-model
     - name: provider2
-      type: anthropic-compatible
+      type: openai-compatible
       baseURL: http://127.0.0.1:8080
-      apiKey: ${ANTHROPIC_API_KEY_LOCAL}
-      model: claude-sonnet-4-6
+      apiKey: ${LOCAL_PROVIDER_KEY}
+      model: local-model
 
-# golang-cc startup updater. By default golang-cc checks on startup and, when
+# go-e2e startup updater. By default go-e2e checks on startup and, when
 # running from this source repository with a clean git worktree, runs
 # `git fetch --quiet && git pull --ff-only --quiet`. Dirty worktrees are skipped.
 update:
@@ -49,7 +47,7 @@ update:
   autoPull: true
   skipWhenDirty: true
   strategy: git-ff-only # git-ff-only|check-only
-  repoDir: "" # optional explicit golang-cc repo path
+  repoDir: "" # optional explicit go-e2e repo path
   customCommand: "" # optional shell command, for example "git pull --ff-only && make install"
   versionSourceURL: "" # optional plain-text latest version endpoint
   scheduleInterval: daily # empty, duration like 6h, or hourly/daily/weekly

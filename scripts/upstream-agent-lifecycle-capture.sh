@@ -30,7 +30,7 @@ artifacts under --work-dir plus the isolated CLAUDE_CONFIG_DIR.
 
 Flags:
   --upstream-dir <path>  Original Claude Code source/extract dir. Default:
-                         <repo-parent>/claude_code_src_2026 (override: GOLANG_CC_UPSTREAM_DIR)
+                         <repo-parent>/claude_code_src_2026 (override: GO_E2E_UPSTREAM_DIR)
   --target-cwd <path>    Workspace where upstream CLI runs. Default: repo root.
   --work-dir <path>      Output/work directory. Default:
                          /tmp/upstream-agent-lifecycle-<timestamp>

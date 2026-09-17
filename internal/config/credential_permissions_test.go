@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-const credentialJSON = `{"env":{"ANTHROPIC_API_KEY":"sk-test-not-a-real-key"}}`
+const credentialJSON = `{"provider":"custom","baseURL":"https://example.test/v1","apiKey":"sk-test-not-a-real-key"}`
 
 func mustWriteMode(t *testing.T, path, content string, mode os.FileMode) {
 	t.Helper()

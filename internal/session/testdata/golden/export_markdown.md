@@ -1,4 +1,4 @@
-# golang-cc Session
+# go-e2e Session
 
 ## User
 

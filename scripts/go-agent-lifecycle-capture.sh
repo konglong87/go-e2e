@@ -442,14 +442,14 @@ if [[ "$SCENARIO" == "cancelled" ]]; then
 fi
 (
   cd "$ROOT_DIR"
-  export GOLANG_CC_CONFIG_DIR="$WORK_DIR/config"
-  export GOLANG_CC_PROVIDER="custom"
+  export GO_E2E_CONFIG_DIR="$WORK_DIR/config"
+  export GO_E2E_PROVIDER="custom"
   export ANTHROPIC_BASE_URL="$BASE_URL/v1"
   export ANTHROPIC_API_KEY="go-agent-lifecycle-test-key"
-  export GOLANG_CC_PROMPT_PROFILE="$PROMPT_PROFILE"
-  export GOLANG_CC_DUMP_PROMPT_FULL="true"
-  export GOLANG_CC_DUMP_PROMPT_JSON="$DUMP_PATH"
-  go run ./cmd/golang-cc \
+  export GO_E2E_PROMPT_PROFILE="$PROMPT_PROFILE"
+  export GO_E2E_DUMP_PROMPT_FULL="true"
+  export GO_E2E_DUMP_PROMPT_JSON="$DUMP_PATH"
+  go run ./cmd/go-e2e \
     --cwd "$TARGET_CWD" \
     --max-turns 4 \
     --max-tokens 1024 \

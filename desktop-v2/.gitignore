@@ -4,6 +4,8 @@ build/windows/*
 !build/windows/installer/
 build/windows/installer/*
 !build/windows/installer/project.nsi
+go-e2e
+go-e2e.exe
 golang-cc
 golang-cc.exe
 assets/

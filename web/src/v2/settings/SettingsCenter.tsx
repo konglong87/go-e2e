@@ -1,4 +1,4 @@
-import { ArrowLeft, Bot, Brain, ChevronRight, Cpu, FileJson2, Layers, ListChecks, Monitor, PanelLeft, Settings2, ShieldCheck, Sparkles, Star, Users, X } from "lucide-react";
+import { ArrowLeft, ChevronRight, Monitor, PanelLeft, ShieldCheck, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type JSX } from "react";
 import { useI18n } from "../../lib/i18n";
 import type { IdentityConfig } from "../../lib/types";
@@ -15,24 +15,15 @@ import { P2ManagementPanel } from "./P2ManagementPanel";
 import { AgentTeamsPanel } from "../../components/AgentTeamsPanel";
 import { ProvisioningWizard } from "../../components/provisioning/ProvisioningWizard";
 import { CURRENT_SETTINGS_ENVIRONMENT, settingsEnvironmentIdentity, useSettingsEnvironments, type SettingsEnvironment } from "./settingsEnvironments";
+import { SETTINGS_NAV_GROUPS, settingsNavItem } from "./settingsRegistry";
+import { AppearanceSettingsPanel } from "./AppearanceSettingsPanel";
+import { PetSettingsPanel } from "./PetSettingsPanel";
+import { ObservabilityPanel } from "./ObservabilityPanel";
+import { readVisualSettings, type GlobalVisualSettings } from "./globalVisualSettings";
 import brandLogo from "../assets/go-e2e-mark.svg";
 import "./settingsCenter.css";
 
-const navigation = [
-  { key: "general", icon: Settings2, zh: "通用设置", en: "General", description: ["管理语言、外观与界面偏好。", "Manage language, appearance and interface preferences."] },
-  { key: "agent", icon: Bot, zh: "智能体设置", en: "Agents", description: ["为不同入口选择已发布的智能体配置。", "Assign published agent profiles to your surfaces."] },
-  { key: "profiles", icon: Layers, zh: "Profile 管理", en: "Profiles", description: ["管理智能体定义、能力边界与发布版本。", "Manage agent definitions, capabilities and published versions."] },
-  { key: "prompts", icon: Star, zh: "常用提示词", en: "Common prompts", description: ["维护可复用的提示词模板。", "Maintain reusable prompt templates."] },
-  { key: "memory", icon: Brain, zh: "Memory 管理", en: "Memory", description: ["查看和维护桌面端持久记忆。", "View and maintain desktop memory."] },
-  { key: "skills", icon: Sparkles, zh: "Skills 管理", en: "Skills", description: ["查看和维护可注入的技能内容。", "View and maintain injectable skills."] },
-  { key: "teams", icon: Users, zh: "Teams 管理", en: "Teams", description: ["编排多个 Profile 的协作团队。", "Compose collaborative teams from profiles."] },
-  { key: "provisioning", icon: Monitor, zh: "渠道 Worker", en: "Channel workers", description: ["查看渠道账号和 Worker 运行状态。", "Inspect channel accounts and worker runtime status."] },
-  { key: "models", icon: Cpu, zh: "大模型设置", en: "Models", description: ["配置供应商、默认模型与备用路由。与全局 JSON 共用草稿。", "Configure providers, default models and fallback routes in the shared settings draft."] },
-  { key: "json", icon: FileJson2, zh: "全局 Settings JSON", en: "Settings JSON", description: ["编辑全局配置文档，与大模型表单保持同步。", "Edit the global settings document, synchronized with the model form."] },
-  { key: "effective", icon: ListChecks, zh: "生效配置", en: "Effective configuration", description: ["核对文件解析结果、服务启动快照及会话运行配置。", "Compare resolved files, server startup defaults and session configuration."] }
-] as const;
-
-const currentEnvironmentSections = new Set<SettingsSection>(["prompts", "memory", "skills", "teams", "provisioning"]);
+const currentEnvironmentSections = new Set<SettingsSection>(["prompts", "memory", "skills", "teams", "feishu", "provisioning"]);
 
 type Props = {
   identity: IdentityConfig;
@@ -46,6 +37,7 @@ type Props = {
   onInspectorChange: (open: boolean) => void;
   selectedRef: SessionRef | null;
   onOpenSession: (ref: SessionRef) => void;
+  onVisualPreview: (settings: GlobalVisualSettings | null) => void;
 };
 
 export function SettingsCenter(props: Props): JSX.Element {
@@ -85,17 +77,21 @@ function SettingsEnvironmentContent(props: Props & { globalIdentity: IdentityCon
   const [agentBusy, setAgentBusy] = useState(false);
   const [profileRevision, setProfileRevision] = useState(0);
   const [navigationError, setNavigationError] = useState("");
-  const draft = useGlobalSettingsDraft(props.globalIdentity, visited.has("models") || visited.has("json"));
+  const draft = useGlobalSettingsDraft(props.globalIdentity, visited.has("models") || visited.has("json") || visited.has("appearance") || visited.has("pet"));
   const sessionClient = useSessionControlClient();
   const isolated = props.environment.id !== CURRENT_SETTINGS_ENVIRONMENT;
   const sectionAvailable = !isolated || !currentEnvironmentSections.has(section);
   const busy = draft.busy || profileBusy || agentBusy;
   const dirty = draft.dirty || profileDirty || agentDirty;
-  const item = navigation.find((candidate) => candidate.key === section)!;
+  const item = settingsNavItem(section);
   const profilesChanged = useCallback(() => setProfileRevision((revision) => revision + 1), []);
 
   useEffect(() => { setVisited((previous) => previous.has(section) ? previous : new Set([...previous, section])); setNavOpen(false); }, [section]);
   useEffect(() => { onDirtyChange(dirty || busy); props.onBusyChange(busy); }, [dirty, busy, onDirtyChange, props.onBusyChange]);
+  useEffect(() => {
+    props.onVisualPreview(draft.doc ? readVisualSettings(draft.doc) : null);
+    return () => props.onVisualPreview(null);
+  }, [draft.doc, props.onVisualPreview]);
   useEffect(() => {
     if (!dirty) return;
     const warn = (event: BeforeUnloadEvent): void => { event.preventDefault(); event.returnValue = ""; };
@@ -117,8 +113,7 @@ function SettingsEnvironmentContent(props: Props & { globalIdentity: IdentityCon
       <div className="settings-brand"><img alt="" src={brandLogo} /><span>go-e2e</span><button className="settings-mobile-nav-close settings-icon-button" aria-label={zh ? "关闭设置导航" : "Close settings navigation"} onClick={() => setNavOpen(false)} type="button"><X size={18} /></button></div>
       <button className="settings-back" onClick={onBack} type="button"><ArrowLeft size={16} />{zh ? "返回会话" : "Back to chat"}</button>
       {props.selector}
-      <div className="settings-nav-label">{zh ? "工作区设置" : "Workspace settings"}</div>
-      <nav aria-label={zh ? "设置分类" : "Settings categories"}>{navigation.map(({ key, icon: Icon, zh: chinese, en }) => <button aria-current={section === key ? "page" : undefined} disabled={isolated && currentEnvironmentSections.has(key)} title={isolated && currentEnvironmentSections.has(key) ? (zh ? "此环境不支持该设置" : "Unavailable in this environment") : undefined} className={key === "json" ? "settings-nav-advanced" : undefined} key={key} onClick={() => onSectionChange(key)} type="button"><Icon aria-hidden="true" size={17} /><span>{zh ? chinese : en}</span>{((key === "models" || key === "json") && draft.dirty) || (key === "profiles" && profileDirty) || (key === "agent" && agentDirty) ? <span role="img" aria-label={zh ? "未保存" : "Unsaved"} className="settings-dirty-dot" /> : null}</button>)}</nav>
+      <nav aria-label={zh ? "设置分类" : "Settings categories"}>{SETTINGS_NAV_GROUPS.map((group) => <div className="settings-nav-group" key={group.key}><div className="settings-nav-label">{zh ? group.zh : group.en}</div>{group.items.filter(({ key }) => !(isolated && key === "feishu")).map(({ key, icon: Icon, zh: chinese, en, advanced }) => <button aria-current={section === key ? "page" : undefined} disabled={isolated && currentEnvironmentSections.has(key)} title={isolated && currentEnvironmentSections.has(key) ? (zh ? "此环境不支持该设置" : "Unavailable in this environment") : undefined} className={advanced ? "settings-nav-advanced" : undefined} key={key} onClick={() => onSectionChange(key)} type="button"><Icon aria-hidden="true" size={17} /><span>{zh ? chinese : en}</span>{((key === "models" || key === "json" || key === "appearance" || key === "pet") && draft.dirty) || (key === "profiles" && profileDirty) || (key === "agent" && agentDirty) ? <span role="img" aria-label={zh ? "未保存" : "Unsaved"} className="settings-dirty-dot" /> : null}</button>)}</div>)}</nav>
       <div className="settings-identity"><span className="settings-avatar">{(props.environment.user_id || "U").slice(0, 1).toUpperCase()}</span><div><strong>{props.environment.tenant_key}</strong><small>{props.environment.user_id}</small></div></div>
     </aside>
     <div className="settings-main">
@@ -130,12 +125,15 @@ function SettingsEnvironmentContent(props: Props & { globalIdentity: IdentityCon
         {navigationError ? <p role="alert" className="settings-error">{navigationError}</p> : null}
         {!sectionAvailable ? <p role="alert" className="settings-environment-notice">{zh ? "此环境不支持该设置，请选择 Web 对话环境。" : "This section is unavailable in this environment. Select the Web chat environment."}</p> : null}
         {visited.has("general") ? <div hidden={section !== "general"}><GeneralSettings {...props} identity={{ ...identity, tenantKey: props.environment.tenant_key, userId: props.environment.user_id }} /></div> : null}
+        {visited.has("appearance") ? <div hidden={section !== "appearance"}><AppearanceSettingsPanel draft={draft} /></div> : null}
+        {visited.has("pet") ? <div hidden={section !== "pet"}><PetSettingsPanel draft={draft} /></div> : null}
         {visited.has("agent") ? <div hidden={section !== "agent"}><AgentSettingsPanel identity={identity} onDirtyChange={setAgentDirty} onBusyChange={setAgentBusy} refreshVersion={profileRevision} /></div> : null}
         {visited.has("profiles") ? <div hidden={section !== "profiles"}><ProfileSettingsPanel identity={identity} onDirtyChange={setProfileDirty} onBusyChange={setProfileBusy} isolatedEnvironment={isolated} onOpenSession={isolated ? undefined : openProfileSession} onDataChanged={profilesChanged} /></div> : null}
         {sectionAvailable && section === "prompts" ? <PromptManager identity={identity} /> : null}
         {sectionAvailable && (section === "memory" || section === "skills") ? <P2ManagementPanel identity={identity} section={section} /> : null}
         {sectionAvailable && section === "teams" ? <AgentTeamsPanel identity={identity} onStatus={setNavigationError} onDataChanged={profilesChanged} /> : null}
-        {sectionAvailable && section === "provisioning" ? <ProvisioningWizard identity={identity} onStatus={setNavigationError} /> : null}
+        {sectionAvailable && (section === "feishu" || section === "provisioning") ? <ProvisioningWizard identity={identity} onStatus={setNavigationError} /> : null}
+        {sectionAvailable && section === "observability" ? <ObservabilityPanel identity={identity} /> : null}
         {section === "models" || section === "json" ? <SettingsDocumentPanel draft={draft} view={section} /> : null}
         {section === "effective" ? <EffectiveSettingsPanel identity={props.globalIdentity} selectedRef={isolated ? null : selectedRef} /> : null}
       </div>

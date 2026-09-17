@@ -753,14 +753,9 @@ func TestAppendAgentTaskNextStepsEmitsSuggestions(t *testing.T) {
 	if len(gotToolNames) != 2 || gotToolNames[0] != "Edit" || gotToolNames[1] != "Bash" {
 		t.Fatalf("toolNames forwarded to NextStepsFunc = %q, want [Edit Bash]", gotToolNames)
 	}
-	// gotModel is the *tier-resolved* model (nextsteps.ConfigFromSettings maps
-	// the parent model to its haiku tier), not the raw "claude-sonnet-4-6"
-	// parent passed in -- that resolution is covered in detail by
-	// nextsteps/config_test.go. Provider has no tiering and must pass through
-	// untouched (AUDIT item 2): dropping it routes the meta-call to the
-	// default provider while still carrying another provider's model id.
-	if gotModel != "claude-haiku-4-5" {
-		t.Fatalf("model forwarded to NextStepsFunc = %q, want the resolved haiku tier %q", gotModel, "claude-haiku-4-5")
+	// Without an explicit tier mapping, retain the parent model and provider.
+	if gotModel != "claude-sonnet-4-6" {
+		t.Fatalf("model forwarded to NextStepsFunc = %q, want the parent model", gotModel)
 	}
 	if gotProvider != "anthropic-secondary" {
 		t.Fatalf("provider forwarded to NextStepsFunc = %q, want %q", gotProvider, "anthropic-secondary")

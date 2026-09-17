@@ -27,6 +27,9 @@ import { DESKTOP_CONFIG_VERIFIED_KEY } from "./settings/globalSettingsDraft";
 import { loadInspectorPreference, saveInspectorPreference } from "./settings/preferences";
 import { parseWebUIV2Route, settingsReturnSession, webUIV2SettingsPath, webUIV2SessionPath, type SettingsSection, type SessionRef, type WebUIV2Route } from "./routes";
 import type { OperationResult, SessionListFilters, SessionMessage, SessionStatus, SessionSummary } from "./types";
+import { PetScene } from "./components/PetScene";
+import { useGlobalVisualSettings } from "./settings/useGlobalVisualSettings";
+import { visualSettingsStyle, type GlobalVisualSettings } from "./settings/globalVisualSettings";
 import "./styles.css";
 import "./components/thinkingMessage.css";
 import goE2E from "./assets/go-e2e-animation.svg";
@@ -64,6 +67,7 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
   const [inspectorOpen, setInspectorOpen] = useState(loadInspectorPreference);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("activity");
   const [theme, setTheme] = useState<WebUIV2Theme>(() => loadWebUIV2Theme());
+  const [visualPreview, setVisualPreview] = useState<GlobalVisualSettings | null>(null);
   const [onboardingOpen, setOnboardingOpen] = useState(() => import.meta.env.VITE_DESKTOP_UI_VERSION === "2" && localStorage.getItem("go-e2e.desktop.onboarding.v1") !== "done");
   const [errorCode, setErrorCode] = useState("");
   const isDesktop = isDesktopV2Host();
@@ -76,6 +80,9 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
   const archive = useArchiveSession(identity);
   const sessions = sessionList.data ?? [];
   const allSessions = useSessionList(identity, { query: "", statuses: [] }, desktopReady);
+  const selectedSession = sessions.find((session) => session.ref === state.selectedRef) ?? (allSessions.data ?? []).find((session) => session.ref === state.selectedRef);
+  const savedVisual = useGlobalVisualSettings(identity, desktopReady && !settingsOpen && state.selectedRef !== null);
+  const visual = visualPreview ?? savedVisual.visual;
   const stream = useSessionConversations(identity, allSessions.data ?? [], state.selectedRef, desktopReady);
 
   useEffect(() => {
@@ -233,7 +240,7 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
     ...(allSessions.data ?? sessions).map((session) => ({ id: session.ref, label: session.title, section: session.cwd || t("webui2.sessions"), keywords: session.ref, icon: <MessageSquare size={16} />, run: () => selectSession(session.ref) }))
   ];
 
-  return <main aria-label={t("webui2.workspace")} className="webui2-page" data-inspector-open={inspectorOpen} data-session-ref={state.selectedRef ?? undefined} data-sidebar-open={sidebarOpen} data-theme={theme}>
+  return <main aria-label={t("webui2.workspace")} className="webui2-page" data-appearance-enabled={visual.appearance.enabled ? "true" : "false"} data-inspector-open={inspectorOpen} data-session-ref={state.selectedRef ?? undefined} data-sidebar-open={sidebarOpen} data-theme={theme} style={visualSettingsStyle(visual)}>
     {isDesktop && !desktopReady ? <section className="webui2-desktop-readiness" role="status">
       <strong>{desktopError ? (language === "zh" ? "本地服务连接失败" : "Unable to connect to the local service") : (language === "zh" ? "正在连接本地会话服务…" : "Connecting to the local session service…")}</strong>
       {desktopError ? <button type="button" onClick={retryDesktopConnection}>{language === "zh" ? "重试" : "Retry"}</button> : null}
@@ -241,6 +248,7 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
     <div className="webui2-chat-shell" hidden={settingsOpen} inert={settingsOpen}>
     <SessionSidebar
       filters={filters}
+      identity={identity}
       onContextDragStart={() => undefined}
       onFiltersChange={setFilters}
       onMobileClose={() => setSidebarOpen(false)}
@@ -269,7 +277,8 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
     <NewSessionDialog identity={identity} defaultCWD={(allSessions.data ?? sessions).find((session) => session.ref === state.selectedRef)?.cwd} onClose={() => setNewSessionOpen(false)} onCreated={handleCreated} open={newSessionOpen} />
     <CommandPalette open={commandsOpen} onClose={() => setCommandsOpen(false)} commands={commands} placeholder={language === "zh" ? "搜索会话或操作" : "Search sessions or actions"} emptyLabel={t("webui2.emptySessions")} ariaLabel={language === "zh" ? "命令面板" : "Command palette"} />
     </div>
-    {state.route.kind === "settings" && desktopReady ? <SettingsCenter identity={identity} section={state.route.section} onSectionChange={openSettings} onBack={closeSettings} onDirtyChange={(dirty) => { settingsDirty.current = dirty; }} theme={theme} onThemeChange={changeTheme} inspectorOpen={inspectorOpen} onInspectorChange={changeInspector} selectedRef={state.selectedRef} onOpenSession={selectSession} /> : null}
+    {state.route.kind === "settings" && desktopReady ? <SettingsCenter identity={identity} section={state.route.section} onSectionChange={openSettings} onBack={closeSettings} onDirtyChange={(dirty) => { settingsDirty.current = dirty; }} theme={theme} onThemeChange={changeTheme} inspectorOpen={inspectorOpen} onInspectorChange={changeInspector} selectedRef={state.selectedRef} onOpenSession={selectSession} onVisualPreview={setVisualPreview} /> : null}
+    {state.route.kind !== "settings" ? <PetScene settings={savedVisual.visual.pet} status={selectedSession?.status} /> : null}
     {onboardingOpen && state.route.kind !== "settings" ? <section className="webui2-onboarding-backdrop" role="dialog" aria-modal="true" aria-labelledby="webui2-onboarding-title">
       <div className="webui2-onboarding">
         <img src={goE2E} alt="go-e2e" />

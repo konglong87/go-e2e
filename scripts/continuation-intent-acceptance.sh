@@ -218,12 +218,12 @@ if [[ ! -s "$READY_FILE" ]]; then
 fi
 BASE_URL="$(node -e 'const fs=require("fs"); process.stdout.write(JSON.parse(fs.readFileSync(process.argv[1], "utf8")).base_url)' "$READY_FILE")"
 
-export GOLANG_CC_CONFIG_DIR="$CONFIG_DIR"
-export GOLANG_CC_PROVIDER="custom"
+export GO_E2E_CONFIG_DIR="$CONFIG_DIR"
+export GO_E2E_PROVIDER="custom"
 export ANTHROPIC_BASE_URL="$BASE_URL/v1"
 export ANTHROPIC_API_KEY="continuation-intent-test-key"
 
-go run ./cmd/golang-cc \
+go run ./cmd/go-e2e \
   --cwd "$FIXTURE_DIR" \
   --max-turns 1 \
   --max-tokens 1024 \
@@ -238,7 +238,7 @@ if [[ -z "$SESSION_PATH" || ! -s "$SESSION_PATH" ]]; then
 fi
 SESSION_ID="$(basename "$SESSION_PATH" .jsonl)"
 
-go run ./cmd/golang-cc \
+go run ./cmd/go-e2e \
   --cwd "$FIXTURE_DIR" \
   --resume "$SESSION_ID" \
   --max-turns 4 \

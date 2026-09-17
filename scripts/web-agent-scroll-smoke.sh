@@ -4,11 +4,11 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/product-env.sh"
 
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-HOST="${GOLANG_CC_WEB_AGENT_HOST:-127.0.0.1}"
-PORT="${GOLANG_CC_WEB_AGENT_PORT:-18088}"
-AUTH_TOKEN="${GOLANG_CC_WEB_AGENT_AUTH_TOKEN:-test-token}"
+HOST="${GO_E2E_WEB_AGENT_HOST:-127.0.0.1}"
+PORT="${GO_E2E_WEB_AGENT_PORT:-18088}"
+AUTH_TOKEN="${GO_E2E_WEB_AGENT_AUTH_TOKEN:-test-token}"
 PROVIDER_PORT="${WEB_AGENT_SCROLL_PROVIDER_PORT:-19087}"
-DB_NAME="${GOLANG_CC_WEB_AGENT_DB:-golang_cc_web_agent_scroll_$$}"
+DB_NAME="${GO_E2E_WEB_AGENT_DB:-golang_cc_web_agent_scroll_$$}"
 TMP_BASE="${TMPDIR:-/tmp}"
 WORKSPACE="$(mktemp -d "${TMP_BASE%/}/web-agent-scroll-workspace.XXXXXX")"
 
@@ -48,11 +48,11 @@ done
 
 export ANTHROPIC_BASE_URL="http://127.0.0.1:${PROVIDER_PORT}/v1"
 export ANTHROPIC_API_KEY="scroll-stub-key"
-unset GOLANG_CC_PROVIDER CLAUDE_CODE_PROVIDER
+unset GO_E2E_PROVIDER CLAUDE_CODE_PROVIDER
 export CLAUDE_CODE_MODEL="scroll-stub"
-export GOLANG_CC_WEB_AGENT_PORT="${PORT}"
-export GOLANG_CC_WEB_AGENT_AUTH_TOKEN="${AUTH_TOKEN}"
-export GOLANG_CC_WEB_AGENT_DB="${DB_NAME}"
+export GO_E2E_WEB_AGENT_PORT="${PORT}"
+export GO_E2E_WEB_AGENT_AUTH_TOKEN="${AUTH_TOKEN}"
+export GO_E2E_WEB_AGENT_DB="${DB_NAME}"
 
 cat <<EOF
 web-agent-scroll-smoke: starting deterministic scroll backend

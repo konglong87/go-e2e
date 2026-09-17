@@ -1,1 +1,1 @@
-ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN is required
+provider endpoint is missing; configure baseURL in ~/.golang-cc/settings.json

@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -45,6 +47,192 @@ func TestDefaultStoreUsesGolangCCTranscriptNamespace(t *testing.T) {
 	if strings.HasPrefix(recorder.Path, legacyClaudeRoot+string(os.PathSeparator)) {
 		t.Fatalf("recorder path = %q, must not be controlled by CLAUDE_CONFIG_DIR %q", recorder.Path, legacyClaudeRoot)
 	}
+}
+
+func TestOpenOrCreateRecorderReopensExistingV2History(t *testing.T) {
+	store := Store{TranscriptProjectsRoot: t.TempDir(), SchemaV2: true}
+	const id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	const cwd = "/workspace/session-replay"
+
+	first, created, err := store.OpenOrCreateRecorder(cwd, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !created {
+		t.Fatal("first OpenOrCreateRecorder call must create the session")
+	}
+	for _, entry := range []Entry{
+		{Type: "message", Role: "user", Content: "first prompt"},
+		{Type: "tool_call", ToolID: "tool-1", ToolName: "Read", Content: `{"path":"notes.md"}`},
+		{Type: "tool_result", ToolID: "tool-1", Content: "tool history"},
+		{Type: "compact_summary", Content: "compact history"},
+	} {
+		if err := first.Append(entry); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	second, created, err := store.OpenOrCreateRecorder(cwd, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created {
+		t.Fatal("second OpenOrCreateRecorder call must reopen the existing session")
+	}
+	if second.SessionID != id {
+		t.Fatalf("session id = %q, want %q", second.SessionID, id)
+	}
+	if err := second.Append(Entry{Type: "message", Role: "assistant", Content: "continued answer"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := second.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	summary, ok, err := store.Find(id)
+	if err != nil || !ok {
+		t.Fatalf("Find() ok=%v err=%v", ok, err)
+	}
+	entries, err := LoadConversation(summary.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := transcriptContent(entries)
+	for _, want := range []string{"first prompt", "tool history", "compact history", "continued answer"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("reopened history missing %q:\n%s", want, text)
+		}
+	}
+}
+
+func TestRecorderSerializesConcurrentSessionAppends(t *testing.T) {
+	store := Store{TranscriptProjectsRoot: t.TempDir(), SchemaV2: true}
+	const id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+	const appendCount = 40
+
+	first, created, err := store.OpenOrCreateRecorder("/workspace/concurrent", id)
+	if err != nil || !created {
+		t.Fatalf("first OpenOrCreateRecorder created=%v err=%v", created, err)
+	}
+	second, created, err := store.OpenOrCreateRecorder("/workspace/concurrent", id)
+	if err != nil || created {
+		t.Fatalf("second OpenOrCreateRecorder created=%v err=%v", created, err)
+	}
+	defer first.Close()
+	defer second.Close()
+
+	errs := make(chan error, appendCount*2)
+	var wg sync.WaitGroup
+	for i := 0; i < appendCount; i++ {
+		for _, recorder := range []*Recorder{first, second} {
+			wg.Add(1)
+			go func(recorder *Recorder) {
+				defer wg.Done()
+				errs <- recorder.Append(Entry{Type: "message", Role: "assistant", Content: "concurrent"})
+			}(recorder)
+		}
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	summary, ok, err := store.Find(id)
+	if err != nil || !ok {
+		t.Fatalf("Find() ok=%v err=%v", ok, err)
+	}
+	entries, err := Load(summary.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(entries); got != 1+appendCount*2 {
+		t.Fatalf("entry count = %d, want %d", got, 1+appendCount*2)
+	}
+	if chain := CurrentChain(entries); len(chain) != appendCount*2 {
+		t.Fatalf("current chain length = %d, want %d", len(chain), appendCount*2)
+	}
+}
+
+func TestRecorderSerializesConcurrentProcesses(t *testing.T) {
+	root := t.TempDir()
+	store := Store{TranscriptProjectsRoot: root, SchemaV2: true}
+	const id = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+	recorder, created, err := store.OpenOrCreateRecorder("/workspace/process", id)
+	if err != nil || !created {
+		t.Fatalf("initial OpenOrCreateRecorder created=%v err=%v", created, err)
+	}
+	if err := recorder.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	const processCount = 8
+	commands := make([]*exec.Cmd, 0, processCount)
+	for i := 0; i < processCount; i++ {
+		cmd := exec.Command(os.Args[0], "-test.run=TestRecorderConcurrentProcessHelper")
+		cmd.Env = append(os.Environ(),
+			"GO_E2E_SESSION_HELPER=1",
+			"GO_E2E_SESSION_ROOT="+root,
+			"GO_E2E_SESSION_ID="+id,
+		)
+		commands = append(commands, cmd)
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, cmd := range commands {
+		if err := cmd.Wait(); err != nil {
+			t.Fatalf("helper process failed: %v", err)
+		}
+	}
+
+	summary, ok, err := store.Find(id)
+	if err != nil || !ok {
+		t.Fatalf("Find() ok=%v err=%v", ok, err)
+	}
+	entries, err := Load(summary.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(entries); got != 1+processCount {
+		t.Fatalf("entry count = %d, want %d", got, 1+processCount)
+	}
+	if got := len(CurrentChain(entries)); got != processCount {
+		t.Fatalf("current chain length = %d, want %d", got, processCount)
+	}
+}
+
+func TestRecorderConcurrentProcessHelper(t *testing.T) {
+	if os.Getenv("GO_E2E_SESSION_HELPER") != "1" {
+		return
+	}
+	store := Store{
+		TranscriptProjectsRoot: os.Getenv("GO_E2E_SESSION_ROOT"),
+		SchemaV2:               true,
+	}
+	recorder, _, err := store.OpenOrCreateRecorder("/workspace/process", os.Getenv("GO_E2E_SESSION_ID"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := recorder.Append(Entry{Type: "message", Role: "assistant", Content: "process"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := recorder.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func transcriptContent(entries []Entry) string {
+	var parts []string
+	for _, entry := range entries {
+		parts = append(parts, entry.Content)
+	}
+	return strings.Join(parts, "\n")
 }
 
 func TestDefaultStoreReadsLegacyTranscriptNamespace(t *testing.T) {

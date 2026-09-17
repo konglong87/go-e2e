@@ -62,7 +62,7 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          stage="golang-cc_${VERSION}_linux_amd64"
+          stage="go-e2e_${VERSION}_linux_amd64"
           workdir="$(mktemp -d)"
           tar -xzf "dist/${stage}.tar.gz" -C "$workdir"
           test -s "$workdir/$stage/LICENSE"
@@ -74,10 +74,10 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          stage="golang-cc_${VERSION}_linux_amd64"
+          stage="go-e2e_${VERSION}_linux_amd64"
           workdir="$(mktemp -d)"
           tar -xzf "dist/${stage}.tar.gz" -C "$workdir"
-          output="$("$workdir/$stage/golang-cc" --version)"
+          output="$("$workdir/$stage/go-e2e" --version)"
           echo "$output"
           case "$output" in
             *"$VERSION"*) ;;
@@ -89,7 +89,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: golang-cc-${{ steps.version.outputs.version }}
+          name: go-e2e-${{ steps.version.outputs.version }}
           path: dist/
           if-no-files-found: error
 

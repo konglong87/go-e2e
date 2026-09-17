@@ -109,7 +109,7 @@ func TestServerStartupSnapshotUsesExplicitSettingsOverGlobalAndIgnoresWorkspace(
 	if err := os.WriteFile(globalPath, []byte(`{"model":"global-model"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	base := options{cwd: t.TempDir(), settingsInputs: []string{`{"provider":"custom","providerProtocol":"openai-responses","env":{"ANTHROPIC_BASE_URL":"https://cli-settings.example/v1"}}`}}
+	base := options{cwd: t.TempDir(), settingsInputs: []string{`{"provider":"custom","providerProtocol":"openai-responses","baseURL":"https://cli-settings.example/v1"}`}}
 	snapshot, err := serverStartupSettingsSnapshot(base, workspace)
 	if err != nil {
 		t.Fatal(err)

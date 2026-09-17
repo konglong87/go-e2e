@@ -28,7 +28,7 @@ Usage:
   scripts/prompt-cache-stable-prefix-ab.sh [flags]
 
 Runs an interleaved real-provider A/B harness for the
-GOLANG_CC_STABLE_PREFIX_SKILLS gate. Each run writes a prompt dump, transcript
+GO_E2E_STABLE_PREFIX_SKILLS gate. Each run writes a prompt dump, transcript
 diagnostics summary, and paired A/B report. The final aggregate report excludes
 items marked with :warmup.
 
@@ -285,20 +285,20 @@ run_one() {
   log_path="$run_dir/run.log"
 
   if [[ "$VERIFY_ONLY" != "true" ]]; then
-    local -a cmd=("$GO_BIN" "run" "./cmd/golang-cc" "-p" "$PROMPT" "--model" "$MODEL" "--session-id" "$session_id" "--max-turns" "$MAX_TURNS" "--tools" "$TOOLS" "--permission-mode" "$PERMISSION_MODE" "--cwd" "$CWD")
+    local -a cmd=("$GO_BIN" "run" "./cmd/go-e2e" "-p" "$PROMPT" "--model" "$MODEL" "--session-id" "$session_id" "--max-turns" "$MAX_TURNS" "--tools" "$TOOLS" "--permission-mode" "$PERMISSION_MODE" "--cwd" "$CWD")
     if [[ -n "$MAX_TOKENS" ]]; then
       cmd+=("--max-tokens" "$MAX_TOKENS")
     fi
     echo "cache A/B run $index: $variant warmup=$warmup session=$session_id" >&2
     if [[ "$variant" == "candidate" ]]; then
-      GOLANG_CC_STABLE_PREFIX_SKILLS=1 \
-      GOLANG_CC_DUMP_PROMPT_JSON="$dump_path" \
-      GOLANG_CC_DUMP_PROMPT_FULL=false \
+      GO_E2E_STABLE_PREFIX_SKILLS=1 \
+      GO_E2E_DUMP_PROMPT_JSON="$dump_path" \
+      GO_E2E_DUMP_PROMPT_FULL=false \
       "${cmd[@]}" >"$log_path" 2>&1 || exit_code=$?
     else
-      env -u GOLANG_CC_STABLE_PREFIX_SKILLS \
-      GOLANG_CC_DUMP_PROMPT_JSON="$dump_path" \
-      GOLANG_CC_DUMP_PROMPT_FULL=false \
+      env -u GO_E2E_STABLE_PREFIX_SKILLS \
+      GO_E2E_DUMP_PROMPT_JSON="$dump_path" \
+      GO_E2E_DUMP_PROMPT_FULL=false \
       "${cmd[@]}" >"$log_path" 2>&1 || exit_code=$?
     fi
   fi

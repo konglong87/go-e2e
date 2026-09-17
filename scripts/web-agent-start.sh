@@ -5,7 +5,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/web-agent-profile.sh"
 
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PROFILE="${1:-${GOLANG_CC_WEB_AGENT_PROFILE:-manual}}"
+PROFILE="${1:-${GO_E2E_WEB_AGENT_PROFILE:-manual}}"
 if [[ $# -gt 1 || "${PROFILE}" == "-h" || "${PROFILE}" == "--help" ]]; then
   cat <<'EOF'
 Usage: scripts/web-agent-start.sh [manual|e2e]
@@ -18,22 +18,22 @@ EOF
   exit 2
 fi
 web_agent_profile_apply "${PROFILE}"
-HOST="${GOLANG_CC_WEB_AGENT_HOST:-127.0.0.1}"
-PORT="${GOLANG_CC_WEB_AGENT_PORT:-18087}"
-AUTH_TOKEN="${GOLANG_CC_WEB_AGENT_AUTH_TOKEN:-test-token}"
-DB_NAME="${GOLANG_CC_WEB_AGENT_DB}"
-MYSQL_USER="${GOLANG_CC_WEB_AGENT_MYSQL_USER:-root}"
-MYSQL_HOST="${GOLANG_CC_WEB_AGENT_MYSQL_HOST:-127.0.0.1}"
-MYSQL_PORT="${GOLANG_CC_WEB_AGENT_MYSQL_PORT:-3306}"
-MYSQL_DSN="${GOLANG_CC_WEB_AGENT_MYSQL_DSN:-${GOLANG_CC_MYSQL_DSN:-${MYSQL_USER}@tcp(${MYSQL_HOST}:${MYSQL_PORT})/${DB_NAME}?multiStatements=true&parseTime=true&loc=UTC&time_zone=%27%2B00%3A00%27&charset=utf8mb4}}"
-TENANT="${GOLANG_CC_WEB_AGENT_TENANT}"
-USER_ID="${GOLANG_CC_WEB_AGENT_USER}"
-MODEL="${GOLANG_CC_WEB_AGENT_MODEL:-}"
-PROVIDER="${GOLANG_CC_WEB_AGENT_PROVIDER:-}"
-IMAGE_PROVIDER="${GOLANG_CC_WEB_AGENT_IMAGE_PROVIDER:-jiuan-responses-gpt-5.6sol}"
-IMAGE_SETTINGS="${GOLANG_CC_WEB_AGENT_IMAGE_SETTINGS:-{\"imageGeneration\":{\"enabled\":true,\"provider\":\"${IMAGE_PROVIDER}\",\"model\":\"gpt-image-2\"}}}"
-SKIP_BUILD="${GOLANG_CC_WEB_AGENT_SKIP_BUILD:-false}"
-MOBILE_DEV_AUTH="${GOLANG_CC_MOBILE_DEV_AUTH:-true}"
+HOST="${GO_E2E_WEB_AGENT_HOST:-127.0.0.1}"
+PORT="${GO_E2E_WEB_AGENT_PORT:-18087}"
+AUTH_TOKEN="${GO_E2E_WEB_AGENT_AUTH_TOKEN:-test-token}"
+DB_NAME="${GO_E2E_WEB_AGENT_DB}"
+MYSQL_USER="${GO_E2E_WEB_AGENT_MYSQL_USER:-root}"
+MYSQL_HOST="${GO_E2E_WEB_AGENT_MYSQL_HOST:-127.0.0.1}"
+MYSQL_PORT="${GO_E2E_WEB_AGENT_MYSQL_PORT:-3306}"
+MYSQL_DSN="${GO_E2E_WEB_AGENT_MYSQL_DSN:-${GO_E2E_MYSQL_DSN:-${MYSQL_USER}@tcp(${MYSQL_HOST}:${MYSQL_PORT})/${DB_NAME}?multiStatements=true&parseTime=true&loc=UTC&time_zone=%27%2B00%3A00%27&charset=utf8mb4}}"
+TENANT="${GO_E2E_WEB_AGENT_TENANT}"
+USER_ID="${GO_E2E_WEB_AGENT_USER}"
+MODEL="${GO_E2E_WEB_AGENT_MODEL:-}"
+PROVIDER="${GO_E2E_WEB_AGENT_PROVIDER:-}"
+IMAGE_PROVIDER="${GO_E2E_WEB_AGENT_IMAGE_PROVIDER:-jiuan-responses-gpt-5.6sol}"
+IMAGE_SETTINGS="${GO_E2E_WEB_AGENT_IMAGE_SETTINGS:-{\"imageGeneration\":{\"enabled\":true,\"provider\":\"${IMAGE_PROVIDER}\",\"model\":\"gpt-image-2\"}}}"
+SKIP_BUILD="${GO_E2E_WEB_AGENT_SKIP_BUILD:-false}"
+MOBILE_DEV_AUTH="${GO_E2E_MOBILE_DEV_AUTH:-true}"
 
 need() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -61,7 +61,7 @@ need npm
 safe_ident "database" "${DB_NAME}"
 safe_ident "tenant" "${TENANT}"
 safe_ident "user" "${USER_ID}"
-if [[ -n "${GOLANG_CC_WEB_AGENT_MYSQL_DSN:-}" || -n "${GOLANG_CC_MYSQL_DSN:-}" ]]; then
+if [[ -n "${GO_E2E_WEB_AGENT_MYSQL_DSN:-}" || -n "${GO_E2E_MYSQL_DSN:-}" ]]; then
   web_agent_profile_validate_dsn "${MYSQL_DSN}" "${DB_NAME}"
 fi
 
@@ -71,7 +71,7 @@ if [[ "${SKIP_BUILD}" != "true" ]]; then
 fi
 
 mysql_exec -e "CREATE DATABASE IF NOT EXISTS ${DB_NAME} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-GOLANG_CC_MYSQL_DSN="${MYSQL_DSN}" go run ./cmd/golang-cc tenant migrate up
+GO_E2E_MYSQL_DSN="${MYSQL_DSN}" go run ./cmd/go-e2e tenant migrate up
 mysql_exec "${DB_NAME}" <<SQL
 INSERT INTO tenants (tenant_key, name, status)
 VALUES ('${TENANT}', 'WebUI Local', 'active')
@@ -84,9 +84,9 @@ VALUES (@tenant_id, '${USER_ID}', '${USER_ID}@example.test', 'WebUI Local User',
 ON DUPLICATE KEY UPDATE display_name=VALUES(display_name), role=VALUES(role), status=VALUES(status);
 SQL
 
-export GOLANG_CC_WEBUI_DIR="${ROOT}/web/dist"
-export GOLANG_CC_MYSQL_DSN="${MYSQL_DSN}"
-export GOLANG_CC_MOBILE_DEV_AUTH="${MOBILE_DEV_AUTH}"
+export GO_E2E_WEBUI_DIR="${ROOT}/web/dist"
+export GO_E2E_MYSQL_DSN="${MYSQL_DSN}"
+export GO_E2E_MOBILE_DEV_AUTH="${MOBILE_DEV_AUTH}"
 if [[ -n "${MODEL}" ]]; then
   export CLAUDE_CODE_MODEL="${MODEL}"
 fi
@@ -104,4 +104,4 @@ fi
 if [[ -n "${MODEL}" ]]; then
   server_args=(--model "${MODEL}" "${server_args[@]}")
 fi
-exec go run ./cmd/golang-cc "${server_args[@]}"
+exec go run ./cmd/go-e2e "${server_args[@]}"

@@ -5,7 +5,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/web-agent-profile.sh"
 
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PROFILE="${1:-${GOLANG_CC_WEB_AGENT_PROFILE:-manual}}"
+PROFILE="${1:-${GO_E2E_WEB_AGENT_PROFILE:-manual}}"
 if [[ "${PROFILE}" == "-h" || "${PROFILE}" == "--help" ]]; then
   cat <<'EOF'
 Usage: scripts/web-agent-restart.sh [manual|e2e]
@@ -21,10 +21,10 @@ if [[ $# -gt 1 ]]; then
   exit 2
 fi
 web_agent_profile_apply "${PROFILE}"
-HOST="${GOLANG_CC_WEB_AGENT_HOST:-127.0.0.1}"
-PORT="${GOLANG_CC_WEB_AGENT_PORT:-18087}"
-AUTH_TOKEN="${GOLANG_CC_WEB_AGENT_AUTH_TOKEN:-test-token}"
-SKIP_BUILD="${GOLANG_CC_WEB_AGENT_SKIP_BUILD:-true}"
+HOST="${GO_E2E_WEB_AGENT_HOST:-127.0.0.1}"
+PORT="${GO_E2E_WEB_AGENT_PORT:-18087}"
+AUTH_TOKEN="${GO_E2E_WEB_AGENT_AUTH_TOKEN:-test-token}"
+SKIP_BUILD="${GO_E2E_WEB_AGENT_SKIP_BUILD:-true}"
 
 if command -v lsof >/dev/null 2>&1; then
   pids="$(lsof -tiTCP:"${PORT}" -sTCP:LISTEN || true)"
@@ -42,9 +42,9 @@ fi
 
 echo "web-agent-restart: starting http://${HOST}:${PORT}/webui/agent?token=${AUTH_TOKEN}"
 cd "${ROOT}"
-GOLANG_CC_WEB_AGENT_HOST="${HOST}" \
-GOLANG_CC_WEB_AGENT_PORT="${PORT}" \
-GOLANG_CC_WEB_AGENT_AUTH_TOKEN="${AUTH_TOKEN}" \
-GOLANG_CC_WEB_AGENT_SKIP_BUILD="${SKIP_BUILD}" \
-GOLANG_CC_WEB_AGENT_PROFILE="${PROFILE}" \
+GO_E2E_WEB_AGENT_HOST="${HOST}" \
+GO_E2E_WEB_AGENT_PORT="${PORT}" \
+GO_E2E_WEB_AGENT_AUTH_TOKEN="${AUTH_TOKEN}" \
+GO_E2E_WEB_AGENT_SKIP_BUILD="${SKIP_BUILD}" \
+GO_E2E_WEB_AGENT_PROFILE="${PROFILE}" \
 exec ./scripts/web-agent-start.sh "${PROFILE}"

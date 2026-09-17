@@ -138,8 +138,7 @@ func TestBareCLIRequestHasMinimalToolsAndNoImplicitContributors(t *testing.T) {
 		writeAnthropicTextStream(t, w, "ok")
 	}))
 	defer server.Close()
-	t.Setenv("ANTHROPIC_API_KEY", "test-key")
-	t.Setenv("ANTHROPIC_BASE_URL", server.URL)
+	configureTestProvider(t, server.URL, "test-key")
 	var stdout bytes.Buffer
 	err = Run(context.Background(), []string{
 		"--bare", "--cwd", cwd, "--settings", string(settingsJSON),

@@ -326,11 +326,14 @@ async function toggleThemeThroughSettings(page: Page, theme: "light" | "dark", l
   const mobileLauncher = page.getByRole("button", { name: language === "zh" ? "打开会话列表" : "Open sessions" });
   if (await mobileLauncher.isVisible()) await mobileLauncher.click();
   await page.getByRole("button", { name: language === "zh" ? "设置" : "Settings", exact: true }).click();
-  const settings = page.getByRole("dialog", { name: language === "zh" ? "设置" : "Settings" });
-  await settings.getByLabel(language === "zh" ? "主题" : "Theme").selectOption(theme);
+  const settings = page.getByRole("region", { name: language === "zh" ? "设置中心" : "Settings center" });
+  await expect(settings.getByRole("heading", { name: language === "zh" ? "通用设置" : "General", exact: true })).toBeVisible();
+  await settings.locator(".settings-theme-options button").filter({ hasText: theme === "dark" ? (language === "zh" ? "深色" : "Dark") : (language === "zh" ? "浅色" : "Light") }).click();
   await expect(page.locator(".webui2-page")).toHaveAttribute("data-theme", theme);
   await expect.poll(() => page.evaluate(() => window.localStorage.getItem("golang-cc-webui.v2.theme.v1"))).toBe(theme);
-  await settings.getByRole("button", { name: language === "zh" ? "关闭设置" : "Close settings" }).click();
+  const navigation = settings.getByRole("button", { name: language === "zh" ? "打开设置导航" : "Open settings navigation", exact: true });
+  if (await navigation.isVisible()) await navigation.click();
+  await settings.getByRole("button", { name: language === "zh" ? "返回会话" : "Back to chat", exact: true }).click();
 }
 
 async function expectRichFixturePresentation(page: Page): Promise<void> {
@@ -480,12 +483,12 @@ test.describe("WebUI v2 mobile and preference flows", () => {
     await textarea.fill("Keep this context until the run stops.");
     const sends: object[] = [];
     page.on("request", (request) => { if (request.method() === "POST" && request.url().endsWith("/tenant/alpha/messages")) sends.push(request.postDataJSON()); });
-    await expect(page.getByRole("button", { name: "Send message" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Send message" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Stop session", exact: true })).toBeEnabled();
     await textarea.press("Enter");
     await expect(textarea).toHaveValue("Keep this context until the run stops.");
     expect(sends).toHaveLength(0);
     await page.getByRole("button", { name: "Stop session", exact: true }).click();
-    await page.getByRole("button", { name: "Confirm stop session", exact: true }).click();
     await expect(page.getByRole("button", { name: "Send message" })).toBeEnabled();
     expect(sends).toHaveLength(0);
     await textarea.press("Enter");

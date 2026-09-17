@@ -71,7 +71,7 @@ func ValidCommandText() string {
 
 func HelpText() string {
 	return `Usage:
-  golang-cc goal start|status|inspect|list|logs|run|stop|resume|unlock|help
+  go-e2e goal start|status|inspect|list|logs|run|stop|resume|unlock|help
   /goal <command> [options]
 
 中文说明:

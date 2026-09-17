@@ -1,9 +1,9 @@
-model: claude-sonnet-4-6
-provider: anthropic
+model: model-id
+provider: custom
 effort: high
 
-env:
-  ANTHROPIC_BASE_URL: https://api.anthropic.com
+baseURL: http://127.0.0.1:8080/v1
+apiKey: test-key
 
 fallback:
   enabled: false

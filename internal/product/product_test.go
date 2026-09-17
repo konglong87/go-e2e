@@ -25,62 +25,89 @@ func TestCanonicalInternalIdentifiers(t *testing.T) {
 	}
 }
 
-func TestGetenvPrefersCanonicalName(t *testing.T) {
-	t.Setenv("GOLANG_CC_LOG_LEVEL", "debug")
-	t.Setenv("GOLANG_CLAUDE_CODE_LOG_LEVEL", "info")
+func TestCanonicalProductIdentity(t *testing.T) {
+	if Name != "go-e2e" || BinaryName != "go-e2e" || ProductKey != "go-e2e" {
+		t.Fatalf("product identity = %q/%q/%q", Name, BinaryName, ProductKey)
+	}
+	if ConfigDirName != ".golang-cc" {
+		t.Fatalf("ConfigDirName = %q, want .golang-cc", ConfigDirName)
+	}
+	if GuidanceFilename != "go-e2e.md" {
+		t.Fatalf("GuidanceFilename = %q, want go-e2e.md", GuidanceFilename)
+	}
+	if PreviousProductName != "golang-cc" || PreviousBinaryName != "golang-cc" || PreviousGuidanceFilename != "golang-cc.md" {
+		t.Fatalf("previous product identity = %q/%q/%q", PreviousProductName, PreviousBinaryName, PreviousGuidanceFilename)
+	}
+}
 
-	if got := Getenv("GOLANG_CC_LOG_LEVEL"); got != "debug" {
+func TestGetenvPrefersCanonicalName(t *testing.T) {
+	t.Setenv("GO_E2E_LOG_LEVEL", "debug")
+	t.Setenv("GOLANG_CC_LOG_LEVEL", "info")
+
+	if got := Getenv("GO_E2E_LOG_LEVEL"); got != "debug" {
 		t.Fatalf("Getenv() = %q, want canonical value", got)
 	}
 }
 
 func TestGetenvFallsBackToLegacyName(t *testing.T) {
-	t.Setenv("GOLANG_CC_PROVIDER", "")
-	t.Setenv("GOLANG_CLAUDE_CODE_PROVIDER", "legacy-provider")
+	t.Setenv("GO_E2E_PROVIDER", "")
+	t.Setenv("GOLANG_CC_PROVIDER", "legacy-provider")
 
-	if got := Getenv("GOLANG_CC_PROVIDER"); got != "legacy-provider" {
+	if got := Getenv("GO_E2E_PROVIDER"); got != "legacy-provider" {
 		t.Fatalf("Getenv() = %q, want legacy value", got)
 	}
 }
 
+func TestGetenvFallsBackToPreviousClaudePrefix(t *testing.T) {
+	t.Setenv("GO_E2E_PROVIDER", "")
+	t.Setenv("GOLANG_CC_PROVIDER", "")
+	t.Setenv("GOLANG_CLAUDE_CODE_PROVIDER", "legacy-claude")
+
+	if got := Getenv("GO_E2E_PROVIDER"); got != "legacy-claude" {
+		t.Fatalf("Getenv() = %q, want previous Claude-compatible value", got)
+	}
+}
+
 func TestGetenvFallsBackToShortLegacyName(t *testing.T) {
+	t.Setenv("GO_E2E_WEBSEARCH_URL", "")
 	t.Setenv("GOLANG_CC_WEBSEARCH_URL", "")
 	t.Setenv("GOLANG_CLAUDE_CODE_WEBSEARCH_URL", "")
 	t.Setenv("GO_CLAUDE_CODE_WEBSEARCH_URL", "legacy-short")
 
-	if got := Getenv("GOLANG_CC_WEBSEARCH_URL"); got != "legacy-short" {
+	if got := Getenv("GO_E2E_WEBSEARCH_URL"); got != "legacy-short" {
 		t.Fatalf("Getenv() = %q, want short legacy value", got)
 	}
 }
 
 func TestGetenvFallsBackToCompactLegacyName(t *testing.T) {
+	t.Setenv("GO_E2E_STABLE_PREFIX_SKILLS", "")
 	t.Setenv("GOLANG_CC_STABLE_PREFIX_SKILLS", "")
 	t.Setenv("GOLANG_CLAUDE_CODE_STABLE_PREFIX_SKILLS", "")
 	t.Setenv("GO_CLAUDE_CODE_STABLE_PREFIX_SKILLS", "")
 	t.Setenv("GO_CLAUDE_STABLE_PREFIX_SKILLS", "1")
 
-	if got := Getenv("GOLANG_CC_STABLE_PREFIX_SKILLS"); got != "1" {
+	if got := Getenv("GO_E2E_STABLE_PREFIX_SKILLS"); got != "1" {
 		t.Fatalf("Getenv() = %q, want compact legacy value", got)
 	}
 }
 
 func TestLookupEnvCanonicalEmptySuppressesLegacy(t *testing.T) {
-	t.Setenv("GOLANG_CC_PROVIDER", "")
-	t.Setenv("GOLANG_CLAUDE_CODE_PROVIDER", "legacy-provider")
+	t.Setenv("GO_E2E_PROVIDER", "")
+	t.Setenv("GOLANG_CC_PROVIDER", "legacy-provider")
 
-	if got, ok := LookupEnv("GOLANG_CC_PROVIDER"); !ok || got != "" {
+	if got, ok := LookupEnv("GO_E2E_PROVIDER"); !ok || got != "" {
 		t.Fatalf("LookupEnv() = %q, %v; want explicit canonical empty value", got, ok)
 	}
 }
 
 func TestPromoteEnvironmentOverridesLegacyWithCanonical(t *testing.T) {
-	t.Setenv("GOLANG_CC_TEST_PROMOTION", "canonical")
-	t.Setenv("GOLANG_CLAUDE_CODE_TEST_PROMOTION", "legacy")
+	t.Setenv("GO_E2E_TEST_PROMOTION", "canonical")
+	t.Setenv("GOLANG_CC_TEST_PROMOTION", "legacy")
 
 	if err := PromoteEnvironment(); err != nil {
 		t.Fatal(err)
 	}
-	if got := os.Getenv("GOLANG_CLAUDE_CODE_TEST_PROMOTION"); got != "canonical" {
+	if got := os.Getenv("GOLANG_CC_TEST_PROMOTION"); got != "canonical" {
 		t.Fatalf("promoted value = %q, want canonical", got)
 	}
 	if got := os.Getenv("GO_CLAUDE_TEST_PROMOTION"); got != "canonical" {
@@ -92,25 +119,25 @@ func TestPromoteEnvironmentOverridesLegacyWithCanonical(t *testing.T) {
 }
 
 func TestPromoteEnvironmentCopiesLegacyToCanonical(t *testing.T) {
-	t.Setenv("GOLANG_CLAUDE_CODE_TEST_LEGACY_PROMOTION", "legacy")
-	_ = os.Unsetenv("GOLANG_CC_TEST_LEGACY_PROMOTION")
-	t.Cleanup(func() { _ = os.Unsetenv("GOLANG_CC_TEST_LEGACY_PROMOTION") })
+	t.Setenv("GOLANG_CC_TEST_LEGACY_PROMOTION", "legacy")
+	_ = os.Unsetenv("GO_E2E_TEST_LEGACY_PROMOTION")
+	t.Cleanup(func() { _ = os.Unsetenv("GO_E2E_TEST_LEGACY_PROMOTION") })
 
 	if err := PromoteEnvironment(); err != nil {
 		t.Fatal(err)
 	}
-	if got := os.Getenv("GOLANG_CC_TEST_LEGACY_PROMOTION"); got != "legacy" {
+	if got := os.Getenv("GO_E2E_TEST_LEGACY_PROMOTION"); got != "legacy" {
 		t.Fatalf("canonical value = %q, want legacy fallback", got)
 	}
 }
 
 func TestPromoteEnvironmentCopiesShortLegacyToCanonical(t *testing.T) {
 	t.Setenv("GO_CLAUDE_CODE_TEST_SHORT_PROMOTION", "legacy-short")
+	_ = os.Unsetenv("GO_E2E_TEST_SHORT_PROMOTION")
 	_ = os.Unsetenv("GOLANG_CC_TEST_SHORT_PROMOTION")
-	_ = os.Unsetenv("GOLANG_CLAUDE_CODE_TEST_SHORT_PROMOTION")
 	_ = os.Unsetenv("GOLANG_CC_CODE_TEST_SHORT_PROMOTION")
 	t.Cleanup(func() {
-		_ = os.Unsetenv("GOLANG_CC_TEST_SHORT_PROMOTION")
+		_ = os.Unsetenv("GO_E2E_TEST_SHORT_PROMOTION")
 		_ = os.Unsetenv("GOLANG_CLAUDE_CODE_TEST_SHORT_PROMOTION")
 		_ = os.Unsetenv("GOLANG_CC_CODE_TEST_SHORT_PROMOTION")
 	})
@@ -118,10 +145,10 @@ func TestPromoteEnvironmentCopiesShortLegacyToCanonical(t *testing.T) {
 	if err := PromoteEnvironment(); err != nil {
 		t.Fatal(err)
 	}
-	if got := os.Getenv("GOLANG_CC_TEST_SHORT_PROMOTION"); got != "legacy-short" {
+	if got := os.Getenv("GO_E2E_TEST_SHORT_PROMOTION"); got != "legacy-short" {
 		t.Fatalf("canonical value = %q, want short legacy fallback", got)
 	}
-	if value, ok := os.LookupEnv("GOLANG_CC_CODE_TEST_SHORT_PROMOTION"); ok {
+	if value, ok := os.LookupEnv("GO_E2E_CODE_TEST_SHORT_PROMOTION"); ok {
 		t.Fatalf("overlapping prefix created spurious canonical variable %q", value)
 	}
 }

@@ -6,26 +6,26 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/web-agent-profile.sh"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 web_agent_profile_apply e2e
-HOST="${GOLANG_CC_WEB_AGENT_HOST:-127.0.0.1}"
-PORT="${GOLANG_CC_WEB_AGENT_PORT:-18087}"
-AUTH_TOKEN="${GOLANG_CC_WEB_AGENT_AUTH_TOKEN:-test-token}"
+HOST="${GO_E2E_WEB_AGENT_HOST:-127.0.0.1}"
+PORT="${GO_E2E_WEB_AGENT_PORT:-18087}"
+AUTH_TOKEN="${GO_E2E_WEB_AGENT_AUTH_TOKEN:-test-token}"
 BASE_URL="http://${HOST}:${PORT}"
-DB_NAME="${GOLANG_CC_WEB_AGENT_DB:-golang_cc_web_agent_real_e2e}"
-TENANT="${GOLANG_CC_WEB_AGENT_TENANT:-webui-local}"
-USER_ID="${GOLANG_CC_WEB_AGENT_USER:-webui-local-user}"
-WORKSPACE="${GOLANG_CC_WEB_AGENT_WORKSPACE:-${ROOT}}"
-MODEL="${GOLANG_CC_WEB_AGENT_MODEL:-glm-5.1}"
-PROVIDER="${GOLANG_CC_WEB_AGENT_PROVIDER:-}"
-TRACE_ID="${GOLANG_CC_WEB_AGENT_E2E_TRACE_ID:-web-agent-e2e-$(date -u +%Y%m%d%H%M%S)-$$}"
-PROMPT="${GOLANG_CC_WEB_AGENT_E2E_PROMPT:-请用一句中文回复：真实后端连通测试。不要使用英文。}"
-EXPECTED="${GOLANG_CC_WEB_AGENT_E2E_EXPECTED:-真实后端}"
-STUB_TEXT="${GOLANG_CC_WEB_AGENT_E2E_STUB_TEXT:-web agent browser flow ok}"
-TIMEOUT_SECONDS="${GOLANG_CC_WEB_AGENT_E2E_TIMEOUT_SECONDS:-90}"
-AUTO_START="${GOLANG_CC_WEB_AGENT_E2E_AUTO_START:-true}"
-MYSQL_USER="${GOLANG_CC_WEB_AGENT_MYSQL_USER:-root}"
-MYSQL_HOST="${GOLANG_CC_WEB_AGENT_MYSQL_HOST:-127.0.0.1}"
-MYSQL_PORT="${GOLANG_CC_WEB_AGENT_MYSQL_PORT:-3306}"
-MYSQL_DSN="${GOLANG_CC_MYSQL_DSN:-${MYSQL_USER}@tcp(${MYSQL_HOST}:${MYSQL_PORT})/${DB_NAME}?multiStatements=true&parseTime=true&loc=UTC&time_zone=%27%2B00%3A00%27&charset=utf8mb4}"
+DB_NAME="${GO_E2E_WEB_AGENT_DB:-golang_cc_web_agent_real_e2e}"
+TENANT="${GO_E2E_WEB_AGENT_TENANT:-webui-local}"
+USER_ID="${GO_E2E_WEB_AGENT_USER:-webui-local-user}"
+WORKSPACE="${GO_E2E_WEB_AGENT_WORKSPACE:-${ROOT}}"
+MODEL="${GO_E2E_WEB_AGENT_MODEL:-glm-5.1}"
+PROVIDER="${GO_E2E_WEB_AGENT_PROVIDER:-}"
+TRACE_ID="${GO_E2E_WEB_AGENT_E2E_TRACE_ID:-web-agent-e2e-$(date -u +%Y%m%d%H%M%S)-$$}"
+PROMPT="${GO_E2E_WEB_AGENT_E2E_PROMPT:-请用一句中文回复：真实后端连通测试。不要使用英文。}"
+EXPECTED="${GO_E2E_WEB_AGENT_E2E_EXPECTED:-真实后端}"
+STUB_TEXT="${GO_E2E_WEB_AGENT_E2E_STUB_TEXT:-web agent browser flow ok}"
+TIMEOUT_SECONDS="${GO_E2E_WEB_AGENT_E2E_TIMEOUT_SECONDS:-90}"
+AUTO_START="${GO_E2E_WEB_AGENT_E2E_AUTO_START:-true}"
+MYSQL_USER="${GO_E2E_WEB_AGENT_MYSQL_USER:-root}"
+MYSQL_HOST="${GO_E2E_WEB_AGENT_MYSQL_HOST:-127.0.0.1}"
+MYSQL_PORT="${GO_E2E_WEB_AGENT_MYSQL_PORT:-3306}"
+MYSQL_DSN="${GO_E2E_MYSQL_DSN:-${MYSQL_USER}@tcp(${MYSQL_HOST}:${MYSQL_PORT})/${DB_NAME}?multiStatements=true&parseTime=true&loc=UTC&time_zone=%27%2B00%3A00%27&charset=utf8mb4}"
 
 need() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -98,18 +98,18 @@ if [[ "${AUTO_START}" == "true" ]]; then
   if lsof -nP -iTCP:"${PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
     cat >&2 <<EOF
 web-agent-real-e2e failed: ${HOST}:${PORT} is already listening.
-Use GOLANG_CC_WEB_AGENT_PORT=<free-port> for an isolated run, or set
-GOLANG_CC_WEB_AGENT_E2E_AUTO_START=false to validate an already-running server.
+Use GO_E2E_WEB_AGENT_PORT=<free-port> for an isolated run, or set
+GO_E2E_WEB_AGENT_E2E_AUTO_START=false to validate an already-running server.
 EOF
     exit 2
   fi
-  export GOLANG_CC_WEB_AGENT_PORT="${PORT}"
-  export GOLANG_CC_WEB_AGENT_AUTH_TOKEN="${AUTH_TOKEN}"
-  export GOLANG_CC_WEB_AGENT_DB="${DB_NAME}"
-  export GOLANG_CC_WEB_AGENT_MODEL="${MODEL}"
-  export GOLANG_CC_WEB_AGENT_SKIP_BUILD="${GOLANG_CC_WEB_AGENT_SKIP_BUILD:-false}"
-  export GOLANG_CC_MYSQL_DSN="${MYSQL_DSN}"
-  export GOLANG_CC_WEB_AGENT_PROFILE=e2e
+  export GO_E2E_WEB_AGENT_PORT="${PORT}"
+  export GO_E2E_WEB_AGENT_AUTH_TOKEN="${AUTH_TOKEN}"
+  export GO_E2E_WEB_AGENT_DB="${DB_NAME}"
+  export GO_E2E_WEB_AGENT_MODEL="${MODEL}"
+  export GO_E2E_WEB_AGENT_SKIP_BUILD="${GO_E2E_WEB_AGENT_SKIP_BUILD:-false}"
+  export GO_E2E_MYSQL_DSN="${MYSQL_DSN}"
+  export GO_E2E_WEB_AGENT_PROFILE=e2e
   ./scripts/web-agent-start.sh e2e >"/tmp/web-agent-real-e2e-server.log" 2>&1 &
   SERVER_PID="$!"
 fi

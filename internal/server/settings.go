@@ -67,7 +67,7 @@ func runtimeSettingsGin(opts Options) gin.HandlerFunc {
 }
 
 func handleGetGlobalSettings(w http.ResponseWriter) {
-	data, path, ok, err := config.ReadGlobalSettingsRaw()
+	data, path, ok, err := config.ReadGlobalSettings()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -113,7 +113,7 @@ func handlePutGlobalSettings(w http.ResponseWriter, r *http.Request) {
 	// Restore any masked placeholders the client echoed back to their stored
 	// values so a round-trip through the WebUI never blanks a credential.
 	oldDoc := map[string]any{}
-	raw, _, exists, readErr := config.ReadGlobalSettingsRaw()
+	raw, _, exists, readErr := config.ReadGlobalSettings()
 	if readErr != nil {
 		http.Error(w, "cannot read current global settings", http.StatusInternalServerError)
 		return
@@ -129,6 +129,11 @@ func handlePutGlobalSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// The browser normally sends the complete document, but API callers may
+	// submit a partial object. Preserve forward-compatible fields that are not
+	// represented by config.Settings while allowing known optional fields to be
+	// removed explicitly.
+	doc = config.PreserveUnknownJSONFields(oldDoc, doc)
 	if err := restoreSecrets(doc, oldDoc); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

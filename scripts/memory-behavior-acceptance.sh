@@ -145,7 +145,7 @@ run_case() {
   local dump="$OUT_DIR/$name.prompt.jsonl"
   local stdout_path="$OUT_DIR/$name.stdout.txt"
   local stderr_path="$OUT_DIR/$name.stderr.txt"
-  local cmd=(go run ./cmd/golang-cc --cwd "$WORKSPACE" --tools "$tools" --max-turns "$max_turns")
+  local cmd=(go run ./cmd/go-e2e --cwd "$WORKSPACE" --tools "$tools" --max-turns "$max_turns")
   if [[ -n "$MODEL" ]]; then
     cmd+=(--model "$MODEL")
   fi
@@ -158,9 +158,9 @@ run_case() {
   (
     cd "$ROOT_DIR"
     CLAUDE_CONFIG_DIR="$CONFIG_DIR" \
-      GOLANG_CC_PROMPT_PROFILE=claude-compatible \
-      GOLANG_CC_DUMP_PROMPT_JSON="$dump" \
-      GOLANG_CC_DUMP_PROMPT_FULL=true \
+      GO_E2E_PROMPT_PROFILE=claude-compatible \
+      GO_E2E_DUMP_PROMPT_JSON="$dump" \
+      GO_E2E_DUMP_PROMPT_FULL=true \
       "${cmd[@]}"
   ) >"$stdout_path" 2>"$stderr_path"
 }

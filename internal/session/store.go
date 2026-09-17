@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/konglong87/go-e2e/internal/files"
 	"github.com/konglong87/go-e2e/internal/identity"
 	"github.com/konglong87/go-e2e/internal/product"
@@ -82,6 +83,7 @@ type Recorder struct {
 	Path      string
 	file      *os.File
 	encoder   *json.Encoder
+	lockPath  string
 	// schema is non-empty ("golang-cc.transcript.v2") when this recorder writes a
 	// message-graph transcript; leaf tracks the current active leaf so each new
 	// entry chains from it via parent_id.
@@ -210,6 +212,14 @@ func (s Store) projectsRoot() string {
 	return ""
 }
 
+func (s Store) sessionLockBase(sessionID string) string {
+	root := s.projectsRoot()
+	if root == "" {
+		root = s.Root
+	}
+	return filepath.Join(root, ".session-locks", strings.TrimSpace(sessionID))
+}
+
 func (s Store) NewRecorder(cwd string) (*Recorder, error) {
 	if s.projectsRoot() == "" {
 		return nil, fmt.Errorf("session root is empty")
@@ -234,14 +244,102 @@ func (s Store) NewRecorderWithID(cwd, id string) (*Recorder, error) {
 		return nil, err
 	}
 	path := filepath.Join(dir, id+".jsonl")
+	return withTranscriptLockValue(s.sessionLockBase(id), func() (*Recorder, error) {
+		return s.newRecorderAtPath(cwd, id, path)
+	})
+}
+
+func (s Store) OpenRecorder(sessionID string) (*Recorder, bool, error) {
+	if !IsValidID(sessionID) {
+		return nil, false, fmt.Errorf("invalid session id: %s", sessionID)
+	}
+	var recorder *Recorder
+	var ok bool
+	err := withTranscriptLock(s.sessionLockBase(sessionID), func() error {
+		summary, found, err := s.PrepareForWrite(sessionID)
+		if err != nil {
+			return err
+		}
+		ok = found
+		if !found {
+			return nil
+		}
+		recorder, _, err = s.openRecorderSummary(summary)
+		return err
+	})
+	return recorder, ok, err
+}
+
+// OpenOrCreateRecorder opens the requested session when it exists and creates
+// it otherwise. The existence check and first write are protected together so
+// two independent processes cannot both initialize the same transcript.
+func (s Store) OpenOrCreateRecorder(cwd, id string) (*Recorder, bool, error) {
+	projectsRoot := s.projectsRoot()
+	if projectsRoot == "" {
+		return nil, false, fmt.Errorf("session root is empty")
+	}
+	if !IsValidID(id) {
+		return nil, false, fmt.Errorf("invalid session id: %s", id)
+	}
+	dir := filepath.Join(projectsRoot, ProjectSlug(cwd))
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, false, err
+	}
+	path := filepath.Join(dir, id+".jsonl")
+	var recorder *Recorder
+	var created bool
+	err := withTranscriptLock(s.sessionLockBase(id), func() error {
+		summary, ok, err := s.PrepareForWrite(id)
+		if err != nil {
+			return err
+		}
+		if ok {
+			recorder, _, err = s.openRecorderSummary(summary)
+			return err
+		}
+		recorder, err = s.newRecorderAtPath(cwd, id, path)
+		created = err == nil
+		return err
+	})
+	return recorder, created, err
+}
+
+func (s Store) newRecorderAtPath(cwd, id, path string) (*Recorder, error) {
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		return nil, err
 	}
-	recorder := &Recorder{SessionID: id, Path: path, file: file, encoder: json.NewEncoder(file)}
-	if s.SchemaV2 {
-		recorder.schema = SchemaV2
-		if err := recorder.writeSessionMeta(cwd); err != nil {
+	info, err := file.Stat()
+	if err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	schema, leaf := "", ""
+	if info.Size() > 0 {
+		entries, err := Load(path)
+		if err != nil {
+			_ = file.Close()
+			return nil, err
+		}
+		if IsV2Entries(entries) {
+			schema = SchemaV2
+			leaf = ActiveLeaf(entries)
+		}
+	}
+	if schema == "" && s.SchemaV2 {
+		schema = SchemaV2
+	}
+	recorder := &Recorder{
+		SessionID: id,
+		Path:      path,
+		file:      file,
+		encoder:   json.NewEncoder(file),
+		schema:    schema,
+		leaf:      leaf,
+		lockPath:  transcriptLockPath(path),
+	}
+	if info.Size() == 0 && schema != "" {
+		if err := recorder.writeSessionMetaUnlocked(cwd); err != nil {
 			_ = file.Close()
 			return nil, err
 		}
@@ -249,15 +347,13 @@ func (s Store) NewRecorderWithID(cwd, id string) (*Recorder, error) {
 	return recorder, nil
 }
 
-func (s Store) OpenRecorder(sessionID string) (*Recorder, bool, error) {
-	summary, ok, err := s.PrepareForWrite(sessionID)
-	if err != nil || !ok {
-		return nil, ok, err
-	}
-	// Resume follows the schema already on disk so a transcript is never
-	// schema-mixed: a v2 file keeps growing its graph from the active leaf.
+func (s Store) openRecorderSummary(summary Summary) (*Recorder, bool, error) {
 	schema, leaf := "", ""
-	if entries, loadErr := Load(summary.Path); loadErr == nil && IsV2Entries(entries) {
+	entries, err := Load(summary.Path)
+	if err != nil {
+		return nil, true, err
+	}
+	if IsV2Entries(entries) {
 		schema = SchemaV2
 		leaf = ActiveLeaf(entries)
 	}
@@ -265,7 +361,15 @@ func (s Store) OpenRecorder(sessionID string) (*Recorder, bool, error) {
 	if err != nil {
 		return nil, true, err
 	}
-	return &Recorder{SessionID: summary.SessionID, Path: summary.Path, file: file, encoder: json.NewEncoder(file), schema: schema, leaf: leaf}, true, nil
+	return &Recorder{
+		SessionID: summary.SessionID,
+		Path:      summary.Path,
+		file:      file,
+		encoder:   json.NewEncoder(file),
+		schema:    schema,
+		leaf:      leaf,
+		lockPath:  transcriptLockPath(summary.Path),
+	}, true, nil
 }
 
 // PrepareForWrite copy-on-write migrates a legacy transcript into the
@@ -361,6 +465,12 @@ func copyFileIfAbsent(source, target string) error {
 // writeSessionMeta emits the mandatory first line of a v2 transcript. It is a
 // header (not a chain node), so it carries the schema tag but no parent_id.
 func (r *Recorder) writeSessionMeta(cwd string) error {
+	return r.withLock(func() error {
+		return r.writeSessionMetaUnlocked(cwd)
+	})
+}
+
+func (r *Recorder) writeSessionMetaUnlocked(cwd string) error {
 	meta := map[string]any{
 		"app":            product.Name,
 		"schema_version": 2,
@@ -373,7 +483,7 @@ func (r *Recorder) writeSessionMeta(cwd string) error {
 	if err != nil {
 		return err
 	}
-	return r.Append(Entry{Type: EntryTypeSessionMeta, Metadata: raw})
+	return r.appendV2(Entry{Type: EntryTypeSessionMeta, Metadata: raw})
 }
 
 func (r *Recorder) Append(entry Entry) error {
@@ -385,16 +495,33 @@ func (r *Recorder) Append(entry Entry) error {
 	if r.encoder == nil {
 		return nil
 	}
-	if r.schema != "" {
-		return r.appendV2(entry)
+	return r.withLock(func() error {
+		if r.schema != "" {
+			// Another process may have appended since this recorder opened.
+			// Refreshing under the same lock keeps the next graph edge attached
+			// to the actual on-disk leaf.
+			entries, err := Load(r.Path)
+			if err != nil {
+				return err
+			}
+			r.leaf = ActiveLeaf(entries)
+			return r.appendV2(entry)
+		}
+		if entry.ID == "" && shouldAutoID(entry) {
+			entry.ID = NewEntryID()
+		}
+		if entry.Timestamp.IsZero() {
+			entry.Timestamp = time.Now().UTC()
+		}
+		return r.encoder.Encode(entry)
+	})
+}
+
+func (r *Recorder) withLock(fn func() error) error {
+	if r == nil || strings.TrimSpace(r.lockPath) == "" {
+		return fn()
 	}
-	if entry.ID == "" && shouldAutoID(entry) {
-		entry.ID = NewEntryID()
-	}
-	if entry.Timestamp.IsZero() {
-		entry.Timestamp = time.Now().UTC()
-	}
-	return r.encoder.Encode(entry)
+	return withTranscriptLock(r.lockPath, fn)
 }
 
 // appendV2 writes an entry into a v2 message-graph transcript. Every entry is
@@ -2238,21 +2365,22 @@ func BuildCompactSummary(entries []Entry, maxBytes int) string {
 // reset. Live-recorder callers should append through the recorder instead so its
 // in-memory leaf advances too; this path covers by-id compaction with no recorder.
 func CompactEntries(path string, entries []Entry, maxBytes int) (Entry, error) {
-	entry := Entry{Type: "compact_summary", Content: BuildCompactSummary(entries, maxBytes), Timestamp: time.Now().UTC()}
-	if fileEntries, err := Load(path); err == nil && IsV2Entries(fileEntries) {
-		entry.Schema = SchemaV2
-		entry.ID = NewEntryID()
-		entry.ParentID = ActiveLeaf(fileEntries)
-	}
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0600)
-	if err != nil {
-		return Entry{}, err
-	}
-	defer file.Close()
-	if err := json.NewEncoder(file).Encode(entry); err != nil {
-		return Entry{}, err
-	}
-	return entry, nil
+	var entry Entry
+	err := withTranscriptLock(path, func() error {
+		entry = Entry{Type: "compact_summary", Content: BuildCompactSummary(entries, maxBytes), Timestamp: time.Now().UTC()}
+		if fileEntries, err := Load(path); err == nil && IsV2Entries(fileEntries) {
+			entry.Schema = SchemaV2
+			entry.ID = NewEntryID()
+			entry.ParentID = ActiveLeaf(fileEntries)
+		}
+		file, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0600)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		return json.NewEncoder(file).Encode(entry)
+	})
+	return entry, err
 }
 
 const summaryOmissionNotice = "[older turns omitted to fit the summary budget]\n"
@@ -2347,22 +2475,8 @@ func NewEntryID() string {
 }
 
 func IsValidID(id string) bool {
-	if len(id) != 36 {
-		return false
-	}
-	for i, r := range id {
-		switch i {
-		case 8, 13, 18, 23:
-			if r != '-' {
-				return false
-			}
-		default:
-			if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')) {
-				return false
-			}
-		}
-	}
-	return true
+	parsed, err := uuid.Parse(id)
+	return err == nil && parsed.String() == strings.ToLower(strings.TrimSpace(id))
 }
 
 func ProjectSlug(cwd string) string {

@@ -154,8 +154,9 @@ type options struct {
 	responseFormat                *anthropic.ResponseFormat
 	// Session Control is a v2 Orchestrator-only capability. The profile gate
 	// and concrete service are both required before tools are registered.
-	sessionControlProfile bool
-	sessionControlService sessioncontroltool.Service
+	sessionControlProfile  bool
+	sessionControlService  sessioncontroltool.Service
+	sessionOptionsResolved bool
 }
 
 func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -211,6 +212,10 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 			stderr: stderr,
 		})
 	}
+	if err := resolveSessionOptions(session.DefaultStore(), &opts); err != nil {
+		return err
+	}
+	opts.sessionOptionsResolved = true
 	if opts.prompt == "" && opts.print {
 		prompt, err := readPromptFromStdin(opts.inputFormat)
 		if err != nil {
@@ -645,17 +650,18 @@ func validateSingleSchemaType(path, typ string, value any) error {
 }
 
 func newQuerySession(ctx context.Context, opts options, initial []anthropic.MessageParam, recorderOverride *session.Recorder) (*query.Session, func(), error) {
+	if !opts.sessionOptionsResolved {
+		if err := resolveSessionOptions(session.DefaultStore(), &opts); err != nil {
+			return nil, nil, err
+		}
+		opts.sessionOptionsResolved = true
+	}
 	if strings.TrimSpace(opts.runtimeTraceOutput) != "" && opts.noPersistence {
 		return nil, nil, errors.New("--runtime-trace-output requires session persistence")
 	}
 	runtimePolicy, err := runtimeprofile.Resolve(opts.runtimeProfile)
 	if err != nil {
 		return nil, nil, err
-	}
-	if !runtimePolicy.Profile.IsBare() {
-		if err := config.EnsureProjectSettingsMaterialized(opts.cwd); err != nil {
-			return nil, nil, err
-		}
 	}
 	cfg, err := resolveRuntimeProviderConfig(&opts)
 	if err != nil {
@@ -1033,7 +1039,7 @@ func newRecorderForOptions(store session.Store, opts options) (*session.Recorder
 		err      error
 	)
 	if opts.sessionID != "" {
-		recorder, err = store.NewRecorderWithID(opts.cwd, opts.sessionID)
+		recorder, _, err = store.OpenOrCreateRecorder(opts.cwd, opts.sessionID)
 	} else if resumeID, ok, resolveErr := resumeRecorderSessionID(store, opts); resolveErr != nil {
 		return nil, resolveErr
 	} else if ok {
@@ -1051,6 +1057,49 @@ func newRecorderForOptions(store session.Store, opts options) (*session.Recorder
 		}
 	}
 	return recorder, nil
+}
+
+// resolveSessionOptions is the single CLI session-selection boundary. It runs
+// before either the TUI or headless context is built, so an explicit
+// --session-id consistently opens an existing transcript and creates a new one
+// only when that id has not been seen before.
+func resolveSessionOptions(store session.Store, opts *options) error {
+	if opts == nil {
+		return nil
+	}
+	sessionID := strings.TrimSpace(opts.sessionID)
+	if sessionID == "" {
+		if opts.forkSession && strings.TrimSpace(opts.resume) == "" {
+			return errors.New("--fork-session requires --resume")
+		}
+		if strings.TrimSpace(opts.resumeSessionAt) != "" && strings.TrimSpace(opts.resume) == "" {
+			return errors.New("--resume-session-at requires --resume")
+		}
+		return nil
+	}
+	if opts.noPersistence {
+		return errors.New("--session-id cannot be combined with --no-session-persistence")
+	}
+	if strings.TrimSpace(opts.resume) != "" {
+		return errors.New("--session-id cannot be combined with --resume")
+	}
+	if strings.TrimSpace(opts.resumeSessionAt) != "" {
+		return errors.New("--session-id cannot be combined with --resume-session-at")
+	}
+	if opts.forkSession {
+		return errors.New("--session-id cannot be combined with --fork-session")
+	}
+	if !session.IsValidID(sessionID) {
+		return fmt.Errorf("invalid --session-id: %s", sessionID)
+	}
+	summary, ok, err := store.Find(sessionID)
+	if err != nil {
+		return err
+	}
+	if ok {
+		opts.resume = summary.SessionID
+	}
+	return nil
 }
 
 func resumeRecorderSessionID(store session.Store, opts options) (string, bool, error) {
@@ -1142,7 +1191,7 @@ func authCommand(args []string, stdout io.Writer) error {
 		return writePrettyJSON(stdout, map[string]any{
 			"loggedIn":     cfg.APIKey != "" || cfg.AuthToken != "",
 			"authMethod":   method,
-			"apiProvider":  "anthropic",
+			"apiProvider":  cfg.Provider,
 			"hasAPIKey":    cfg.APIKey != "",
 			"hasAuthToken": cfg.AuthToken != "",
 		})
@@ -1175,17 +1224,12 @@ func authCommand(args []string, stdout io.Writer) error {
 			return errors.New("use either --api-key or --auth-token, not both")
 		}
 		settings := config.LoadGlobalSettings()
-		if settings.Env == nil {
-			settings.Env = map[string]string{}
-		}
 		if apiKey != "" {
-			settings.Env["ANTHROPIC_API_KEY"] = apiKey
-			delete(settings.Env, "ANTHROPIC_AUTH_TOKEN")
-			delete(settings.Env, "CLAUDE_CODE_AUTH_TOKEN")
-			delete(settings.Env, "CLAUDE_CODE_OAUTH_TOKEN")
+			settings.APIKey = apiKey
+			settings.AuthToken = ""
 		} else {
-			settings.Env["ANTHROPIC_AUTH_TOKEN"] = authToken
-			delete(settings.Env, "ANTHROPIC_API_KEY")
+			settings.AuthToken = authToken
+			settings.APIKey = ""
 		}
 		if err := config.SaveGlobalSettings(settings); err != nil {
 			return err
@@ -1199,8 +1243,8 @@ func authCommand(args []string, stdout io.Writer) error {
 	}
 	if args[0] == "logout" {
 		settings := config.LoadGlobalSettings()
-		delete(settings.Env, "ANTHROPIC_API_KEY")
-		delete(settings.Env, "ANTHROPIC_AUTH_TOKEN")
+		settings.APIKey = ""
+		settings.AuthToken = ""
 		if err := config.SaveGlobalSettings(settings); err != nil {
 			return err
 		}
@@ -5633,7 +5677,7 @@ func appendWithBlankLine(base, extra string) string {
 }
 
 func printHelp(w io.Writer) {
-	fmt.Fprint(w, "golang-cc\n\nUsage:\n")
+	fmt.Fprint(w, "go-e2e\n\nUsage:\n")
 	fmt.Fprintf(w, "  %s [options]\n", binaryName)
 	// Usage 行来自 commandTable()，和 dispatch、completion 同一份数据。
 	for _, spec := range commandTable() {
@@ -5648,10 +5692,10 @@ func printHelp(w io.Writer) {
 Any command also accepts --help.
 
 Options:
-  -p, --print [prompt]         Print mode, runs one headless golang-cc turn
+  -p, --print [prompt]         Print mode, runs one headless go-e2e turn
       --bare                   Minimal code runtime (Read, Edit, Bash; no auto discovery)
       --bg, --background       Queue print mode as a background session
-      --model <model>          Model name (then config/config.yaml, env, settings, built-in)
+      --model <model>          Model ID (defaults to global settings.model)
       --provider <name>        Select a named provider from fallback.providers
       --output-format <fmt>    text, json, or stream-json (default text)
       --input-format <fmt>     text or stream-json stdin format (default text)
@@ -5695,26 +5739,20 @@ Options:
       --resume-session-at <id> Resume only through the given transcript entry id
       --rewind-files <id>      Restore files to a previous user message id and exit
   -c, --continue               Continue the latest transcript
-      --session-id <uuid>      Use a specific session ID for this run
+      --session-id <uuid>      Create or continue this session (alias: --sessionId)
   -n, --name <name>            Set a display name for this session
       --no-session-persistence Do not write a transcript for this run
   -v, --version                Show version
   -h, --help                   Show help
 
 Environment:
-  ANTHROPIC_API_KEY            Required for API calls
-  ANTHROPIC_AUTH_TOKEN         Optional Anthropic auth token
-  CLAUDE_CODE_AUTH_TOKEN       Optional auth token alias
-  CLAUDE_CODE_OAUTH_TOKEN      Optional OAuth token alias
-  ANTHROPIC_BASE_URL           Optional API base URL
-  CLAUDE_CODE_MODEL            Optional model override after project config
-  GOLANG_CC_ENV       Optional config environment: dev, test, or prod
-  GOLANG_CC_LOG_LEVEL Diagnostic log level on stderr: debug, info, warn,
+  GO_E2E_CONFIG_DIR             Optional compatibility override for config directory
+  GO_E2E_LOG_LEVEL             Diagnostic log level on stderr: debug, info, warn,
                                 error, dpanic, panic, fatal, silent. Unset means
                                 silent for CLI runs; the server always logs JSON
-  GOLANG_CC_MYSQL_DSN MySQL DSN for tenant migrations and agent tasks
-  GOLANG_CC_TENANT_KEY Tenant key for tenant CLI commands
-  GOLANG_CC_USER_ID User key for tenant CLI commands
+  GO_E2E_MYSQL_DSN             MySQL DSN for tenant migrations and agent tasks
+  GO_E2E_TENANT_KEY            Tenant key for tenant CLI commands
+  GO_E2E_USER_ID               User key for tenant CLI commands
 
 Implemented tools:
   Task, TaskOutput, AskUserQuestion, EnterPlanMode, ExitPlanMode, ListMcpResources, ReadMcpResource, Read, Write, Edit, MultiEdit, NotebookRead, NotebookEdit, LS, Glob, Grep, LSP, TodoRead, TodoWrite, Skill, Workflow, Worktree, WebBrowser, WebFetch, WebSearch, PowerShell, Bash

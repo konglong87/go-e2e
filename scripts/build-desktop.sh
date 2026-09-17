@@ -8,7 +8,8 @@ npm --prefix "${ROOT}/web" run build -- --mode desktop
 mkdir -p "${DESKTOP_DIR}/frontend/dist"
 cp -R "${ROOT}/web/dist/." "${DESKTOP_DIR}/frontend/dist/"
 
-go build -o "${DESKTOP_DIR}/golang-cc" "${ROOT}/cmd/golang-cc"
+go build -o "${DESKTOP_DIR}/go-e2e" "${ROOT}/cmd/go-e2e"
+cp "${DESKTOP_DIR}/go-e2e" "${DESKTOP_DIR}/golang-cc"
 (
   cd "${DESKTOP_DIR}"
   wails build -s "$@"
@@ -16,5 +17,6 @@ go build -o "${DESKTOP_DIR}/golang-cc" "${ROOT}/cmd/golang-cc"
 
 APP_BIN="${DESKTOP_DIR}/build/bin/golang-cc-desktop.app/Contents/MacOS"
 if [[ -d "${APP_BIN}" ]]; then
-  cp "${DESKTOP_DIR}/golang-cc" "${APP_BIN}/golang-cc"
+  cp "${DESKTOP_DIR}/go-e2e" "${APP_BIN}/go-e2e"
+  cp "${DESKTOP_DIR}/go-e2e" "${APP_BIN}/golang-cc"
 fi

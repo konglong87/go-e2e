@@ -60,8 +60,7 @@ func settingsTestProviderGin(opts Options) gin.HandlerFunc {
 			http.Error(c.Writer, "invalid settings", http.StatusBadRequest)
 			return
 		}
-		// Resolve credentials through the same runtime environment precedence. A
-		// selected disabled fallback can be probed without enabling it on disk.
+		// A selected disabled fallback can be probed without enabling it on disk.
 		if settings.Fallback != nil {
 			settings.Fallback.Enabled = nil
 		}

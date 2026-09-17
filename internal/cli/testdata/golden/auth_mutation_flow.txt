@@ -3,7 +3,7 @@ Logged in with API key
 
 $ auth status
 {
-  "apiProvider": "anthropic",
+  "apiProvider": "",
   "authMethod": "api_key",
   "hasAPIKey": true,
   "hasAuthToken": false,
@@ -15,7 +15,7 @@ Logged out
 
 $ auth status
 {
-  "apiProvider": "anthropic",
+  "apiProvider": "",
   "authMethod": "none",
   "hasAPIKey": false,
   "hasAuthToken": false,

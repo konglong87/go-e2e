@@ -8,7 +8,7 @@ TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 REPORT_DIR="${SUBAGENT_MULTIAGENT_ACCEPTANCE_REPORT_DIR:-${ROOT}/reports/subagent-multiagent/${TIMESTAMP}}"
 RUN_GO_TESTS="${SUBAGENT_MULTIAGENT_ACCEPTANCE_GO_TEST:-1}"
 RUN_DIFF_CHECK="${SUBAGENT_MULTIAGENT_ACCEPTANCE_DIFF_CHECK:-1}"
-LIVE_BASE="${GOLANG_CC_EVAL_LIVE_API_BASE:-${GO_CLAUDE_EVAL_LIVE_API_BASE:-}}"
+LIVE_BASE="${GO_E2E_EVAL_LIVE_API_BASE:-${GO_CLAUDE_EVAL_LIVE_API_BASE:-}}"
 ANTHROPIC_AUTH="${ANTHROPIC_API_KEY:-${ANTHROPIC_AUTH_TOKEN:-${CLAUDE_CODE_AUTH_TOKEN:-${CLAUDE_CODE_OAUTH_TOKEN:-}}}}"
 
 mkdir -p "${REPORT_DIR}"
@@ -26,7 +26,7 @@ run_eval() {
   local output="${REPORT_DIR}/eval-${profile}.json"
   local log="${REPORT_DIR}/eval-${profile}.log"
   echo "==> eval agents --profile ${profile}"
-  if ! go run ./cmd/golang-cc eval agents --profile "${profile}" --json --output "${output}" >"${log}" 2>&1; then
+  if ! go run ./cmd/go-e2e eval agents --profile "${profile}" --json --output "${output}" >"${log}" 2>&1; then
     echo "eval agents --profile ${profile} failed" >&2
     echo "log: ${log}" >&2
     tail -n 80 "${log}" >&2 || true
@@ -51,7 +51,7 @@ if [[ -n "${LIVE_BASE}" ]]; then
   run_eval "live"
   run_eval "live-agent-api"
 else
-  echo "skip: live API profiles require GOLANG_CC_EVAL_LIVE_API_BASE"
+  echo "skip: live API profiles require GO_E2E_EVAL_LIVE_API_BASE"
 fi
 
 if [[ -n "${ANTHROPIC_AUTH}" ]]; then

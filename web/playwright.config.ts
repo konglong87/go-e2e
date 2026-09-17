@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const productEnv = (suffix: string): string | undefined =>
-  process.env[`GOLANG_CC_${suffix}`] ?? process.env[`GOLANG_CLAUDE_CODE_${suffix}`];
+  process.env[`GO_E2E_${suffix}`] ?? process.env[`GOLANG_CC_${suffix}`] ?? process.env[`GOLANG_CLAUDE_CODE_${suffix}`];
 
 const liveApiTarget = productEnv("WEBUI_LIVE_API_BASE");
 const viteEnv = liveApiTarget ? `VITE_GOLANG_CC_API_TARGET=${liveApiTarget} ` : "";
@@ -31,17 +31,17 @@ export default defineConfig({
     },
     {
       name: "chromium-webui-v2-desktop",
-      testMatch: /webui-v2\.spec\.ts/,
+      testMatch: /(?:webui-v2|settings-v2)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 960 } }
     },
     {
       name: "chromium-webui-v2-narrow",
-      testMatch: /webui-v2\.spec\.ts/,
+      testMatch: /(?:webui-v2|settings-v2)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 1024, height: 768 } }
     },
     {
       name: "chromium-webui-v2-mobile",
-      testMatch: /webui-v2\.spec\.ts/,
+      testMatch: /(?:webui-v2|settings-v2)\.spec\.ts/,
       use: { ...devices["Pixel 5"] }
     },
     {

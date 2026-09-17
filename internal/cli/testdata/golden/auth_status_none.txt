@@ -1,5 +1,5 @@
 {
-  "apiProvider": "anthropic",
+  "apiProvider": "",
   "authMethod": "none",
   "hasAPIKey": false,
   "hasAuthToken": false,

@@ -1,53 +1,53 @@
-golang-cc
+go-e2e
 
 Usage:
-  golang-cc [options]
-  golang-cc auth status|login|logout
-  golang-cc config [--project|--local] list|get|set|unset
-  golang-cc memory lint [--scope workspace|all] [--json]
-  golang-cc mcp list|show|add|remove|serve|tools|call|resources|resource|prompts|prompt
-  golang-cc session list [--source local|tenant|all]|create|get <tenant:key|local:id>|send <tenant:key> <text>|stop <tenant:key>|attach <tenant:target> --from <ref>|monitor <tenant:key> --every <duration> --channel feishu|locate|show|inspect|search|rename|delete|clear|checkpoint|rewind|branches|redo|fork|gc
-  golang-cc transcript import-claude-code <path> [--cwd <dir>]
-  golang-cc goal start|status|inspect|list|logs|run|stop|resume|unlock|help
-  golang-cc skills list|show|lint|install|sync|marketplace-search|marketplace-info|marketplace-status|context|feedback|watch|validate-bundled|package
-  golang-cc plugin list|show|install|remove
-  golang-cc server --port <port>
-  golang-cc channels onboard feishu|run
-  golang-cc image-worker run
-  golang-cc tenant migrate up|down|version --dsn <mysql_dsn>
-  golang-cc tenant agent-tasks list|events|cancel
-  golang-cc tenant skill-package import|render|publish|list|history|rollback
-  golang-cc usage
-  golang-cc init [--settings]
-  golang-cc status
-  golang-cc model get|set|list
-  golang-cc image generate|edit --prompt <text> [--image <path>] [--out <path>]
-  golang-cc permissions list|mode|allow|deny|remove|clear
-  golang-cc export <session_id> <output_file> [--format markdown|json]
-  golang-cc diff [--stat]
-  golang-cc branch
-  golang-cc review [--staged]
-  golang-cc ps
-  golang-cc logs <background_id>
-  golang-cc kill <background_id>
-  golang-cc attach <background_id> [--wait]
-  golang-cc completion <bash|zsh|fish>
-  golang-cc tools
-  golang-cc hooks list|add|remove|clear
-  golang-cc agents list|show|doctor
-  golang-cc eval agents [--profile local|live|live-agent-api|anthropic-thinking|golden-probe] [--suite default|golden] [--dataset file] [--runs N] [--provider name] [--output report.json|report.md]
-  golang-cc compact <session_id> [--max-bytes N]
-  golang-cc doctor
-  golang-cc help
-  golang-cc version [--json]
+  go-e2e [options]
+  go-e2e auth status|login|logout
+  go-e2e config [--project|--local] list|get|set|unset
+  go-e2e memory lint [--scope workspace|all] [--json]
+  go-e2e mcp list|show|add|remove|serve|tools|call|resources|resource|prompts|prompt
+  go-e2e session list [--source local|tenant|all]|create|get <tenant:key|local:id>|send <tenant:key> <text>|stop <tenant:key>|attach <tenant:target> --from <ref>|monitor <tenant:key> --every <duration> --channel feishu|locate|show|inspect|search|rename|delete|clear|checkpoint|rewind|branches|redo|fork|gc
+  go-e2e transcript import-claude-code <path> [--cwd <dir>]
+  go-e2e goal start|status|inspect|list|logs|run|stop|resume|unlock|help
+  go-e2e skills list|show|lint|install|sync|marketplace-search|marketplace-info|marketplace-status|context|feedback|watch|validate-bundled|package
+  go-e2e plugin list|show|install|remove
+  go-e2e server --port <port>
+  go-e2e channels onboard feishu|run
+  go-e2e image-worker run
+  go-e2e tenant migrate up|down|version --dsn <mysql_dsn>
+  go-e2e tenant agent-tasks list|events|cancel
+  go-e2e tenant skill-package import|render|publish|list|history|rollback
+  go-e2e usage
+  go-e2e init [--settings]
+  go-e2e status
+  go-e2e model get|set|list
+  go-e2e image generate|edit --prompt <text> [--image <path>] [--out <path>]
+  go-e2e permissions list|mode|allow|deny|remove|clear
+  go-e2e export <session_id> <output_file> [--format markdown|json]
+  go-e2e diff [--stat]
+  go-e2e branch
+  go-e2e review [--staged]
+  go-e2e ps
+  go-e2e logs <background_id>
+  go-e2e kill <background_id>
+  go-e2e attach <background_id> [--wait]
+  go-e2e completion <bash|zsh|fish>
+  go-e2e tools
+  go-e2e hooks list|add|remove|clear
+  go-e2e agents list|show|doctor
+  go-e2e eval agents [--profile local|live|live-agent-api|anthropic-thinking|golden-probe] [--suite default|golden] [--dataset file] [--runs N] [--provider name] [--output report.json|report.md]
+  go-e2e compact <session_id> [--max-bytes N]
+  go-e2e doctor
+  go-e2e help
+  go-e2e version [--json]
 
 Any command also accepts --help.
 
 Options:
-  -p, --print [prompt]         Print mode, runs one headless golang-cc turn
+  -p, --print [prompt]         Print mode, runs one headless go-e2e turn
       --bare                   Minimal code runtime (Read, Edit, Bash; no auto discovery)
       --bg, --background       Queue print mode as a background session
-      --model <model>          Model name (then config/config.yaml, env, settings, built-in)
+      --model <model>          Model ID (defaults to global settings.model)
       --provider <name>        Select a named provider from fallback.providers
       --output-format <fmt>    text, json, or stream-json (default text)
       --input-format <fmt>     text or stream-json stdin format (default text)
@@ -91,26 +91,20 @@ Options:
       --resume-session-at <id> Resume only through the given transcript entry id
       --rewind-files <id>      Restore files to a previous user message id and exit
   -c, --continue               Continue the latest transcript
-      --session-id <uuid>      Use a specific session ID for this run
+      --session-id <uuid>      Create or continue this session (alias: --sessionId)
   -n, --name <name>            Set a display name for this session
       --no-session-persistence Do not write a transcript for this run
   -v, --version                Show version
   -h, --help                   Show help
 
 Environment:
-  ANTHROPIC_API_KEY            Required for API calls
-  ANTHROPIC_AUTH_TOKEN         Optional Anthropic auth token
-  CLAUDE_CODE_AUTH_TOKEN       Optional auth token alias
-  CLAUDE_CODE_OAUTH_TOKEN      Optional OAuth token alias
-  ANTHROPIC_BASE_URL           Optional API base URL
-  CLAUDE_CODE_MODEL            Optional model override after project config
-  GOLANG_CC_ENV       Optional config environment: dev, test, or prod
-  GOLANG_CC_LOG_LEVEL Diagnostic log level on stderr: debug, info, warn,
+  GO_E2E_CONFIG_DIR             Optional compatibility override for config directory
+  GO_E2E_LOG_LEVEL             Diagnostic log level on stderr: debug, info, warn,
                                 error, dpanic, panic, fatal, silent. Unset means
                                 silent for CLI runs; the server always logs JSON
-  GOLANG_CC_MYSQL_DSN MySQL DSN for tenant migrations and agent tasks
-  GOLANG_CC_TENANT_KEY Tenant key for tenant CLI commands
-  GOLANG_CC_USER_ID User key for tenant CLI commands
+  GO_E2E_MYSQL_DSN             MySQL DSN for tenant migrations and agent tasks
+  GO_E2E_TENANT_KEY            Tenant key for tenant CLI commands
+  GO_E2E_USER_ID               User key for tenant CLI commands
 
 Implemented tools:
   Task, TaskOutput, AskUserQuestion, EnterPlanMode, ExitPlanMode, ListMcpResources, ReadMcpResource, Read, Write, Edit, MultiEdit, NotebookRead, NotebookEdit, LS, Glob, Grep, LSP, TodoRead, TodoWrite, Skill, Workflow, Worktree, WebBrowser, WebFetch, WebSearch, PowerShell, Bash

@@ -209,7 +209,7 @@ else
   echo "skip: full tests (TUI_TOOL_PROGRESS_ACCEPTANCE_FULL_TESTS=${RUN_FULL_TESTS})"
 fi
 
-run_step "build ${BINARY}" "${GO_BIN}" build -o "${BINARY}" ./cmd/golang-cc
+run_step "build ${BINARY}" "${GO_BIN}" build -o "${BINARY}" ./cmd/go-e2e
 
 node - "$REPORT_JSON" "$REPORT_DIR" "$BINARY" "$RUN_MODE" "$RUN_TESTS" "$RUN_FULL_TESTS" "$(git rev-parse --short HEAD 2>/dev/null || echo unknown)" <<'NODE'
 const fs = require("fs");

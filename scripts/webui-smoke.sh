@@ -3,12 +3,12 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/product-env.sh"
 
 
-BASE_URL="${GOLANG_CC_WEBUI_SMOKE_BASE_URL:-http://127.0.0.1:18080}"
-AUTH_TOKEN="${GOLANG_CC_WEBUI_SMOKE_AUTH_TOKEN:-${GOLANG_CC_WEBUI_DEV_AUTH_TOKEN:-test-token}}"
-TENANT="${GOLANG_CC_WEBUI_SMOKE_TENANT:-webui-local}"
-USER_ID="${GOLANG_CC_WEBUI_SMOKE_USER:-webui-local-user}"
-DEVICE_ID="${GOLANG_CC_WEBUI_SMOKE_DEVICE:-webui-local-device}"
-SESSION_ID="${GOLANG_CC_WEBUI_SMOKE_SESSION_ID:-}"
+BASE_URL="${GO_E2E_WEBUI_SMOKE_BASE_URL:-http://127.0.0.1:18080}"
+AUTH_TOKEN="${GO_E2E_WEBUI_SMOKE_AUTH_TOKEN:-${GO_E2E_WEBUI_DEV_AUTH_TOKEN:-test-token}}"
+TENANT="${GO_E2E_WEBUI_SMOKE_TENANT:-webui-local}"
+USER_ID="${GO_E2E_WEBUI_SMOKE_USER:-webui-local-user}"
+DEVICE_ID="${GO_E2E_WEBUI_SMOKE_DEVICE:-webui-local-device}"
+SESSION_ID="${GO_E2E_WEBUI_SMOKE_SESSION_ID:-}"
 
 need() {
   command -v "$1" >/dev/null 2>&1 || {

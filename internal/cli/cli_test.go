@@ -55,6 +55,22 @@ func setTestConfigRoot(t *testing.T, root string) {
 	t.Setenv("CLAUDE_CONFIG_DIR", root)
 }
 
+// Configure the isolated owned settings file, never upstream process credentials.
+func configureTestProvider(t *testing.T, endpoint, key string) {
+	t.Helper()
+	settings := config.LoadGlobalSettings()
+	settings.Provider = "anthropic-compatible"
+	settings.ProviderProtocol = config.ProviderProtocolAnthropicMessages
+	settings.BaseURL = endpoint
+	settings.APIKey = key
+	if settings.Model == "" {
+		settings.Model = "test-model"
+	}
+	if err := config.SaveGlobalSettings(settings); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestScheduleRunDispatchesSessionMonitorChildWithoutGenericQuery(t *testing.T) {
 	root := t.TempDir()
 	setTestConfigRoot(t, root)
@@ -85,7 +101,7 @@ func TestScheduleRunDispatchesSessionMonitorChildWithoutGenericQuery(t *testing.
 
 func TestAuthStatus(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("ANTHROPIC_API_KEY", "key")
+	configureTestProvider(t, "https://model.example.test", "key")
 	t.Setenv("ANTHROPIC_AUTH_TOKEN", "")
 	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
 	var out bytes.Buffer
@@ -156,8 +172,8 @@ func TestAuthLoginWritesGolangCCGlobalSettings(t *testing.T) {
 
 	golangCCSettings := filepath.Join(home, ".golang-cc", "settings.json")
 	settings := config.LoadSettingsFile(golangCCSettings)
-	if settings.Env["ANTHROPIC_API_KEY"] != "secret" {
-		t.Fatalf("golang-cc global settings env = %+v", settings.Env)
+	if settings.APIKey != "secret" {
+		t.Fatal("global apiKey was not saved")
 	}
 	if _, err := os.Stat(filepath.Join(home, ".claude", "settings.json")); !os.IsNotExist(err) {
 		t.Fatalf("legacy settings should not be written, err=%v", err)
@@ -207,7 +223,7 @@ func TestStatusLoadsGoClaudeGlobalAuth(t *testing.T) {
 	t.Setenv("ANTHROPIC_API_KEY", "")
 	t.Setenv("ANTHROPIC_AUTH_TOKEN", "")
 	mustWrite(t, filepath.Join(home, ".golang-cc", "settings.json"), `{
-	  "env": {"ANTHROPIC_API_KEY": "global-key"}
+	  "apiKey": "global-key"
 	}`)
 
 	var out bytes.Buffer
@@ -1387,7 +1403,7 @@ func TestInitAndStatusCommands(t *testing.T) {
 	if err := Run(context.Background(), []string{"--cwd", project, "init", "--settings"}, &out, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(project, "golang-cc.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(project, "go-e2e.md")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(project, ".golang-cc", "settings.json")); err != nil {
@@ -2455,7 +2471,7 @@ func TestLoopRunPromptResolvesSlashCommand(t *testing.T) {
 	if got := loopRunPrompt(project, "/missing-command deploy"); got != "/missing-command deploy" {
 		t.Fatalf("missing command prompt = %q", got)
 	}
-	if got := loopRunPrompt(project, "/init"); !strings.Contains(got, "create or improve `golang-cc.md`") {
+	if got := loopRunPrompt(project, "/init"); !strings.Contains(got, "create or improve `go-e2e.md`") {
 		t.Fatalf("init command prompt = %q", got)
 	}
 }
@@ -2468,7 +2484,7 @@ func TestResolvePrintPromptResolvesSlashCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(prompt, "create or improve `golang-cc.md`") || strings.Contains(prompt, "Command: /init") {
+	if !strings.Contains(prompt, "create or improve `go-e2e.md`") || strings.Contains(prompt, "Command: /init") {
 		t.Fatalf("print prompt did not resolve /init:\n%s", prompt)
 	}
 
@@ -3706,8 +3722,7 @@ func TestSessionRecapSmokeFlow(t *testing.T) {
 		writeAnthropicTextStream(t, w, text)
 	}))
 	defer server.Close()
-	t.Setenv("ANTHROPIC_API_KEY", "smoke-key")
-	t.Setenv("ANTHROPIC_BASE_URL", server.URL)
+	configureTestProvider(t, server.URL, "smoke-key")
 
 	sessionID := "88888888-8888-4888-8888-888888888888"
 	var out bytes.Buffer
@@ -4609,6 +4624,142 @@ func TestSessionControlOptions(t *testing.T) {
 	}
 	if _, _, err := parseArgs([]string{"--session-id", "bad", "-p", "hello"}); err == nil {
 		t.Fatal("expected invalid session id error")
+	}
+}
+
+func TestSessionIDAliasAndResolutionConflicts(t *testing.T) {
+	const id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	opts, _, err := parseArgs([]string{"--sessionId", id, "-p", "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.sessionID != id {
+		t.Fatalf("sessionId alias parsed as %q, want %q", opts.sessionID, id)
+	}
+
+	for name, opts := range map[string]options{
+		"resume":         {sessionID: id, resume: id},
+		"resume-at":      {sessionID: id, resumeSessionAt: "entry"},
+		"fork":           {sessionID: id, forkSession: true},
+		"no-persistence": {sessionID: id, noPersistence: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := resolveSessionOptions(session.Store{}, &opts); err == nil {
+				t.Fatalf("expected --session-id conflict for %s", name)
+			}
+		})
+	}
+	if err := resolveSessionOptions(session.Store{}, &options{forkSession: true}); err == nil {
+		t.Fatal("--fork-session without --resume must fail")
+	}
+	if err := resolveSessionOptions(session.Store{}, &options{resumeSessionAt: "entry"}); err == nil {
+		t.Fatal("--resume-session-at without --resume must fail")
+	}
+}
+
+func TestSessionIDResolvesExistingTranscriptBeforeQueryContext(t *testing.T) {
+	root := t.TempDir()
+	setTestConfigRoot(t, root)
+	t.Setenv("GOLANG_CC_TRANSCRIPT_PROJECTS_DIR", filepath.Join(root, "projects"))
+	store := session.DefaultStore()
+	project := t.TempDir()
+	const id = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+	recorder, err := store.NewRecorderWithID(project, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := recorder.Append(session.Entry{Type: "message", Role: "user", Content: "previous session-id context"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := recorder.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	opts, _, err := parseArgs([]string{"--cwd", project, "--session-id", id, "-p", "next"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := resolveSessionOptions(store, &opts); err != nil {
+		t.Fatal(err)
+	}
+	if opts.resume != id {
+		t.Fatalf("resolved resume = %q, want %q", opts.resume, id)
+	}
+	messages, err := loadResumeMessages(store, opts.resume, opts.resumeSessionAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) < 1 || messages[0].Content[0].Text != "previous session-id context" {
+		t.Fatalf("resolved session context = %+v", messages)
+	}
+	recorder, err = newRecorderForOptions(store, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recorder.SessionID != id {
+		t.Fatalf("recorder session id = %q, want %q", recorder.SessionID, id)
+	}
+	if err := recorder.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSessionIDReplaysAcrossIndependentCLIInvocations(t *testing.T) {
+	root := t.TempDir()
+	setTestConfigRoot(t, root)
+	t.Setenv("GOLANG_CC_TRANSCRIPT_PROJECTS_DIR", filepath.Join(root, "projects"))
+	project := t.TempDir()
+	const id = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+
+	var requests []string
+	var mu sync.Mutex
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		requests = append(requests, string(body))
+		mu.Unlock()
+		writeAnthropicTextStream(t, w, "assistant")
+	}))
+	defer server.Close()
+	if err := config.SaveGlobalSettings(config.Settings{
+		Provider: "anthropic",
+		BaseURL:  server.URL,
+		APIKey:   "test-key",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	if err := Run(context.Background(), []string{"--cwd", project, "--session-id", id, "-p", "first independent turn"}, &out, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Run(context.Background(), []string{"--cwd", project, "--session-id", id, "-p", "second independent turn"}, &out, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(requests) != 2 {
+		t.Fatalf("model requests = %d, want 2", len(requests))
+	}
+	if !strings.Contains(requests[1], "first independent turn") || !strings.Contains(requests[1], "second independent turn") {
+		t.Fatalf("second invocation did not replay the first turn:\n%s", requests[1])
+	}
+	summary, ok, err := session.DefaultStore().Find(id)
+	if err != nil || !ok {
+		t.Fatalf("Find() ok=%v err=%v", ok, err)
+	}
+	entries, err := session.LoadConversation(summary.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var transcript strings.Builder
+	for _, entry := range entries {
+		transcript.WriteString(entry.Content)
+		transcript.WriteByte('\n')
+	}
+	if !strings.Contains(transcript.String(), "second independent turn") {
+		t.Fatalf("second invocation was not appended to the same transcript: %+v", entries)
 	}
 }
 

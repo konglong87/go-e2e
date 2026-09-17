@@ -107,16 +107,16 @@ class Gate:
         result = {
             "PATH": os.environ["PATH"], "HOME": str(self.home), "USERPROFILE": str(self.home),
             "SHELL": os.environ.get("SHELL", "/bin/sh"), "LANG": "C", "LC_ALL": "C",
-            "TMPDIR": str(self.root / "tmp"), "GOLANG_CC_CONFIG_DIR": str(self.config),
-            "CLAUDE_CONFIG_DIR": str(self.config), "GOLANG_CC_PROMPT_PROFILE": "claude-compatible",
-            "GOLANG_CC_DUMP_PROMPT_FULL": "true",
+            "TMPDIR": str(self.root / "tmp"), "GO_E2E_CONFIG_DIR": str(self.config),
+            "CLAUDE_CONFIG_DIR": str(self.config), "GO_E2E_PROMPT_PROFILE": "claude-compatible",
+            "GO_E2E_DUMP_PROMPT_FULL": "true",
         }
         result.update(extra or {})
         return result
 
     def run(self, name, prompt, *, workspace=None, turns=2, tools=NO_TOOLS, extra=None, cli_args=()):
         dump = self.root / (name + ".prompt.jsonl")
-        env = self.env(dict(extra or {}, GOLANG_CC_DUMP_PROMPT_JSON=str(dump)))
+        env = self.env(dict(extra or {}, GO_E2E_DUMP_PROMPT_JSON=str(dump)))
         command = [str(Path(self.args.binary).resolve()), "--cwd", str(workspace or self.workspace_a),
                    "--provider", self.args.provider, "--model", self.model,
                    "--tools", tools, "--max-turns", str(turns), "--max-tokens", "2048",
@@ -205,8 +205,8 @@ class Gate:
         before = memory_snapshot(self.memory)
         _, system, context = self.run(
             "budget", "For budget verification and bytebudget regression, reply budget-ok.",
-            extra={"GOLANG_CC_MEMORY_DOCUMENT_BUDGET_BYTES": "1024",
-                   "GOLANG_CC_MEMORY_PROMPT_BUDGET_BYTES": "2048"})
+            extra={"GO_E2E_MEMORY_DOCUMENT_BUDGET_BYTES": "1024",
+                   "GO_E2E_MEMORY_PROMPT_BUDGET_BYTES": "2048"})
         docs = context.get("document_summary", [])
         recalled = [d for d in docs if d.get("type") == "ClaudeCodeProjectMemoryRecall"]
         assert len(recalled) == 4, "recall file-count bound was not applied"

@@ -23,7 +23,7 @@ behavior without calling a real model.
 
 Flags:
   --upstream-dir <path>  Original Claude Code source/extract dir. Default:
-                         <repo-parent>/claude_code_src_2026 (override: GOLANG_CC_UPSTREAM_DIR)
+                         <repo-parent>/claude_code_src_2026 (override: GO_E2E_UPSTREAM_DIR)
   --work-dir <path>      Output/work directory. Default: /tmp/upstream-guidance-source-<timestamp>.
   --model <name>         Model passed to upstream CLI. Default: claude-sonnet-4-6.
   --force                Remove existing --work-dir first.

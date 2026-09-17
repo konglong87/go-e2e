@@ -334,7 +334,7 @@ cat >"$output" <<'EOF'
 #!/bin/sh
 set -eu
 printf '%s\n' "$@" >"${FAKE_SCREEN_STATE}.argv"
-printf '{"ready":true,"tenant_id":%s,"worker_id":"%s"}\n' "$GOLANG_CC_IMAGE_WORKER_TENANT_ID" "$GOLANG_CC_IMAGE_WORKER_NAME" >"$GOLANG_CC_IMAGE_WORKER_READY_FILE"
+printf '{"ready":true,"tenant_id":%s,"worker_id":"%s"}\n' "$GO_E2E_IMAGE_WORKER_TENANT_ID" "$GO_E2E_IMAGE_WORKER_NAME" >"$GO_E2E_IMAGE_WORKER_READY_FILE"
 trap 'exit 0' TERM INT
 while :; do sleep 1; done
 EOF
@@ -387,7 +387,7 @@ esac
 	if output, err := run("start"); err != nil {
 		t.Fatalf("start error = %v, output = %s", err, output)
 	}
-	if output, err := run("status"); err != nil || !strings.Contains(output, "ready: golang-cc-image-canary") {
+	if output, err := run("status"); err != nil || !strings.Contains(output, "ready: go-e2e-image-canary") {
 		t.Fatalf("status error = %v, output = %s", err, output)
 	}
 	envFile := filepath.Join(stateDir, "canary.env")
@@ -402,7 +402,7 @@ esac
 	if output, err := run("restart"); err == nil {
 		t.Fatalf("restart with failed candidate build unexpectedly succeeded: %s", output)
 	}
-	if output, err := run("status"); err != nil || !strings.Contains(output, "ready: golang-cc-image-canary") {
+	if output, err := run("status"); err != nil || !strings.Contains(output, "ready: go-e2e-image-canary") {
 		t.Fatalf("failed restart did not preserve healthy worker: error=%v output=%s", err, output)
 	}
 	fakeGoFail = "0"
@@ -413,7 +413,7 @@ esac
 	if strings.Contains(string(argv), "top-secret") || !strings.Contains(string(argv), settingsPath) || !strings.Contains(string(argv), "image-worker\nrun") {
 		t.Fatalf("unsafe or incomplete worker argv: %q", argv)
 	}
-	if output, err := run("stop"); err != nil || !strings.Contains(output, "stopped: golang-cc-image-canary") {
+	if output, err := run("stop"); err != nil || !strings.Contains(output, "stopped: go-e2e-image-canary") {
 		t.Fatalf("stop error = %v, output = %s", err, output)
 	}
 	if _, err := os.Stat(envFile); !errors.Is(err, os.ErrNotExist) {
@@ -429,7 +429,7 @@ func TestImageWorkerScreenScriptRejectsMissingTenantBeforeBuild(t *testing.T) {
 	command := exec.Command("/bin/bash", script, "start")
 	command.Env = append(os.Environ(), "GOLANG_CC_IMAGE_WORKER_NAME=worker-test", "GOLANG_CC_MYSQL_DSN=mysql://secret", "GOLANG_CC_IMAGE_WORKER_TENANT_ID=")
 	output, runErr := command.CombinedOutput()
-	if runErr == nil || !strings.Contains(string(output), "GOLANG_CC_IMAGE_WORKER_TENANT_ID") {
+	if runErr == nil || !strings.Contains(string(output), "GO_E2E_IMAGE_WORKER_TENANT_ID") {
 		t.Fatalf("error = %v, output = %s", runErr, output)
 	}
 }

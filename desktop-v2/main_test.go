@@ -1,6 +1,11 @@
 package main
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+
+	"github.com/wailsapp/wails/v2/pkg/options"
+)
 
 func TestNewServerTokenIsHighEntropyAndUnique(t *testing.T) {
 	first, err := newServerToken()
@@ -16,5 +21,67 @@ func TestNewServerTokenIsHighEntropyAndUnique(t *testing.T) {
 	}
 	if first == second {
 		t.Fatal("newServerToken() returned the same token twice")
+	}
+}
+
+func TestWindowStateBridgeContract(t *testing.T) {
+	appType := reflect.TypeOf((*app)(nil))
+	for _, name := range []string{
+		"Maximize",
+		"Unmaximize",
+		"ToggleMaximize",
+		"Fullscreen",
+		"Unfullscreen",
+		"ToggleFullscreen",
+	} {
+		method, ok := appType.MethodByName(name)
+		if !ok {
+			t.Fatalf("bridge method %s is missing", name)
+		}
+		if method.Type.NumIn() != 1 || method.Type.NumOut() != 0 {
+			t.Fatalf("bridge method %s has unexpected signature %s", name, method.Type)
+		}
+	}
+	getWindowState, ok := appType.MethodByName("GetWindowState")
+	if !ok || getWindowState.Type.NumOut() != 1 || getWindowState.Type.Out(0) != reflect.TypeOf(DesktopWindowState{}) {
+		t.Fatalf("GetWindowState has unexpected signature %s", getWindowState.Type)
+	}
+	if windowStateChangedEvent != "go-e2e:window-state-changed" {
+		t.Fatalf("window state event = %q", windowStateChangedEvent)
+	}
+}
+
+func TestWindowStatePersistenceKeepsNormalGeometry(t *testing.T) {
+	previous := windowState{
+		Geometry: DesktopWindowGeometry{X: 40, Y: 50, Width: 1200, Height: 800},
+	}
+	maximized := persistedWindowState(previous, DesktopWindowState{
+		Geometry:  DesktopWindowGeometry{X: 0, Y: 0, Width: 1920, Height: 1080},
+		Maximized: true,
+	})
+	if maximized.Geometry != previous.Geometry {
+		t.Fatalf("maximized geometry = %#v, want %#v", maximized.Geometry, previous.Geometry)
+	}
+	if !maximized.Maximized {
+		t.Fatal("maximized state was not persisted")
+	}
+
+	normal := persistedWindowState(maximized, DesktopWindowState{
+		Geometry: DesktopWindowGeometry{X: 80, Y: 90, Width: 1400, Height: 860},
+	})
+	if normal.Geometry != (DesktopWindowGeometry{X: 80, Y: 90, Width: 1400, Height: 860}) {
+		t.Fatalf("normal geometry = %#v", normal.Geometry)
+	}
+	if normal.Maximized || normal.Fullscreen {
+		t.Fatalf("normal state = %#v", normal)
+	}
+}
+
+func TestWindowStartStatePrefersFullscreen(t *testing.T) {
+	if got := windowStartState(desktopConfig{Window: windowState{Maximized: true}}); got != options.Maximised {
+		t.Fatalf("maximized start state = %v", got)
+	}
+	if got := windowStartState(desktopConfig{Window: windowState{Maximized: true, Fullscreen: true}}); got != options.Fullscreen {
+		t.Fatalf("fullscreen start state = %v", got)
 	}
 }

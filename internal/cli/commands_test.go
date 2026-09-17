@@ -115,7 +115,7 @@ func TestSubcommandHelpWorksAfterASubcommandWord(t *testing.T) {
 	if err := Run(context.Background(), []string{"session", "show", "--help"}, &out, &errOut); err != nil {
 		t.Fatalf("session show --help returned error: %v", err)
 	}
-	if !strings.Contains(out.String(), "golang-cc session ") {
+	if !strings.Contains(out.String(), "go-e2e session ") {
 		t.Fatalf("unexpected help output:\n%s", out.String())
 	}
 }
@@ -374,8 +374,7 @@ func startFailingAnthropicServer(t *testing.T) {
 		_, _ = w.Write([]byte(`{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}`))
 	}))
 	t.Cleanup(server.Close)
-	t.Setenv("ANTHROPIC_API_KEY", "test-key")
-	t.Setenv("ANTHROPIC_BASE_URL", server.URL)
+	configureTestProvider(t, server.URL, "test-key")
 }
 
 // captureProcessStderr 换掉真正的 os.Stderr。zap 在 Build 时绑定 sink，

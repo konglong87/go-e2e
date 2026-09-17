@@ -5,6 +5,7 @@ import type { GlobalSettingsResponse, IdentityConfig, SettingsDoc } from "../../
 export const SETTINGS_ENDPOINT = "/runtime/settings";
 export const SETTINGS_SECRET_SENTINEL = "••••••";
 export const DESKTOP_CONFIG_VERIFIED_KEY = "go-e2e.desktop.config-verified.v1";
+export const GLOBAL_SETTINGS_SAVED_EVENT = "go-e2e:global-settings-saved";
 const SETTINGS_CONFLICT_MESSAGE = "服务端配置已变更。当前草稿已保留，请重新载入最新配置后再修改。";
 export type SettingsPath = readonly (string | number)[];
 export type SettingsIssue = { field: string; code: string; message: string };
@@ -162,6 +163,7 @@ export function useGlobalSettingsDraft(identity: IdentityConfig, enabled = true)
         return false;
       }
       setState({ ...snapshotState(snapshot), saved: true });
+      window.dispatchEvent(new Event(GLOBAL_SETTINGS_SAVED_EVENT));
       return true;
     } catch (error) {
       if (current === generation.current && !controller.signal.aborted) setState((previous) => ({ ...previous, error: committed ? "保存请求已提交，但读取确认失败。当前草稿已保留，请重新载入确认。" : requestError(error), conflict: error instanceof ApiError && error.status === 409 || previous.conflict }));

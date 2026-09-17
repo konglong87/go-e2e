@@ -103,14 +103,14 @@ func TestLoadForCWDReadsPrimaryAndFallbackProtocols(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("GOLANG_CC_ENV", "")
 	isolateAmbientProviderEnv(t)
-	mustWrite(t, filepath.Join(project, "config", "settings.json"), `{"provider":"custom","providerProtocol":"openai-responses","responses":{"stateMode":"stateless","store":false},"env":{"ANTHROPIC_API_KEY":"primary-key"},"fallback":{"providers":[{"name":"responses-fallback","type":"openai-compatible","protocol":"openai-responses","apiKey":"fallback-key","model":"fallback-model","responses":{"stateMode":"stateless","store":false}}]}}`)
+	mustWrite(t, filepath.Join(project, "config", "settings.json"), `{"provider":"custom","providerProtocol":"openai-responses","baseURL":"https://primary.example.test/v1","apiKey":"primary-key","responses":{"stateMode":"stateless","store":false},"fallback":{"providers":[{"name":"responses-fallback","type":"openai-compatible","protocol":"openai-responses","baseURL":"https://fallback.example.test/v1","apiKey":"fallback-key","model":"fallback-model","responses":{"stateMode":"stateless","store":false}}]}}`)
 
 	cfg := LoadForCWD(project)
 	if cfg.ProviderProtocol != ProviderProtocolOpenAIResponses || cfg.Responses == nil || cfg.Responses.Store == nil || *cfg.Responses.Store {
 		t.Fatalf("primary protocol/settings = %q %+v", cfg.ProviderProtocol, cfg.Responses)
 	}
-	if cfg.BaseURL != openAIDefaultBaseURL {
-		t.Fatalf("primary base URL = %q, want %q", cfg.BaseURL, openAIDefaultBaseURL)
+	if cfg.BaseURL != "https://primary.example.test/v1" {
+		t.Fatalf("primary base URL = %q", cfg.BaseURL)
 	}
 	if len(cfg.FallbackProviders) != 1 {
 		t.Fatalf("fallback providers = %+v", cfg.FallbackProviders)
@@ -119,8 +119,8 @@ func TestLoadForCWDReadsPrimaryAndFallbackProtocols(t *testing.T) {
 	if fallback.Protocol != ProviderProtocolOpenAIResponses || fallback.Responses == nil || fallback.Responses.StateMode != ResponsesStateModeStateless {
 		t.Fatalf("fallback protocol/settings = %q %+v", fallback.Protocol, fallback.Responses)
 	}
-	if fallback.BaseURL != openAIDefaultBaseURL {
-		t.Fatalf("fallback base URL = %q, want %q", fallback.BaseURL, openAIDefaultBaseURL)
+	if fallback.BaseURL != "https://fallback.example.test/v1" {
+		t.Fatalf("fallback base URL = %q", fallback.BaseURL)
 	}
 }
 

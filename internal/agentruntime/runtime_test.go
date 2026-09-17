@@ -930,7 +930,7 @@ func TestRuntimeLoadsBuiltInExploreAgent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
-	if result.AgentName != "Explore" || result.Model != "claude-haiku-4-5" || result.Content != "done" {
+	if result.AgentName != "Explore" || result.Model != "claude-sonnet-4-6" || result.Content != "done" {
 		t.Fatalf("result = %+v", result)
 	}
 	if len(streamer.systems) == 0 {
@@ -2160,7 +2160,8 @@ func TestResolveSubagentModelPriorityAndAliases(t *testing.T) {
 			requestModel: "opus",
 			agentModel:   "haiku",
 			parentModel:  "claude-sonnet-4-6",
-			want:         "claude-opus-4-8",
+			tierModels:   map[string]string{"opus": "configured-large"},
+			want:         "configured-large",
 		},
 		{
 			name:         "same-tier request alias keeps exact parent model",
@@ -2176,10 +2177,10 @@ func TestResolveSubagentModelPriorityAndAliases(t *testing.T) {
 			want:        "gpt-5.5",
 		},
 		{
-			name:        "agent family alias resolves to known model",
+			name:        "unconfigured family alias inherits parent",
 			agentModel:  "haiku",
 			parentModel: "claude-sonnet-4-6",
-			want:        "claude-haiku-4-5",
+			want:        "claude-sonnet-4-6",
 		},
 		{
 			name:        "tier alias on non-Anthropic parent inherits parent (phase 1)",
@@ -2215,11 +2216,11 @@ func TestResolveSubagentModelPriorityAndAliases(t *testing.T) {
 			want:         "glm5.1",
 		},
 		{
-			name:        "tier map is scoped to non-Anthropic; Anthropic parent keeps family default",
+			name:        "explicit tier map applies to every provider",
 			agentModel:  "haiku",
 			parentModel: "claude-sonnet-4-6",
 			tierModels:  map[string]string{"haiku": "glm-4-flash"},
-			want:        "claude-haiku-4-5",
+			want:        "glm-4-flash",
 		},
 	}
 	for _, tt := range tests {
@@ -2237,6 +2238,9 @@ func TestRuntimeRequestModelOverridesAgentFrontmatter(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	t.Setenv("GOLANG_CC_CONFIG_DIR", os.Getenv("CLAUDE_CONFIG_DIR"))
+	if err := config.SaveGlobalSettings(config.Settings{SubagentModelTiers: map[string]string{"opus": "configured-large"}}); err != nil {
+		t.Fatal(err)
+	}
 	agentDir := filepath.Join(project, ".claude", "agents")
 	if err := os.MkdirAll(agentDir, 0755); err != nil {
 		t.Fatal(err)
@@ -2260,10 +2264,10 @@ Review with the requested model.`
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(streamer.models) != 1 || streamer.models[0] != "claude-opus-4-8" {
+	if len(streamer.models) != 1 || streamer.models[0] != "configured-large" {
 		t.Fatalf("models = %+v", streamer.models)
 	}
-	if result.Model != "claude-opus-4-8" {
+	if result.Model != "configured-large" {
 		t.Fatalf("result = %+v", result)
 	}
 }

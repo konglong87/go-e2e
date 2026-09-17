@@ -1,7 +1,6 @@
 package nextsteps
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/konglong87/go-e2e/internal/config"
@@ -47,11 +46,10 @@ func TestConfigClampsCountToRange(t *testing.T) {
 	}
 }
 
-// Anthropic 主模型：tier 别名映射到具体的 haiku id。
-func TestWithDefaultsMapsAnthropicParentToHaiku(t *testing.T) {
+func TestWithDefaultsInheritsParentWithoutConfiguredTier(t *testing.T) {
 	got := Config{}.WithDefaults("claude-sonnet-4-6", nil).Model
-	if !strings.Contains(got, "haiku") {
-		t.Errorf("Model = %q, want a haiku model", got)
+	if got != "claude-sonnet-4-6" {
+		t.Errorf("Model = %q, want the parent model", got)
 	}
 }
 

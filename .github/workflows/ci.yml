@@ -99,13 +99,13 @@ jobs:
       - run: go install github.com/swaggo/swag/cmd/swag@v1.16.4
 
       - name: 重新生成 docs/swagger.json
-        run: swag init -g cmd/golang-cc/main.go --parseInternal --parseDependency
+        run: swag init -g cmd/go-e2e/main.go --parseInternal --parseDependency
 
       - name: swagger 生成物与注解一致
         run: |
           if ! git diff --exit-code -- docs/swagger.json docs/swagger.yaml docs/docs.go; then
             echo "::error::docs/ 下的 swagger 生成物与 internal/server 的注解不一致。"
-            echo "::error::本地执行：swag init -g cmd/golang-cc/main.go --parseInternal --parseDependency"
+            echo "::error::本地执行：swag init -g cmd/go-e2e/main.go --parseInternal --parseDependency"
             echo "::error::若是新端点漏了 @Router 注解，补到 internal/server/swagger_annotations.go。"
             exit 1
           fi

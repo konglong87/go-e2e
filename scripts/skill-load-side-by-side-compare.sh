@@ -25,7 +25,7 @@ Flags:
   --work-dir <path>       Artifact directory. Default:
                           /tmp/golang-cc-skill-load-side-by-side-<timestamp>
   --upstream-dir <path>   Original Claude Code source/extract dir. Default:
-                          <repo-parent>/claude_code_src_2026 (override: GOLANG_CC_UPSTREAM_DIR)
+                          <repo-parent>/claude_code_src_2026 (override: GO_E2E_UPSTREAM_DIR)
   --model <name>          Model name for both runs. Default: claude-sonnet-4-6.
   --prompt-profile <name> golang-cc prompt profile. Default: claude-compatible.
   --max-tokens <n>        golang-cc max output tokens. Default: 32000.

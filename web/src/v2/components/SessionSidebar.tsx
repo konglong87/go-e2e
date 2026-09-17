@@ -1,6 +1,7 @@
 import { Archive, Ellipsis, Filter, Folder, GripVertical, Plus, Search, Settings, Share2, Square, X } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState, type ChangeEvent, type CSSProperties, type DragEvent, type JSX, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { useI18n } from "../../lib/i18n";
+import type { IdentityConfig } from "../../lib/types";
 import { webUIV2SessionPath } from "../routes";
 import type { SessionListFilters, SessionRef, SessionStatus, SessionSummary } from "../types";
 import { SESSION_REF_MIME_TYPE } from "./sessionContextDrag";
@@ -19,6 +20,7 @@ type SessionSidebarProps = {
   onMobileClose?: () => void;
   onStop?: (ref: SessionRef) => void;
   onArchive?: (ref: SessionRef) => void;
+  identity?: IdentityConfig;
 };
 
 const statuses: SessionStatus[] = ["idle", "queued", "running", "waiting_permission", "waiting_input", "blocked", "completed", "failed", "stopped", "archived"];
@@ -28,7 +30,7 @@ const sidebarMaxWidth = 380;
 const sidebarDefaultWidth = 288;
 const sidebarKeyboardStep = 8;
 
-export function SessionSidebar({ sessions, filters, selectedRef, onFiltersChange, onSelect, onContextDragStart, onOpenSettings, onCreateSession, onMobileClose, onStop, onArchive }: SessionSidebarProps): JSX.Element {
+export function SessionSidebar({ sessions, filters, selectedRef, onFiltersChange, onSelect, onContextDragStart, onOpenSettings, onCreateSession, onMobileClose, onStop, onArchive, identity }: SessionSidebarProps): JSX.Element {
   const { t } = useI18n();
   const [searchOpen, setSearchOpen] = useState(false);
   const searchButtonRef = useRef<HTMLButtonElement>(null);
@@ -165,6 +167,7 @@ export function SessionSidebar({ sessions, filters, selectedRef, onFiltersChange
       <div className="webui2-sidebar-bottom">
         {copyStatus ? <p aria-live="polite" className="webui2-copy-status">{copyStatus}</p> : null}
         <button aria-label={t("webui2.settings")} className="webui2-settings-launcher" onClick={onOpenSettings} title={t("webui2.settings")} type="button"><Settings aria-hidden="true" size={17} />{t("webui2.settings")}</button>
+        {identity ? <div className="webui2-sidebar-identity"><span className="webui2-sidebar-avatar">{(identity.userId || "U").slice(0, 1).toUpperCase()}</span><div><strong>{identity.tenantKey || t("webui2.brand")}</strong><small>{identity.userId || "—"}</small></div></div> : null}
       </div>
       <hr aria-label={t("webui2.resizeSidebar")} aria-orientation="vertical" aria-valuemax={sidebarMaxWidth} aria-valuemin={sidebarMinWidth} aria-valuenow={sidebarWidth} className="webui2-sidebar-resize" onKeyDown={resizeWithKeyboard} onPointerDown={startResize} tabIndex={0} />
     </aside>

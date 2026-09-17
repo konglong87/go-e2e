@@ -3,12 +3,12 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/product-env.sh"
 
 
-MYSQL_HOST="${GOLANG_CC_MYSQL_E2E_HOST:-127.0.0.1}"
-MYSQL_PORT="${GOLANG_CC_MYSQL_E2E_PORT:-3306}"
-MYSQL_USER="${GOLANG_CC_MYSQL_E2E_USER:-root}"
-MYSQL_PASSWORD="${GOLANG_CC_MYSQL_E2E_PASSWORD:-}"
-MYSQL_DATABASE="${GOLANG_CC_MYSQL_E2E_DATABASE:-golang_cc_tenant_e2e}"
-MYSQL_TIME_ZONE="${GOLANG_CC_MYSQL_E2E_TIME_ZONE:-%27%2B00%3A00%27}"
+MYSQL_HOST="${GO_E2E_MYSQL_E2E_HOST:-127.0.0.1}"
+MYSQL_PORT="${GO_E2E_MYSQL_E2E_PORT:-3306}"
+MYSQL_USER="${GO_E2E_MYSQL_E2E_USER:-root}"
+MYSQL_PASSWORD="${GO_E2E_MYSQL_E2E_PASSWORD:-}"
+MYSQL_DATABASE="${GO_E2E_MYSQL_E2E_DATABASE:-golang_cc_tenant_e2e}"
+MYSQL_TIME_ZONE="${GO_E2E_MYSQL_E2E_TIME_ZONE:-%27%2B00%3A00%27}"
 
 need() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -32,7 +32,7 @@ auth_prefix="$MYSQL_USER"
 if [[ -n "$MYSQL_PASSWORD" ]]; then
   auth_prefix="$MYSQL_USER:$MYSQL_PASSWORD"
 fi
-export GOLANG_CC_MYSQL_E2E_DSN="${GOLANG_CC_MYSQL_E2E_DSN:-$auth_prefix@tcp($MYSQL_HOST:$MYSQL_PORT)/$MYSQL_DATABASE?multiStatements=true&parseTime=true&loc=UTC&time_zone=$MYSQL_TIME_ZONE&charset=utf8mb4}"
+export GO_E2E_MYSQL_E2E_DSN="${GO_E2E_MYSQL_E2E_DSN:-$auth_prefix@tcp($MYSQL_HOST:$MYSQL_PORT)/$MYSQL_DATABASE?multiStatements=true&parseTime=true&loc=UTC&time_zone=$MYSQL_TIME_ZONE&charset=utf8mb4}"
 
 echo "Running tenant/server/storage MySQL E2E tests"
 go test ./internal/storage/mysql ./internal/tenant ./internal/server -run 'TestMySQLE2E' -count=1 -v

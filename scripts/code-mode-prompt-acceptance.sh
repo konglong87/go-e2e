@@ -54,7 +54,7 @@ Flags:
   --prompt <text>       Diagnostic prompt.
   --model <name>        Optional model override passed to golang-cc --model.
   --prompt-profile <name>
-                        Optional GOLANG_CC_PROMPT_PROFILE value, e.g. claude-compatible.
+                        Optional GO_E2E_PROMPT_PROFILE value, e.g. claude-compatible.
   --tools <names>       Comma-separated tools passed to --tools. Default: LS,Grep,Read.
   --no-tools-flag       Do not pass --tools, so the CLI uses its native default tool surface.
   --allowed-tools <patterns>
@@ -94,7 +94,7 @@ Flags:
                         Require at least one sub-agent scoped prompt dump record.
   --verify-only         Do not run the model; verify the existing --dump file.
   --allow-run-failure   Continue to prompt-dump verification if the model run exits non-zero.
-  --full                Set GOLANG_CC_DUMP_PROMPT_FULL=true for local debugging.
+  --full                Set GO_E2E_DUMP_PROMPT_FULL=true for local debugging.
   --force               Remove an existing --dump file before running the model.
   --resume <session_id> Resume context from an existing transcript before running.
   -h, --help            Show this help.
@@ -257,19 +257,19 @@ if [[ "$VERIFY_ONLY" != "true" ]]; then
   fi
   rm -f "$RUN_LOG"
 
-  export GOLANG_CC_DUMP_PROMPT_JSON="$DUMP_PATH"
+  export GO_E2E_DUMP_PROMPT_JSON="$DUMP_PATH"
   if [[ -n "$PROMPT_PROFILE" ]]; then
-    export GOLANG_CC_PROMPT_PROFILE="$PROMPT_PROFILE"
+    export GO_E2E_PROMPT_PROFILE="$PROMPT_PROFILE"
   else
-    unset GOLANG_CC_PROMPT_PROFILE || true
+    unset GO_E2E_PROMPT_PROFILE || true
   fi
   if [[ "$FULL_DUMP" == "true" ]]; then
-    export GOLANG_CC_DUMP_PROMPT_FULL="true"
+    export GO_E2E_DUMP_PROMPT_FULL="true"
   else
-    unset GOLANG_CC_DUMP_PROMPT_FULL || true
+    unset GO_E2E_DUMP_PROMPT_FULL || true
   fi
 
-  cmd=(go run ./cmd/golang-cc --cwd "$CWD" --max-turns "$MAX_TURNS")
+  cmd=(go run ./cmd/go-e2e --cwd "$CWD" --max-turns "$MAX_TURNS")
   if [[ -n "$MODEL" ]]; then
     cmd+=(--model "$MODEL")
   fi

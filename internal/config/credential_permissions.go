@@ -64,6 +64,9 @@ func CredentialPermissionWarnings(cwd string) []CredentialPermissionWarning {
 // settingsCarryCredentials reports whether the parsed settings contain a
 // plaintext secret, as opposed to a reference to one.
 func settingsCarryCredentials(settings Settings) bool {
+	if isPlaintextSecret(settings.APIKey) || isPlaintextSecret(settings.AuthToken) {
+		return true
+	}
 	for key, value := range settings.Env {
 		if isCredentialEnvKey(key) && isPlaintextSecret(value) {
 			return true

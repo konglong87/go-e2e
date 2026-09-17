@@ -27,12 +27,14 @@ import (
 var bundledAssets embed.FS
 
 type app struct {
-	mu     sync.Mutex
-	server *exec.Cmd
-	done   chan error
-	config desktopConfig
-	port   int
-	token  string
+	mu         sync.Mutex
+	server     *exec.Cmd
+	done       chan error
+	config     desktopConfig
+	port       int
+	token      string
+	windowCtx  context.Context
+	windowDone chan struct{}
 }
 
 func main() {
@@ -47,20 +49,27 @@ func main() {
 		os.Exit(1)
 	}
 	application := &app{port: port, token: token}
+	config, err := loadDesktopConfig()
+	if err != nil {
+		startupLog("load desktop config for window: " + err.Error())
+		config = desktopConfig{}
+	}
 	target, err := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", port))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 	if err := wails.Run(&options.App{
-		Title:      "go-e2e",
-		Width:      1440,
-		Height:     900,
-		MinWidth:   1024,
-		MinHeight:  700,
-		OnStartup:  application.startup,
-		OnDomReady: application.domReady,
-		OnShutdown: application.shutdown,
+		Title:            "go-e2e",
+		Width:            windowWidth(config),
+		Height:           windowHeight(config),
+		MinWidth:         minWindowWidth,
+		MinHeight:        minWindowHeight,
+		WindowStartState: windowStartState(config),
+		OnStartup:        application.startup,
+		OnDomReady:       application.domReady,
+		OnBeforeClose:    application.beforeClose,
+		OnShutdown:       application.shutdown,
 		AssetServer: &assetserver.Options{
 			Assets:  bundledAssets,
 			Handler: httputil.NewSingleHostReverseProxy(target),
@@ -73,6 +82,7 @@ func main() {
 }
 
 func (a *app) startup(ctx context.Context) {
+	a.setWindowContext(ctx)
 	startupLog("startup begin")
 	config, err := loadDesktopConfig()
 	if err != nil {
@@ -80,6 +90,7 @@ func (a *app) startup(ctx context.Context) {
 		wailsruntime.LogErrorf(ctx, "load desktop config: %v", err)
 		return
 	}
+	restoreWindowGeometry(ctx, config)
 	startupLog("config workspace=" + config.Workspace)
 	if config.Workspace == "" {
 		config.Workspace, err = chooseWorkspace(ctx)
@@ -98,7 +109,7 @@ func (a *app) startup(ctx context.Context) {
 	executable, err := locateServerExecutable()
 	if err != nil {
 		startupLog("locate server: " + err.Error())
-		wailsruntime.LogErrorf(ctx, "locate golang-cc executable: %v", err)
+		wailsruntime.LogErrorf(ctx, "locate go-e2e executable: %v", err)
 		return
 	}
 	startupLog("server executable=" + executable)
@@ -127,7 +138,7 @@ func (a *app) startup(ctx context.Context) {
 		// desktop/server process.
 		"GOLANG_CC_DISABLE_SCHEDULER=1",
 	)
-	serverLogPath := filepath.Join(filepath.Dir(sqlitePath), "desktop-v2-server.log")
+	serverLogPath := filepath.Join(filepath.Dir(sqlitePath), "go-e2e-server.log")
 	serverLog, logErr := os.OpenFile(serverLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if logErr != nil {
 		startupLog("open server log: " + logErr.Error())
@@ -140,7 +151,7 @@ func (a *app) startup(ctx context.Context) {
 	cmd.Dir, _ = os.Getwd()
 	if err := cmd.Start(); err != nil {
 		startupLog("start server: " + err.Error())
-		wailsruntime.LogErrorf(ctx, "start local golang-cc server: %v", err)
+		wailsruntime.LogErrorf(ctx, "start local go-e2e server: %v", err)
 		return
 	}
 	startupLog(fmt.Sprintf("server started pid=%d port=%d", cmd.Process.Pid, a.port))
@@ -157,9 +168,9 @@ func (a *app) startup(ctx context.Context) {
 
 	if !a.waitForServer(ctx) {
 		if state := cmd.ProcessState; state != nil && state.Exited() {
-			wailsruntime.LogErrorf(ctx, "local golang-cc server exited before readiness with code %d", state.ExitCode())
+			wailsruntime.LogErrorf(ctx, "local go-e2e server exited before readiness with code %d", state.ExitCode())
 		}
-		wailsruntime.LogErrorf(ctx, "local golang-cc server did not become ready on port %d", a.port)
+		wailsruntime.LogErrorf(ctx, "local go-e2e server did not become ready on port %d", a.port)
 		startupLog(fmt.Sprintf("server not ready port=%d", a.port))
 	} else {
 		startupLog(fmt.Sprintf("server ready port=%d", a.port))
@@ -167,8 +178,17 @@ func (a *app) startup(ctx context.Context) {
 }
 
 func (a *app) domReady(ctx context.Context) {
+	a.setWindowContext(ctx)
 	script := fmt.Sprintf(`window.__GO_E2E_DESKTOP_TOKEN__=%q; window.dispatchEvent(new Event("go-e2e-desktop-token"));`, a.token)
 	wailsruntime.WindowExecJS(ctx, script)
+	a.startWindowStateWatcher(ctx)
+}
+
+func (a *app) beforeClose(ctx context.Context) bool {
+	if err := a.persistWindowState(ctx); err != nil {
+		wailsruntime.LogErrorf(ctx, "save window state: %v", err)
+	}
+	return false
 }
 
 func newServerToken() (string, error) {
@@ -180,15 +200,14 @@ func newServerToken() (string, error) {
 }
 
 func startupLog(message string) {
-	root, err := os.UserConfigDir()
+	dir, err := desktopDataDir()
 	if err != nil {
 		return
 	}
-	dir := filepath.Join(root, "golang-cc")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return
 	}
-	file, err := os.OpenFile(filepath.Join(dir, "desktop-v2-startup.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	file, err := os.OpenFile(filepath.Join(dir, "go-e2e-startup.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return
 	}
@@ -197,18 +216,21 @@ func startupLog(message string) {
 }
 
 func desktopSQLitePath() (string, error) {
-	root, err := os.UserConfigDir()
+	dir, err := desktopDataDir()
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Join(root, "golang-cc")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "desktop-v2.sqlite"), nil
+	return filepath.Join(dir, "go-e2e.sqlite"), nil
 }
 
 func (a *app) shutdown(ctx context.Context) {
+	if err := a.persistWindowState(ctx); err != nil {
+		wailsruntime.LogErrorf(ctx, "save window state: %v", err)
+	}
+	a.stopWindowStateWatcher()
 	a.mu.Lock()
 	cmd := a.server
 	done := a.done
@@ -219,17 +241,19 @@ func (a *app) shutdown(ctx context.Context) {
 		return
 	}
 	if err := cmd.Process.Signal(os.Interrupt); err != nil {
-		wailsruntime.LogErrorf(ctx, "stop local golang-cc server: %v", err)
+		wailsruntime.LogErrorf(ctx, "stop local go-e2e server: %v", err)
 	}
 	_ = waitWithTimeout(done, cmd, 5*time.Second)
 }
 
 func locateServerExecutable() (string, error) {
-	if path := os.Getenv("GOLANG_CC_SERVER_BINARY"); path != "" {
-		return path, nil
+	for _, envName := range []string{"GO_E2E_SERVER_BINARY", "GOLANG_CC_SERVER_BINARY"} {
+		if path := os.Getenv(envName); path != "" {
+			return path, nil
+		}
 	}
 	if path, err := os.Executable(); err == nil {
-		candidate := filepath.Join(filepath.Dir(path), "golang-cc")
+		candidate := filepath.Join(filepath.Dir(path), "go-e2e")
 		if stdruntime.GOOS == "windows" {
 			candidate += ".exe"
 		}
@@ -237,7 +261,7 @@ func locateServerExecutable() (string, error) {
 			return candidate, nil
 		}
 	}
-	return "", fmt.Errorf("set GOLANG_CC_SERVER_BINARY or place golang-cc beside the desktop binary")
+	return "", fmt.Errorf("set GO_E2E_SERVER_BINARY or place go-e2e beside the desktop binary")
 }
 
 func serverPort() int {

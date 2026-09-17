@@ -2,7 +2,7 @@
 # Wails generates wails_tools.nsh and tmp/WebView2 bootstrapper beside this file.
 Unicode true
 !define PRODUCT_EXECUTABLE "go-e2e-desktop.exe"
-!define SIDECAR_EXECUTABLE "golang-cc.exe"
+!define SIDECAR_EXECUTABLE "go-e2e.exe"
 !include "wails_tools.nsh"
 
 # The sidecar build is currently amd64 only. Never silently ship it for ARM64.

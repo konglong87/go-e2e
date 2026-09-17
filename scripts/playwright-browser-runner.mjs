@@ -4,8 +4,13 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 
-const productEnv = suffix =>
-  process.env[`GOLANG_CC_${suffix}`] ?? process.env[`GOLANG_CLAUDE_CODE_${suffix}`];
+const productEnv = suffix => {
+  for (const prefix of ["GO_E2E_", "GOLANG_CC_", "GOLANG_CLAUDE_CODE_"]) {
+    const value = process.env[`${prefix}${suffix}`];
+    if (value !== undefined) return value;
+  }
+  return undefined;
+};
 
 const DEFAULT_TIMEOUT_MS = Number(productEnv("PLAYWRIGHT_TIMEOUT_MS") || 15000);
 const DEFAULT_VIEWPORT = { width: 1280, height: 800 };
@@ -280,7 +285,7 @@ function cleanSessionID(value) {
 
 async function selfTest() {
   const tmp = await mkdtemp(join(tmpdir(), "gcc-playwright-self-test-"));
-  process.env.GOLANG_CC_PLAYWRIGHT_STATE_DIR = tmp;
+  process.env.GO_E2E_PLAYWRIGHT_STATE_DIR = tmp;
   try {
     const { chromium } = await import("playwright");
     const browser = await chromium.launch({

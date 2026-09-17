@@ -135,6 +135,7 @@ func TestTaskToolSchemaExposesModelOverride(t *testing.T) {
 
 func TestTaskToolSingleModelOverrideReachesRequest(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
+	writeTaskSettings(t, filepath.Join(os.Getenv("HOME"), ".golang-cc", "settings.json"), `{"subagentModelTiers":{"opus":"configured-large"}}`)
 	streamer := &modelCapturingStreamer{}
 	input, _ := json.Marshal(map[string]any{"description": "demo", "prompt": "do it", "model": "opus"})
 	res := New(streamer, "claude-sonnet-4-6").Run(context.Background(), input, tools.Context{CWD: t.TempDir()})
@@ -142,8 +143,8 @@ func TestTaskToolSingleModelOverrideReachesRequest(t *testing.T) {
 		t.Fatalf("result = %+v", res)
 	}
 	got := streamer.captured()
-	if len(got) != 1 || got[0] != "claude-opus-4-8" {
-		t.Fatalf("request model = %v, want [claude-opus-4-8]", got)
+	if len(got) != 1 || got[0] != "configured-large" {
+		t.Fatalf("request model = %v, want [configured-large]", got)
 	}
 }
 
@@ -179,6 +180,7 @@ func TestTaskToolSingleModelOverrideUsesConfiguredTierOnNonAnthropicProvider(t *
 
 func TestTaskToolBatchPerItemModelReachesRequest(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
+	writeTaskSettings(t, filepath.Join(os.Getenv("HOME"), ".golang-cc", "settings.json"), `{"subagentModelTiers":{"opus":"configured-large"}}`)
 	streamer := &modelCapturingStreamer{}
 	input, _ := json.Marshal(map[string]any{
 		"tasks": []map[string]any{
@@ -195,7 +197,7 @@ func TestTaskToolBatchPerItemModelReachesRequest(t *testing.T) {
 	var sawOpus, sawParent bool
 	for _, m := range got {
 		switch m {
-		case "claude-opus-4-8":
+		case "configured-large":
 			sawOpus = true
 		case "claude-sonnet-4-6":
 			sawParent = true

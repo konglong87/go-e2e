@@ -117,7 +117,7 @@ jobs:
           $ErrorActionPreference = "Stop"
           $installer = (Resolve-Path "dist/go-e2e-setup.exe").Path
           $installDir = Join-Path $env:RUNNER_TEMP ("go-e2e packaging " + [guid]::NewGuid())
-          $registryKey = "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\go-e2ego-e2e"
+          $registryKey = "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\go-e2e"
           $shortcuts = @(
             (Join-Path ([Environment]::GetFolderPath("CommonPrograms")) "go-e2e.lnk"),
             (Join-Path ([Environment]::GetFolderPath("CommonDesktopDirectory")) "go-e2e.lnk")
@@ -132,7 +132,7 @@ jobs:
           $sentinelHash = (Get-FileHash $sentinel).Hash
           $payload = @{
             "go-e2e-desktop.exe" = "desktop-v2/build/bin/go-e2e-desktop.exe"
-            "golang-cc.exe" = "desktop-v2/golang-cc.exe"
+            "go-e2e.exe" = "desktop-v2/go-e2e.exe"
           }
           try {
             # NSIS /D must be the last argument, without quotes even when it contains spaces.
@@ -144,7 +144,7 @@ jobs:
                 throw "Installed payload mismatch: $name"
               }
             }
-            $buildInfo = go version -m (Join-Path $installDir "golang-cc.exe")
+            $buildInfo = go version -m (Join-Path $installDir "go-e2e.exe")
             if ($LASTEXITCODE -ne 0) { throw "Cannot read installed sidecar build settings" }
             if (($buildInfo -join "`n") -notmatch '\bCGO_ENABLED=1\b') {
               throw "Installed sidecar was built without CGO; SQLite would be unavailable"

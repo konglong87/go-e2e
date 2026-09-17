@@ -8,16 +8,19 @@
 .webui2-settings-center input, .webui2-settings-center select, .webui2-settings-center textarea { background: var(--webui2-surface); border: 1px solid var(--webui2-border); border-radius: 7px; color: var(--webui2-text); font: inherit; max-width: 100%; min-height: 38px; min-width: 0; padding: 9px 11px; }
 .webui2-settings-center textarea { line-height: 1.7; resize: vertical; }
 .webui2-settings-center input[type="checkbox"] { accent-color: #39896d; min-height: 18px; width: 18px; height: 18px; padding: 0; }
-.webui2-settings-center .settings-navigation { background: var(--webui2-bg); border-right: 1px solid var(--webui2-border); display: flex; flex-direction: column; overflow-y: auto; padding: 25px 16px 18px; }
+.webui2-settings-center .settings-navigation { background: var(--webui2-bg); border-right: 1px solid var(--webui2-border); display: flex; flex-direction: column; overflow: hidden; padding: 25px 16px 18px; }
 .webui2-settings-center .settings-brand { display: flex; align-items: center; font-weight: 700; font-size: 18px; gap: 9px; padding: 0 10px; }
 .webui2-settings-center .settings-brand img { width: 27px; height: 27px; }
 .webui2-settings-center .settings-back { background: transparent; border: 0; color: var(--webui2-text-muted); justify-content: flex-start; margin: 28px 0 24px; }
 .webui2-settings-center .settings-nav-label { color: var(--webui2-text-muted); font-size: 11px; margin-bottom: 11px; padding: 0 12px; }
-.webui2-settings-center nav { display: grid; gap: 5px; }
+.webui2-settings-center nav { display: block; flex: 1; min-height: 0; overflow-y: auto; }
 .webui2-settings-center nav button { background: transparent; border: 0; color: var(--webui2-text-muted); gap: 11px; justify-content: flex-start; min-height: 42px; text-align: left; }
 .webui2-settings-center nav button[aria-current="page"] { background: var(--webui2-surface-muted); color: var(--webui2-text); font-weight: 600; box-shadow: inset 3px 0 #748ba3; }
 .webui2-settings-center nav button.settings-nav-advanced { margin-top: 23px; }
-.webui2-settings-center .settings-identity { align-items: center; border-top: 1px solid var(--webui2-border); display: flex; gap: 10px; margin-top: auto; padding: 18px 10px 0; }
+.webui2-settings-center .settings-identity { align-items: center; border-top: 1px solid var(--webui2-border); display: flex; flex-shrink: 0; gap: 10px; margin-top: 16px; padding: 18px 10px 0; }
+.webui2-settings-center .settings-nav-group + .settings-nav-group { margin-top: 17px; }
+.webui2-settings-center .settings-nav-group .settings-nav-label { margin-bottom: 6px; padding-inline: 10px; text-transform: uppercase; letter-spacing: 0; }
+.webui2-settings-center .settings-nav-group nav { gap: 2px; }
 .webui2-settings-center .settings-identity > div { min-width: 0; }
 .webui2-settings-center .settings-identity strong { display: block; font-size: 12px; font-weight: 500; overflow-wrap: anywhere; }
 .webui2-settings-center .settings-identity small { color: var(--webui2-text-muted); display: block; margin-top: 3px; overflow-wrap: anywhere; font-size: 11px; }
@@ -81,6 +84,52 @@
 .webui2-settings-center .settings-environment-notice code { font-size: 11px; overflow-wrap: anywhere; }
 .webui2-settings-center .settings-environment-notice span { color: var(--webui2-text-muted); }
 .webui2-settings-center .settings-active-environment { color: var(--webui2-text-muted); font-size: 12px; margin-bottom: 14px; overflow-wrap: anywhere; }
+.webui2-settings-center .visual-settings-panel,
+.webui2-settings-center .observability-panel { display: grid; gap: 0; min-width: 0; }
+.webui2-settings-center .visual-settings-section,
+.webui2-settings-center .observability-section { border-top: 1px solid var(--webui2-border); padding: 25px 0 28px; }
+.webui2-settings-center .visual-settings-section-heading,
+.webui2-settings-center .observability-toolbar { align-items: flex-start; display: flex; gap: 24px; justify-content: space-between; min-width: 0; }
+.webui2-settings-center .visual-settings-section-heading h2,
+.webui2-settings-center .observability-toolbar h2 { align-items: center; display: flex; gap: 8px; margin: 0 0 7px; }
+.webui2-settings-center .visual-settings-section-heading p,
+.webui2-settings-center .observability-toolbar p { color: var(--webui2-text-muted); font-size: 12px; line-height: 1.65; margin: 0; max-width: 620px; }
+.webui2-settings-center .visual-settings-grid { border: 0; display: grid; gap: 20px 24px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 24px 0 0; min-width: 0; padding: 0; }
+.webui2-settings-center .visual-settings-field { color: var(--webui2-text-muted); display: grid; gap: 8px; min-width: 0; }
+.webui2-settings-center .visual-settings-field input,
+.webui2-settings-center .visual-settings-field select { width: 100%; }
+.webui2-settings-center .visual-settings-field input[type="color"] { min-height: 38px; padding: 4px; }
+.webui2-settings-center .visual-settings-range { grid-template-columns: minmax(0, 1fr) 54px; }
+.webui2-settings-center .visual-settings-range > span { grid-column: 1 / -1; }
+.webui2-settings-center .visual-settings-range output { align-self: center; color: var(--webui2-text); font-variant-numeric: tabular-nums; text-align: right; }
+.webui2-settings-center .visual-settings-range input { accent-color: var(--webui2-accent); min-height: 20px; padding: 0; }
+.webui2-settings-center .visual-settings-toggle { align-items: center; display: flex; gap: 12px; justify-content: space-between; min-width: 180px; }
+.webui2-settings-center .visual-settings-toggle input { accent-color: var(--webui2-accent); flex: 0 0 18px; height: 18px; min-height: 18px; width: 18px; }
+.webui2-settings-center .visual-settings-footer { align-items: center; border-top: 1px solid var(--webui2-border); display: flex; gap: 16px; justify-content: space-between; padding: 15px 0; }
+.webui2-settings-center .visual-settings-footer > span { color: var(--webui2-text-muted); font-size: 12px; }
+.webui2-settings-center .visual-settings-footer > div { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.webui2-settings-center .visual-settings-footer button { min-height: 32px; }
+.webui2-settings-center .visual-settings-footer button.primary { background: var(--webui2-accent); border-color: var(--webui2-accent); color: var(--webui2-accent-text); }
+.webui2-settings-center .visual-settings-success,
+.webui2-settings-center .visual-settings-error { align-items: center; display: flex; gap: 7px; font-size: 12px; line-height: 1.6; margin: 14px 0; overflow-wrap: anywhere; }
+.webui2-settings-center .visual-settings-success { color: var(--webui2-accent); }
+.webui2-settings-center .visual-settings-error { color: var(--webui2-danger); }
+.webui2-settings-center .pet-settings-layout { align-items: start; display: grid; gap: 34px; grid-template-columns: minmax(0, 1fr) 180px; margin-top: 23px; }
+.webui2-settings-center .pet-settings-layout .visual-settings-grid { margin-top: 0; }
+.webui2-settings-center .pet-settings-preview { align-items: center; background: var(--webui2-surface-muted); border: 1px solid var(--webui2-border); display: flex; justify-content: center; min-height: 220px; overflow: hidden; position: relative; }
+.webui2-settings-center .pet-settings-preview .webui2-pet-scene { bottom: auto; position: relative; right: auto; transform: scale(var(--pet-scale)); transform-origin: center; }
+.webui2-settings-center .observability-toolbar button { flex-shrink: 0; }
+.webui2-settings-center .observability-facts { border-block: 1px solid var(--webui2-border); display: grid; gap: 20px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; padding: 20px 0; }
+.webui2-settings-center .observability-facts dt { color: var(--webui2-text-muted); font-size: 11px; margin-bottom: 7px; }
+.webui2-settings-center .observability-facts dd { font-size: 17px; margin: 0; }
+.webui2-settings-center .observability-facts dd[data-status="ok"] { color: var(--webui2-accent); }
+.webui2-settings-center .observability-facts dd[data-status="error"] { color: var(--webui2-danger); }
+.webui2-settings-center .observability-list { list-style: none; margin: 0; padding: 0; }
+.webui2-settings-center .observability-list li { align-items: baseline; border-bottom: 1px solid var(--webui2-border); display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr) 120px minmax(120px, auto); padding: 11px 0; }
+.webui2-settings-center .observability-list span,
+.webui2-settings-center .observability-list time,
+.webui2-settings-center .observability-empty { color: var(--webui2-text-muted); font-size: 12px; }
+.webui2-settings-center .observability-list time { text-align: right; }
 .p2-management-panel { display: grid; gap: 22px; }
 .p2-management-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--webui2-border); padding-bottom: 18px; }
 .p2-management-toolbar h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 7px; font-size: 18px; }
@@ -98,3 +147,14 @@
 .p2-management-list p { margin: 6px 0 0; color: var(--webui2-text-muted); white-space: pre-wrap; overflow-wrap: anywhere; }
 @media(max-width: 1050px) { .webui2-settings-center { grid-template-columns: 207px minmax(0, 1fr); } .webui2-settings-center .settings-content { padding: 28px 25px 50px; } .webui2-settings-center .settings-topbar { padding: 12px 25px; } }
 @media(max-width: 700px) { .webui2-settings-center { display: block; } .webui2-settings-center .settings-main { height: 100%; } .webui2-settings-center .settings-navigation { display: none; position: fixed; inset: 0 auto 0 0; width: 232px; max-width: calc(100vw - 40px); z-index: 52; } .webui2-settings-center .settings-navigation[data-open="true"] { display: flex; } .webui2-settings-center .settings-nav-backdrop { background: var(--webui2-overlay); border: 0; border-radius: 0; inset: 0; position: fixed; z-index: 51; } .webui2-settings-center .settings-mobile-nav-open, .webui2-settings-center .settings-mobile-nav-close { display: inline-flex; background: transparent; border: 0; } .webui2-settings-center .settings-mobile-nav-close { margin-left: auto; } .webui2-settings-center .settings-brand { padding: 0; } .webui2-settings-center .settings-content { padding: 25px 19px 50px; } .webui2-settings-center .settings-topbar { min-height: 58px; padding: 10px 13px; } .webui2-settings-center .settings-scope { display: none; } .webui2-settings-center .settings-breadcrumb { gap: 8px; } .webui2-settings-center .settings-page-heading { align-items: flex-start; flex-direction: column; gap: 12px; } .webui2-settings-center h1 { font-size: 22px; } .webui2-settings-center .settings-form-grid { grid-template-columns: 1fr; } .webui2-settings-center .settings-identity-fields { grid-template-columns: 1fr; gap: 17px; } .p2-management-create { grid-template-columns: minmax(0, 1fr); } .p2-management-create label.full { grid-column: auto; } }
+.webui2-settings-center .settings-nav-group { display: grid; }
+.webui2-settings-center .settings-nav-group button.settings-nav-advanced { margin-top: 0; }
+@media(max-width: 700px) {
+  .webui2-settings-center .pet-settings-layout { grid-template-columns: minmax(0, 1fr); }
+  .webui2-settings-center .visual-settings-grid { grid-template-columns: minmax(0, 1fr); }
+  .webui2-settings-center .visual-settings-section-heading { flex-wrap: wrap; gap: 12px; }
+  .webui2-settings-center .observability-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .webui2-settings-center .observability-list li { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .webui2-settings-center .observability-list time { text-align: left; }
+  .webui2-settings-center .visual-settings-footer { align-items: flex-start; flex-direction: column; }
+}

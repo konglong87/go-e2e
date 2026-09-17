@@ -1,5 +1,5 @@
 {
-  "name": "golang-cc-browser-runner",
+  "name": "go-e2e-browser-runner",
   "private": true,
   "type": "module",
   "scripts": {

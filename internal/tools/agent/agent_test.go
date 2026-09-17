@@ -534,12 +534,18 @@ func TestAgentCompatReturnsCapabilityLoopDecisionContext(t *testing.T) {
 func TestAgentCompatPassesModelOverride(t *testing.T) {
 	project := t.TempDir()
 	t.Setenv("HOME", t.TempDir())
+	if err := os.MkdirAll(filepath.Join(os.Getenv("HOME"), ".golang-cc"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(os.Getenv("HOME"), ".golang-cc", "settings.json"), []byte(`{"subagentModelTiers":{"opus":"configured-large"}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
 	streamer := &captureMessageStreamer{}
 	res := NewCompat(streamer, "claude-sonnet-4-6", tools.NewRegistry()).Run(context.Background(), json.RawMessage(`{"description":"audit","prompt":"do it","model":"opus"}`), tools.Context{CWD: project})
 	if res.IsError || res.Content != "resumed done" {
 		t.Fatalf("result = %+v", res)
 	}
-	if got := streamer.lastModel(); got != "claude-opus-4-8" {
+	if got := streamer.lastModel(); got != "configured-large" {
 		t.Fatalf("model = %q", got)
 	}
 }

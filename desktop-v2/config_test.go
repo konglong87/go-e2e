@@ -46,3 +46,67 @@ func TestLoadDesktopConfigClearsMissingWorkspace(t *testing.T) {
 		t.Fatalf("workspace = %q, want empty", got.Workspace)
 	}
 }
+
+func TestDesktopDataDirDefaultsToGoE2EOwnedHomeDirectory(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("HOME", root)
+	t.Setenv("GOLANG_CC_DESKTOP_CONFIG_DIR", "")
+	got, err := desktopDataDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(root, ".golang-cc")
+	if got != want {
+		t.Fatalf("desktop data dir = %q, want %q", got, want)
+	}
+}
+
+func TestDesktopConfigRoundTripPreservesWindowState(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("GOLANG_CC_DESKTOP_CONFIG_DIR", root)
+	workspace := filepath.Join(root, "project")
+	if err := os.Mkdir(workspace, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	want := desktopConfig{
+		Workspace: workspace,
+		Window: windowState{
+			Geometry:  DesktopWindowGeometry{X: 120, Y: 80, Width: 1280, Height: 760},
+			Maximized: true,
+		},
+	}
+	if err := saveDesktopConfig(want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := loadDesktopConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("config = %#v, want %#v", got, want)
+	}
+}
+
+func TestLoadDesktopConfigDropsInvalidWindowGeometry(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("GOLANG_CC_DESKTOP_CONFIG_DIR", root)
+	if err := saveDesktopConfig(desktopConfig{
+		Window: windowState{
+			Geometry:   DesktopWindowGeometry{X: 10, Y: 20, Width: 640, Height: 480},
+			Fullscreen: true,
+			Maximized:  true,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := loadDesktopConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Window.Geometry != (DesktopWindowGeometry{}) {
+		t.Fatalf("geometry = %#v, want zero geometry", got.Window.Geometry)
+	}
+	if !got.Window.Fullscreen || got.Window.Maximized {
+		t.Fatalf("window state = %#v, want fullscreen only", got.Window)
+	}
+}

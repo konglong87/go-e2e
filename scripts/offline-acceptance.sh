@@ -12,6 +12,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPTS_DIR="$ROOT_DIR/scripts"
+source "$SCRIPTS_DIR/lib/product-env.sh"
 
 failures=0
 checks=0
@@ -85,10 +86,10 @@ echo "== release gate refuses cleanly without its prerequisites"
 # AUDIT-P0-19: this gate depends on agent-proving-ground reports that are APG
 # *outputs*. It must say so, not die on a bare "no such file". Point it at a
 # guaranteed-absent tree and check the guidance is there.
-gate_output="$(GOLANG_CC_APG_DIR=/nonexistent/apg GOLANG_CC_UPSTREAM_DIR=/nonexistent/upstream \
+gate_output="$(GO_E2E_APG_DIR=/nonexistent/apg GO_E2E_UPSTREAM_DIR=/nonexistent/upstream \
   run_bounded bash "$SCRIPTS_DIR/agent-capability-full-release-acceptance.sh" 2>&1 || true)"
 gate_status=0
-GOLANG_CC_APG_DIR=/nonexistent/apg GOLANG_CC_UPSTREAM_DIR=/nonexistent/upstream \
+GO_E2E_APG_DIR=/nonexistent/apg GO_E2E_UPSTREAM_DIR=/nonexistent/upstream \
   run_bounded bash "$SCRIPTS_DIR/agent-capability-full-release-acceptance.sh" >/dev/null 2>&1 || gate_status=$?
 if [[ "$gate_status" -ne 2 ]]; then
   fail "release gate exited $gate_status without prerequisites, want 2"

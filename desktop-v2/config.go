@@ -11,21 +11,73 @@ import (
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-const desktopConfigFileName = "config-v2.json"
+const (
+	desktopConfigFileName = "config-v2.json"
+	desktopDataDirName    = ".golang-cc"
+	desktopConfigDirEnv   = "GOLANG_CC_DESKTOP_CONFIG_DIR"
+)
 
-type desktopConfig struct {
-	Workspace string `json:"workspace,omitempty"`
+const (
+	defaultWindowWidth  = 1440
+	defaultWindowHeight = 900
+	minWindowWidth      = 1024
+	minWindowHeight     = 700
+)
+
+type DesktopWindowGeometry struct {
+	X      int `json:"x"`
+	Y      int `json:"y"`
+	Width  int `json:"width"`
+	Height int `json:"height"`
 }
 
-func desktopConfigPath() (string, error) {
-	if root := strings.TrimSpace(os.Getenv("GOLANG_CC_DESKTOP_CONFIG_DIR")); root != "" {
-		return filepath.Join(root, "golang-cc", desktopConfigFileName), nil
+func (g DesktopWindowGeometry) valid() bool {
+	return g.Width >= minWindowWidth && g.Height >= minWindowHeight
+}
+
+type windowState struct {
+	Geometry   DesktopWindowGeometry `json:"geometry,omitempty"`
+	Maximized  bool                  `json:"maximized,omitempty"`
+	Fullscreen bool                  `json:"fullscreen,omitempty"`
+}
+
+func (s windowState) normalized() windowState {
+	if !s.Geometry.valid() {
+		s.Geometry = DesktopWindowGeometry{}
 	}
-	root, err := os.UserConfigDir()
+	if s.Fullscreen {
+		s.Maximized = false
+	}
+	return s
+}
+
+type desktopConfig struct {
+	Workspace string      `json:"workspace,omitempty"`
+	Window    windowState `json:"window,omitempty"`
+}
+
+func (c desktopConfig) normalized() desktopConfig {
+	c.Window = c.Window.normalized()
+	return c
+}
+
+func desktopDataDir() (string, error) {
+	if root := strings.TrimSpace(os.Getenv(desktopConfigDirEnv)); root != "" {
+		return filepath.Join(root, "golang-cc"), nil
+	}
+	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(root, "golang-cc", desktopConfigFileName), nil
+	return filepath.Join(home, desktopDataDirName), nil
+}
+
+func desktopConfigPath() (string, error) {
+	dir, err := desktopDataDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, desktopConfigFileName), nil
 }
 
 func loadDesktopConfig() (desktopConfig, error) {
@@ -51,7 +103,7 @@ func loadDesktopConfig() (desktopConfig, error) {
 			config.Workspace = ""
 		}
 	}
-	return config, nil
+	return config.normalized(), nil
 }
 
 func saveDesktopConfig(config desktopConfig) error {
@@ -62,7 +114,7 @@ func saveDesktopConfig(config desktopConfig) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	data, err := json.MarshalIndent(config, "", "  ")
+	data, err := json.MarshalIndent(config.normalized(), "", "  ")
 	if err != nil {
 		return err
 	}

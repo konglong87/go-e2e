@@ -80,7 +80,7 @@ REPORT_JSON="$WORK_DIR/report.json"
 HOST_HOME="${HOME:-}"
 
 echo "building temporary binary: $BIN" >&2
-(cd "$ROOT_DIR" && go build -o "$BIN" ./cmd/golang-cc)
+(cd "$ROOT_DIR" && go build -o "$BIN" ./cmd/go-e2e)
 
 copy_auth_settings() {
   local target_home="$1"
@@ -195,9 +195,9 @@ EOF_AGENTS
   (
     export HOME="$home"
     export CLAUDE_CONFIG_DIR="$config"
-    export GOLANG_CC_DUMP_PROMPT_JSON="$dump"
-    export GOLANG_CC_DUMP_PROMPT_FULL="true"
-    export GOLANG_CC_PROMPT_PROFILE="$PROMPT_PROFILE"
+    export GO_E2E_DUMP_PROMPT_JSON="$dump"
+    export GO_E2E_DUMP_PROMPT_FULL="true"
+    export GO_E2E_PROMPT_PROFILE="$PROMPT_PROFILE"
     "${cmd[@]}"
   ) >"$log" 2>&1 || run_status=$?
 

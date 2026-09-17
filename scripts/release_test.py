@@ -50,9 +50,9 @@ pathlib.Path(sys.argv[sys.argv.index('-o') + 1]).write_text('synthetic binary')
             sums = dict(line.split()[::-1] for line in (root / "dist/SHA256SUMS").read_text().splitlines())
             self.assertEqual(len(sums), len(TARGETS))
             for target in TARGETS:
-                stage = f"golang-cc_{VERSION}_{target}"
+                stage = f"go-e2e_{VERSION}_{target}"
                 is_windows = target.startswith("windows")
-                binary = "golang-cc.exe" if is_windows else "golang-cc"
+                binary = "go-e2e.exe" if is_windows else "go-e2e"
                 archive = root / "dist" / (stage + (".zip" if is_windows else ".tar.gz"))
                 self.assertEqual(hashlib.sha256(archive.read_bytes()).hexdigest(), sums[archive.name])
                 expected = {f"{stage}/{name}" for name in

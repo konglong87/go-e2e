@@ -289,7 +289,8 @@ func runAnthropicThinkingProfile(ctx context.Context, opts Options, started time
 		Total:       1,
 		Environment: Environment{CWD: opts.CWD, Suite: opts.Suite, Dataset: opts.Dataset, Mode: "live-anthropic-thinking"},
 	}
-	if strings.TrimSpace(firstEnv("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN")) == "" {
+	cfg := config.LoadForCWD(opts.CWD)
+	if cfg.ValidateProviderRoute() != nil || config.ResolveModel(opts.CWD, "") == "" || !config.ProviderKindAnthropic(cfg.Provider) {
 		report.Status = "skipped"
 		report.Skipped = 1
 		report.Cases = []CaseResult{{
@@ -297,12 +298,12 @@ func runAnthropicThinkingProfile(ctx context.Context, opts Options, started time
 			Type:   "anthropic_thinking",
 			Status: "skipped",
 			Checks: []CheckResult{{
-				Name:   "env.auth",
+				Name:   "settings.provider",
 				Status: "skipped",
-				Detail: "set ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN to run live Anthropic thinking eval",
+				Detail: "configure a Messages-compatible provider, endpoint, credentials and model in ~/.golang-cc/settings.json",
 			}},
 			Evidence: map[string]any{
-				"required_env": []string{"ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN"},
+				"required_settings": []string{"provider", "baseURL", "apiKey or authToken", "model"},
 			},
 		}}
 		return finishReport(report, started, opts)
@@ -623,8 +624,7 @@ func runAnthropicThinkingCase(ctx context.Context, opts Options) CaseResult {
 	started := time.Now()
 	result := CaseResult{ID: "anthropic_thinking_signature", Type: "anthropic_thinking", Status: "passed", Evidence: map[string]any{}}
 	cfg := config.LoadForCWD(opts.CWD)
-	cfg.Provider = firstNonEmpty(cfg.Provider, "anthropic-compatible")
-	model := firstNonEmpty(config.ResolveModel(opts.CWD, ""), "claude-sonnet-4-5-20250929")
+	model := config.ResolveModel(opts.CWD, "")
 	client := anthropic.NewClient(cfg)
 	var sawThinking, sawSignature bool
 	request := anthropic.MessagesRequest{

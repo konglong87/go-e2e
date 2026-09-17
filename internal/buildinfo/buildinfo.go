@@ -1,4 +1,4 @@
-// Package buildinfo exposes the immutable identity embedded in a golang-cc binary.
+// Package buildinfo exposes the immutable identity embedded in a go-e2e binary.
 package buildinfo
 
 import (
@@ -7,11 +7,15 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/konglong87/go-e2e/internal/product"
 )
 
 const (
+	// SchemaVersion is persisted/consumed metadata and remains at v1 across the
+	// executable rename.
 	SchemaVersion = "golang-cc.build-info/v1"
-	Product       = "golang-cc"
+	Product       = product.Name
 	devVersion    = "dev"
 )
 

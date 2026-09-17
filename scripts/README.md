@@ -41,7 +41,7 @@ check that no AppleDouble metadata is shipped. `build.sh` always uses
 
 ### Memory release acceptance
 
-`memory-release-acceptance.py` needs Python 3, PyYAML, a built `golang-cc`
+`memory-release-acceptance.py` needs Python 3, PyYAML, a built `go-e2e`
 binary and the named provider in global settings. It calls a real model and
 incurs provider usage. It copies only that provider into an isolated `0600`
 settings file, uses fresh HOME/projects and records evidence under a new `0700`
@@ -51,8 +51,8 @@ guidance. Neither real memories nor global settings are modified.
 ```bash
 python3 -m unittest scripts/memory_release_acceptance_test.py
 python3 scripts/memory-release-acceptance.py \
-  --binary ./golang-cc \
-  --out-dir /Users/Shared/golang-cc-memory-acceptance-run1 \
+  --binary ./go-e2e \
+  --out-dir /Users/Shared/go-e2e-memory-acceptance-run1 \
   --provider sensenova-glm-5.2
 ```
 
@@ -104,8 +104,8 @@ the persisted defaults, so configuration remains editable after persistence.
 
 `web-agent-start.sh` enables the tenant image tools for local WebUI acceptance by
 default, referencing `jiuan-responses-gpt-5.6sol` and `gpt-image-2` without copying
-credentials into the command line. Override `GOLANG_CC_WEB_AGENT_IMAGE_PROVIDER`
-or provide a complete `GOLANG_CC_WEB_AGENT_IMAGE_SETTINGS` JSON value when using
+credentials into the command line. Override `GO_E2E_WEB_AGENT_IMAGE_PROVIDER`
+or provide a complete `GO_E2E_WEB_AGENT_IMAGE_SETTINGS` JSON value when using
 another configured image provider.
 
 `image-worker-screen.sh` runs the durable image queue independently from the
@@ -113,10 +113,10 @@ channel process. Each instance is scoped to exactly one tenant and can be
 started, inspected, restarted, or stopped with:
 
 ```bash
-export GOLANG_CC_IMAGE_WORKER_NAME=tenant-7-a
-export GOLANG_CC_IMAGE_WORKER_TENANT_ID=7
-export GOLANG_CC_MYSQL_DSN='user:password@tcp(127.0.0.1:3306)/golang_cc'
-export GOLANG_CC_IMAGE_WORKER_SETTINGS_FILE="$HOME/.golang-cc/settings.json"
+export GO_E2E_IMAGE_WORKER_NAME=tenant-7-a
+export GO_E2E_IMAGE_WORKER_TENANT_ID=7
+export GO_E2E_MYSQL_DSN='user:password@tcp(127.0.0.1:3306)/golang_cc'
+export GO_E2E_IMAGE_WORKER_SETTINGS_FILE="$HOME/.golang-cc/settings.json"
 scripts/image-worker-screen.sh start
 scripts/image-worker-screen.sh status
 scripts/image-worker-screen.sh restart
@@ -141,10 +141,12 @@ All of these resolve the Go toolchain from `PATH` (override with `GO_BIN`). They
 used to hardcode `/usr/local/go/bin/go`, which on a machine whose system Go is
 older than `go.mod` requires made a working script look broken.
 
-### 2. Needs a real `ANTHROPIC_API_KEY`
+### 2. Needs a configured model provider
 
-These call a live model. They cost money and cannot run in CI. Every one of them
-is opt-in: run it by hand when you are validating a change to that behaviour.
+Live model checks use a provider explicitly configured in
+`~/.golang-cc/settings.json`. They can incur usage and are opt-in. Older
+comparison harnesses may require migration before use; they are not instructions
+to import another product's credentials.
 
 ```
 agent-capability-loop-acceptance.sh              agent-capability-loop-compact-acceptance.sh
@@ -174,13 +176,13 @@ Two sibling repositories, neither vendored here:
 
 | Repo | What it is | Override |
 |---|---|---|
-| `claude_code_src_2026` | original Claude Code source, the A/B baseline | `GOLANG_CC_UPSTREAM_DIR` |
-| `agent-proving-ground` | agent test harness whose `reports/` the release gate consumes | `GOLANG_CC_APG_DIR` |
+| `claude_code_src_2026` | original Claude Code source, the A/B baseline | `GO_E2E_UPSTREAM_DIR` |
+| `agent-proving-ground` | agent test harness whose `reports/` the release gate consumes | `GO_E2E_APG_DIR` |
 
 By default both are looked up as siblings of this repository's main checkout
 (resolved via `git rev-parse --git-common-dir`, so it works from a worktree too).
-`GOLANG_CC_COMPANION_ROOT` moves both at once. Legacy `GO_CLAUDE_*` names remain
-fallbacks. See `lib/external-repos.sh`.
+`GO_E2E_COMPANION_ROOT` moves both at once. Legacy `GOLANG_CC_*` and
+`GO_CLAUDE_*` names remain fallbacks. See `lib/external-repos.sh`.
 
 ```
 agent-cancelled-side-by-side-compare.sh          agent-child-error-side-by-side-compare.sh

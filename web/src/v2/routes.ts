@@ -1,6 +1,6 @@
 export type SessionRef = `tenant:${string}` | `local:${string}`;
 
-export const SETTINGS_SECTIONS = ["general", "agent", "profiles", "prompts", "memory", "skills", "teams", "provisioning", "models", "json", "effective"] as const;
+export const SETTINGS_SECTIONS = ["general", "appearance", "pet", "models", "observability", "profiles", "feishu", "teams", "prompts", "memory", "skills", "agent", "provisioning", "json", "effective"] as const;
 export type SettingsSection = typeof SETTINGS_SECTIONS[number];
 export type WebUIV2Route = { kind: "index" } | { kind: "session"; ref: SessionRef } | { kind: "settings"; section: SettingsSection } | { kind: "invalid" };
 

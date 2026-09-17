@@ -24,7 +24,7 @@ Flags:
   --work-dir <path>       Output/work directory. Default: /tmp/golang-cc-skill-compact-<timestamp>.
   --dump <path>           Prompt dump JSONL path. Default: /tmp/golang-cc-skill-compact-<timestamp>.jsonl.
   --model <name>          Model name sent to the local stub provider.
-  --prompt-profile <name> GOLANG_CC_PROMPT_PROFILE value.
+  --prompt-profile <name> GO_E2E_PROMPT_PROFILE value.
   --force                 Remove existing --work-dir/--dump first.
   -h, --help              Show this help.
 USAGE
@@ -319,11 +319,11 @@ if [[ ! -s "$READY_FILE" ]]; then
 fi
 provider_port="$(node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); console.log(p.port)' "$READY_FILE")"
 
-export GOLANG_CC_CONFIG_DIR="$CONFIG_DIR"
-export GOLANG_CC_DUMP_PROMPT_JSON="$DUMP_PATH"
-export GOLANG_CC_DUMP_PROMPT_FULL="true"
-export GOLANG_CC_PROMPT_PROFILE="$PROMPT_PROFILE"
-export GOLANG_CC_PROVIDER="custom"
+export GO_E2E_CONFIG_DIR="$CONFIG_DIR"
+export GO_E2E_DUMP_PROMPT_JSON="$DUMP_PATH"
+export GO_E2E_DUMP_PROMPT_FULL="true"
+export GO_E2E_PROMPT_PROFILE="$PROMPT_PROFILE"
+export GO_E2E_PROVIDER="custom"
 export HOME="$HOME_DIR"
 if [[ -n "$REAL_GOMODCACHE" ]]; then
   export GOMODCACHE="$REAL_GOMODCACHE"
@@ -338,7 +338,7 @@ export CLAUDE_CODE_MODEL="$MODEL"
 set +e
 (
   cd "$ROOT_DIR"
-  go run ./cmd/golang-cc \
+  go run ./cmd/go-e2e \
     --cwd "$WORKSPACE" \
     --max-turns 3 \
     --model "$MODEL" \

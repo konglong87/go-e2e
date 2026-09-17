@@ -1,7 +1,7 @@
 # go-e2e Desktop
 
 go-e2e 是基于 Wails v2 的桌面 AI 工作台，复用本仓库的 WebUI 2.0、
-HTTP/SSE API 和 golang-cc runtime。不是独立 Go module，必须从仓库根目录构建；
+HTTP/SSE API 和 runtime。不是独立 Go module，必须从仓库根目录构建；
 旧版桌面在 `desktop/`，不要混用两个构建脚本。
 
 ## 从源码构建
@@ -24,7 +24,7 @@ open desktop-v2/build/bin/go-e2e.app
 ```
 
 脚本以 `VITE_DESKTOP_UI_VERSION=2` 构建前端并复制到 `desktop-v2/frontend/dist`，
-编译本地 server，再用 Wails 打包，并将 `golang-cc` 放入 app 的
+编译本地 server，再用 Wails 打包，并将 `go-e2e` 放入 app 的
 `Contents/MacOS/`。不能只复制桌面可执行文件而遗漏 server。
 脚本会重建 `web/dist`；若随后运行独立 Web server，应重新执行
 `npm --prefix web run build` 生成 `/webui/` 前缀的 Web 产物。
@@ -37,7 +37,7 @@ node scripts/test-desktop-v2-windows-packaging.mjs --require-pwsh
 ```
 
 脚本目标产物为 `dist\go-e2e-setup.exe`，仅支持 Windows amd64。
-自定义 Wails v2.10.2 NSIS 模板将 `go-e2e-desktop.exe` 与 `golang-cc.exe`
+自定义 Wails v2.10.2 NSIS 模板将 `go-e2e-desktop.exe` 与 `go-e2e.exe`
 安装到同一目录；卸载删除两个程序和安装注册信息，保留用户配置、SQLite、
 WebView2 数据及安装目录内的用户文件。npm、Go、Wails 任一步骤失败都会中止，
 不会将旧安装包复制为本次产物。构建会重建前端和 `desktop-v2/build/bin`。
@@ -64,18 +64,18 @@ Windows 安装/卸载实际运行、WebView2 与 GUI 首次启动仍须在 Windo
 ## 配置与数据
 
 已实现本地 SQLite 与启动 migration，**不需要安装 MySQL**。
-桌面配置和数据默认位于系统用户配置目录下的 `golang-cc/`：
+桌面配置和数据默认位于 `~/.golang-cc/`：
 
 | 文件 | 用途 |
 | --- | --- |
 | `config-v2.json` | 工作目录选择 |
-| `desktop-v2.sqlite` | 本地会话、消息、提示词模板等 |
-| `desktop-v2-server.log` | 本地 server 诊断 |
-| `desktop-v2-startup.log` | 桌面启动诊断 |
+| `go-e2e.sqlite` | 本地会话、消息、提示词模板等 |
+| `go-e2e-server.log` | 本地 server 诊断 |
+| `go-e2e-startup.log` | 桌面启动诊断 |
 
-macOS 系统用户配置目录通常是 `~/Library/Application Support`，
-Windows 是 `%AppData%`。旧版桌面使用独立的 `config.json` 与 `desktop.sqlite`，
-两版不会自动迁移或同步数据。
+desktop-v2 固定使用用户 home 下的 `.golang-cc` 目录，和平台默认的应用支持目录
+无关。旧版桌面使用独立的 `config.json` 与 `desktop.sqlite`，两版不会自动迁移
+或同步数据。
 
 模型配置仍复用 runtime 的 `~/.golang-cc/settings.json`，可用
 `GOLANG_CC_CONFIG_DIR` 重定位；它与桌面工作目录配置不是同一文件。
@@ -86,13 +86,40 @@ Windows 是 `%AppData%`。旧版桌面使用独立的 `config.json` 与 `desktop
 
 | 变量 | 作用 |
 | --- | --- |
-| `GOLANG_CC_SERVER_BINARY` | 指定本地 server 二进制 |
+| `GO_E2E_SERVER_BINARY` | 指定本地 server 二进制；兼容读取 `GOLANG_CC_SERVER_BINARY` |
 | `GOLANG_CC_DESKTOP_SERVER_PORT` | 指定诊断端口；默认动态选择 |
-| `GOLANG_CC_DESKTOP_CONFIG_DIR` | 只重定位 `config-v2.json` 的父级根目录，不移动 SQLite/日志 |
+| `GOLANG_CC_DESKTOP_CONFIG_DIR` | 将 desktop-v2 数据根目录重定位到该目录下的 `golang-cc/` |
 | `GOLANG_CC_CONFIG_DIR` | 重定位 runtime 模型配置目录 |
 
 需要隔离验收数据时使用独立 OS 用户，或在 macOS/Linux 为测试进程指定独立 HOME；
-仅设置 `GOLANG_CC_DESKTOP_CONFIG_DIR` 不能隔离数据库。
+设置 `GOLANG_CC_DESKTOP_CONFIG_DIR` 也会同时隔离 desktop-v2 的配置、SQLite 和日志。
+
+## 原生窗口控制
+
+desktop-v2 的 host 绑定提供以下 Wails bridge 方法：
+
+```javascript
+await window.go.main.App.Maximize();
+await window.go.main.App.Unmaximize();
+await window.go.main.App.ToggleMaximize();
+await window.go.main.App.Fullscreen();
+await window.go.main.App.Unfullscreen();
+await window.go.main.App.ToggleFullscreen();
+const state = await window.go.main.App.GetWindowState();
+```
+
+窗口状态变化会通过 `window.runtime.EventsOn` 广播：
+
+```javascript
+window.runtime.EventsOn("go-e2e:window-state-changed", (state) => {
+  console.log(state);
+});
+```
+
+普通窗口的位置和尺寸、最大化状态、全屏状态会保存到 `config-v2.json`。
+最大化或全屏退出时会恢复最后一次普通窗口几何；无效或过小的历史几何会回退到
+`1440x900` 的默认窗口和 `1024x700` 的最小尺寸。Wails v2.10.2 在 macOS、
+Windows 和 Linux 使用同一组 runtime API，不需要额外依赖。
 
 ## 验证与限制
 

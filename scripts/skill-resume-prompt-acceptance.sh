@@ -38,7 +38,7 @@ const entries = [
 fs.writeFileSync(path, entries.map(entry => JSON.stringify(entry)).join("\n") + "\n");
 NODE
 
-export GOLANG_CC_CONFIG_DIR="$CONFIG_DIR"
+export GO_E2E_CONFIG_DIR="$CONFIG_DIR"
 
 RESUME_PROMPT="继续上一轮，只用一句话说明 resume skill context 是否仍在请求上下文。不要修改文件。"
 

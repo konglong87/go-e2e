@@ -64,6 +64,12 @@ func runInteractive(ctx context.Context, opts options, stdout, stderr io.Writer)
 	defer restoreLogger()
 
 	store := session.DefaultStore()
+	if !opts.sessionOptionsResolved {
+		if err := resolveSessionOptions(store, &opts); err != nil {
+			return err
+		}
+		opts.sessionOptionsResolved = true
+	}
 	recorder, err := newRecorderForOptions(store, opts)
 	if err != nil {
 		return err

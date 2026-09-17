@@ -18,7 +18,7 @@ usage() {
   cat <<'EOF'
 Usage: scripts/release.sh [-h|--help]
 
-Builds golang-cc for every target in TARGETS and writes one archive per
+Builds go-e2e for every target in TARGETS and writes one archive per
 target, plus a SHA256SUMS manifest, into DIST_DIR.
 
 Environment:
@@ -109,11 +109,11 @@ for target in $TARGETS; do
   goos="${target%%/*}"
   goarch="${target##*/}"
 
-  stage="golang-cc_${VERSION}_${goos}_${goarch}"
-  binary="golang-cc"
+  stage="go-e2e_${VERSION}_${goos}_${goarch}"
+  binary="go-e2e"
   archive="$stage.tar.gz"
   if [ "$goos" = "windows" ]; then
-    binary="golang-cc.exe"
+    binary="go-e2e.exe"
     archive="$stage.zip"
   fi
 

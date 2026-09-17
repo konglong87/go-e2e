@@ -12,7 +12,8 @@ function Invoke-CheckedCommand {
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $desktop = Join-Path $root "desktop-v2"
 $frontendDist = Join-Path $desktop "frontend\dist"
-$desktopBinary = Join-Path $desktop "golang-cc.exe"
+$desktopBinary = Join-Path $desktop "go-e2e.exe"
+$compatibilityBinary = Join-Path $desktop "golang-cc.exe"
 $dist = Join-Path $root "dist"
 $installer = Join-Path $desktop "build\bin\go-e2e-amd64-installer.exe"
 
@@ -20,7 +21,7 @@ foreach ($command in @("npm", "go", "wails", "makensis")) {
     Get-Command $command -ErrorAction Stop | Out-Null
 }
 if (-not (Test-Path (Join-Path $desktop "build\windows\installer\project.nsi"))) {
-    throw "Missing customized NSIS template; the default template does not bundle golang-cc.exe"
+    throw "Missing customized NSIS template; the default template does not bundle go-e2e.exe"
 }
 
 $savedUIVersion = $env:VITE_DESKTOP_UI_VERSION
@@ -49,10 +50,11 @@ try {
     $env:GOARCH = "amd64"
     # go-sqlite3 otherwise compiles a stub that fails only when SQLite is opened.
     $env:CGO_ENABLED = "1"
-    Invoke-CheckedCommand "go" @("build", "-o", $desktopBinary, "./cmd/golang-cc")
+    Invoke-CheckedCommand "go" @("build", "-o", $desktopBinary, "./cmd/go-e2e")
     if (-not (Test-Path $desktopBinary -PathType Leaf) -or (Get-Item $desktopBinary).Length -eq 0) {
-        throw "The golang-cc.exe sidecar was not generated"
+        throw "The go-e2e.exe sidecar was not generated"
     }
+    Copy-Item $desktopBinary $compatibilityBinary -Force
 
     Push-Location $desktop
     try {

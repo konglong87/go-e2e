@@ -33,7 +33,7 @@ type Settings struct {
 	GuidanceFilename string `json:"guidanceFilename,omitempty" yaml:"guidanceFilename,omitempty"`
 }
 
-// Identity centralizes golang-cc-owned names so new files and prompts do not
+// Identity centralizes go-e2e-owned names so new files and prompts do not
 // hard-code product branding across packages.
 type Identity struct {
 	ProductName          string
@@ -57,10 +57,10 @@ func FromSettings(settings Settings) Identity {
 		LegacyGuidanceFile:   defaultLegacyGuidanceFile,
 		WorkflowFallbackFile: defaultWorkflowFallbackFile,
 	}
-	id.ProductName = firstNonEmpty(product.Getenv("GOLANG_CC_PRODUCT_NAME"), settings.ProductName, id.ProductName)
-	id.ProductKey = firstNonEmpty(product.Getenv("GOLANG_CC_PRODUCT_KEY"), settings.ProductKey, id.ProductKey)
-	id.ConfigDirName = firstNonEmpty(product.Getenv("GOLANG_CC_CONFIG_DIR_NAME"), settings.ConfigDirName, id.ConfigDirName)
-	id.GuidanceFilename = firstNonEmpty(product.Getenv("GOLANG_CC_GUIDANCE_FILE"), settings.GuidanceFilename, id.GuidanceFilename)
+	id.ProductName = firstNonEmpty(product.Getenv(product.ProductNameEnv), settings.ProductName, id.ProductName)
+	id.ProductKey = firstNonEmpty(product.Getenv(product.ProductKeyEnv), settings.ProductKey, id.ProductKey)
+	id.ConfigDirName = firstNonEmpty(product.Getenv(product.ConfigDirNameEnv), settings.ConfigDirName, id.ConfigDirName)
+	id.GuidanceFilename = firstNonEmpty(product.Getenv(product.GuidanceFilenameEnv), settings.GuidanceFilename, id.GuidanceFilename)
 	if err := id.Validate(); err != nil {
 		return Identity{
 			ProductName:          DefaultProductIdentity.ProductName,
@@ -75,7 +75,7 @@ func FromSettings(settings Settings) Identity {
 }
 
 func (id Identity) GlobalConfigRoot() (string, error) {
-	if root := strings.TrimSpace(product.Getenv("GOLANG_CC_CONFIG_DIR")); root != "" {
+	if root := strings.TrimSpace(product.Getenv(product.ConfigDirEnv)); root != "" {
 		return filepath.Clean(root), nil
 	}
 	home, err := os.UserHomeDir()
@@ -89,7 +89,7 @@ func (id Identity) GlobalConfigRoot() (string, error) {
 // It is read-only compatibility input; new state must be written under
 // GlobalConfigRoot.
 func LegacyOwnedGlobalConfigRoot() (string, error) {
-	if root := strings.TrimSpace(product.Getenv("GOLANG_CC_CONFIG_DIR")); root != "" {
+	if root := strings.TrimSpace(product.Getenv(product.ConfigDirEnv)); root != "" {
 		return "", nil
 	}
 	home, err := os.UserHomeDir()

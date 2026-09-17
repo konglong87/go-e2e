@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build golang-cc from this checkout and put it on PATH.
+# Build go-e2e from this checkout and put it on PATH.
 #
 # Compilation is delegated to scripts/build.sh, so the installed binary reports
 # the same `git describe` version a local build does. Installing must not be the
@@ -24,8 +24,8 @@ usage() {
   cat <<'EOF'
 Usage: scripts/install.sh [-h|--help]
 
-Builds golang-cc from this checkout (via scripts/build.sh) and installs
-it as $BIN_DIR/golang-cc.
+Builds go-e2e from this checkout (via scripts/build.sh) and installs
+it as $BIN_DIR/go-e2e. A golang-cc compatibility copy is installed beside it.
 
 Environment:
   PREFIX   install prefix, binary goes to $PREFIX/bin (default: $HOME/.local)
@@ -63,7 +63,7 @@ version_le() {
 
 if ! command -v go >/dev/null 2>&1; then
   echo "install failed: no 'go' on PATH." >&2
-  echo "  golang-cc is built from source; install Go $pinned_version or newer and re-run." >&2
+  echo "  go-e2e is built from source; install Go $pinned_version or newer and re-run." >&2
   exit 1
 fi
 
@@ -94,10 +94,13 @@ fi
 
 "$ROOT_DIR/scripts/build.sh"
 
-installed="$BIN_DIR/golang-cc"
-install -m 0755 "$ROOT_DIR/bin/golang-cc" "$installed"
+installed="$BIN_DIR/go-e2e"
+compatibility="$BIN_DIR/golang-cc"
+install -m 0755 "$ROOT_DIR/bin/go-e2e" "$installed"
+install -m 0755 "$installed" "$compatibility"
 
-printf 'installed %s\n          %s\n' "$installed" "$("$installed" --version)"
+printf 'installed %s\n          %s (compatibility)\n          %s\n' \
+  "$installed" "$compatibility" "$("$installed" --version)"
 
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;

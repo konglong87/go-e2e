@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+readonly PRIMARY_BINARY_NAME="go-e2e"
+readonly PRIMARY_PACKAGE="./cmd/go-e2e"
 VERSION="${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}"
 REVISION="${REVISION:-$(git rev-parse HEAD 2>/dev/null || true)}"
 if [ -z "${DIRTY+x}" ]; then
@@ -28,8 +30,8 @@ if [ -z "${BUILD_TIME:-}" ]; then
     BUILD_TIME="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   fi
 fi
-OUTPUT="${OUTPUT:-bin/golang-cc}"
-PACKAGE="${PACKAGE:-./cmd/golang-cc}"
+OUTPUT="${OUTPUT:-bin/${PRIMARY_BINARY_NAME}}"
+PACKAGE="${PACKAGE:-${PRIMARY_PACKAGE}}"
 LDFLAGS="${LDFLAGS:-}"
 BUILDINFO_PACKAGE="github.com/konglong87/go-e2e/internal/buildinfo"
 

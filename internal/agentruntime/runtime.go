@@ -863,22 +863,11 @@ func resolveSubagentModelSpec(spec, parentModel string, tierModels map[string]st
 	if strings.EqualFold(spec, "inherit") {
 		return strings.TrimSpace(parentModel)
 	}
-	if subagentModelAliasMatchesParentTier(spec, parentModel) {
-		return strings.TrimSpace(parentModel)
-	}
 	switch strings.ToLower(spec) {
 	case "sonnet", "opus", "haiku":
 		tier := strings.ToLower(spec)
-		// Tier aliases map to concrete Anthropic models. That mapping only holds
-		// when the session is actually on Anthropic (an empty parent means we are
-		// defaulting to the Anthropic builtin).
-		if parentModel == "" || isAnthropicModel(parentModel) {
-			return defaultModelForFamily(tier)
-		}
-		// Non-Anthropic provider (e.g. GLM): there is no reliable Anthropic-tier
-		// mapping. Use an explicitly configured tier model if present, otherwise
-		// inherit the parent model rather than jumping to an Anthropic model the
-		// provider does not serve.
+		// Legacy tier names are aliases, not a vendor model catalog. Explicit
+		// mappings apply to every provider; otherwise inherit the session model.
 		if configured := strings.TrimSpace(tierModels[tier]); configured != "" {
 			return configured
 		}
@@ -888,43 +877,11 @@ func resolveSubagentModelSpec(spec, parentModel string, tierModels map[string]st
 	}
 }
 
-// isAnthropicModel reports whether a model name belongs to the Anthropic family.
-// Every Anthropic model is named "claude-*", so a substring check reliably tells
-// Anthropic models from non-Anthropic ones (glm*, gpt*, ...) without threading
-// provider config through the resolver.
-func isAnthropicModel(model string) bool {
-	return strings.Contains(strings.ToLower(strings.TrimSpace(model)), "claude")
-}
-
-func subagentModelAliasMatchesParentTier(alias, parentModel string) bool {
-	alias = strings.ToLower(strings.TrimSpace(alias))
-	parentModel = strings.ToLower(strings.TrimSpace(parentModel))
-	if alias == "" || parentModel == "" {
-		return false
-	}
-	switch alias {
-	case "sonnet", "opus", "haiku":
-		return strings.Contains(parentModel, alias)
-	default:
-		return false
-	}
-}
-
 // subagentCostRates converts configured per-model pricing into session.Rate so
 // cost estimation is meaningful under non-Anthropic providers. Returns nil when
 // nothing is configured (callers then fall back to the built-in Anthropic table).
 func subagentCostRates(cwd string) map[string]session.Rate {
 	return session.ConfiguredRates(cwd)
-}
-
-func defaultModelForFamily(family string) string {
-	family = strings.ToLower(strings.TrimSpace(family))
-	for _, model := range config.KnownModels {
-		if strings.Contains(strings.ToLower(model), family) {
-			return model
-		}
-	}
-	return config.DefaultModel()
 }
 
 func recordFailureContent(result *Result, err error) {

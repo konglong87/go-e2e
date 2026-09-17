@@ -2,9 +2,11 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -13,9 +15,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const anthropicDefaultBaseURL = "https://api.anthropic.com"
-const builtinDefaultModel = "claude-sonnet-4-6"
 const DefaultShowThinking = true
+
+var ErrProviderRouteNotConfigured = errors.New("provider route is not configured: set provider, baseURL, and apiKey or authToken in ~/.golang-cc/settings.json")
 
 const (
 	TUIThinkingModeFull    = "full"
@@ -23,16 +25,9 @@ const (
 	TUIThinkingModeHidden  = "hidden"
 )
 
-var KnownModels = []string{
-	builtinDefaultModel,
-	"claude-opus-4-8",
-	"claude-opus-4-7",
-	"claude-opus-4-6",
-	"claude-sonnet-4-5",
-	"claude-sonnet-4-5-20250929",
-	"claude-haiku-4-5",
-	"claude-haiku-4-5-20251001",
-}
+// KnownModels intentionally stays empty. Model IDs belong to the configured
+// provider and must never silently imply a vendor or hosted endpoint.
+var KnownModels = []string{}
 
 type Config struct {
 	APIKey                string
@@ -46,6 +41,7 @@ type Config struct {
 	Sources               []string
 	SelectedProvider      string
 	SelectedProviderModel string
+	ConfigurationError    string
 	// Warnings are non-fatal problems found while loading, e.g. a credential
 	// file other local users can read. Callers surface them; loading succeeded.
 	Warnings []string
@@ -87,45 +83,52 @@ func Load() Config {
 
 func LoadForCWD(cwd string) Config {
 	loaded := LoadSettings(cwd)
-	baseURL := strings.TrimRight(os.Getenv("ANTHROPIC_BASE_URL"), "/")
-	if baseURL == "" {
-		baseURL = strings.TrimRight(loaded.Env["ANTHROPIC_BASE_URL"], "/")
-	}
-	if baseURL == "" {
-		if normalizeProviderProtocol(loaded.Settings.ProviderProtocol) == ProviderProtocolOpenAIResponses {
-			baseURL = openAIDefaultBaseURL
-		} else {
-			baseURL = anthropicDefaultBaseURL
-		}
-	}
-	apiKey := firstNonEmpty(os.Getenv("ANTHROPIC_API_KEY"), loaded.Env["ANTHROPIC_API_KEY"])
-	authToken := firstNonEmpty(
-		os.Getenv("ANTHROPIC_AUTH_TOKEN"),
-		os.Getenv("CLAUDE_CODE_AUTH_TOKEN"),
-		os.Getenv("CLAUDE_CODE_OAUTH_TOKEN"),
-		loaded.Env["ANTHROPIC_AUTH_TOKEN"],
-		loaded.Env["CLAUDE_CODE_AUTH_TOKEN"],
-		loaded.Env["CLAUDE_CODE_OAUTH_TOKEN"],
-	)
-	provider := firstNonEmpty(
-		os.Getenv("GOLANG_CC_PROVIDER"),
-		os.Getenv("CLAUDE_CODE_PROVIDER"),
-		loaded.Env["GOLANG_CC_PROVIDER"],
-		loaded.Env["CLAUDE_CODE_PROVIDER"],
-		loaded.Settings.Provider,
-	)
-	return Config{
-		APIKey:            apiKey,
-		AuthToken:         authToken,
-		BaseURL:           baseURL,
-		Provider:          strings.TrimSpace(provider),
+	cfg := Config{
+		APIKey:            loaded.Settings.APIKey,
+		AuthToken:         loaded.Settings.AuthToken,
+		BaseURL:           strings.TrimRight(strings.TrimSpace(loaded.Settings.BaseURL), "/"),
+		Provider:          strings.TrimSpace(loaded.Settings.Provider),
 		ProviderProtocol:  normalizeProviderProtocol(loaded.Settings.ProviderProtocol),
 		Responses:         cloneResponsesProviderSettings(loaded.Settings.Responses),
-		FallbackProviders: fallbackProviders(loaded.Settings.Fallback, apiKey, authToken),
+		FallbackProviders: fallbackProviders(loaded.Settings.Fallback, loaded.Settings.APIKey, loaded.Settings.AuthToken),
 		Settings:          loaded.Settings,
 		Sources:           loaded.Sources,
 		Warnings:          credentialPermissionMessages(cwd),
 	}
+	if err := cfg.ValidateProviderRoute(); err != nil {
+		cfg.ConfigurationError = err.Error()
+	}
+	return cfg
+}
+
+func ValidateProviderConfig(provider ProviderConfig) error {
+	if strings.TrimSpace(provider.Type) == "" {
+		return ErrProviderRouteNotConfigured
+	}
+	if strings.TrimSpace(provider.BaseURL) == "" {
+		return fmt.Errorf("provider route is not configured: baseURL is required for provider %q", provider.Type)
+	}
+	if strings.TrimSpace(provider.APIKey) == "" && strings.TrimSpace(provider.AuthToken) == "" {
+		return fmt.Errorf("provider route is not configured: apiKey or authToken is required for provider %q", provider.Type)
+	}
+	if _, err := ResolveProviderProtocol(provider.Type, provider.Protocol, provider.Responses); err != nil {
+		return fmt.Errorf("provider route is not configured: %w", err)
+	}
+	return nil
+}
+
+// ValidateProviderRoute returns a configuration error before an adapter is
+// created. Adapters intentionally keep their SDK-specific defaults; runtime
+// callers must use this gate so an empty route cannot silently become Anthropic.
+func (cfg Config) ValidateProviderRoute() error {
+	return ValidateProviderConfig(ProviderConfig{
+		Type:      cfg.Provider,
+		Protocol:  cfg.ProviderProtocol,
+		Responses: cfg.Responses,
+		BaseURL:   cfg.BaseURL,
+		APIKey:    cfg.APIKey,
+		AuthToken: cfg.AuthToken,
+	})
 }
 
 func credentialPermissionMessages(cwd string) []string {
@@ -142,94 +145,58 @@ func credentialPermissionMessages(cwd string) []string {
 
 func (cfg Config) WithRuntimeSettings(settings Settings) Config {
 	cfg.Settings = settings
-	if apiKey := firstNonEmpty(os.Getenv("ANTHROPIC_API_KEY"), settings.Env["ANTHROPIC_API_KEY"]); apiKey != "" {
-		cfg.APIKey = apiKey
+	previousProvider := strings.TrimSpace(cfg.Provider)
+	nextProvider := strings.TrimSpace(settings.Provider)
+	if nextProvider != "" && previousProvider != "" &&
+		NormalizeProviderKind(previousProvider) != NormalizeProviderKind(nextProvider) {
+		cfg.BaseURL = ""
+		cfg.APIKey = ""
+		cfg.AuthToken = ""
+		cfg.ProviderProtocol = ""
+		cfg.Responses = nil
 	}
-	if authToken := firstNonEmpty(
-		os.Getenv("ANTHROPIC_AUTH_TOKEN"),
-		os.Getenv("CLAUDE_CODE_AUTH_TOKEN"),
-		os.Getenv("CLAUDE_CODE_OAUTH_TOKEN"),
-		settings.Env["ANTHROPIC_AUTH_TOKEN"],
-		settings.Env["CLAUDE_CODE_AUTH_TOKEN"],
-		settings.Env["CLAUDE_CODE_OAUTH_TOKEN"],
-	); authToken != "" {
-		cfg.AuthToken = authToken
+	if settings.APIKey != "" {
+		cfg.APIKey = settings.APIKey
 	}
-	if provider := strings.TrimSpace(firstNonEmpty(
-		os.Getenv("GOLANG_CC_PROVIDER"),
-		os.Getenv("CLAUDE_CODE_PROVIDER"),
-		settings.Env["GOLANG_CC_PROVIDER"],
-		settings.Env["CLAUDE_CODE_PROVIDER"],
-		settings.Provider,
-	)); provider != "" {
+	if settings.AuthToken != "" {
+		cfg.AuthToken = settings.AuthToken
+	}
+	if provider := strings.TrimSpace(settings.Provider); provider != "" {
 		cfg.Provider = provider
 	}
-	cfg.ProviderProtocol = normalizeProviderProtocol(settings.ProviderProtocol)
-	cfg.Responses = cloneResponsesProviderSettings(settings.Responses)
-	runtimeBaseURL := strings.TrimRight(firstNonEmpty(os.Getenv("ANTHROPIC_BASE_URL"), settings.Env["ANTHROPIC_BASE_URL"]), "/")
-	if runtimeBaseURL != "" {
-		cfg.BaseURL = runtimeBaseURL
-	} else if cfg.BaseURL == "" {
-		if cfg.ProviderProtocol == ProviderProtocolOpenAIResponses {
-			cfg.BaseURL = openAIDefaultBaseURL
-		} else {
-			cfg.BaseURL = anthropicDefaultBaseURL
-		}
-	} else if cfg.ProviderProtocol == ProviderProtocolOpenAIResponses && cfg.BaseURL == anthropicDefaultBaseURL {
-		cfg.BaseURL = openAIDefaultBaseURL
+	if settings.BaseURL != "" {
+		cfg.BaseURL = strings.TrimRight(strings.TrimSpace(settings.BaseURL), "/")
+	}
+	if settings.ProviderProtocol != "" {
+		cfg.ProviderProtocol = normalizeProviderProtocol(settings.ProviderProtocol)
+		cfg.Responses = cloneResponsesProviderSettings(settings.Responses)
 	}
 	cfg.FallbackProviders = fallbackProviders(settings.Fallback, cfg.APIKey, cfg.AuthToken)
+	if err := cfg.ValidateProviderRoute(); err != nil {
+		cfg.ConfigurationError = err.Error()
+	} else {
+		cfg.ConfigurationError = ""
+	}
 	return cfg
 }
 
 func DefaultModel() string {
-	if model := os.Getenv("CLAUDE_CODE_MODEL"); model != "" {
-		return model
-	}
-	return builtinDefaultModel
+	return ""
 }
 
 func ResolveModel(cwd, explicit string) string {
 	if explicit != "" {
 		return explicit
 	}
-	projectSettings := LoadProjectConfigSettings(cwd)
-	if projectSettings.Model != "" {
-		return projectSettings.Model
-	}
-	if model := os.Getenv("CLAUDE_CODE_MODEL"); model != "" {
-		return model
-	}
 	loaded := LoadSettings(cwd)
 	if loaded.Model != "" {
 		return loaded.Model
 	}
-	// Prefer a configured provider's model over the built-in Anthropic default,
-	// so a non-Anthropic setup with providers but no explicit model does not
-	// silently default to a model it cannot serve.
-	if model := firstConfiguredProviderModel(cwd); model != "" {
-		return model
-	}
 	return DefaultModel()
 }
 
-// firstConfiguredProviderModel returns the selected provider's model, or the
-// first fallback provider's model, or "" when none are configured.
-func firstConfiguredProviderModel(cwd string) string {
-	cfg := LoadForCWD(cwd)
-	if m := strings.TrimSpace(cfg.SelectedProviderModel); m != "" {
-		return m
-	}
-	for _, provider := range cfg.FallbackProviders {
-		if m := strings.TrimSpace(provider.Model); m != "" {
-			return m
-		}
-	}
-	return ""
-}
-
 // ModelPrice is a per-million-token cost for a model, used to make cost
-// estimation provider-neutral (the built-in table only knows Anthropic models).
+// estimation provider-neutral.
 // The three cache fields are optional; leaving one at zero means "derive it from
 // Input", which only works for providers whose cache discount is known (see
 // session.CacheMultipliersForProviderKind). Set them explicitly for any other
@@ -311,12 +278,10 @@ func SubagentModelTiers(cwd string) map[string]string {
 
 // ConfiguredModels returns the models actually configured for cwd: the resolved
 // primary model followed by each fallback provider's model, de-duplicated in order.
-// Returns an empty slice when nothing is configured so callers can fall back to
-// KnownModels. This lets the model picker reflect the user's providers instead of
-// the built-in default list.
+// Returns an empty slice when nothing is configured.
 func ConfiguredModels(cwd string) []string {
 	cfg := LoadForCWD(cwd)
-	ordered := make([]string, 0, len(cfg.FallbackProviders)+2)
+	ordered := make([]string, 0, len(cfg.FallbackProviders)+1)
 	seen := make(map[string]bool)
 	add := func(model string) {
 		model = strings.TrimSpace(model)
@@ -333,14 +298,12 @@ func ConfiguredModels(cwd string) []string {
 	return ordered
 }
 
-// AvailableModels returns the model IDs exposed by the current configuration.
-// Explicit modelOptions are kept first, followed by the resolved session model
-// and configured fallback provider models. When no model is configured, the
-// built-in Anthropic catalog remains the useful fallback for interactive lists.
+// AvailableModels returns only model IDs explicitly configured by the user or
+// exposed by a configured provider.
 func AvailableModels(cwd string) []string {
 	cfg := LoadForCWD(cwd)
 	configuredModels := ConfiguredModels(cwd)
-	ordered := make([]string, 0, len(cfg.Settings.ModelOptions)+len(configuredModels)+len(KnownModels))
+	ordered := make([]string, 0, len(cfg.Settings.ModelOptions)+len(configuredModels))
 	seen := make(map[string]bool)
 	add := func(model string) {
 		model = strings.TrimSpace(model)
@@ -354,16 +317,12 @@ func AvailableModels(cwd string) []string {
 		add(model)
 	}
 
-	configured := len(cfg.Settings.ModelOptions) > 0 || strings.TrimSpace(cfg.Settings.Model) != "" ||
-		strings.TrimSpace(os.Getenv("CLAUDE_CODE_MODEL")) != "" || len(cfg.FallbackProviders) > 0
+	configured := len(cfg.Settings.ModelOptions) > 0 || strings.TrimSpace(cfg.Settings.Model) != "" || len(cfg.FallbackProviders) > 0
 	if configured {
 		for _, model := range configuredModels {
 			add(model)
 		}
 		return ordered
-	}
-	for _, model := range KnownModels {
-		add(model)
 	}
 	return ordered
 }
@@ -413,10 +372,10 @@ func MultimodalModelFor(settings Settings, primaryModel, modality string) string
 	}
 	normalized := normalizeModality(modality)
 	if model := strings.TrimSpace(settings.Multimodal.Models[normalized]); model != "" {
-		return os.ExpandEnv(model)
+		return model
 	}
 	if model := strings.TrimSpace(settings.Multimodal.DefaultModel); model != "" {
-		return os.ExpandEnv(model)
+		return model
 	}
 	return primaryModel
 }
@@ -822,18 +781,18 @@ func ResolveImageGenerationWithSettings(cwd string, settings Settings) (Resolved
 		resolved.PreviewInContext = ResolveImageGenerationEnabled(image.PreviewInContext)
 		resolved.AsyncChannelEnabled = ResolveImageGenerationEnabled(image.AsyncChannelEnabled)
 		resolved.AsyncChannelAccountKeys = append([]string(nil), image.AsyncChannelAccountKeys...)
-		resolved.Provider = strings.TrimSpace(os.ExpandEnv(firstNonEmpty(image.DefaultProvider, image.Provider)))
+		resolved.Provider = strings.TrimSpace(firstNonEmpty(image.DefaultProvider, image.Provider))
 		if resolved.Provider == "" && len(image.Catalog) > 0 {
-			resolved.Provider = strings.TrimSpace(os.ExpandEnv(image.Catalog[0].Provider))
+			resolved.Provider = strings.TrimSpace(image.Catalog[0].Provider)
 		}
 		if strings.TrimSpace(image.Model) != "" {
-			resolved.Model = strings.TrimSpace(os.ExpandEnv(image.Model))
+			resolved.Model = strings.TrimSpace(image.Model)
 		}
 		if strings.TrimSpace(image.DefaultModel) != "" {
-			resolved.Model = strings.TrimSpace(os.ExpandEnv(image.DefaultModel))
+			resolved.Model = strings.TrimSpace(image.DefaultModel)
 		}
 		if resolved.Model == DefaultImageGenerationModel && len(image.Catalog) > 0 && strings.TrimSpace(image.DefaultModel) == "" && strings.TrimSpace(image.Model) == "" {
-			resolved.Model = strings.TrimSpace(os.ExpandEnv(image.Catalog[0].Model))
+			resolved.Model = strings.TrimSpace(image.Catalog[0].Model)
 		}
 		if strings.TrimSpace(image.Quality) != "" {
 			resolved.Quality = strings.ToLower(strings.TrimSpace(image.Quality))
@@ -886,10 +845,10 @@ func ResolveImageGenerationWithSettings(cwd string, settings Settings) (Resolved
 	if settings.Fallback != nil {
 		for i := range settings.Fallback.Providers {
 			candidate := settings.Fallback.Providers[i]
-			candidate.Name = strings.TrimSpace(os.ExpandEnv(candidate.Name))
-			candidate.BaseURL = strings.TrimRight(strings.TrimSpace(os.ExpandEnv(candidate.BaseURL)), "/")
-			candidate.APIKey = os.ExpandEnv(candidate.APIKey)
-			candidate.AuthToken = os.ExpandEnv(candidate.AuthToken)
+			candidate.Name = strings.TrimSpace(candidate.Name)
+			candidate.BaseURL = strings.TrimRight(strings.TrimSpace(candidate.BaseURL), "/")
+			candidate.APIKey = strings.TrimSpace(candidate.APIKey)
+			candidate.AuthToken = strings.TrimSpace(candidate.AuthToken)
 			if strings.EqualFold(candidate.Name, resolved.Provider) {
 				provider = &candidate
 				break
@@ -901,17 +860,6 @@ func ResolveImageGenerationWithSettings(cwd string, settings Settings) (Resolved
 	}
 	if strings.TrimSpace(provider.BaseURL) == "" {
 		return ResolvedImageGeneration{}, fmt.Errorf("image generation provider %q endpoint missing", resolved.Provider)
-	}
-	if provider.APIKey == "" && provider.AuthToken == "" {
-		provider.APIKey = firstNonEmpty(os.Getenv("ANTHROPIC_API_KEY"), settings.Env["ANTHROPIC_API_KEY"])
-		provider.AuthToken = firstNonEmpty(
-			os.Getenv("ANTHROPIC_AUTH_TOKEN"),
-			os.Getenv("CLAUDE_CODE_AUTH_TOKEN"),
-			os.Getenv("CLAUDE_CODE_OAUTH_TOKEN"),
-			settings.Env["ANTHROPIC_AUTH_TOKEN"],
-			settings.Env["CLAUDE_CODE_AUTH_TOKEN"],
-			settings.Env["CLAUDE_CODE_OAUTH_TOKEN"],
-		)
 	}
 	if strings.TrimSpace(provider.APIKey) == "" && strings.TrimSpace(provider.AuthToken) == "" {
 		return ResolvedImageGeneration{}, fmt.Errorf("image generation provider %q credential missing", resolved.Provider)
@@ -940,17 +888,13 @@ func ResolveImageGenerationWithSettings(cwd string, settings Settings) (Resolved
 	}
 	for _, name := range providerNames {
 		for _, candidate := range settings.Fallback.Providers {
-			candidate.Name = strings.TrimSpace(os.ExpandEnv(candidate.Name))
+			candidate.Name = strings.TrimSpace(candidate.Name)
 			if !strings.EqualFold(candidate.Name, name) {
 				continue
 			}
-			candidate.BaseURL = strings.TrimRight(strings.TrimSpace(os.ExpandEnv(candidate.BaseURL)), "/")
-			candidate.APIKey = os.ExpandEnv(candidate.APIKey)
-			candidate.AuthToken = os.ExpandEnv(candidate.AuthToken)
-			if candidate.APIKey == "" && candidate.AuthToken == "" {
-				candidate.APIKey = firstNonEmpty(os.Getenv("ANTHROPIC_API_KEY"), settings.Env["ANTHROPIC_API_KEY"])
-				candidate.AuthToken = firstNonEmpty(os.Getenv("ANTHROPIC_AUTH_TOKEN"), os.Getenv("CLAUDE_CODE_AUTH_TOKEN"), os.Getenv("CLAUDE_CODE_OAUTH_TOKEN"), settings.Env["ANTHROPIC_AUTH_TOKEN"], settings.Env["CLAUDE_CODE_AUTH_TOKEN"], settings.Env["CLAUDE_CODE_OAUTH_TOKEN"])
-			}
+			candidate.BaseURL = strings.TrimRight(strings.TrimSpace(candidate.BaseURL), "/")
+			candidate.APIKey = strings.TrimSpace(candidate.APIKey)
+			candidate.AuthToken = strings.TrimSpace(candidate.AuthToken)
 			if candidate.BaseURL == "" || (candidate.APIKey == "" && candidate.AuthToken == "") {
 				return ResolvedImageGeneration{}, fmt.Errorf("image generation provider %q endpoint or credential missing", name)
 			}
@@ -975,15 +919,15 @@ func resolveImageCatalog(settings *ImageGenerationSettings, providers []Provider
 	}
 	providerProtocols := make(map[string]string, len(providers))
 	for _, provider := range providers {
-		name := strings.TrimSpace(os.ExpandEnv(provider.Name))
+		name := strings.TrimSpace(provider.Name)
 		if name != "" {
 			providerProtocols[strings.ToLower(name)] = imageProtocolForProvider(provider)
 		}
 	}
 	resolved := make([]ResolvedImageModel, 0, len(settings.Catalog))
 	for _, entry := range settings.Catalog {
-		provider := strings.TrimSpace(os.ExpandEnv(entry.Provider))
-		model := strings.TrimSpace(os.ExpandEnv(entry.Model))
+		provider := strings.TrimSpace(entry.Provider)
+		model := strings.TrimSpace(entry.Model)
 		if provider == "" {
 			provider = defaultProvider
 		}
@@ -1231,6 +1175,9 @@ type Settings struct {
 	Provider           string                     `json:"provider,omitempty" yaml:"provider,omitempty"`
 	ProviderProtocol   ProviderProtocol           `json:"providerProtocol,omitempty" yaml:"providerProtocol,omitempty"`
 	Responses          *ResponsesProviderSettings `json:"responses,omitempty" yaml:"responses,omitempty"`
+	BaseURL            string                     `json:"baseURL,omitempty" yaml:"baseURL,omitempty"`
+	APIKey             string                     `json:"apiKey,omitempty" yaml:"apiKey,omitempty"`
+	AuthToken          string                     `json:"authToken,omitempty" yaml:"authToken,omitempty"`
 	ContextLength      int                        `json:"contextLength,omitempty" yaml:"context_length,omitempty"`
 	OutputStyle        string                     `json:"outputStyle,omitempty" yaml:"outputStyle,omitempty"`
 	Language           string                     `json:"language,omitempty" yaml:"language,omitempty"`
@@ -1391,18 +1338,149 @@ func GlobalSettingsPath() (string, error) {
 }
 
 func SaveGlobalSettings(settings Settings) error {
-	path, err := GlobalSettingsPath()
+	_, err := GlobalSettingsPath()
 	if err != nil {
 		return err
 	}
-	return SaveSettingsFile(path, settings)
+	data, err := json.Marshal(settings)
+	if err != nil {
+		return err
+	}
+	var next map[string]any
+	if err := json.Unmarshal(data, &next); err != nil {
+		return err
+	}
+	if previous, _, exists, readErr := ReadGlobalSettings(); readErr != nil {
+		return readErr
+	} else if exists {
+		var old map[string]any
+		if err := json.Unmarshal(previous, &old); err != nil || old == nil {
+			return fmt.Errorf("global settings.json must contain a JSON object")
+		}
+		next = PreserveUnknownJSONFields(old, next)
+	}
+	data, err = json.MarshalIndent(next, "", "  ")
+	if err != nil {
+		return err
+	}
+	_, err = WriteGlobalSettingsRaw(append(data, '\n'))
+	return err
 }
 
-// ReadGlobalSettingsRaw returns the canonical global settings, falling back to
-// the previous product-owned path when the canonical file does not exist. All
-// writes still target GlobalSettingsPath, so editing legacy settings performs a
-// non-destructive copy-on-write migration.
-func ReadGlobalSettingsRaw() (data []byte, path string, ok bool, err error) {
+// PreserveUnknownJSONFields copies fields unknown to the typed Settings schema
+// from old into next. Known fields intentionally remain controlled by next, so
+// callers can remove optional settings while forward-compatible fields survive
+// a read-modify-write cycle.
+func PreserveUnknownJSONFields(old, next map[string]any) map[string]any {
+	return preserveUnknownJSONFields(old, next, reflect.TypeOf(Settings{}))
+}
+
+func preserveUnknownJSONFields(old, next map[string]any, schema reflect.Type) map[string]any {
+	out := make(map[string]any, len(next)+len(old))
+	for key, value := range next {
+		out[key] = value
+	}
+	schema = indirectJSONType(schema)
+	known := jsonFieldSchema(schema)
+	for key, value := range old {
+		current, exists := out[key]
+		fieldType, knownField := known[key]
+		if !knownField {
+			if !exists {
+				out[key] = value
+			} else if merged, ok := mergeUnknownJSONValue(value, current, nil); ok {
+				out[key] = merged
+			}
+			continue
+		}
+		if exists {
+			if merged, ok := mergeUnknownJSONValue(value, current, fieldType); ok {
+				out[key] = merged
+			}
+		}
+	}
+	return out
+}
+
+func mergeUnknownJSONValue(old, next any, schema reflect.Type) (any, bool) {
+	schema = indirectJSONType(schema)
+	switch oldValue := old.(type) {
+	case map[string]any:
+		nextValue, ok := next.(map[string]any)
+		if !ok {
+			return next, false
+		}
+		if schema != nil && schema.Kind() == reflect.Map {
+			elementType := schema.Elem()
+			for key, oldChild := range oldValue {
+				nextChild, exists := nextValue[key]
+				if !exists {
+					continue
+				}
+				if merged, ok := mergeUnknownJSONValue(oldChild, nextChild, elementType); ok {
+					nextValue[key] = merged
+				}
+			}
+			return nextValue, true
+		}
+		if schema != nil && schema.Kind() != reflect.Struct {
+			return next, false
+		}
+		return preserveUnknownJSONFields(oldValue, nextValue, schema), true
+	case []any:
+		nextValue, ok := next.([]any)
+		if !ok {
+			return next, false
+		}
+		elementType := reflect.Type(nil)
+		if schema != nil && schema.Kind() == reflect.Slice {
+			elementType = schema.Elem()
+		}
+		for index := 0; index < len(oldValue) && index < len(nextValue); index++ {
+			if merged, ok := mergeUnknownJSONValue(oldValue[index], nextValue[index], elementType); ok {
+				nextValue[index] = merged
+			}
+		}
+		return nextValue, true
+	default:
+		return next, false
+	}
+}
+
+func indirectJSONType(value reflect.Type) reflect.Type {
+	for value != nil && (value.Kind() == reflect.Pointer || value.Kind() == reflect.Interface) {
+		value = value.Elem()
+	}
+	return value
+}
+
+func jsonFieldSchema(schema reflect.Type) map[string]reflect.Type {
+	schema = indirectJSONType(schema)
+	if schema == nil || schema.Kind() != reflect.Struct {
+		return nil
+	}
+	fields := make(map[string]reflect.Type)
+	for index := 0; index < schema.NumField(); index++ {
+		field := schema.Field(index)
+		if field.PkgPath != "" {
+			continue
+		}
+		tag := field.Tag.Get("json")
+		name := strings.Split(tag, ",")[0]
+		if name == "-" {
+			continue
+		}
+		if name == "" {
+			name = field.Name
+		}
+		fields[name] = field.Type
+	}
+	return fields
+}
+
+// ReadGlobalSettings reads only the canonical global settings document. Legacy
+// product files are intentionally ignored; migration must be explicit.
+func ReadGlobalSettings() (data []byte, path string, ok bool, err error) {
 	path, err = GlobalSettingsPath()
 	if err != nil {
 		return nil, "", false, err
@@ -1410,18 +1488,7 @@ func ReadGlobalSettingsRaw() (data []byte, path string, ok bool, err error) {
 	data, err = os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			legacyPath, legacyErr := legacyGlobalSettingsPath()
-			if legacyErr != nil || legacyPath == "" || filepath.Clean(legacyPath) == filepath.Clean(path) {
-				return nil, path, false, legacyErr
-			}
-			data, legacyErr = os.ReadFile(legacyPath)
-			if legacyErr == nil {
-				return data, legacyPath, true, nil
-			}
-			if os.IsNotExist(legacyErr) {
-				return nil, path, false, nil
-			}
-			return nil, legacyPath, false, legacyErr
+			return nil, path, false, nil
 		}
 		return nil, path, false, err
 	}
@@ -1518,52 +1585,6 @@ func settingsSearchPaths(cwd string) []string {
 	}
 	return nil
 
-	/* 2026-09-09：按单一默认配置来源方案停用，保留旧逻辑供查阅。
-	var paths []string
-	defaultID := identity.Default()
-	configDirNames := []string{product.LegacyConfigDirName, defaultID.ConfigDirName}
-	if legacyPath, err := legacyGlobalSettingsPath(); err == nil && legacyPath != "" {
-		paths = appendUniquePath(paths, legacyPath)
-	}
-	if globalPath, err := GlobalSettingsPath(); err == nil && globalPath != "" {
-		paths = appendUniquePath(paths, globalPath)
-	}
-	var globalSettings Settings
-	for _, path := range paths {
-		if next, ok := readSettings(path); ok {
-			globalSettings = mergeSettings(globalSettings, next)
-		}
-	}
-	globalID := identity.FromSettings(IdentitySettings(globalSettings))
-	if globalID.ConfigDirName != defaultID.ConfigDirName {
-		configDirNames = append(configDirNames, globalID.ConfigDirName)
-	}
-	if cwd == "" {
-		return paths
-	}
-	dir, err := filepath.Abs(cwd)
-	if err != nil {
-		dir = cwd
-	}
-	legacyProjectDir := findNearestClaudeDir(dir)
-	if legacyProjectDir != "" {
-		paths = append(paths,
-			filepath.Join(legacyProjectDir, "settings.json"),
-			filepath.Join(legacyProjectDir, "settings.local.json"),
-		)
-	}
-	for _, configDirName := range configDirNames {
-		projectDir := findNearestConfigDir(dir, configDirName)
-		if projectDir != "" {
-			paths = append(paths,
-				filepath.Join(projectDir, "settings.json"),
-				filepath.Join(projectDir, "settings.local.json"),
-			)
-		}
-	}
-	paths = append(paths, projectConfigSearchPaths(dir)...)
-	return paths
-	*/
 }
 
 func LoadOwnedSettings(cwd string) LoadedSettings {
@@ -1584,52 +1605,6 @@ func ownedSettingsSearchPaths(cwd string) []string {
 	// 身份解析与默认 runtime 共用同一来源，避免重新引入项目配置。
 	return settingsSearchPaths(cwd)
 
-	/* 2026-09-09：按单一默认配置来源方案停用，保留旧逻辑供查阅。
-	var paths []string
-	defaultID := identity.Default()
-	configDirNames := []string{product.LegacyConfigDirName, defaultID.ConfigDirName}
-	if legacyPath, err := legacyGlobalSettingsPath(); err == nil && legacyPath != "" {
-		paths = appendUniquePath(paths, legacyPath)
-	}
-	if globalPath, err := GlobalSettingsPath(); err == nil && globalPath != "" {
-		paths = appendUniquePath(paths, globalPath)
-	}
-	var globalSettings Settings
-	for _, path := range paths {
-		if next, ok := readSettings(path); ok {
-			globalSettings = mergeSettings(globalSettings, next)
-		}
-	}
-	globalID := identity.FromSettings(IdentitySettings(globalSettings))
-	if globalID.ConfigDirName != defaultID.ConfigDirName {
-		configDirNames = append(configDirNames, globalID.ConfigDirName)
-	}
-	if cwd == "" {
-		return paths
-	}
-	dir, err := filepath.Abs(cwd)
-	if err != nil {
-		dir = cwd
-	}
-	for _, configDirName := range configDirNames {
-		projectDir := findNearestConfigDir(dir, configDirName)
-		if projectDir != "" {
-			paths = append(paths,
-				filepath.Join(projectDir, "settings.json"),
-				filepath.Join(projectDir, "settings.local.json"),
-			)
-		}
-	}
-	return paths
-	*/
-}
-
-func legacyGlobalSettingsPath() (string, error) {
-	root, err := identity.LegacyOwnedGlobalConfigRoot()
-	if err != nil || root == "" {
-		return "", err
-	}
-	return filepath.Join(root, "settings.json"), nil
 }
 
 func appendUniquePath(paths []string, path string) []string {
@@ -1936,10 +1911,7 @@ func mergeSettings(base, override Settings) Settings {
 	// credentials from the previous route must not leak into its replacement.
 	if base.Provider != "" && override.Provider != "" && NormalizeProviderKind(override.Provider) != NormalizeProviderKind(base.Provider) {
 		base.Model, base.ProviderProtocol, base.Responses = "", "", nil
-		base.Env = mergeMap(base.Env, nil)
-		for _, key := range providerRouteEnvKeys {
-			delete(base.Env, key)
-		}
+		base.BaseURL, base.APIKey, base.AuthToken = "", "", ""
 	}
 	if override.ProviderProtocol != "" && normalizeProviderProtocol(override.ProviderProtocol) != normalizeProviderProtocol(base.ProviderProtocol) {
 		base.Responses = nil
@@ -1955,6 +1927,15 @@ func mergeSettings(base, override Settings) Settings {
 		base.ProviderProtocol = normalizeProviderProtocol(override.ProviderProtocol)
 	}
 	base.Responses = mergeResponsesProviderSettings(base.Responses, override.Responses)
+	if override.BaseURL != "" {
+		base.BaseURL = override.BaseURL
+	}
+	if override.APIKey != "" {
+		base.APIKey = override.APIKey
+	}
+	if override.AuthToken != "" {
+		base.AuthToken = override.AuthToken
+	}
 	if override.ContextLength != 0 {
 		base.ContextLength = override.ContextLength
 	}
@@ -2468,19 +2449,15 @@ func fallbackProviderMergeKey(provider ProviderConfig) string {
 }
 
 func mergeFallbackProviderAuth(provider, base ProviderConfig) ProviderConfig {
-	if !provider.apiKeySet || (isUnsetEnvReference(provider.APIKey) && base.APIKey != "") {
+	if !provider.apiKeySet {
 		provider.APIKey = base.APIKey
 		provider.apiKeySet = base.apiKeySet
 	}
-	if !provider.authTokenSet || (isUnsetEnvReference(provider.AuthToken) && base.AuthToken != "") {
+	if !provider.authTokenSet {
 		provider.AuthToken = base.AuthToken
 		provider.authTokenSet = base.authTokenSet
 	}
 	return provider
-}
-
-func isUnsetEnvReference(value string) bool {
-	return strings.Contains(value, "$") && os.ExpandEnv(value) == ""
 }
 
 func mergeAutoCompactSettings(base, override *AutoCompactSettings) *AutoCompactSettings {
@@ -2710,20 +2687,13 @@ func fallbackProviders(settings *FallbackSettings, apiKey, authToken string) []P
 	providers := make([]ProviderConfig, 0, len(settings.Providers))
 	for _, provider := range settings.Providers {
 		authConfigured := providerAuthConfigured(provider)
-		provider.Name = strings.TrimSpace(os.ExpandEnv(provider.Name))
+		provider.Name = strings.TrimSpace(provider.Name)
 		provider.Type = strings.TrimSpace(provider.Type)
 		provider.Protocol = normalizeProviderProtocol(provider.Protocol)
-		provider.BaseURL = strings.TrimRight(strings.TrimSpace(os.ExpandEnv(provider.BaseURL)), "/")
-		provider.APIKey = os.ExpandEnv(provider.APIKey)
-		provider.AuthToken = os.ExpandEnv(provider.AuthToken)
-		provider.Model = strings.TrimSpace(os.ExpandEnv(provider.Model))
-		if provider.BaseURL == "" {
-			if provider.Protocol == ProviderProtocolOpenAIResponses {
-				provider.BaseURL = openAIDefaultBaseURL
-			} else {
-				provider.BaseURL = anthropicDefaultBaseURL
-			}
-		}
+		provider.BaseURL = strings.TrimRight(strings.TrimSpace(provider.BaseURL), "/")
+		provider.APIKey = strings.TrimSpace(provider.APIKey)
+		provider.AuthToken = strings.TrimSpace(provider.AuthToken)
+		provider.Model = strings.TrimSpace(provider.Model)
 		if !authConfigured {
 			provider.APIKey = apiKey
 			provider.AuthToken = authToken

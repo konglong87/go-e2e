@@ -228,19 +228,19 @@ if [[ ! -s "$READY_FILE" ]]; then
 fi
 BASE_URL="$(node -e 'const fs=require("fs"); const path=process.argv[1]; process.stdout.write(JSON.parse(fs.readFileSync(path, "utf8")).base_url)' "$READY_FILE")"
 
-export GOLANG_CC_CONFIG_DIR="$CONFIG_DIR"
-export GOLANG_CC_PROVIDER="custom"
+export GO_E2E_CONFIG_DIR="$CONFIG_DIR"
+export GO_E2E_PROVIDER="custom"
 export ANTHROPIC_BASE_URL="$BASE_URL/v1"
 export ANTHROPIC_API_KEY="failed-agent-resume-test-key"
-export GOLANG_CC_PROMPT_PROFILE="$PROMPT_PROFILE"
-export GOLANG_CC_DUMP_PROMPT_FULL="true"
+export GO_E2E_PROMPT_PROFILE="$PROMPT_PROFILE"
+export GO_E2E_DUMP_PROMPT_FULL="true"
 
 FIRST_PROMPT="FAILED_AGENT_RESUME_FIRST_PROMPT: call AgentCreate once with the delegated failure prompt. After AgentCreate returns, answer briefly. Do not call AgentGet in this first run."
 SECOND_PROMPT="FAILED_AGENT_RESUME_RESUME_PROMPT: inspect resumed background agent status. If there is a failed task notification, call AgentGet for that task before answering."
 
 echo "running first CLI turn; dump=$FIRST_DUMP" >&2
-GOLANG_CC_DUMP_PROMPT_JSON="$FIRST_DUMP" \
-go run ./cmd/golang-cc \
+GO_E2E_DUMP_PROMPT_JSON="$FIRST_DUMP" \
+go run ./cmd/go-e2e \
   --cwd "$CWD" \
   --session-id "$SESSION_ID" \
   --max-turns 2 \
@@ -289,8 +289,8 @@ if [[ ! -s "$OUTPUT_FILE" ]] || ! grep -q "FAILED_AGENT_RESUME_FAILED_OUTPUT_FIL
 fi
 
 echo "running resume CLI turn; dump=$SECOND_DUMP" >&2
-GOLANG_CC_DUMP_PROMPT_JSON="$SECOND_DUMP" \
-go run ./cmd/golang-cc \
+GO_E2E_DUMP_PROMPT_JSON="$SECOND_DUMP" \
+go run ./cmd/go-e2e \
   --cwd "$CWD" \
   --resume "$SESSION_ID" \
   --max-turns 3 \
@@ -302,8 +302,8 @@ go run ./cmd/golang-cc \
 verify_second_dump
 
 echo "running post-AgentGet resume CLI turn; dump=$THIRD_DUMP" >&2
-GOLANG_CC_DUMP_PROMPT_JSON="$THIRD_DUMP" \
-go run ./cmd/golang-cc \
+GO_E2E_DUMP_PROMPT_JSON="$THIRD_DUMP" \
+go run ./cmd/go-e2e \
   --cwd "$CWD" \
   --resume latest \
   --max-turns 1 \

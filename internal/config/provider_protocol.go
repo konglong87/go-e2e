@@ -5,9 +5,7 @@ import (
 	"strings"
 )
 
-const openAIDefaultBaseURL = "https://api.openai.com/v1"
-
-var providerRouteEnvKeys = []string{"ANTHROPIC_BASE_URL", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "GOLANG_CC_PROVIDER", "CLAUDE_CODE_PROVIDER"}
+var providerRouteKeys = []string{"baseURL", "apiKey", "authToken"}
 
 type ProviderProtocol string
 

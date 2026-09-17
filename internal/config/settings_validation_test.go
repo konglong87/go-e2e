@@ -40,7 +40,7 @@ func TestValidateSettingsAllowsExtensibleModelsAndSupportedRoutes(t *testing.T) 
 		{},
 		{Provider: "custom", Model: "vendor/future-model", ProviderProtocol: ProviderProtocolOpenAIResponses, Responses: &ResponsesProviderSettings{StateMode: ResponsesStateModeStateless}},
 		{Provider: "anthropic-compatible", ProviderProtocol: ProviderProtocolAnthropicMessages},
-		{Env: map[string]string{"GOLANG_CC_PROVIDER": "openai"}, ProviderProtocol: ProviderProtocolOpenAIResponses},
+		{Provider: "custom", BaseURL: "https://example.test/v1", APIKey: "key", ProviderProtocol: ProviderProtocolOpenAIResponses},
 	} {
 		if issues := ValidateSettings(settings); len(issues) > 0 {
 			t.Fatalf("valid settings rejected: %+v", issues)

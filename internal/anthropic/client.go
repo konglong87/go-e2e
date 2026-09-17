@@ -122,16 +122,14 @@ func NewClient(cfg config.Config) *Client {
 func newProviderClient(name, role string, provider config.ProviderConfig, registry backendRegistry) providerClient {
 	kind := strings.ToLower(strings.TrimSpace(provider.Type))
 	if kind == "" {
+		// Legacy callers inside this protocol adapter use Messages. Product
+		// configuration is validated separately and has no default provider.
 		kind = "anthropic"
 	}
 	resolved, resolveErr := config.ResolveProviderProtocol(kind, provider.Protocol, provider.Responses)
 	baseURL := strings.TrimRight(strings.TrimSpace(provider.BaseURL), "/")
 	if baseURL == "" {
-		if resolved.Protocol == config.ProviderProtocolOpenAIResponses || providerKindOpenAI(kind) {
-			baseURL = "https://api.openai.com/v1"
-		} else {
-			baseURL = "https://api.anthropic.com"
-		}
+		resolveErr = errors.New("provider endpoint is missing; configure baseURL in ~/.golang-cc/settings.json")
 	}
 	opts := []option.RequestOption{
 		option.WithoutEnvironmentDefaults(),
@@ -239,7 +237,7 @@ func (c *Client) StreamMessages(ctx context.Context, req MessagesRequest, cb Str
 			continue
 		}
 		if provider.apiKey == "" && provider.authToken == "" {
-			err := errors.New("ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN is required")
+			err := errors.New("provider credentials are missing; configure apiKey or authToken in ~/.golang-cc/settings.json")
 			failures = append(failures, providerFailure{name: provider.name, err: err})
 			continue
 		}

@@ -9,8 +9,8 @@ type Props = { draft: GlobalSettingsDraft; view: "models" | "json" };
 type FieldProps = { draft: GlobalSettingsDraft; path: SettingsPath; label: string; type?: "text" | "password" | "number"; options?: readonly (readonly [string, string])[]; placeholder?: string; full?: boolean };
 const PRIMARY_PROVIDER = -1;
 const PROTOCOL_RESPONSES = "openai-responses";
-const PROVIDER_TYPES = [["", "继承默认"], ["anthropic", "Anthropic"], ["custom", "Custom API"], ["openai", "OpenAI"], ["openai-compatible", "OpenAI Compatible"]] as const;
-const PROTOCOLS = [["", "自动选择"], ["anthropic-messages", "Anthropic Messages"], ["openai-chat-completions", "OpenAI Chat Completions"], [PROTOCOL_RESPONSES, "OpenAI Responses"]] as const;
+const PROVIDER_TYPES = [["", "继承默认"], ["custom", "Custom API"], ["openai", "OpenAI"], ["openai-compatible", "OpenAI Compatible"]] as const;
+const PROTOCOLS = [["", "自动选择"], ["anthropic-messages", "Messages"], ["openai-chat-completions", "OpenAI Chat Completions"], [PROTOCOL_RESPONSES, "OpenAI Responses"]] as const;
 const BOOL_OPTIONS = [["", "继承默认"], ["true", "启用"], ["false", "关闭"]] as const;
 const IMAGE_ROOT = ["imageGeneration"] as const;
 const FALLBACK_PROVIDERS = ["fallback", "providers"] as const;
@@ -59,16 +59,15 @@ function ProviderForm({ draft, selected, onRemove }: { draft: GlobalSettingsDraf
   const root: SettingsPath = primary ? [] : [...FALLBACK_PROVIDERS, selected];
   const protocolPath = [...root, primary ? "providerProtocol" : "protocol"];
   const isResponses = settingsValue(draft.doc, protocolPath) === PROTOCOL_RESPONSES;
-  const credentials = primary ? ["env"] : root;
   return <div className="global-settings-provider-body">
     <div className="global-settings-provider-heading"><h2>{primary ? t("全局主模型") : stringValue(settingsValue(draft.doc, [...root, "name"])) || t("未命名供应商")}</h2>{primary ? <span className="global-settings-badge">{t("默认路由")}</span> : <button type="button" className="global-settings-icon danger" title={t("删除供应商")} aria-label={t("删除供应商")} onClick={onRemove}><Trash2 size={16} /></button>}</div>
     <div className="global-settings-grid">
       {!primary && <Field draft={draft} path={[...root, "name"]} label="供应商名称" />}
       <Field draft={draft} path={[...root, primary ? "provider" : "type"]} label="供应商类型" options={PROVIDER_TYPES} />
       <Field draft={draft} path={protocolPath} label="API 协议" options={PROTOCOLS} />
-      <Field draft={draft} path={[...credentials, primary ? "ANTHROPIC_BASE_URL" : "baseURL"]} label="API 地址" placeholder="https://api.example.com/v1" full />
-      <Field draft={draft} path={[...credentials, primary ? "ANTHROPIC_API_KEY" : "apiKey"]} label="API Key" type="password" full />
-      <Field draft={draft} path={[...credentials, primary ? "ANTHROPIC_AUTH_TOKEN" : "authToken"]} label="Auth Token" type="password" full />
+      <Field draft={draft} path={[...root, "baseURL"]} label="API 地址" placeholder="https://api.example.com/v1" full />
+      <Field draft={draft} path={[...root, "apiKey"]} label="API Key" type="password" full />
+      <Field draft={draft} path={[...root, "authToken"]} label="Auth Token" type="password" full />
       <Field draft={draft} path={[...root, "model"]} label="默认模型" placeholder="模型标识" />
       {primary && <Field draft={draft} path={["effort"]} label="思考强度" options={[["", "继承默认"], ["off", "关闭"], ["low", "Low"], ["medium", "Medium"], ["high", "High"], ["max", "Max"]]} />}
     </div>
@@ -77,7 +76,6 @@ function ProviderForm({ draft, selected, onRemove }: { draft: GlobalSettingsDraf
       <BooleanField draft={draft} path={[...root, "responses", "store"]} label="服务端存储" />
     </div>{!isResponses && <button type="button" onClick={() => draft.setField([...root, "responses"], undefined)}><Trash2 size={14} />{t("移除 Responses 配置")}</button>}</Section>}
     {!primary && <details className="global-settings-advanced"><summary>{t("图片接口配置")}</summary><div className="global-settings-grid"><Field draft={draft} path={[...root, "imageProtocol"]} label="图片 API 协议" placeholder="继承供应商默认" /><StringListField draft={draft} path={[...root, "imageResultHosts"]} label="图片结果域名白名单" /></div></details>}
-    {primary && <details className="global-settings-advanced"><summary>{t("环境路由与备用凭据")}</summary><div className="global-settings-grid"><Field draft={draft} path={["env", "GOLANG_CC_PROVIDER"]} label="环境供应商覆盖" /><Field draft={draft} path={["env", "CLAUDE_CODE_PROVIDER"]} label="兼容供应商覆盖" /><Field draft={draft} path={["env", "CLAUDE_CODE_AUTH_TOKEN"]} label="兼容 Auth Token" type="password" /><Field draft={draft} path={["env", "CLAUDE_CODE_OAUTH_TOKEN"]} label="OAuth Token" type="password" /></div></details>}
     <ProviderConnection draft={draft} provider={primary ? undefined : stringValue(settingsValue(draft.doc, [...root, "name"]))} />
   </div>;
 }

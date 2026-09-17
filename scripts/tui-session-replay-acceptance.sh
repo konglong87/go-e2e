@@ -2,10 +2,11 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT_DIR/scripts/lib/product-env.sh"
 GO_BIN="${GO_BIN:-go}"
 OUT_DIR="${OUT_DIR:-/tmp/gocc-tui-session-replay-$(date +%Y%m%d-%H%M%S)}"
 FIXTURE_DIR="${TUI_REPLAY_FIXTURE_DIR:-${ROOT_DIR}/internal/tui/testdata/session-replay}"
-SESSION_DIR="${GOLANG_CC_SESSION_DIR:-${GO_CLAUDE_SESSION_DIR:-$HOME/.golang-cc/projects}}"
+SESSION_DIR="${GO_E2E_SESSION_DIR:-${GO_CLAUDE_SESSION_DIR:-$HOME/.golang-cc/projects}}"
 # Recorded sessions are machine-local, so they are replayed as an advisory extra
 # pass only. Set to 0 to replay the in-repo fixtures alone.
 LOCAL_SESSION_LIMIT="${TUI_REPLAY_LOCAL_SESSIONS:-2}"

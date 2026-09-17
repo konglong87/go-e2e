@@ -1,8 +1,16 @@
 package identity
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/konglong87/go-e2e/internal/product"
+)
 
 func TestFromSettingsAppliesConfiguredNames(t *testing.T) {
+	t.Setenv(product.ProductNameEnv, "")
+	t.Setenv(product.ProductKeyEnv, "")
+	t.Setenv(product.ConfigDirNameEnv, "")
+	t.Setenv(product.GuidanceFilenameEnv, "")
 	id := FromSettings(Settings{
 		ProductName:      "agentx",
 		ProductKey:       "agentx",
@@ -17,9 +25,31 @@ func TestFromSettingsAppliesConfiguredNames(t *testing.T) {
 	}
 }
 
+func TestFromSettingsUsesCanonicalEnvironmentOverrides(t *testing.T) {
+	t.Setenv(product.ProductNameEnv, "env-product")
+	t.Setenv(product.ProductKeyEnv, "env-key")
+	t.Setenv(product.ConfigDirNameEnv, ".env-product")
+	t.Setenv(product.GuidanceFilenameEnv, "env-product.md")
+
+	id := FromSettings(Settings{
+		ProductName:      "settings-product",
+		ProductKey:       "settings-key",
+		ConfigDirName:    ".settings-product",
+		GuidanceFilename: "settings-product.md",
+	})
+	if id.ProductName != "env-product" || id.ProductKey != "env-key" ||
+		id.ConfigDirName != ".env-product" || id.GuidanceFilename != "env-product.md" {
+		t.Fatalf("identity did not use canonical environment overrides: %+v", id)
+	}
+}
+
 func TestFromSettingsFallsBackOnUnsafeNames(t *testing.T) {
+	t.Setenv(product.ProductNameEnv, "")
+	t.Setenv(product.ProductKeyEnv, "")
+	t.Setenv(product.ConfigDirNameEnv, "")
+	t.Setenv(product.GuidanceFilenameEnv, "")
 	id := FromSettings(Settings{GuidanceFilename: "../bad.md"})
-	if id.GuidanceFilename != "golang-cc.md" || id.ConfigDirName != ".golang-cc" {
+	if id.GuidanceFilename != "go-e2e.md" || id.ConfigDirName != ".golang-cc" {
 		t.Fatalf("identity did not fall back to defaults: %+v", id)
 	}
 }

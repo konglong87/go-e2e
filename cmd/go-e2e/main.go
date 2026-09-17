@@ -10,9 +10,9 @@ import (
 	"github.com/konglong87/go-e2e/internal/server"
 )
 
-// @title golang-cc API
+// @title go-e2e API
 // @version 0.1.0
-// @description golang-cc local server APIs, including internal query APIs, OpenAI-compatible endpoints, tenant persistence APIs, and mobile chat SSE APIs.
+// @description go-e2e local server APIs, including internal query APIs, OpenAI-compatible endpoints, tenant persistence APIs, and mobile chat SSE APIs.
 // @BasePath /
 // @schemes http https
 // @securityDefinitions.apikey ApiKeyAuth

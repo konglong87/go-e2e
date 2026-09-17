@@ -3,13 +3,13 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/product-env.sh"
 
 
-BASE_URL="${GOLANG_CC_PREPROD_BASE_URL:-http://127.0.0.1:18080}"
-AUTH_TOKEN="${GOLANG_CC_PREPROD_AUTH_TOKEN:-test-token}"
-MYSQL_DSN="${GOLANG_CC_PREPROD_MYSQL_DSN:-${GOLANG_CC_MYSQL_DSN:-}}"
-TENANT_A="${GOLANG_CC_PREPROD_TENANT_A:-yutang}"
-TENANT_B="${GOLANG_CC_PREPROD_TENANT_B:-tenant-b}"
-USER_KEY="${GOLANG_CC_PREPROD_USER:-preprod-user}"
-SKILL_KEY="${GOLANG_CC_PREPROD_SKILL:-preprod-tenant-skill}"
+BASE_URL="${GO_E2E_PREPROD_BASE_URL:-http://127.0.0.1:18080}"
+AUTH_TOKEN="${GO_E2E_PREPROD_AUTH_TOKEN:-test-token}"
+MYSQL_DSN="${GO_E2E_PREPROD_MYSQL_DSN:-${GO_E2E_MYSQL_DSN:-}}"
+TENANT_A="${GO_E2E_PREPROD_TENANT_A:-yutang}"
+TENANT_B="${GO_E2E_PREPROD_TENANT_B:-tenant-b}"
+USER_KEY="${GO_E2E_PREPROD_USER:-preprod-user}"
+SKILL_KEY="${GO_E2E_PREPROD_SKILL:-preprod-tenant-skill}"
 
 need() {
   command -v "$1" >/dev/null 2>&1 || {
@@ -66,12 +66,12 @@ api "$TENANT_B" PATCH /tenant/user "$(jq -n '{
 }')" >/dev/null
 
 echo "Running tenant A skills smoke"
-GOLANG_CC_TENANT_SKILLS_SMOKE_BASE_URL="$BASE_URL" \
-GOLANG_CC_TENANT_SKILLS_SMOKE_AUTH_TOKEN="$AUTH_TOKEN" \
-GOLANG_CC_TENANT_SKILLS_SMOKE_TENANT="$TENANT_A" \
-GOLANG_CC_TENANT_SKILLS_SMOKE_USER="$USER_KEY" \
-GOLANG_CC_TENANT_SKILLS_SMOKE_SKILL="$SKILL_KEY" \
-GOLANG_CC_TENANT_SKILLS_SMOKE_MYSQL_DSN="$MYSQL_DSN" \
+GO_E2E_TENANT_SKILLS_SMOKE_BASE_URL="$BASE_URL" \
+GO_E2E_TENANT_SKILLS_SMOKE_AUTH_TOKEN="$AUTH_TOKEN" \
+GO_E2E_TENANT_SKILLS_SMOKE_TENANT="$TENANT_A" \
+GO_E2E_TENANT_SKILLS_SMOKE_USER="$USER_KEY" \
+GO_E2E_TENANT_SKILLS_SMOKE_SKILL="$SKILL_KEY" \
+GO_E2E_TENANT_SKILLS_SMOKE_MYSQL_DSN="$MYSQL_DSN" \
   "$(dirname "$0")/tenant-skills-runtime-smoke.sh"
 
 echo "Verifying tenant B cannot see tenant A skill"
@@ -79,14 +79,14 @@ api "$TENANT_B" GET "/tenant/effective-skills?enabled=true&limit=50" \
   | jq -e --arg key "$SKILL_KEY" '(.data // []) | map(.skill_key) | index($key) == null' >/dev/null
 
 echo "Running chat history smoke"
-GOLANG_CC_CHAT_HISTORY_SMOKE_BASE_URL="$BASE_URL" \
-GOLANG_CC_CHAT_HISTORY_SMOKE_AUTH_TOKEN="$AUTH_TOKEN" \
-GOLANG_CC_CHAT_HISTORY_SMOKE_TENANT="$TENANT_A" \
-GOLANG_CC_CHAT_HISTORY_SMOKE_USER="$USER_KEY" \
-GOLANG_CC_CHAT_HISTORY_SMOKE_MYSQL_DSN="$MYSQL_DSN" \
+GO_E2E_CHAT_HISTORY_SMOKE_BASE_URL="$BASE_URL" \
+GO_E2E_CHAT_HISTORY_SMOKE_AUTH_TOKEN="$AUTH_TOKEN" \
+GO_E2E_CHAT_HISTORY_SMOKE_TENANT="$TENANT_A" \
+GO_E2E_CHAT_HISTORY_SMOKE_USER="$USER_KEY" \
+GO_E2E_CHAT_HISTORY_SMOKE_MYSQL_DSN="$MYSQL_DSN" \
   "$(dirname "$0")/tenant-chat-history-smoke.sh"
 
-if [[ "${GOLANG_CC_PREPROD_SKIP_MOBILE_WS:-0}" != "1" ]]; then
+if [[ "${GO_E2E_PREPROD_SKIP_MOBILE_WS:-0}" != "1" ]]; then
   "$(dirname "$0")/mobile-ws-sync-acceptance.sh"
 fi
 

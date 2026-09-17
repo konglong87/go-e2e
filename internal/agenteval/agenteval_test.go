@@ -69,6 +69,9 @@ func TestRunLiveProfileSkipsWhenBaseURLMissing(t *testing.T) {
 }
 
 func TestRunAnthropicThinkingProfileSkipsWhenAuthMissing(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("GO_E2E_CONFIG_DIR", "")
+	t.Setenv("GOLANG_CC_CONFIG_DIR", t.TempDir())
 	t.Setenv("ANTHROPIC_API_KEY", "")
 	t.Setenv("ANTHROPIC_AUTH_TOKEN", "")
 	t.Setenv("CLAUDE_CODE_AUTH_TOKEN", "")
@@ -128,10 +131,17 @@ func TestRunAnthropicThinkingProfileWithFakeServer(t *testing.T) {
 	}))
 	defer server.Close()
 
-	t.Setenv("ANTHROPIC_API_KEY", "test-key")
-	t.Setenv("ANTHROPIC_AUTH_TOKEN", "")
-	t.Setenv("ANTHROPIC_BASE_URL", server.URL)
-	t.Setenv("CLAUDE_CODE_MODEL", "claude-test")
+	t.Setenv("GO_E2E_CONFIG_DIR", "")
+	data, err := json.Marshal(map[string]string{
+		"provider": "anthropic-compatible", "model": "test-model",
+		"apiKey": "test-key", "baseURL": server.URL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(os.Getenv("GOLANG_CC_CONFIG_DIR"), "settings.json"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
 	report, err := Run(context.Background(), Options{CWD: t.TempDir(), Profile: "anthropic-thinking"})
 	if err != nil {
 		t.Fatal(err)
