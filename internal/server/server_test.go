@@ -5066,7 +5066,7 @@ func TestHandlerServesSwaggerDocs(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), `"title": "golang-cc API"`) {
+	if !strings.Contains(rec.Body.String(), `"title": "go-e2e API"`) {
 		t.Fatalf("swagger body = %s", rec.Body.String())
 	}
 	var doc struct {
@@ -5088,6 +5088,11 @@ func TestHandlerServesSwaggerDocs(t *testing.T) {
 		"/runtime/background/{id}/runs":              {"get"},
 		"/runtime/background/events":                 {"get"},
 		"/runtime/background/{id}/stop":              {"post"},
+		"/runtime/settings":                          {"get", "put"},
+		"/runtime/settings/validate":                  {"post"},
+		"/runtime/settings/promote-provider":          {"post"},
+		"/runtime/settings/effective":                {"get"},
+		"/runtime/settings/test-provider":             {"post"},
 		"/query":                                     {"post"},
 		"/v1/models":                                 {"get"},
 		"/v1/chat/completions":                       {"post"},

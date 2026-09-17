@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ApiError, apiRequest } from "../../lib/api";
+import { ApiError, apiRequest, promoteGlobalSettingsProvider } from "../../lib/api";
 import type { GlobalSettingsResponse, IdentityConfig, SettingsDoc } from "../../lib/types";
 
 export const SETTINGS_ENDPOINT = "/runtime/settings";
@@ -20,10 +20,11 @@ type DraftState = {
   error: string;
   conflict: boolean;
   loading: boolean;
-  operation: "" | "validate" | "save" | "test";
+  operation: "" | "validate" | "save" | "test" | "promote";
   validation: SettingsValidation | null;
   connection: (SettingsConnection & { provider?: string }) | null;
   saved: boolean;
+  promotedProviderIndex: number | null;
 };
 
 export function parseSettingsDraft(raw: string): { doc: SettingsDoc | null; syntaxError: string } {
@@ -63,7 +64,7 @@ export function updateSettingsValue(doc: SettingsDoc, path: SettingsPath, value:
   return update(doc, 0) as SettingsDoc;
 }
 
-const initialState = (): DraftState => ({ raw: "", doc: null, syntaxError: "", error: "", conflict: false, loading: false, operation: "", validation: null, connection: null, saved: false });
+const initialState = (): DraftState => ({ raw: "", doc: null, syntaxError: "", error: "", conflict: false, loading: false, operation: "", validation: null, connection: null, saved: false, promotedProviderIndex: null });
 const desktopBuild = import.meta.env.VITE_DESKTOP_UI_VERSION === "2";
 const serialize = (doc: SettingsDoc) => JSON.stringify(doc, null, 2);
 const snapshotState = (snapshot: SettingsSnapshot): DraftState => ({ ...initialState(), snapshot, raw: serialize(snapshot.doc), doc: snapshot.doc });
@@ -122,14 +123,15 @@ export function useGlobalSettingsDraft(identity: IdentityConfig, enabled = true)
   const setRaw = useCallback((raw: string) => setState((previous) => {
     if (previous.loading || previous.operation || !previous.snapshot) return previous;
     if (desktopBuild) localStorage.removeItem(DESKTOP_CONFIG_VERIFIED_KEY);
-    return { ...previous, raw, ...parseSettingsDraft(raw), validation: null, connection: null, error: previous.conflict ? SETTINGS_CONFLICT_MESSAGE : "", saved: false };
+    return { ...previous, raw, ...parseSettingsDraft(raw), validation: null, connection: null, error: previous.conflict ? SETTINGS_CONFLICT_MESSAGE : "", saved: false, promotedProviderIndex: null };
   }), []);
 
   const setField = useCallback((path: SettingsPath, value: unknown) => setState((previous) => {
     if (!previous.doc || previous.syntaxError || previous.loading || previous.operation || !previous.snapshot) return previous;
     if (desktopBuild) localStorage.removeItem(DESKTOP_CONFIG_VERIFIED_KEY);
     const doc = updateSettingsValue(previous.doc, path, value);
-    return { ...previous, doc, raw: serialize(doc), validation: null, connection: null, error: previous.conflict ? SETTINGS_CONFLICT_MESSAGE : "", saved: false };
+    const invalidatesPromotion = path.length > 0 && ["provider", "providerProtocol", "baseURL", "apiKey", "authToken", "model", "responses", "fallback"].includes(String(path[0]));
+    return { ...previous, doc, raw: serialize(doc), validation: null, connection: null, error: previous.conflict ? SETTINGS_CONFLICT_MESSAGE : "", saved: false, promotedProviderIndex: invalidatesPromotion ? null : previous.promotedProviderIndex };
   }), []);
 
   const reset = useCallback(() => setState((previous) => previous.snapshot && !previous.operation && !previous.loading
@@ -152,7 +154,10 @@ export function useGlobalSettingsDraft(identity: IdentityConfig, enabled = true)
       if (!validation.valid || operation === "validate") return validation.valid;
       const saved = await apiRequest<{ revision?: string }>(identityRef.current, SETTINGS_ENDPOINT, {
         method: "PUT", body: draft.doc, signal: controller.signal,
-        headers: draft.snapshot.revision ? { "If-Match": draft.snapshot.revision } : undefined,
+        headers: {
+          ...(draft.snapshot.revision ? { "If-Match": draft.snapshot.revision } : {}),
+          ...(draft.promotedProviderIndex !== null ? { "X-Settings-Promoted-Provider-Index": String(draft.promotedProviderIndex) } : {}),
+        },
       });
       committed = true;
       // Only a successful server readback replaces the draft and masked values.
@@ -203,6 +208,30 @@ export function useGlobalSettingsDraft(identity: IdentityConfig, enabled = true)
     }
   }, []);
 
+  const promoteProvider = useCallback(async (providerIndex: number): Promise<boolean> => {
+    const draft = stateRef.current;
+    if (!draft.doc || draft.syntaxError || draft.loading || draft.operation || operationLock.current || !draft.snapshot || !Number.isInteger(providerIndex) || providerIndex < 0) return false;
+    operationLock.current = true;
+    const controller = new AbortController();
+    active.current = controller;
+    const current = ++generation.current;
+    setState((previous) => ({ ...previous, operation: "promote", error: "", validation: null, connection: null, saved: false }));
+    try {
+      const promoted = await promoteGlobalSettingsProvider(identityRef.current, draft.doc, providerIndex, controller.signal);
+      if (current !== generation.current) return false;
+      setState((previous) => ({ ...previous, doc: promoted.doc, raw: serialize(promoted.doc), error: "", validation: null, connection: null, saved: false, promotedProviderIndex: providerIndex }));
+      return true;
+    } catch (error) {
+      if (current === generation.current && !controller.signal.aborted) setState((previous) => ({ ...previous, error: requestError(error) }));
+      return false;
+    } finally {
+      if (current === generation.current) {
+        operationLock.current = false;
+        setState((previous) => ({ ...previous, operation: "" }));
+      }
+    }
+  }, []);
+
   return {
     ...state,
     loaded: Boolean(state.snapshot),
@@ -212,7 +241,7 @@ export function useGlobalSettingsDraft(identity: IdentityConfig, enabled = true)
     masked: state.snapshot?.masked ?? [],
     dirty: Boolean(state.snapshot) && state.raw !== serialize(state.snapshot!.doc),
     busy: state.loading || Boolean(state.operation),
-    setRaw, setField, reset, reload, testProvider,
+    setRaw, setField, reset, reload, testProvider, promoteProvider,
     validate: useCallback(() => run("validate"), [run]),
     save: useCallback(() => run("save"), [run]),
   };

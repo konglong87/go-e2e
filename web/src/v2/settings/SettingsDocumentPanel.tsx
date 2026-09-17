@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import { Activity, Braces, Check, Cpu, Eye, EyeOff, Plus, RotateCcw, Save, ShieldCheck, Trash2 } from "lucide-react";
+import { Activity, ArrowUpRight, Braces, Check, Cpu, Eye, EyeOff, Plus, RotateCcw, Save, ShieldCheck, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { SETTINGS_SECRET_SENTINEL, settingsValue, type GlobalSettingsDraft, type SettingsPath } from "./globalSettingsDraft";
 import { useGlobalSettingsText } from "./globalSettingsCopy";
@@ -53,14 +53,24 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   return <section className="global-settings-section"><h3>{t(title)}</h3>{children}</section>;
 }
 
-function ProviderForm({ draft, selected, onRemove }: { draft: GlobalSettingsDraft; selected: number; onRemove: () => void }) {
+function providerMatchesPrimary(doc: Record<string, unknown> | null, provider: Record<string, unknown>): boolean {
+  if (!doc) return false;
+  for (const [providerKey, primaryKey] of [["type", "provider"], ["protocol", "providerProtocol"], ["baseURL", "baseURL"], ["model", "model"]] as const) {
+    if (stringValue(provider[providerKey]) !== stringValue(doc[primaryKey])) return false;
+  }
+  return JSON.stringify(provider.responses ?? null) === JSON.stringify(doc.responses ?? null);
+}
+
+function ProviderForm({ draft, selected, onRemove, onPromote }: { draft: GlobalSettingsDraft; selected: number; onRemove: () => void; onPromote: () => void }) {
   const t = useGlobalSettingsText();
   const primary = selected === PRIMARY_PROVIDER;
   const root: SettingsPath = primary ? [] : [...FALLBACK_PROVIDERS, selected];
   const protocolPath = [...root, primary ? "providerProtocol" : "protocol"];
   const isResponses = settingsValue(draft.doc, protocolPath) === PROTOCOL_RESPONSES;
+  const selectedProvider = !primary ? settingsValue(draft.doc, root) : null;
+  const alreadyPrimary = !primary && selectedProvider && typeof selectedProvider === "object" && providerMatchesPrimary(draft.doc, selectedProvider as Record<string, unknown>);
   return <div className="global-settings-provider-body">
-    <div className="global-settings-provider-heading"><h2>{primary ? t("全局主模型") : stringValue(settingsValue(draft.doc, [...root, "name"])) || t("未命名供应商")}</h2>{primary ? <span className="global-settings-badge">{t("默认路由")}</span> : <button type="button" className="global-settings-icon danger" title={t("删除供应商")} aria-label={t("删除供应商")} onClick={onRemove}><Trash2 size={16} /></button>}</div>
+    <div className="global-settings-provider-heading"><h2>{primary ? t("全局主模型") : stringValue(settingsValue(draft.doc, [...root, "name"])) || t("未命名供应商")}</h2>{primary ? <span className="global-settings-badge">{t("默认路由")}</span> : <div className="global-settings-provider-actions">{alreadyPrimary ? <span className="global-settings-badge">{t("已设为主模型")}</span> : <button type="button" className="global-settings-promote" title={t("设为主模型")} onClick={onPromote}><ArrowUpRight size={15} />{t("设为主模型")}</button>}<button type="button" className="global-settings-icon danger" title={t("删除供应商")} aria-label={t("删除供应商")} onClick={onRemove}><Trash2 size={16} /></button></div>}</div>
     <div className="global-settings-grid">
       {!primary && <Field draft={draft} path={[...root, "name"]} label="供应商名称" />}
       <Field draft={draft} path={[...root, primary ? "provider" : "type"]} label="供应商类型" options={PROVIDER_TYPES} />
@@ -116,7 +126,7 @@ function ModelsView({ draft }: { draft: GlobalSettingsDraft }) {
           <button type="button" key={index} className={selection === index ? "selected" : ""} onClick={() => setSelected(index)}><Cpu size={18} /><span><strong>{stringValue(settingsValue(provider, ["name"])) || `${t("供应商")} ${index + 1}`}</strong><small>{stringValue(settingsValue(provider, ["model"])) || stringValue(settingsValue(provider, ["type"]))}</small></span></button>)}
         <button type="button" onClick={addProvider}><Plus size={16} />{t("添加供应商")}</button>
       </nav>
-      <ProviderForm key={selection} draft={draft} selected={selection} onRemove={removeProvider} />
+      <ProviderForm key={selection} draft={draft} selected={selection} onRemove={removeProvider} onPromote={() => void draft.promoteProvider(selection)} />
     </div>
     <Section title="备用路由"><div className="global-settings-grid"><BooleanField draft={draft} path={["fallback", "enabled"]} label="启用 Fallback" /></div></Section>
     <Section title="图片生成"><div className="global-settings-grid">

@@ -18,7 +18,9 @@
 .global-settings-provider-body { min-width: 0; }
 .global-settings-provider-heading { align-items: center; display: flex; gap: 10px; margin-bottom: 20px; min-width: 0; }
 .global-settings-provider-heading h2 { font-size: 17px; line-height: 1.4; margin: 0; overflow-wrap: anywhere; }
-.global-settings-provider-heading .danger { color: var(--webui2-danger); margin-left: auto; }
+.global-settings-provider-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.global-settings-provider-heading .danger { color: var(--webui2-danger); }
+.global-settings-promote { border-color: var(--webui2-accent) !important; color: var(--webui2-accent) !important; }
 .global-settings-grid { display: grid; gap: 17px 20px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .global-settings-field { display: flex; flex-direction: column; font-size: 12px; gap: 7px; min-width: 0; }
 .global-settings-field.full { grid-column: 1 / -1; }

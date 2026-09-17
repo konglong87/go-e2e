@@ -3,7 +3,7 @@ import { useI18n } from "../../lib/i18n";
 const english: Record<string, string> = {
   "继承默认": "Inherit default", "自动选择": "Automatic", "启用": "Enabled", "关闭": "Disabled",
   "隐藏密钥": "Hide credential", "显示密钥": "Show credential", "已存储，未修改时保留": "Stored; unchanged values are retained",
-  "全局主模型": "Primary model", "未命名供应商": "Unnamed provider", "默认路由": "Default route", "删除供应商": "Remove provider",
+  "全局主模型": "Primary model", "未命名供应商": "Unnamed provider", "默认路由": "Default route", "设为主模型": "Set as primary model", "已设为主模型": "Primary model", "删除供应商": "Remove provider",
   "供应商名称": "Provider name", "供应商类型": "Provider type", "API 协议": "API protocol", "API 地址": "API base URL",
   "默认模型": "Default model", "模型标识": "Model ID", "思考强度": "Reasoning effort", "状态模式": "State mode",
   "服务端存储": "Server storage", "移除 Responses 配置": "Remove Responses configuration",

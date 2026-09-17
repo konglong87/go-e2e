@@ -38,6 +38,7 @@ import type {
   GoalRecord,
   GoalRunResponse,
   GlobalSettingsResponse,
+  GlobalSettingsPromoteResponse,
   GlobalSettingsSaveResponse,
   SettingsDoc,
   MemoryRecord,
@@ -1351,4 +1352,12 @@ export async function deletePromptTemplate(identity: IdentityConfig, id: number)
 
 export async function saveGlobalSettings(identity: IdentityConfig, doc: SettingsDoc): Promise<GlobalSettingsSaveResponse> {
   return apiRequest<GlobalSettingsSaveResponse>(identity, "/runtime/settings", { method: "PUT", body: doc });
+}
+
+export async function promoteGlobalSettingsProvider(identity: IdentityConfig, doc: SettingsDoc, providerIndex: number, signal?: AbortSignal): Promise<GlobalSettingsPromoteResponse> {
+  return apiRequest<GlobalSettingsPromoteResponse>(identity, "/runtime/settings/promote-provider", {
+    method: "POST",
+    body: { doc, provider_index: providerIndex },
+    signal,
+  });
 }

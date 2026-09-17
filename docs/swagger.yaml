@@ -1897,6 +1897,26 @@ definitions:
       workspace:
         type: string
     type: object
+  internal_server.GlobalSettingsPromoteRequest:
+    properties:
+      doc:
+        additionalProperties: {}
+        type: object
+      provider_index:
+        type: integer
+    type: object
+  internal_server.GlobalSettingsPromoteResponse:
+    properties:
+      doc:
+        additionalProperties: {}
+        type: object
+      masked:
+        items:
+          type: string
+        type: array
+      revision:
+        type: string
+    type: object
   internal_server.GlobalSettingsResponse:
     properties:
       doc:
@@ -5293,9 +5313,9 @@ definitions:
     type: object
 info:
   contact: {}
-  description: golang-cc local server APIs, including internal query APIs, OpenAI-compatible
+  description: go-e2e local server APIs, including internal query APIs, OpenAI-compatible
     endpoints, tenant persistence APIs, and mobile chat SSE APIs.
-  title: golang-cc API
+  title: go-e2e API
   version: 0.1.0
 paths:
   /agent/slash-commands:
@@ -6168,6 +6188,11 @@ paths:
         in: header
         name: If-Match
         type: string
+      - description: Fallback provider index used to restore promoted credentials
+          during save
+        in: header
+        name: X-Settings-Promoted-Provider-Index
+        type: integer
       produces:
       - application/json
       responses:
@@ -6594,6 +6619,44 @@ paths:
       security:
       - BearerAuth: []
       summary: Use existing Profile management APIs in a preconfigured environment
+      tags:
+      - Runtime
+  /runtime/settings/promote-provider:
+    post:
+      consumes:
+      - application/json
+      description: Returns a masked draft with the selected fallback provider copied
+        to the top-level route. The global settings file is not changed until PUT
+        /runtime/settings.
+      parameters:
+      - description: Current settings draft and fallback provider index
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_server.GlobalSettingsPromoteRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_server.GlobalSettingsPromoteResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_server.SwaggerError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal_server.SwaggerError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_server.SwaggerError'
+      security:
+      - ApiKeyAuth: []
+      summary: Promote a fallback provider into the primary settings route
       tags:
       - Runtime
   /runtime/settings/test-provider:

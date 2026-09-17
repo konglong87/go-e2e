@@ -687,6 +687,12 @@ export type GlobalSettingsSaveResponse = {
   saved: boolean;
 };
 
+export type GlobalSettingsPromoteResponse = {
+  doc: SettingsDoc;
+  masked: string[];
+  revision?: string;
+};
+
 export type AgentProfileDocument = {
   schema_version: number;
   identity: { display_name?: string; description?: string };

@@ -205,6 +205,58 @@ describe("shared global settings draft", () => {
     expect(draft.connection).toBeNull();
   });
 
+  it("promotes a fallback provider into the primary route without saving", async () => {
+    const document: SettingsDoc = {
+      provider: "custom",
+      providerProtocol: "openai-responses",
+      baseURL: "https://primary.example/v1",
+      apiKey: SETTINGS_SECRET_SENTINEL,
+      model: "old-model",
+      fallback: {
+        providers: [{
+          name: "glm",
+          type: "openai-compatible",
+          protocol: "openai-chat-completions",
+          baseURL: "https://glm.example/v1",
+          apiKey: SETTINGS_SECRET_SENTINEL,
+          model: "glm-5.2",
+          future: { keep: true },
+        }],
+      },
+      futureRoot: { keep: "yes" },
+    };
+    fetchMock.mockResolvedValueOnce(jsonResponse(snapshot(document)));
+    await render("models");
+    act(() => (host.querySelectorAll(".global-settings-provider-list button")[1] as HTMLButtonElement).click());
+    expect(host.querySelector(".global-settings-promote")).not.toBeNull();
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      doc: {
+        ...document,
+        provider: "openai-compatible",
+        providerProtocol: "openai-chat-completions",
+        baseURL: "https://glm.example/v1",
+        apiKey: SETTINGS_SECRET_SENTINEL,
+        model: "glm-5.2",
+      },
+      masked: ["apiKey", "fallback.providers.0.apiKey"],
+      revision: "revision-1",
+    }));
+    await act(async () => { expect(await draft.promoteProvider(0)).toBe(true); });
+    const call = fetchMock.mock.calls[1];
+    expect(call[0]).toBe("/api/runtime/settings/promote-provider");
+    expect(JSON.parse(call[1]?.body as string)).toMatchObject({ provider_index: 0, doc: { fallback: { providers: [{ model: "glm-5.2" }] } } });
+    expect(draft.doc?.model).toBe("glm-5.2");
+    expect(draft.doc?.futureRoot).toEqual({ keep: "yes" });
+    expect(host.querySelector(".global-settings-promote")).toBeNull();
+    expect(host.textContent).toContain("已设为主模型");
+    expect(draft.dirty).toBe(true);
+    fetchMock.mockResolvedValueOnce(jsonResponse({ valid: true, issues: [] }))
+      .mockResolvedValueOnce(jsonResponse({ saved: true, revision: "revision-2", requires_restart: true }))
+      .mockResolvedValueOnce(jsonResponse(snapshot({ ...draft.doc!, model: "glm-5.2" }, "revision-2")));
+    await act(async () => { expect(await draft.save()).toBe(true); });
+    expect(new Headers(fetchMock.mock.calls[3][1]?.headers).get("X-Settings-Promoted-Provider-Index")).toBe("0");
+  });
+
   it("does not probe the primary model for an unnamed fallback provider", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(snapshot({ fallback: { providers: [{ type: "custom", model: "unnamed" }] } })));
     await render("models");

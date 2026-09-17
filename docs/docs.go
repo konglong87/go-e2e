@@ -1397,6 +1397,12 @@ const docTemplate = `{
                         "description": "Revision from GET (raw or quoted ETag); stale revisions return 409",
                         "name": "If-Match",
                         "in": "header"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Fallback provider index used to restore promoted credentials during save",
+                        "name": "X-Settings-Promoted-Provider-Index",
+                        "in": "header"
                     }
                 ],
                 "responses": {
@@ -1987,6 +1993,63 @@ const docTemplate = `{
                     },
                     "503": {
                         "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/internal_server.SwaggerError"
+                        }
+                    }
+                }
+            }
+        },
+        "/runtime/settings/promote-provider": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Returns a masked draft with the selected fallback provider copied to the top-level route. The global settings file is not changed until PUT /runtime/settings.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Runtime"
+                ],
+                "summary": "Promote a fallback provider into the primary settings route",
+                "parameters": [
+                    {
+                        "description": "Current settings draft and fallback provider index",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_server.GlobalSettingsPromoteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_server.GlobalSettingsPromoteResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_server.SwaggerError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_server.SwaggerError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/internal_server.SwaggerError"
                         }
@@ -13625,6 +13688,36 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_server.GlobalSettingsPromoteRequest": {
+            "type": "object",
+            "properties": {
+                "doc": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "provider_index": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_server.GlobalSettingsPromoteResponse": {
+            "type": "object",
+            "properties": {
+                "doc": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "masked": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "revision": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_server.GlobalSettingsResponse": {
             "type": "object",
             "properties": {
@@ -18797,8 +18890,8 @@ var SwaggerInfo = &swag.Spec{
 	Host:             "",
 	BasePath:         "/",
 	Schemes:          []string{"http", "https"},
-	Title:            "golang-cc API",
-	Description:      "golang-cc local server APIs, including internal query APIs, OpenAI-compatible endpoints, tenant persistence APIs, and mobile chat SSE APIs.",
+	Title:            "go-e2e API",
+	Description:      "go-e2e local server APIs, including internal query APIs, OpenAI-compatible endpoints, tenant persistence APIs, and mobile chat SSE APIs.",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

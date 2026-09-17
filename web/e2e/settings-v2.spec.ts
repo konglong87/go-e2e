@@ -3,7 +3,19 @@ import { installWebUIV2Sessions } from "./fixtures/webuiV2Sessions";
 
 const settingsDoc = {
   provider: "custom",
+  providerProtocol: "openai-chat-completions",
+  baseURL: "https://primary.example/v1",
   model: "fixture-model",
+  fallback: {
+    enabled: true,
+    providers: [{
+      name: "glm",
+      type: "openai-compatible",
+      protocol: "openai-chat-completions",
+      baseURL: "https://glm.example/v1",
+      model: "glm-5.2"
+    }]
+  },
   appearance: {
     enabled: false,
     backgroundColor: "#f7f8fa",
@@ -44,6 +56,18 @@ test.beforeEach(async ({ page }) => {
       return route.fulfill({ json: { saved: true, revision } });
     }
     return route.fulfill({ json: { doc: document, revision, path: "~/.golang-cc/settings.json", exists: true, masked: [] } });
+  });
+  await page.route("**/runtime/settings/promote-provider", async (route) => {
+    const request = route.request().postDataJSON() as { doc: typeof settingsDoc; provider_index: number };
+    const provider = request.doc.fallback.providers[request.provider_index];
+    const promoted = {
+      ...request.doc,
+      provider: provider.type,
+      providerProtocol: provider.protocol,
+      baseURL: provider.baseURL,
+      model: provider.model
+    };
+    return route.fulfill({ json: { doc: promoted, revision, masked: [] } });
   });
   await page.route("**/tenant/telemetry*", (route) => route.fulfill({ json: { data: [{ id: 1, name: "model.request.finished", status: "ok", created_at: "2026-09-17T01:02:03Z" }] } }));
   await page.route("**/tenant/usage/daily*", (route) => route.fulfill({ json: { data: [{ id: 1, usage_date: "2026-09-17", model: "fixture-model", request_count: 2, total_tokens: 128 }] } }));
@@ -117,6 +141,21 @@ test("renders pet preview and reads actual observability records", async ({ page
   await expect(page.getByText("128", { exact: true })).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await page.screenshot({ path: testInfo.outputPath("settings-v2-observability.png"), fullPage: false });
+});
+
+test("promotes a selected fallback model, saves it, and confirms the new primary route", async ({ page }, testInfo) => {
+  await page.goto("/webui/v2/settings/models");
+  await expect(page.getByRole("heading", { name: "Models", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: /glm-5\.2/ }).click();
+  await expect(page.getByRole("button", { name: "Set as primary model", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Set as primary model", exact: true }).click();
+  await expect(page.getByText("Primary model", { exact: true }).last()).toBeVisible();
+  await expect(page.locator(".global-settings-footer-status")).toContainText("Unsaved changes");
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Saved and verified by readback." })).toBeVisible();
+  await expect(page.locator(".global-settings-provider-list").getByText("glm-5.2", { exact: true }).first()).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({ path: testInfo.outputPath("settings-v2-promote-primary.png"), fullPage: false });
 });
 
 async function expectNoHorizontalOverflow(page: import("@playwright/test").Page): Promise<void> {

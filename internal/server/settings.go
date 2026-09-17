@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -42,9 +43,24 @@ type GlobalSettingsSaveResponse struct {
 	RequiresRestart bool   `json:"requires_restart"`
 }
 
+// GlobalSettingsPromoteResponse contains a masked draft after promoting one
+// named fallback provider into the top-level primary route. The file is not
+// changed until the client submits the draft to PUT /runtime/settings.
+type GlobalSettingsPromoteResponse struct {
+	Doc      map[string]any `json:"doc"`
+	Masked   []string       `json:"masked"`
+	Revision string         `json:"revision"`
+}
+
+type GlobalSettingsPromoteRequest struct {
+	Doc           map[string]any `json:"doc"`
+	ProviderIndex int            `json:"provider_index"`
+}
+
 func registerSettingsRoutes(router *gin.Engine, opts Options) {
 	router.Any("/runtime/settings", runtimeSettingsGin(opts))
 	router.POST("/runtime/settings/validate", settingsValidateGin(opts))
+	router.POST("/runtime/settings/promote-provider", settingsPromoteProviderGin(opts))
 	router.GET("/runtime/settings/effective", settingsEffectiveGin(opts))
 	router.POST("/runtime/settings/test-provider", settingsTestProviderGin(opts))
 }
@@ -134,6 +150,14 @@ func handlePutGlobalSettings(w http.ResponseWriter, r *http.Request) {
 	// represented by config.Settings while allowing known optional fields to be
 	// removed explicitly.
 	doc = config.PreserveUnknownJSONFields(oldDoc, doc)
+	promotedIndex, err := parsePromotedProviderIndex(r.Header.Get("X-Settings-Promoted-Provider-Index"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if promotedIndex >= 0 {
+		restorePromotedPrimaryCredentials(doc, oldDoc, promotedIndex)
+	}
 	if err := restoreSecrets(doc, oldDoc); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -153,6 +177,182 @@ func handlePutGlobalSettings(w http.ResponseWriter, r *http.Request) {
 	revision = settingsRevision(out, true)
 	w.Header().Set("ETag", `"`+revision+`"`)
 	writeJSON(w, GlobalSettingsSaveResponse{Path: path, Saved: true, Revision: revision, RequiresRestart: true})
+}
+
+func parsePromotedProviderIndex(value string) (int, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return -1, nil
+	}
+	index, err := strconv.Atoi(value)
+	if err != nil || index < 0 {
+		return -1, errors.New("invalid promoted provider index")
+	}
+	return index, nil
+}
+
+func restorePromotedPrimaryCredentials(doc, oldDoc map[string]any, providerIndex int) {
+	inputProviders, inputOK := settingsArray(doc, "fallback", "providers")
+	storedProviders, storedOK := settingsArray(oldDoc, "fallback", "providers")
+	if !inputOK || !storedOK || providerIndex >= len(inputProviders) {
+		return
+	}
+	inputProvider, ok := inputProviders[providerIndex].(map[string]any)
+	if !ok {
+		return
+	}
+	storedProvider := matchingStoredProvider(inputProvider, storedProviders)
+	if storedProvider == nil {
+		return
+	}
+	for _, key := range []string{"apiKey", "authToken"} {
+		if doc[key] == settingsSecretSentinel && nonEmptyString(storedProvider[key]) {
+			doc[key] = storedProvider[key]
+		}
+	}
+}
+
+func matchingStoredProvider(input map[string]any, storedProviders []any) map[string]any {
+	name := strings.TrimSpace(stringValue(input["name"]))
+	if name != "" {
+		for _, candidate := range storedProviders {
+			provider, ok := candidate.(map[string]any)
+			if ok && strings.EqualFold(strings.TrimSpace(stringValue(provider["name"])), name) {
+				return provider
+			}
+		}
+		return nil
+	}
+	var matched map[string]any
+	for _, candidate := range storedProviders {
+		provider, ok := candidate.(map[string]any)
+		if !ok {
+			continue
+		}
+		matches := true
+		for _, key := range []string{"type", "protocol", "model", "baseURL"} {
+			if stringValue(input[key]) != stringValue(provider[key]) {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			if matched != nil {
+				return nil
+			}
+			matched = provider
+		}
+	}
+	return matched
+}
+
+func stringValue(value any) string {
+	text, _ := value.(string)
+	return text
+}
+
+func settingsPromoteProviderGin(opts Options) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !authorize(c.Writer, c.Request, opts.AuthToken) {
+			return
+		}
+		var input GlobalSettingsPromoteRequest
+		if err := json.NewDecoder(io.LimitReader(c.Request.Body, 10<<20)).Decode(&input); err != nil || input.Doc == nil {
+			http.Error(c.Writer, "request body must contain a settings doc object", http.StatusBadRequest)
+			return
+		}
+
+		globalSettingsMu.Lock()
+		defer globalSettingsMu.Unlock()
+		stored, err := readStoredSettingsDocument()
+		if err != nil {
+			http.Error(c.Writer, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if err := restoreSecrets(input.Doc, stored); err != nil {
+			http.Error(c.Writer, err.Error(), http.StatusBadRequest)
+			return
+		}
+		providers, ok := settingsArray(input.Doc, "fallback", "providers")
+		if !ok || input.ProviderIndex < 0 || input.ProviderIndex >= len(providers) {
+			http.Error(c.Writer, "provider index is out of range", http.StatusBadRequest)
+			return
+		}
+		provider, ok := providers[input.ProviderIndex].(map[string]any)
+		if !ok {
+			http.Error(c.Writer, "selected provider must be an object", http.StatusBadRequest)
+			return
+		}
+		promoteProviderRoute(input.Doc, provider)
+
+		masked := []string{}
+		maskSecrets(input.Doc, "", &masked)
+		sort.Strings(masked)
+		raw, _, exists, err := config.ReadGlobalSettings()
+		if err != nil {
+			http.Error(c.Writer, "cannot read current global settings", http.StatusInternalServerError)
+			return
+		}
+		c.Header("Cache-Control", "no-store")
+		writeJSON(c.Writer, GlobalSettingsPromoteResponse{
+			Doc: input.Doc, Masked: masked, Revision: settingsRevision(raw, exists),
+		})
+	}
+}
+
+func settingsArray(doc map[string]any, path ...string) ([]any, bool) {
+	var current any = doc
+	for _, key := range path {
+		object, ok := current.(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		current, ok = object[key]
+		if !ok {
+			return nil, false
+		}
+	}
+	array, ok := current.([]any)
+	return array, ok
+}
+
+func promoteProviderRoute(doc, provider map[string]any) {
+	for _, field := range []string{"provider", "providerProtocol", "baseURL", "model", "responses"} {
+		source := field
+		if field == "provider" {
+			source = "type"
+		} else if field == "providerProtocol" {
+			source = "protocol"
+		}
+		if value, ok := provider[source]; ok {
+			doc[field] = value
+		} else {
+			delete(doc, field)
+		}
+	}
+
+	// A provider without its own credential intentionally inherits the current
+	// primary credential. When it has one, replace the route credentials as a
+	// pair so an old API key cannot remain alongside a new auth token.
+	hasAPIKey := nonEmptyString(provider["apiKey"])
+	hasAuthToken := nonEmptyString(provider["authToken"])
+	if hasAPIKey || hasAuthToken {
+		if hasAPIKey {
+			doc["apiKey"] = provider["apiKey"]
+		} else {
+			delete(doc, "apiKey")
+		}
+		if hasAuthToken {
+			doc["authToken"] = provider["authToken"]
+		} else {
+			delete(doc, "authToken")
+		}
+	}
+}
+
+func nonEmptyString(value any) bool {
+	text, ok := value.(string)
+	return ok && strings.TrimSpace(text) != ""
 }
 
 func settingsRevision(data []byte, exists bool) string {

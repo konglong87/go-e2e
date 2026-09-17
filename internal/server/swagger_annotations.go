@@ -260,6 +260,7 @@ func swaggerRuntimeSettingsGet() {}
 // @Produce json
 // @Param request body object true "Full global settings document"
 // @Param If-Match header string false "Revision from GET (raw or quoted ETag); stale revisions return 409"
+// @Param X-Settings-Promoted-Provider-Index header integer false "Fallback provider index used to restore promoted credentials during save"
 // @Success 200 {object} GlobalSettingsSaveResponse
 // @Failure 400 {object} SwaggerError
 // @Failure 401 {object} SwaggerError
@@ -280,6 +281,21 @@ func swaggerRuntimeSettingsPut() {}
 // @Failure 401 {object} SwaggerError
 // @Router /runtime/settings/validate [post]
 func swaggerRuntimeSettingsValidate() {}
+
+// swaggerRuntimeSettingsPromoteProvider godoc
+// @Summary Promote a fallback provider into the primary settings route
+// @Description Returns a masked draft with the selected fallback provider copied to the top-level route. The global settings file is not changed until PUT /runtime/settings.
+// @Tags Runtime
+// @Security ApiKeyAuth
+// @Accept json
+// @Produce json
+// @Param request body GlobalSettingsPromoteRequest true "Current settings draft and fallback provider index"
+// @Success 200 {object} GlobalSettingsPromoteResponse
+// @Failure 400 {object} SwaggerError
+// @Failure 401 {object} SwaggerError
+// @Failure 500 {object} SwaggerError
+// @Router /runtime/settings/promote-provider [post]
+func swaggerRuntimeSettingsPromoteProvider() {}
 
 // swaggerRuntimeSettingsEffective godoc
 // @Summary Inspect global file settings and safe server startup configuration

@@ -291,12 +291,120 @@ func TestSettingsNamedProviderRestoreUsesUniqueTrimmedName(t *testing.T) {
 
 func TestSettingsCenterRequiresAdminToken(t *testing.T) {
 	handler, _ := settingsTestHandler(t, "admin")
-	for _, route := range []struct{ method, path, body string }{{"GET", "/runtime/settings/effective", ""}, {"POST", "/runtime/settings/validate", "{}"}, {"POST", "/runtime/settings/test-provider", `{"doc":{}}`}} {
+	for _, route := range []struct{ method, path, body string }{{"GET", "/runtime/settings/effective", ""}, {"POST", "/runtime/settings/validate", "{}"}, {"POST", "/runtime/settings/promote-provider", `{"doc":{},"provider_index":0}`}, {"POST", "/runtime/settings/test-provider", `{"doc":{}}`}} {
 		for _, token := range []string{"", "mobile-jwt", "wrong"} {
 			if rec := settingsRequest(handler, route.method, route.path, route.body, token, ""); rec.Code != http.StatusUnauthorized {
 				t.Fatalf("%s accepted token %q", route.path, token)
 			}
 		}
+	}
+}
+
+func TestSettingsPromoteProviderReturnsSafeDraftWithoutSaving(t *testing.T) {
+	handler, path := settingsTestHandler(t, "")
+	stored := `{"provider":"openai","providerProtocol":"openai-responses","baseURL":"https://primary.example/v1","apiKey":"primary-key","model":"primary-model","responses":{"stateMode":"stateless","store":false},"fallback":{"enabled":true,"providers":[{"name":"glm","type":"openai-compatible","protocol":"openai-chat-completions","baseURL":"https://glm.example/v1","apiKey":"glm-key","model":"glm-5.2","future":{"keep":true}}]},"futureRoot":{"keep":"yes"}}`
+	if err := os.WriteFile(path, []byte(stored), 0600); err != nil {
+		t.Fatal(err)
+	}
+	doc := decodeSettingsResponse(t, doSettings(t, handler, http.MethodGet, "", "")).Doc
+	body, err := json.Marshal(GlobalSettingsPromoteRequest{Doc: doc, ProviderIndex: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := settingsRequest(handler, http.MethodPost, "/runtime/settings/promote-provider", string(body), "", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var result GlobalSettingsPromoteResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Doc["provider"] != "openai-compatible" || result.Doc["providerProtocol"] != "openai-chat-completions" || result.Doc["model"] != "glm-5.2" {
+		t.Fatalf("primary route was not promoted: %#v", result.Doc)
+	}
+	if result.Doc["apiKey"] != settingsSecretSentinel {
+		t.Fatalf("promoted credential was not masked: %v", result.Doc["apiKey"])
+	}
+	if result.Doc["futureRoot"].(map[string]any)["keep"] != "yes" {
+		t.Fatalf("unknown root field was lost: %#v", result.Doc["futureRoot"])
+	}
+	providers := result.Doc["fallback"].(map[string]any)["providers"].([]any)
+	provider := providers[0].(map[string]any)
+	if provider["future"].(map[string]any)["keep"] != true || provider["apiKey"] != settingsSecretSentinel {
+		t.Fatalf("fallback provider was changed incorrectly: %#v", provider)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != stored {
+		t.Fatalf("promotion wrote the settings file: %s", data)
+	}
+}
+
+func TestSettingsPromoteProviderKeepsInheritedPrimaryCredential(t *testing.T) {
+	handler, path := settingsTestHandler(t, "")
+	stored := `{"provider":"openai","apiKey":"primary-key","baseURL":"https://primary.example/v1","model":"primary-model","fallback":{"providers":[{"name":"inherited","type":"openai","baseURL":"https://backup.example/v1","model":"backup-model"}]}}`
+	if err := os.WriteFile(path, []byte(stored), 0600); err != nil {
+		t.Fatal(err)
+	}
+	doc := decodeSettingsResponse(t, doSettings(t, handler, http.MethodGet, "", "")).Doc
+	body, _ := json.Marshal(GlobalSettingsPromoteRequest{Doc: doc, ProviderIndex: 0})
+	rec := settingsRequest(handler, http.MethodPost, "/runtime/settings/promote-provider", string(body), "", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var result GlobalSettingsPromoteResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Doc["apiKey"] != settingsSecretSentinel || result.Doc["model"] != "backup-model" {
+		t.Fatalf("inherited credential or model was not handled: %#v", result.Doc)
+	}
+}
+
+func TestSettingsPromoteProviderSaveRestoresPromotedCredential(t *testing.T) {
+	handler, path := settingsTestHandler(t, "")
+	stored := `{"provider":"openai","baseURL":"https://primary.example/v1","apiKey":"primary-key","model":"primary-model","fallback":{"providers":[{"name":"glm","type":"openai-compatible","baseURL":"https://glm.example/v1","apiKey":"glm-key","model":"glm-5.2"}]}}`
+	if err := os.WriteFile(path, []byte(stored), 0600); err != nil {
+		t.Fatal(err)
+	}
+	doc := decodeSettingsResponse(t, doSettings(t, handler, http.MethodGet, "", "")).Doc
+	promoteBody, _ := json.Marshal(GlobalSettingsPromoteRequest{Doc: doc, ProviderIndex: 0})
+	promoteRec := settingsRequest(handler, http.MethodPost, "/runtime/settings/promote-provider", string(promoteBody), "", "")
+	var promoted GlobalSettingsPromoteResponse
+	if err := json.Unmarshal(promoteRec.Body.Bytes(), &promoted); err != nil || promoteRec.Code != http.StatusOK {
+		t.Fatalf("promotion=%s err=%v", promoteRec.Body.String(), err)
+	}
+	saveBody, _ := json.Marshal(promoted.Doc)
+	saveReq := httptest.NewRequest(http.MethodPut, "/runtime/settings", strings.NewReader(string(saveBody)))
+	saveReq.Header.Set("If-Match", promoted.Revision)
+	saveReq.Header.Set("X-Settings-Promoted-Provider-Index", "0")
+	saveRec := httptest.NewRecorder()
+	handler.ServeHTTP(saveRec, saveReq)
+	if saveRec.Code != http.StatusOK {
+		t.Fatalf("save status=%d body=%s", saveRec.Code, saveRec.Body.String())
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"apiKey": "glm-key"`) {
+		t.Fatalf("saved primary credential did not come from promoted provider: %s", data)
+	}
+	if strings.Contains(string(data), settingsSecretSentinel) {
+		t.Fatalf("masked credential was written to disk: %s", data)
+	}
+}
+
+func TestSettingsPromoteProviderRejectsInvalidIndex(t *testing.T) {
+	handler, path := settingsTestHandler(t, "")
+	if err := os.WriteFile(path, []byte(`{"model":"primary","fallback":{"providers":[]}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	rec := settingsRequest(handler, http.MethodPost, "/runtime/settings/promote-provider", `{"doc":{"fallback":{"providers":[]}},"provider_index":0}`, "", "")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
 	}
 }
 

@@ -1518,6 +1518,8 @@ export interface paths {
                 header?: {
                     /** @description Revision from GET (raw or quoted ETag); stale revisions return 409 */
                     "If-Match"?: string;
+                    /** @description Fallback provider index used to restore promoted credentials during save */
+                    "X-Settings-Promoted-Provider-Index"?: number;
                 };
                 path?: never;
                 cookie?: never;
@@ -2098,6 +2100,77 @@ export interface paths {
                 };
             };
         };
+        trace?: never;
+    };
+    "/runtime/settings/promote-provider": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Promote a fallback provider into the primary settings route
+         * @description Returns a masked draft with the selected fallback provider copied to the top-level route. The global settings file is not changed until PUT /runtime/settings.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            /** @description Current settings draft and fallback provider index */
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["internal_server.GlobalSettingsPromoteRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["internal_server.GlobalSettingsPromoteResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["internal_server.SwaggerError"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["internal_server.SwaggerError"];
+                    };
+                };
+                /** @description Internal Server Error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["internal_server.SwaggerError"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/runtime/settings/test-provider": {
@@ -11135,6 +11208,19 @@ export interface components {
             process_snapshot?: components["schemas"]["internal_server.SettingsProcessSnapshot"];
             scope?: string;
             workspace?: string;
+        };
+        "internal_server.GlobalSettingsPromoteRequest": {
+            doc?: {
+                [key: string]: unknown;
+            };
+            provider_index?: number;
+        };
+        "internal_server.GlobalSettingsPromoteResponse": {
+            doc?: {
+                [key: string]: unknown;
+            };
+            masked?: string[];
+            revision?: string;
         };
         "internal_server.GlobalSettingsResponse": {
             doc?: {
