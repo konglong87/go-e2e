@@ -23,7 +23,6 @@ import { Inspector, type InspectorTab } from "./components/Inspector";
 import { NewSessionDialog } from "./components/NewSessionDialog";
 import { loadWebUIV2Theme, saveWebUIV2Theme, type WebUIV2Theme } from "./components/SettingsDrawer";
 import { SettingsCenter } from "./settings/SettingsCenter";
-import { DESKTOP_CONFIG_VERIFIED_KEY } from "./settings/globalSettingsDraft";
 import { loadInspectorPreference, saveInspectorPreference } from "./settings/preferences";
 import { parseWebUIV2Route, settingsReturnSession, webUIV2SettingsPath, webUIV2SessionPath, type SettingsSection, type SessionRef, type WebUIV2Route } from "./routes";
 import type { OperationResult, SessionListFilters, SessionMessage, SessionStatus, SessionSummary } from "./types";
@@ -135,11 +134,6 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
   }
 
   function startOnboardingSession(): void {
-    if (localStorage.getItem(DESKTOP_CONFIG_VERIFIED_KEY) !== "true") {
-      finishOnboarding();
-      openSettings("models");
-      return;
-    }
     finishOnboarding();
     openNewSession();
   }
@@ -164,10 +158,6 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
 
   function openNewSession(): void {
     if (isDesktop && !desktopReady) return;
-    if (import.meta.env.VITE_DESKTOP_UI_VERSION === "2" && localStorage.getItem(DESKTOP_CONFIG_VERIFIED_KEY) !== "true") {
-      openSettings("models");
-      return;
-    }
     setSidebarOpen(false);
     setNewSessionOpen(true);
   }

@@ -30,7 +30,7 @@ const english: Record<string, string> = {
   "格式化 JSON": "Format JSON", "全局 Settings JSON": "Global Settings JSON", "行": "lines", "配置校验通过": "Configuration validation passed",
   "已保存并读取确认。运行中的服务需重启以加载新配置。": "Saved and verified by readback. Restart running services to load the new configuration.",
   "有未保存的修改": "Unsaved changes", "与上次读取的配置一致": "Matches the last loaded configuration", "重置草稿": "Reset draft",
-  "重置": "Reset", "校验中…": "Validating…", "校验": "Validate", "保存中…": "Saving…", "保存更改": "Save changes",
+  "重置": "Reset", "校验中…": "Validating…", "校验": "Validate", "配置校验未通过": "Configuration validation failed", "保存中…": "Saving…", "保存更改": "Save changes",
   "配置根节点必须是 JSON 对象。": "The configuration root must be a JSON object.",
   "服务端配置已变更。当前草稿已保留，请重新载入最新配置后再修改。": "The server configuration has changed. Your draft is retained; reload the latest configuration before editing again.",
   "无权访问全局设置，请检查连接身份和管理权限。": "Access to global settings was denied. Check your connection identity and administrative permissions.",

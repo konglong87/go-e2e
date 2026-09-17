@@ -383,9 +383,9 @@ describe("WebUIV2App", () => {
     expect(fetchMock.mock.calls.some(([url]) => url.startsWith(`${prefix}/channel/`))).toBe(false);
   });
 
-  function setDesktopOrigin(origin: string) {
-    window.history.replaceState({}, "", "/webui/v2/settings/general");
-    const location = new URL(`${origin}/webui/v2/settings/general`);
+  function setDesktopOrigin(origin: string, pathname = "/webui/v2/settings/general") {
+    window.history.replaceState({}, "", pathname);
+    const location = new URL(`${origin}${pathname}`);
     vi.stubGlobal("window", new Proxy(window, {
       get(target, key) {
         if (key === "location") return location;
@@ -426,6 +426,25 @@ describe("WebUIV2App", () => {
         expect(calls.some(([url, init]) => url === path && new Headers(init.headers).get("Authorization") === `Bearer ${token}`)).toBe(true);
       }
     }
+  });
+
+  it.each(["wails://wails", "http://wails.localhost"])("opens the new-session dialog before model verification in desktop-v2 on %s", async (origin) => {
+    vi.stubEnv("VITE_DESKTOP_UI_VERSION", "2");
+    setDesktopOrigin(origin, "/");
+    window.localStorage.setItem("go-e2e.desktop.onboarding.v1", "done");
+    const fetchMock = vi.fn(async () => new Response("{}", { headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createMockSessionControlClient();
+    client.list = vi.fn(async () => []);
+    await act(async () => root.render(
+      <I18nProvider><QueryClientProvider client={new QueryClient()}><WebUIV2App client={client} identity={{ ...identity, apiBase: "", apiToken: "desktop-process" }} /></QueryClientProvider></I18nProvider>
+    ));
+    await vi.waitFor(() => expect(host.querySelector(".webui2-desktop-readiness")).toBeNull());
+
+    act(() => host.querySelector<HTMLButtonElement>(".webui2-new-session")?.click());
+
+    expect(host.querySelector(".webui2-new-session-dialog")).not.toBeNull();
+    expect(host.querySelector(".webui2-settings-center")).toBeNull();
   });
 
   it.each(["wails://wails", "http://wails.localhost"])("does not impose desktop-v2 readiness on legacy desktop at %s", async (origin) => {

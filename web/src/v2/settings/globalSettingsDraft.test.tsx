@@ -153,6 +153,20 @@ describe("shared global settings draft", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("shows validation progress and the result in the model settings footer", async () => {
+    let finish!: (response: Response) => void;
+    await render("models");
+    fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => { finish = resolve; }));
+
+    act(() => (Array.from(host.querySelectorAll("button")).find((button) => button.textContent?.includes("校验")) as HTMLButtonElement)?.click());
+    expect(host.querySelector(".global-settings-footer-status")?.textContent).toBe("校验中…");
+    expect((host.querySelector('button[aria-busy="true"]') as HTMLButtonElement).disabled).toBe(true);
+
+    await act(async () => finish(jsonResponse({ valid: true, issues: [] })));
+    await vi.waitFor(() => expect(host.querySelector(".global-settings-footer-status")?.textContent).toContain("配置校验通过"));
+    expect(host.querySelector(".global-settings-footer-status")?.textContent).toBe("配置校验通过");
+  });
+
   it("does not claim success or clear the draft when save readback fails", async () => {
     await render();
     act(() => draft.setField(["model"], "new-model"));
