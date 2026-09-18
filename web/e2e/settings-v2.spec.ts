@@ -72,6 +72,7 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/tenant/telemetry*", (route) => route.fulfill({ json: { data: [{ id: 1, name: "model.request.finished", status: "ok", created_at: "2026-09-17T01:02:03Z" }] } }));
   await page.route("**/tenant/usage/daily*", (route) => route.fulfill({ json: { data: [{ id: 1, usage_date: "2026-09-17", model: "fixture-model", request_count: 2, total_tokens: 128 }] } }));
   await page.route("**/tenant/usage/ledger*", (route) => route.fulfill({ json: { data: [] } }));
+  await page.route((url) => /\/status$/.test(url.pathname), (route) => route.fulfill({ json: { ok: true, workspace: "/workspace/project", model: "fixture-model" } }));
   await page.goto("/webui/v2/settings/appearance");
 });
 
@@ -103,31 +104,25 @@ test("renders pet preview and reads actual observability records", async ({ page
   await page.getByRole("button", { name: "Pet", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Pet", exact: true })).toBeVisible();
   await page.getByLabel("Enable pet").check();
+  await chooseSettingsSelect(page, "Model asset", "Chinese Dragon");
   const preview = page.locator(".pet-settings-preview");
   const canvas = preview.locator("canvas");
-  await expect(preview.locator("[data-render-state]")).toHaveAttribute("data-render-state", "ready");
+  const scene = preview.locator("[data-render-state]");
+  await expect(scene).toHaveAttribute("data-render-state", "ready");
+  await expect(scene).toHaveAttribute("data-asset", "/assets/pets/chinese-dragon.glb");
   await expect(canvas).toBeVisible();
-  const pixels = await canvas.evaluate((node) => {
-    const source = node as HTMLCanvasElement;
-    const copy = document.createElement("canvas");
-    copy.width = source.width;
-    copy.height = source.height;
-    const context = copy.getContext("2d")!;
-    context.drawImage(source, 0, 0);
-    const data = context.getImageData(0, 0, copy.width, copy.height).data;
-    let colored = 0;
-    for (let i = 3; i < data.length; i += 4) if (data[i] > 0) colored++;
-    return colored / (copy.width * copy.height);
-  });
-  expect(pixels).toBeGreaterThan(0.1);
-  expect(pixels).toBeLessThan(0.8);
+  const dragonPixels = await canvasColorRatio(canvas);
+  expect(dragonPixels).toBeGreaterThan(0.1);
+  expect(dragonPixels).toBeLessThan(0.8);
   const before = await canvas.evaluate((node) => (node as HTMLCanvasElement).toDataURL());
   await expect.poll(() => canvas.evaluate((node) => (node as HTMLCanvasElement).toDataURL())).not.toBe(before);
-  await page.getByLabel("Animation").selectOption("focus");
-  await expect(preview.locator("[data-render-state]")).toHaveAttribute("data-render-state", "ready");
-  const focused = await canvas.evaluate((node) => (node as HTMLCanvasElement).toDataURL());
-  await canvas.click();
-  await expect.poll(() => canvas.evaluate((node) => (node as HTMLCanvasElement).toDataURL())).not.toBe(focused);
+  await chooseSettingsSelect(page, "Model asset", "Go Companion");
+  await expect(scene).toHaveAttribute("data-render-state", "ready");
+  await expect(scene).toHaveAttribute("data-asset", "/assets/pets/go-companion.glb");
+  const robotPixels = await canvasColorRatio(canvas);
+  expect(robotPixels).toBeGreaterThan(0.1);
+  await chooseSettingsSelect(page, "Animation", "Focus");
+  await expect(scene).toHaveAttribute("data-render-state", "ready");
   await expectNoHorizontalOverflow(page);
   await page.screenshot({ path: testInfo.outputPath("settings-v2-pet.png"), fullPage: false });
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
@@ -141,6 +136,57 @@ test("renders pet preview and reads actual observability records", async ({ page
   await expect(page.getByText("128", { exact: true })).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await page.screenshot({ path: testInfo.outputPath("settings-v2-observability.png"), fullPage: false });
+});
+
+test("drags the desktop pet, persists position, and closes with per-device recovery", async ({ page }, testInfo) => {
+  await page.goto("/webui/v2/settings/pet");
+  await expect(page.getByRole("heading", { name: "Pet", exact: true })).toBeVisible();
+  await page.getByLabel("Enable pet").check();
+  await chooseSettingsSelect(page, "Model asset", "Chinese Dragon");
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Saved and confirmed by readback." })).toBeVisible();
+
+  await page.goto("/webui/v2");
+  const pet = page.locator(".webui2-desktop-pet");
+  await expect(pet).toBeVisible();
+  const scene = pet.locator("[data-render-state]");
+  await expect(scene).toHaveAttribute("data-render-state", "ready");
+  await expect(scene).toHaveAttribute("data-asset", "/assets/pets/chinese-dragon.glb");
+  expect(await canvasColorRatio(pet.locator("canvas"))).toBeGreaterThan(0.1);
+
+  const origin = await pet.boundingBox();
+  if (!origin) throw new Error("pet has no bounding box");
+  const target = { x: Math.max(40, origin.x - 500), y: Math.max(40, origin.y - 350) };
+  await page.mouse.move(origin.x + origin.width / 2, origin.y + origin.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(target.x, target.y, { steps: 12 });
+  await page.mouse.up();
+  const dragged = await pet.boundingBox();
+  if (!dragged) throw new Error("pet has no bounding box");
+  expect(dragged.x).toBeLessThan(origin.x - 100);
+  expect(dragged.y).toBeLessThan(origin.y - 100);
+  await page.screenshot({ path: testInfo.outputPath("desktop-pet-dragged.png"), fullPage: false });
+
+  await page.reload();
+  await expect(pet).toBeVisible();
+  const restored = await pet.boundingBox();
+  if (!restored) throw new Error("pet has no bounding box");
+  expect(Math.abs(restored.x - dragged.x)).toBeLessThan(6);
+  expect(Math.abs(restored.y - dragged.y)).toBeLessThan(6);
+
+  await pet.click();
+  const menu = page.getByRole("menu", { name: "Pet options" });
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole("menuitem")).toHaveCount(3);
+  await page.screenshot({ path: testInfo.outputPath("desktop-pet-menu.png"), fullPage: false });
+  await menu.getByRole("menuitem", { name: "Close pet" }).click();
+  await expect(page.locator(".webui2-desktop-pet")).toHaveCount(0);
+
+  await page.goto("/webui/v2/settings/pet");
+  await expect(page.getByText("The pet is closed on this device.")).toBeVisible();
+  await page.getByRole("button", { name: "Show on this device" }).click();
+  await page.goto("/webui/v2");
+  await expect(page.locator(".webui2-desktop-pet")).toBeVisible();
 });
 
 test("promotes a selected fallback model, saves it, and confirms the new primary route", async ({ page }, testInfo) => {
@@ -162,4 +208,24 @@ async function expectNoHorizontalOverflow(page: import("@playwright/test").Page)
   const widths = await page.evaluate(() => ({ body: document.body.scrollWidth, document: document.documentElement.scrollWidth, viewport: window.innerWidth }));
   expect(widths.body).toBeLessThanOrEqual(widths.viewport);
   expect(widths.document).toBeLessThanOrEqual(widths.viewport);
+}
+
+async function chooseSettingsSelect(page: import("@playwright/test").Page, label: string, option: string): Promise<void> {
+  await page.getByRole("button", { name: label, exact: true }).click();
+  await page.getByRole("option", { name: option, exact: true }).click();
+}
+
+async function canvasColorRatio(canvas: import("@playwright/test").Locator): Promise<number> {
+  return canvas.evaluate((node) => {
+    const source = node as HTMLCanvasElement;
+    const copy = document.createElement("canvas");
+    copy.width = source.width;
+    copy.height = source.height;
+    const context = copy.getContext("2d")!;
+    context.drawImage(source, 0, 0);
+    const data = context.getImageData(0, 0, copy.width, copy.height).data;
+    let colored = 0;
+    for (let i = 3; i < data.length; i += 4) if (data[i] > 0) colored++;
+    return colored / (copy.width * copy.height);
+  });
 }

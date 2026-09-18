@@ -3,6 +3,9 @@ import {
   Scene, SRGBColorSpace, Vector3, WebGLRenderer, type Material, type Object3D
 } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import type { PetAsset } from "./petAssets";
+
+const FIT_VIEW_SIZE = 1.9;
 
 function disposeModel(model: Object3D): void {
   const materials = new Set<Material>();
@@ -14,14 +17,14 @@ function disposeModel(model: Object3D): void {
   materials.forEach((material) => material.dispose());
 }
 
-export function createPetRenderer(canvas: HTMLCanvasElement, url: string, getAnimation: () => string, onReady: () => void, onError: () => void): () => void {
+export function createPetRenderer(canvas: HTMLCanvasElement, asset: PetAsset, getAnimation: () => string, onReady: () => void, onError: () => void): () => void {
   const renderer = new WebGLRenderer({ canvas, alpha: true, antialias: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setSize(112, 132, false);
   renderer.outputColorSpace = SRGBColorSpace;
   const scene = new Scene();
-  const camera = new PerspectiveCamera(32, 112 / 132, 0.1, 20);
-  camera.position.set(0.35, 0.3, 4.5);
+  const camera = new PerspectiveCamera(asset.camera.fov, 112 / 132, 0.1, 20);
+  camera.position.set(0.35, 0.3, asset.camera.distance);
   camera.lookAt(0, 0, 0);
   scene.add(new AmbientLight(0xffffff, 2));
   const key = new DirectionalLight(0xffffff, 3.5);
@@ -36,25 +39,26 @@ export function createPetRenderer(canvas: HTMLCanvasElement, url: string, getAni
   let closed = false;
   let model: Object3D | undefined;
   let frame = 0;
-  let turn = 0;
   const start = performance.now();
   const draw = (now: number): void => {
     if (closed) return;
     const time = (now - start) / 1000;
     const animation = getAnimation();
     const moving = !reducedMotion.matches && animation !== "focus";
-    pivot.rotation.y = turn + (moving ? Math.sin(time * 1.4) * (animation === "celebrate" ? 0.45 : 0.12) : 0);
+    pivot.rotation.y = moving ? Math.sin(time * 1.4) * (animation === "celebrate" ? 0.45 : 0.12) : 0;
     pivot.position.y = moving ? Math.sin(time * (animation === "celebrate" ? 5 : 2)) * 0.035 : 0;
     if (!document.hidden && canvas.getClientRects().length > 0) renderer.render(scene, camera);
     frame = window.requestAnimationFrame(draw);
   };
-  const rotate = (): void => { turn += Math.PI / 4; };
-  canvas.addEventListener("click", rotate);
   const contextLost = (event: Event): void => { event.preventDefault(); onError(); };
   canvas.addEventListener("webglcontextlost", contextLost);
-  new GLTFLoader().load(url, (gltf) => {
+  new GLTFLoader().load(asset.url, (gltf) => {
     if (closed) { disposeModel(gltf.scene); return; }
     model = gltf.scene;
+    const box = new Box3().setFromObject(model);
+    const size = box.getSize(new Vector3());
+    const maxDimension = Math.max(size.x, size.y, size.z);
+    if (maxDimension > 0) model.scale.setScalar(FIT_VIEW_SIZE / maxDimension);
     const center = new Box3().setFromObject(model).getCenter(new Vector3());
     model.position.sub(center);
     pivot.add(model);
@@ -65,7 +69,6 @@ export function createPetRenderer(canvas: HTMLCanvasElement, url: string, getAni
   return () => {
     closed = true;
     window.cancelAnimationFrame(frame);
-    canvas.removeEventListener("click", rotate);
     canvas.removeEventListener("webglcontextlost", contextLost);
     if (model) disposeModel(model);
     renderer.dispose();

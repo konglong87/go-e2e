@@ -97,10 +97,13 @@ WebUI 2.0 的设置入口位于左侧导航底部、用户信息上方；二级�
 构建与排障见 [desktop-v2/README.md](desktop-v2/README.md)。
 
 宠物是 Blender 生成的 GLB，由 Three.js 渲染；无 WebGL 时显示同源渲染静态图。
+可选形象包括 Go 伙伴与中国龙；宠物可在应用窗口内自由拖拽，点击可打开菜单关闭，
+拖拽位置与关闭状态按设备保存在本地。
 可复现资源脚本：
 
 ```bash
 blender --background --python scripts/assets/build-companion.py
+blender --background --python scripts/assets/build_chinese_dragon.py
 blender --background --python scripts/assets/build-brand.py
 ```
 

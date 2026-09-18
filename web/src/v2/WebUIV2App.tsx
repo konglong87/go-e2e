@@ -27,7 +27,7 @@ import { SettingsCenter } from "./settings/SettingsCenter";
 import { loadInspectorPreference, saveInspectorPreference } from "./settings/preferences";
 import { parseWebUIV2Route, settingsReturnSession, webUIV2SettingsPath, webUIV2SessionPath, type SettingsSection, type SessionRef, type WebUIV2Route } from "./routes";
 import type { OperationResult, SessionListFilters, SessionMessage, SessionStatus, SessionSummary } from "./types";
-import { PetScene } from "./components/PetScene";
+import { DesktopPet } from "./components/DesktopPet";
 import { UnsavedChangesDialog } from "./components/UnsavedChangesDialog";
 import { useGlobalVisualSettings } from "./settings/useGlobalVisualSettings";
 import { visualSettingsStyle, type GlobalVisualSettings } from "./settings/globalVisualSettings";
@@ -89,7 +89,7 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
   const sessions = sessionList.data ?? [];
   const allSessions = useSessionList(identity, { query: "", statuses: [] }, desktopReady);
   const selectedSession = sessions.find((session) => session.ref === state.selectedRef) ?? (allSessions.data ?? []).find((session) => session.ref === state.selectedRef);
-  const savedVisual = useGlobalVisualSettings(identity, desktopReady && !settingsOpen && state.selectedRef !== null);
+  const savedVisual = useGlobalVisualSettings(identity, desktopReady && !settingsOpen);
   const visual = visualPreview ?? savedVisual.visual;
   const stream = useSessionConversations(identity, allSessions.data ?? [], state.selectedRef, desktopReady);
 
@@ -345,7 +345,7 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
     </div>
     {state.route.kind === "settings" && desktopReady ? <SettingsCenter identity={identity} section={state.route.section} onSectionChange={openSettings} onBack={closeSettings} onRequestNavigation={requestSettingsNavigation} onDirtyChange={(dirty) => { settingsDirty.current = dirty; }} onBusyChange={(busy) => { settingsBusy.current = busy; }} theme={theme} onThemeChange={changeTheme} inspectorOpen={inspectorOpen} onInspectorChange={changeInspector} selectedRef={state.selectedRef} onOpenSession={selectSession} onVisualPreview={setVisualPreview} /> : null}
     {leaveDialog ? <UnsavedChangesDialog kind={leaveDialog} language={language} onCancel={cancelPendingNavigation} onDiscard={discardPendingNavigation} /> : null}
-    {state.route.kind !== "settings" ? <PetScene settings={savedVisual.visual.pet} status={selectedSession?.status} /> : null}
+    {state.route.kind !== "settings" ? <DesktopPet settings={savedVisual.visual.pet} status={selectedSession?.status} onOpenSettings={() => openSettings("pet")} /> : null}
     {onboardingOpen && state.route.kind !== "settings" ? <section className="webui2-onboarding-backdrop" role="dialog" aria-modal="true" aria-labelledby="webui2-onboarding-title">
       <div className="webui2-onboarding">
         <img src={goE2E} alt="go-e2e" />

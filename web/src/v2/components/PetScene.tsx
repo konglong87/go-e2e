@@ -18,6 +18,7 @@ export function PetScene({ settings, status = "idle", className = "" }: PetScene
   const { language } = useI18n();
   const shown = settings.enabled && settings.visible;
   const asset = petAsset(settings.model);
+  const assetLabel = asset.label[language === "zh" ? "zh" : "en"];
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -28,27 +29,25 @@ export function PetScene({ settings, status = "idle", className = "" }: PetScene
     void import("./petRenderer").then(({ createPetRenderer }) => {
       if (cancelled) return;
       try {
-        dispose = createPetRenderer(canvas, asset.url, () => animationRef.current, () => setState("ready"), () => setState("fallback"));
+        dispose = createPetRenderer(canvas, asset, () => animationRef.current, () => setState("ready"), () => setState("fallback"));
       } catch {
         setState("fallback");
       }
     }).catch(() => { if (!cancelled) setState("fallback"); });
     return () => { cancelled = true; dispose?.(); };
-  }, [asset.url, shown]);
+  }, [asset, shown]);
 
   if (!shown) return null;
   const style = {
     "--pet-scale": String(settings.scale),
-    "--pet-right": `${settings.right}px`,
-    "--pet-bottom": `${settings.bottom}px`,
     "--pet-font-scale": String(settings.fontScale)
   } as CSSProperties;
   const zh = language === "zh";
   const statusLabel = status === "running" || status === "queued" ? (zh ? "正在工作" : "Working") : status === "waiting_permission" || status === "waiting_input" ? (zh ? "需要你" : "Needs you") : status === "failed" ? (zh ? "需要检查" : "Needs review") : (zh ? "准备就绪" : "Ready");
-  return <div aria-label={zh ? "桌面宠物" : "Desktop pet"} className={`webui2-pet-scene ${className}`} data-asset={asset.url} data-render-state={state} data-status={status} style={style}>
+  return <div className={`webui2-pet-scene ${className}`} data-asset={asset.url} data-render-state={state} data-status={status} style={style}>
     <div className="pet-model">
-      <canvas aria-label={asset.label} ref={canvasRef} width={112} height={132} />
-      {state !== "ready" ? <img className="pet-poster" src={asset.poster} alt={asset.label} /> : null}
+      <canvas aria-label={assetLabel} ref={canvasRef} width={112} height={132} />
+      {state !== "ready" ? <img className="pet-poster" src={asset.poster} alt={assetLabel} /> : null}
     </div>
     {settings.statusBubble ? <span className="webui2-pet-status">{statusLabel}</span> : null}
   </div>;

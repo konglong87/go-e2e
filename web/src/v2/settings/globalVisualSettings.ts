@@ -155,8 +155,8 @@ export const PET_FIELD_LABELS = {
   visible: ["显示宠物", "Show pet"],
   model: ["模型资源", "Model asset"],
   scale: ["缩放", "Scale"],
-  right: ["右侧距离", "Right offset"],
-  bottom: ["底部距离", "Bottom offset"],
+  right: ["默认右侧距离", "Default right offset"],
+  bottom: ["默认底部距离", "Default bottom offset"],
   animation: ["动画", "Animation"],
   statusBubble: ["显示状态气泡", "Show status bubble"],
   fontScale: ["文字缩放", "Font scale"]

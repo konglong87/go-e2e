@@ -1,9 +1,10 @@
-import { Check, RotateCcw, Save, ShieldCheck } from "lucide-react";
-import { useId, type JSX } from "react";
+import { Check, Eye, RotateCcw, Save, ShieldCheck } from "lucide-react";
+import { useId, useState, type JSX } from "react";
 import { useI18n } from "../../lib/i18n";
 import { settingsValue, type GlobalSettingsDraft, type SettingsPath } from "./globalSettingsDraft";
 import { DEFAULT_PET, PET_FIELD_LABELS, PET_ROOT, readVisualSettings } from "./globalVisualSettings";
-import { PET_ASSETS } from "../components/petAssets";
+import { DEFAULT_PET_MODEL, petAssetOptions } from "../components/petAssets";
+import { loadPetDevicePreferences, savePetDevicePreferences } from "../components/petDevicePreferences";
 import { PetScene } from "../components/PetScene";
 import { SettingsSelect } from "./SettingsSelect";
 
@@ -53,10 +54,11 @@ export function PetSettingsPanel({ draft }: Props): JSX.Element {
   const modelID = useId();
   const animationID = useId();
   const disabled = draft.busy || !draft.doc || Boolean(draft.syntaxError);
+  const [deviceHidden, setDeviceHidden] = useState(() => loadPetDevicePreferences().hidden);
   const previewSettings = {
     enabled: bool(settingsValue(draft.doc, paths.enabled)),
     visible: bool(settingsValue(draft.doc, paths.visible), true),
-    model: typeof settingsValue(draft.doc, paths.model) === "string" ? String(settingsValue(draft.doc, paths.model)) : "go-companion",
+    model: typeof settingsValue(draft.doc, paths.model) === "string" ? String(settingsValue(draft.doc, paths.model)) : DEFAULT_PET_MODEL,
     scale: number(settingsValue(draft.doc, paths.scale), 1),
     right: number(settingsValue(draft.doc, paths.right), 24),
     bottom: number(settingsValue(draft.doc, paths.bottom), 20),
@@ -67,13 +69,22 @@ export function PetSettingsPanel({ draft }: Props): JSX.Element {
   const reset = (): void => {
     if (window.confirm(zh ? "放弃未保存的宠物修改？" : "Discard unsaved pet changes?")) draft.reset();
   };
+  const showOnThisDevice = (): void => {
+    const next = { ...loadPetDevicePreferences(), hidden: false };
+    savePetDevicePreferences(next);
+    setDeviceHidden(false);
+  };
   return <div className="visual-settings-panel">
     <section className="visual-settings-section pet-settings-section">
       <div className="visual-settings-section-heading"><h2>{zh ? "陪伴角色" : "Companion character"}</h2><Toggle draft={draft} path={paths.enabled} name={PET_FIELD_LABELS.enabled} /></div>
+      {deviceHidden ? <p className="pet-device-note" role="status">
+        <span>{zh ? "宠物已在此设备上关闭。" : "The pet is closed on this device."}</span>
+        <button type="button" onClick={showOnThisDevice}><Eye size={15} />{zh ? "在本设备重新显示" : "Show on this device"}</button>
+      </p> : null}
       <div className="pet-settings-layout">
         <fieldset className="visual-settings-grid" disabled={disabled}>
           <Toggle draft={draft} path={paths.visible} name={PET_FIELD_LABELS.visible} fallback />
-          <label className="visual-settings-field" htmlFor={modelID}><span>{text(language, PET_FIELD_LABELS.model)}</span><SettingsSelect id={modelID} ariaLabel={text(language, PET_FIELD_LABELS.model)} value={previewSettings.model} onChange={(value) => draft.setField(paths.model, value)} options={Object.entries(PET_ASSETS).map(([key, asset]) => ({ value: key, label: asset.label }))} /></label>
+          <label className="visual-settings-field" htmlFor={modelID}><span>{text(language, PET_FIELD_LABELS.model)}</span><SettingsSelect id={modelID} ariaLabel={text(language, PET_FIELD_LABELS.model)} value={previewSettings.model} onChange={(value) => draft.setField(paths.model, value)} options={petAssetOptions(zh ? "zh" : "en")} /></label>
           <label className="visual-settings-field" htmlFor={animationID}><span>{text(language, PET_FIELD_LABELS.animation)}</span><SettingsSelect id={animationID} ariaLabel={text(language, PET_FIELD_LABELS.animation)} value={previewSettings.animation} onChange={(value) => draft.setField(paths.animation, value)} options={[{ value: "idle", label: zh ? "待机" : "Idle" }, { value: "focus", label: zh ? "专注" : "Focus" }, { value: "celebrate", label: zh ? "庆祝" : "Celebrate" }]} /></label>
           <NumberField draft={draft} path={paths.scale} name={PET_FIELD_LABELS.scale} min={0.5} max={2} step={0.05} fallback={DEFAULT_PET.scale} />
           <NumberField draft={draft} path={paths.right} name={PET_FIELD_LABELS.right} min={0} max={160} fallback={DEFAULT_PET.right} />

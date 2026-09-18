@@ -77,12 +77,13 @@ describe("WebUIV2App", () => {
     const calls = fetchMock.mock.calls as unknown as Array<[string, RequestInit]>;
     expect(calls.map(([url]) => url)).toEqual([
       "/api/tenant/session-control/sessions?source=tenant",
-      "/api/tenant/session-control/sessions?source=local"
+      "/api/tenant/session-control/sessions?source=local",
+      "/api/runtime/settings"
     ]);
 
     act(() => root.render(<I18nProvider><QueryClientProvider client={new QueryClient()}><WebUIV2App client={createMockSessionControlClient()} identity={identity} /></QueryClientProvider></I18nProvider>));
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     vi.unstubAllGlobals();
   });
 
