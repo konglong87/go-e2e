@@ -65,6 +65,12 @@ describe("DesktopPet", () => {
     return element!;
   }
 
+  function menu(): HTMLElement {
+    const element = document.body.querySelector<HTMLElement>("[role='menu']");
+    expect(element).not.toBeNull();
+    return element!;
+  }
+
   function click(element: HTMLElement): void {
     act(() => {
       element.dispatchEvent(pointerEvent("pointerdown", 1050, 600));
@@ -75,10 +81,9 @@ describe("DesktopPet", () => {
   it("opens the menu on click and closes the pet on this device", () => {
     render();
     click(pet());
-    const menu = host.querySelector("[role='menu']");
-    expect(menu).not.toBeNull();
-    expect(menu!.querySelectorAll("[role='menuitem']")).toHaveLength(3);
-    const close = [...menu!.querySelectorAll<HTMLElement>("[role='menuitem']")].find((item) => item.textContent === "Close pet")!;
+    const menuElement = menu();
+    expect(menuElement.querySelectorAll("[role='menuitem']")).toHaveLength(3);
+    const close = [...menuElement.querySelectorAll<HTMLElement>("[role='menuitem']")].find((item) => item.textContent === "Close pet")!;
     act(() => close.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(host.querySelector(".webui2-desktop-pet")).toBeNull();
     expect(JSON.parse(storage.get(PET_DEVICE_PREFERENCES_KEY)!)).toMatchObject({ hidden: true });
@@ -110,7 +115,7 @@ describe("DesktopPet", () => {
       element.dispatchEvent(pointerEvent("pointerup", 1052, 601));
     });
     expect(storage.get(PET_DEVICE_PREFERENCES_KEY)).toBeUndefined();
-    expect(host.querySelector("[role='menu']")).not.toBeNull();
+    expect(document.body.querySelector("[role='menu']")).not.toBeNull();
   });
 
   it("resets to the default position and opens pet settings from the menu", () => {
@@ -118,14 +123,14 @@ describe("DesktopPet", () => {
     const onOpenSettings = vi.fn();
     render(onOpenSettings);
     click(pet());
-    const items = [...host.querySelectorAll<HTMLElement>("[role='menuitem']")];
+    const items = [...document.body.querySelectorAll<HTMLElement>("[role='menuitem']")];
     act(() => items.find((item) => item.textContent === "Reset position")!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(JSON.parse(storage.get(PET_DEVICE_PREFERENCES_KEY)!)).toEqual({ hidden: false, position: null });
     click(pet());
-    const reopened = [...host.querySelectorAll<HTMLElement>("[role='menuitem']")];
+    const reopened = [...document.body.querySelectorAll<HTMLElement>("[role='menuitem']")];
     act(() => reopened.find((item) => item.textContent === "Pet settings")!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
-    expect(host.querySelector("[role='menu']")).toBeNull();
+    expect(document.body.querySelector("[role='menu']")).toBeNull();
   });
 
   it("stays hidden when the device preference hides it", () => {

@@ -1,4 +1,5 @@
 import { Crosshair, Settings2, X } from "lucide-react";
+import { createPortal } from "react-dom";
 import {
   useEffect, useRef, useState, type CSSProperties, type JSX,
   type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent
@@ -20,8 +21,8 @@ import {
 } from "./petDevicePreferences";
 
 const DRAG_THRESHOLD_PX = 6;
-const MENU_GAP_PX = 8;
-const MENU_FALLBACK_WIDTH = 180;
+const MENU_GAP_PX = 10;
+const MENU_VIEWPORT_MARGIN_PX = 12;
 const MEASURE_TOLERANCE_PX = 0.5;
 
 type DragState = {
@@ -31,6 +32,11 @@ type DragState = {
   originX: number;
   originY: number;
   moved: boolean;
+};
+
+type PetMenuPosition = {
+  left: number;
+  top: number;
 };
 
 export type DesktopPetProps = {
@@ -46,7 +52,7 @@ export function DesktopPet({ settings, status = "idle", onOpenSettings }: Deskto
   const [menuOpen, setMenuOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState<PetPoint | null>(null);
-  const [menuWidth, setMenuWidth] = useState(MENU_FALLBACK_WIDTH);
+  const [menuPosition, setMenuPosition] = useState<PetMenuPosition | null>(null);
   const [viewport, setViewport] = useState<PetSize>(() => ({ width: window.innerWidth, height: window.innerHeight }));
   const [size, setSize] = useState<PetSize | null>(null);
   const ref = useRef<HTMLDivElement>(null);
@@ -77,10 +83,10 @@ export function DesktopPet({ settings, status = "idle", onOpenSettings }: Deskto
 
   useEffect(() => {
     if (!menuOpen) return;
-    const width = menuRef.current?.offsetWidth;
-    if (width) setMenuWidth(width);
     const onOutsidePointerDown = (event: PointerEvent): void => {
-      if (ref.current && !ref.current.contains(event.target as Node)) setMenuOpen(false);
+      const target = event.target as Node;
+      if (ref.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setMenuOpen(false);
     };
     const onEscape = (event: KeyboardEvent): void => {
       if (event.key === "Escape") setMenuOpen(false);
@@ -92,6 +98,41 @@ export function DesktopPet({ settings, status = "idle", onOpenSettings }: Deskto
       document.removeEventListener("keydown", onEscape);
     };
   }, [menuOpen]);
+
+  useEffect(() => {
+    if (!menuOpen) {
+      setMenuPosition(null);
+      return;
+    }
+    let frame = 0;
+    const positionMenu = (): void => {
+      const modelRect = ref.current?.querySelector<HTMLElement>(".pet-model")?.getBoundingClientRect()
+        ?? ref.current?.getBoundingClientRect();
+      const statusRect = ref.current?.querySelector<HTMLElement>(".webui2-pet-status")?.getBoundingClientRect();
+      const menuRect = menuRef.current?.getBoundingClientRect();
+      if (!modelRect || !menuRect) return;
+      const anchorBottom = statusRect?.bottom ?? modelRect.bottom;
+      const menuWidth = menuRect.width;
+      const menuHeight = menuRect.height;
+      const belowTop = anchorBottom + MENU_GAP_PX;
+      const aboveTop = modelRect.top - MENU_GAP_PX - menuHeight;
+      const spaceBelow = viewport.height - anchorBottom;
+      const spaceAbove = modelRect.top;
+      const preferredTop = spaceBelow >= menuHeight + MENU_GAP_PX || spaceBelow >= spaceAbove ? belowTop : aboveTop;
+      const top = Math.min(
+        Math.max(MENU_VIEWPORT_MARGIN_PX, preferredTop),
+        Math.max(MENU_VIEWPORT_MARGIN_PX, viewport.height - menuHeight - MENU_VIEWPORT_MARGIN_PX),
+      );
+      const centeredLeft = modelRect.left + (modelRect.width - menuWidth) / 2;
+      const left = Math.min(
+        Math.max(MENU_VIEWPORT_MARGIN_PX, centeredLeft),
+        Math.max(MENU_VIEWPORT_MARGIN_PX, viewport.width - menuWidth - MENU_VIEWPORT_MARGIN_PX),
+      );
+      setMenuPosition({ left, top });
+    };
+    frame = window.requestAnimationFrame(positionMenu);
+    return () => window.cancelAnimationFrame(frame);
+  }, [menuOpen, viewport]);
 
   if (!shown) return null;
 
@@ -204,48 +245,48 @@ export function DesktopPet({ settings, status = "idle", onOpenSettings }: Deskto
     onOpenSettings();
   };
 
-  const sceneWidth = size?.width ?? 0;
-  const sceneHeight = size?.height ?? 0;
-  const anchorX = position?.x ?? viewport.width;
-  const anchorY = position?.y ?? viewport.height;
-  const menuLeft = Math.min(
-    Math.max((sceneWidth - menuWidth) / 2, PET_VIEWPORT_MARGIN - anchorX),
-    viewport.width - PET_VIEWPORT_MARGIN - menuWidth - anchorX
-  );
-  const menuStyle: CSSProperties = anchorY > viewport.height / 2
-    ? { left: menuLeft, bottom: sceneHeight + MENU_GAP_PX }
-    : { left: menuLeft, top: sceneHeight + MENU_GAP_PX };
-
-  // biome-ignore lint/a11y/useSemanticElements: the pet region hosts a nested menu with buttons, which a <button> cannot contain
-  return <div
-    ref={ref}
-    aria-expanded={menuOpen}
-    aria-haspopup="menu"
-    aria-label={zh ? "桌面宠物，点击打开菜单，拖动移动位置" : "Desktop pet, click for options or drag to move"}
-    className="webui2-desktop-pet"
-    data-dragging={dragging ? "true" : "false"}
-    onKeyDown={onKeyDown}
-    onPointerCancel={onPointerCancel}
-    onPointerDown={onPointerDown}
-    onPointerMove={onPointerMove}
-    onPointerUp={onPointerUp}
-    role="button"
-    style={style}
-    tabIndex={0}
-  >
-    <PetScene settings={settings} status={status} />
-    {menuOpen ? <div
+  const menu = menuOpen ? createPortal(
+    <div
       ref={menuRef}
       aria-label={zh ? "宠物选项" : "Pet options"}
       className="webui2-pet-menu"
       onPointerDown={(event) => event.stopPropagation()}
       onPointerUp={(event) => event.stopPropagation()}
       role="menu"
-      style={menuStyle}
+      style={{
+        left: menuPosition?.left ?? MENU_VIEWPORT_MARGIN_PX,
+        top: menuPosition?.top ?? MENU_VIEWPORT_MARGIN_PX,
+        visibility: menuPosition ? "visible" : "hidden"
+      }}
     >
-      <button type="button" role="menuitem" onClick={openPetSettings}><Settings2 aria-hidden="true" size={15} />{zh ? "宠物设置" : "Pet settings"}</button>
-      <button type="button" role="menuitem" onClick={resetPosition}><Crosshair aria-hidden="true" size={15} />{zh ? "恢复默认位置" : "Reset position"}</button>
-      <button type="button" role="menuitem" onClick={closePet}><X aria-hidden="true" size={15} />{zh ? "关闭宠物" : "Close pet"}</button>
-    </div> : null}
-  </div>;
+      <button className="webui2-pet-menu-action webui2-pet-menu-action--settings" type="button" role="menuitem" onClick={openPetSettings}><Settings2 aria-hidden="true" size={16} strokeWidth={2} />{zh ? "宠物设置" : "Pet settings"}</button>
+      <button className="webui2-pet-menu-action webui2-pet-menu-action--reset" type="button" role="menuitem" onClick={resetPosition}><Crosshair aria-hidden="true" size={16} strokeWidth={2} />{zh ? "恢复默认位置" : "Reset position"}</button>
+      <div className="webui2-pet-menu-divider" role="separator" />
+      <button className="webui2-pet-menu-action webui2-pet-menu-action--close" type="button" role="menuitem" onClick={closePet}><X aria-hidden="true" size={16} strokeWidth={2} />{zh ? "关闭宠物" : "Close pet"}</button>
+    </div>,
+    document.body,
+  ) : null;
+
+  // biome-ignore lint/a11y/useSemanticElements: the pet region hosts a nested menu with buttons, which a <button> cannot contain
+  return <>
+    <div
+      ref={ref}
+      aria-expanded={menuOpen}
+      aria-haspopup="menu"
+      aria-label={zh ? "桌面宠物，点击打开菜单，拖动移动位置" : "Desktop pet, click for options or drag to move"}
+      className="webui2-desktop-pet"
+      data-dragging={dragging ? "true" : "false"}
+      onKeyDown={onKeyDown}
+      onPointerCancel={onPointerCancel}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      role="button"
+      style={style}
+      tabIndex={0}
+    >
+      <PetScene settings={settings} status={status} />
+    </div>
+    {menu}
+  </>;
 }

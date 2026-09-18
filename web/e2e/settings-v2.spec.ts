@@ -178,6 +178,19 @@ test("drags the desktop pet, persists position, and closes with per-device recov
   const menu = page.getByRole("menu", { name: "Pet options" });
   await expect(menu).toBeVisible();
   await expect(menu.getByRole("menuitem")).toHaveCount(3);
+  const menuBox = await menu.boundingBox();
+  const petBox = await pet.boundingBox();
+  if (!menuBox || !petBox) throw new Error("pet menu or pet has no bounding box");
+  const menuBelow = menuBox.y >= petBox.y + petBox.height;
+  const menuGap = menuBelow
+    ? menuBox.y - (petBox.y + petBox.height)
+    : petBox.y - (menuBox.y + menuBox.height);
+  expect(menuGap).toBeGreaterThanOrEqual(6);
+  expect(menuGap).toBeLessThan(28);
+  expect(menuBox.x).toBeGreaterThanOrEqual(0);
+  expect(menuBox.y).toBeGreaterThanOrEqual(0);
+  expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(1440);
+  expect(menuBox.y + menuBox.height).toBeLessThanOrEqual(960);
   await page.screenshot({ path: testInfo.outputPath("desktop-pet-menu.png"), fullPage: false });
   await menu.getByRole("menuitem", { name: "Close pet" }).click();
   await expect(page.locator(".webui2-desktop-pet")).toHaveCount(0);
