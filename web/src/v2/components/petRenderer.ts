@@ -14,7 +14,7 @@ function disposeModel(model: Object3D): void {
     node.geometry.dispose();
     for (const material of Array.isArray(node.material) ? node.material : [node.material]) materials.add(material);
   });
-  materials.forEach((material) => material.dispose());
+  for (const material of materials) material.dispose();
 }
 
 export function createPetRenderer(canvas: HTMLCanvasElement, asset: PetAsset, getAnimation: () => string, onReady: () => void, onError: () => void): () => void {
@@ -45,8 +45,13 @@ export function createPetRenderer(canvas: HTMLCanvasElement, asset: PetAsset, ge
     const time = (now - start) / 1000;
     const animation = getAnimation();
     const moving = !reducedMotion.matches && animation !== "focus";
-    pivot.rotation.y = moving ? Math.sin(time * 1.4) * (animation === "celebrate" ? 0.45 : 0.12) : 0;
+    const energy = animation === "celebrate" ? 1.7 : 1;
+    pivot.rotation.y = moving ? Math.sin(time * 1.4) * 0.12 * energy : 0;
+    pivot.rotation.x = moving ? Math.sin(time * 1.8 + 0.6) * 0.025 * energy : 0;
+    pivot.rotation.z = moving ? Math.sin(time * 1.15 + 1.2) * 0.035 * energy : 0;
     pivot.position.y = moving ? Math.sin(time * (animation === "celebrate" ? 5 : 2)) * 0.035 : 0;
+    const breath = moving ? 1 + Math.sin(time * 2.2) * 0.012 : 1;
+    pivot.scale.setScalar(breath);
     if (!document.hidden && canvas.getClientRects().length > 0) renderer.render(scene, camera);
     frame = window.requestAnimationFrame(draw);
   };
