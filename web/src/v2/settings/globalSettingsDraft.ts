@@ -148,7 +148,15 @@ export function useGlobalSettingsDraft(identity: IdentityConfig, enabled = true)
     let committed = false;
     setState((previous) => ({ ...previous, operation, error: previous.conflict ? SETTINGS_CONFLICT_MESSAGE : "", validation: null, saved: false }));
     try {
-      const validation = await apiRequest<SettingsValidation>(identityRef.current, `${SETTINGS_ENDPOINT}/validate`, { method: "POST", body: draft.doc, signal: controller.signal });
+      const promotionHeaders: Record<string, string> = draft.promotedProviderIndex !== null
+        ? { "X-Settings-Promoted-Provider-Index": String(draft.promotedProviderIndex) }
+        : {};
+      const validation = await apiRequest<SettingsValidation>(identityRef.current, `${SETTINGS_ENDPOINT}/validate`, {
+        method: "POST",
+        body: draft.doc,
+        signal: controller.signal,
+        headers: promotionHeaders,
+      });
       if (current !== generation.current) return false;
       setState((previous) => ({ ...previous, validation }));
       if (!validation.valid || operation === "validate") return validation.valid;
@@ -156,7 +164,7 @@ export function useGlobalSettingsDraft(identity: IdentityConfig, enabled = true)
         method: "PUT", body: draft.doc, signal: controller.signal,
         headers: {
           ...(draft.snapshot.revision ? { "If-Match": draft.snapshot.revision } : {}),
-          ...(draft.promotedProviderIndex !== null ? { "X-Settings-Promoted-Provider-Index": String(draft.promotedProviderIndex) } : {}),
+          ...promotionHeaders,
         },
       });
       committed = true;

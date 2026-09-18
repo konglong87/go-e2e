@@ -254,6 +254,7 @@ describe("shared global settings draft", () => {
       .mockResolvedValueOnce(jsonResponse({ saved: true, revision: "revision-2", requires_restart: true }))
       .mockResolvedValueOnce(jsonResponse(snapshot({ ...draft.doc!, model: "glm-5.2" }, "revision-2")));
     await act(async () => { expect(await draft.save()).toBe(true); });
+    expect(new Headers(fetchMock.mock.calls[2][1]?.headers).get("X-Settings-Promoted-Provider-Index")).toBe("0");
     expect(new Headers(fetchMock.mock.calls[3][1]?.headers).get("X-Settings-Promoted-Provider-Index")).toBe("0");
   });
 

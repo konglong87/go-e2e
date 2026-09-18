@@ -79,7 +79,12 @@ func settingsValidateGin(opts Options) gin.HandlerFunc {
 			globalSettingsMu.Lock()
 			oldDoc, err := readStoredSettingsDocument()
 			if err == nil {
-				err = restoreSecrets(doc, oldDoc)
+				promotedIndex, parseErr := parsePromotedProviderIndex(c.GetHeader(settingsPromotedProviderIndexHeader))
+				if parseErr != nil {
+					err = parseErr
+				} else {
+					err = restoreSettingsDraftSecrets(doc, oldDoc, promotedIndex)
+				}
 			}
 			globalSettingsMu.Unlock()
 			if err != nil {

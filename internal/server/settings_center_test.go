@@ -365,7 +365,7 @@ func TestSettingsPromoteProviderKeepsInheritedPrimaryCredential(t *testing.T) {
 
 func TestSettingsPromoteProviderSaveRestoresPromotedCredential(t *testing.T) {
 	handler, path := settingsTestHandler(t, "")
-	stored := `{"provider":"openai","baseURL":"https://primary.example/v1","apiKey":"primary-key","model":"primary-model","fallback":{"providers":[{"name":"glm","type":"openai-compatible","baseURL":"https://glm.example/v1","apiKey":"glm-key","model":"glm-5.2"}]}}`
+	stored := `{"provider":"openai","baseURL":"https://primary.example/v1","model":"primary-model","fallback":{"providers":[{"name":"glm","type":"openai-compatible","baseURL":"https://glm.example/v1","apiKey":"glm-key","model":"glm-5.2"}]}}`
 	if err := os.WriteFile(path, []byte(stored), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -376,10 +376,19 @@ func TestSettingsPromoteProviderSaveRestoresPromotedCredential(t *testing.T) {
 	if err := json.Unmarshal(promoteRec.Body.Bytes(), &promoted); err != nil || promoteRec.Code != http.StatusOK {
 		t.Fatalf("promotion=%s err=%v", promoteRec.Body.String(), err)
 	}
+	validateBody, _ := json.Marshal(promoted.Doc)
+	validateReq := httptest.NewRequest(http.MethodPost, "/runtime/settings/validate", strings.NewReader(string(validateBody)))
+	validateReq.Header.Set(settingsPromotedProviderIndexHeader, "0")
+	validateRec := httptest.NewRecorder()
+	handler.ServeHTTP(validateRec, validateReq)
+	var validation SettingsValidationResponse
+	if err := json.Unmarshal(validateRec.Body.Bytes(), &validation); err != nil || validateRec.Code != http.StatusOK || !validation.Valid {
+		t.Fatalf("validation status=%d body=%s err=%v", validateRec.Code, validateRec.Body.String(), err)
+	}
 	saveBody, _ := json.Marshal(promoted.Doc)
 	saveReq := httptest.NewRequest(http.MethodPut, "/runtime/settings", strings.NewReader(string(saveBody)))
 	saveReq.Header.Set("If-Match", promoted.Revision)
-	saveReq.Header.Set("X-Settings-Promoted-Provider-Index", "0")
+	saveReq.Header.Set(settingsPromotedProviderIndexHeader, "0")
 	saveRec := httptest.NewRecorder()
 	handler.ServeHTTP(saveRec, saveReq)
 	if saveRec.Code != http.StatusOK {

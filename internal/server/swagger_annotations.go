@@ -260,7 +260,7 @@ func swaggerRuntimeSettingsGet() {}
 // @Produce json
 // @Param request body object true "Full global settings document"
 // @Param If-Match header string false "Revision from GET (raw or quoted ETag); stale revisions return 409"
-// @Param X-Settings-Promoted-Provider-Index header integer false "Fallback provider index used to restore promoted credentials during save"
+// @Param X-Settings-Promoted-Provider-Index header integer false "Fallback provider index used to restore promoted credentials during validation and save"
 // @Success 200 {object} GlobalSettingsSaveResponse
 // @Failure 400 {object} SwaggerError
 // @Failure 401 {object} SwaggerError

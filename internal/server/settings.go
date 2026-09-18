@@ -21,6 +21,7 @@ import (
 // credential value. When a PUT sends this sentinel back unchanged, the stored
 // value is restored, so editing unrelated fields never wipes a secret.
 const settingsSecretSentinel = "••••••"
+const settingsPromotedProviderIndexHeader = "X-Settings-Promoted-Provider-Index"
 
 // Serializes API read-compare-write operations across handlers in this process.
 // External editors and other server processes must still coordinate separately.
@@ -150,15 +151,12 @@ func handlePutGlobalSettings(w http.ResponseWriter, r *http.Request) {
 	// represented by config.Settings while allowing known optional fields to be
 	// removed explicitly.
 	doc = config.PreserveUnknownJSONFields(oldDoc, doc)
-	promotedIndex, err := parsePromotedProviderIndex(r.Header.Get("X-Settings-Promoted-Provider-Index"))
+	promotedIndex, err := parsePromotedProviderIndex(r.Header.Get(settingsPromotedProviderIndexHeader))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if promotedIndex >= 0 {
-		restorePromotedPrimaryCredentials(doc, oldDoc, promotedIndex)
-	}
-	if err := restoreSecrets(doc, oldDoc); err != nil {
+	if err := restoreSettingsDraftSecrets(doc, oldDoc, promotedIndex); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -210,6 +208,13 @@ func restorePromotedPrimaryCredentials(doc, oldDoc map[string]any, providerIndex
 			doc[key] = storedProvider[key]
 		}
 	}
+}
+
+func restoreSettingsDraftSecrets(doc, oldDoc map[string]any, promotedIndex int) error {
+	if promotedIndex >= 0 {
+		restorePromotedPrimaryCredentials(doc, oldDoc, promotedIndex)
+	}
+	return restoreSecrets(doc, oldDoc)
 }
 
 func matchingStoredProvider(input map[string]any, storedProviders []any) map[string]any {
