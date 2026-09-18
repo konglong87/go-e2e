@@ -17,6 +17,7 @@ export type IdentityConfig = {
 export type ServerStatus = {
   ok?: boolean;
   workspace?: string;
+  cwd?: string;
   model?: string;
   baseURL?: string;
 };

@@ -118,14 +118,15 @@ describe("api helpers", () => {
     expect(unwrapData({ ok: true }, ["fallback"])).toEqual(["fallback"]);
   });
 
-  it("loads server health for workspace-aware local trace filters", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true, workspace: "/tmp/work" }), { status: 200, headers: { "content-type": "application/json" } }));
+  it("loads server status for workspace and primary-model defaults", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true, cwd: "/tmp/work", model: "gpt-5.6-sol" }), { status: 200, headers: { "content-type": "application/json" } }));
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await getStatus(identity);
 
     expect(result.workspace).toBe("/tmp/work");
-    expect(fetchMock.mock.calls[0][0]).toBe("/api/health");
+    expect(result.model).toBe("gpt-5.6-sol");
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/status");
   });
 
   it("normalizes json api errors for status display", () => {

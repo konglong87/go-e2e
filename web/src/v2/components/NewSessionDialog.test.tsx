@@ -7,7 +7,7 @@ import type { IdentityConfig } from "../../lib/types";
 import { SessionControlClientProvider, SessionControlError, type SessionControlClient } from "../api/sessionControlClient";
 import type { OperationResult, SessionDetail } from "../types";
 import { NewSessionDialog } from "./NewSessionDialog";
-import { validateAgentWorkspace } from "../../lib/api";
+import { getStatus, validateAgentWorkspace } from "../../lib/api";
 
 vi.mock("../../lib/api", () => ({
   listProviders: vi.fn(async () => [{ name: "custom", model: "model" }]),
@@ -57,6 +57,19 @@ describe("NewSessionDialog", () => {
       input?.dispatchEvent(new Event("input", { bubbles: true }));
     });
   }
+
+  it("uses the saved primary model for the default provider", async () => {
+    vi.mocked(getStatus).mockResolvedValueOnce({ model: "gpt-5.6-sol" });
+    render();
+
+    await vi.waitFor(() => expect(host.querySelector<HTMLInputElement>('input[aria-label="Model"]')?.value).toBe("gpt-5.6-sol"));
+    expect(host.querySelector<HTMLSelectElement>('select[aria-label="Provider"]')?.value).toBe("");
+
+    setValue('input[aria-label="Session title"]', "Primary model test");
+    await act(async () => host.querySelector<HTMLButtonElement>('button[type="submit"]')?.click());
+
+    expect(client.create).toHaveBeenCalledWith(identity, expect.objectContaining({ provider: "", model: "gpt-5.6-sol" }));
+  });
 
   it("focuses its title, rejects an empty title, and creates once with the optional instruction", async () => {
     const onCreated = vi.fn<(result: OperationResult) => void>();

@@ -26,11 +26,14 @@ export function NewSessionDialog({ identity, open, defaultCWD, onClose, onCreate
   const [initialText, setInitialText] = useState("");
   const [provider, setProvider] = useState(identity.provider ?? "");
   const [model, setModel] = useState(identity.model);
+  const modelEditedRef = useRef(false);
+  const wasOpenRef = useRef(false);
   const [cwd, setCWD] = useState<string | null>(null);
   const [promptMode, setPromptMode] = useState("code");
   const [validating, setValidating] = useState(false);
   const [workspaceError, setWorkspaceError] = useState("");
   const { providers, models, status } = useRuntimeCatalog(identity, open);
+  const defaultModel = status.data?.model?.trim() || identity.model;
   const workspace = cwd ?? defaultCWD ?? status.data?.workspace ?? "";
   const busy = create.isPending || validating;
   const [errorCode, setErrorCode] = useState("");
@@ -39,6 +42,24 @@ export function NewSessionDialog({ identity, open, defaultCWD, onClose, onCreate
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const submissionRef = useRef<CreateSubmission | null>(null);
   const titleID = useId();
+
+  useEffect(() => {
+    if (!open) {
+      wasOpenRef.current = false;
+      return;
+    }
+    if (wasOpenRef.current) return;
+    wasOpenRef.current = true;
+    modelEditedRef.current = false;
+    setProvider(identity.provider ?? "");
+    setModel(identity.model);
+  }, [identity.model, identity.provider, open]);
+
+  useEffect(() => {
+    if (open && !provider && !modelEditedRef.current) {
+      setModel(defaultModel);
+    }
+  }, [defaultModel, open, provider]);
 
   useEffect(() => {
     if (!open) return;
@@ -125,8 +146,8 @@ export function NewSessionDialog({ identity, open, defaultCWD, onClose, onCreate
         </fieldset>
         <label>{t("webui2.sessionTitle")}<input aria-label={t("webui2.sessionTitle")} autoComplete="off" disabled={busy} onChange={(event) => setTitle(event.target.value)} ref={titleRef} value={title} /></label>
         <div className="webui2-session-routing">
-          <label>Provider<select aria-label="Provider" disabled={busy} value={provider} onChange={(event) => { setProvider(event.target.value); const selected = providers.data?.find((item) => item.name === event.target.value); if (selected?.model) setModel(selected.model); }}><option value="">{t("webui2.provider.default")}</option>{providers.data?.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}</select></label>
-          <label>Model<input aria-label="Model" list={`${titleID}-models`} disabled={busy} value={model} onChange={(event) => setModel(event.target.value)} /><datalist id={`${titleID}-models`}>{[...new Set([...(models.data ?? []), ...(providers.data ?? []).map((item) => item.model)])].map((item) => <option key={item} value={item} />)}</datalist></label>
+          <label>Provider<select aria-label="Provider" disabled={busy} value={provider} onChange={(event) => { const nextProvider = event.target.value; setProvider(nextProvider); modelEditedRef.current = false; const selected = providers.data?.find((item) => item.name === nextProvider); if (selected?.model) setModel(selected.model); else if (!nextProvider) setModel(defaultModel); }}><option value="">{t("webui2.provider.default")}</option>{providers.data?.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}</select></label>
+          <label>Model<input aria-label="Model" list={`${titleID}-models`} disabled={busy} value={model} onChange={(event) => { modelEditedRef.current = true; setModel(event.target.value); }} /><datalist id={`${titleID}-models`}>{[...new Set([...(models.data ?? []), ...(providers.data ?? []).map((item) => item.model)])].map((item) => <option key={item} value={item} />)}</datalist></label>
         </div>
         <label>{t("webui2.workspaceSection")}<input aria-label="cwd" disabled={busy} value={workspace} onChange={(event) => { setCWD(event.target.value); setWorkspaceError(""); }} /></label>
         {workspaceError ? <p role="alert">{workspaceError}</p> : null}

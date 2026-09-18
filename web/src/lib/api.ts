@@ -275,7 +275,8 @@ export function unwrapData<T>(value: unknown, fallback: T): T {
 }
 
 export async function getStatus(identity: IdentityConfig): Promise<ServerStatus> {
-  return apiRequest<ServerStatus>(identity, "/health");
+  const status = await apiRequest<ServerStatus>(identity, "/status");
+  return { ...status, workspace: status.workspace?.trim() || status.cwd?.trim() };
 }
 
 export async function listModels(identity: IdentityConfig): Promise<string[]> {
