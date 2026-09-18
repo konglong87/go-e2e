@@ -24,6 +24,12 @@
 
 ## 快速开始
 
+### 工具链要求
+
+- 源码最低要求 Go 1.25+。当前依赖图中 `x/crypto`、`x/net` 和 `x/sys` 等版本的最低要求是 Go 1.25。
+- CI 与 release 默认使用 Go 1.26.6，作为包含最新安全修复的推荐构建工具链，不代表源码必须使用 Go 1.26。
+- `.tool-versions` 中的 Go 版本是可复现构建 pin，不是源码最低版本。
+
 ```bash
 git clone https://github.com/konglong87/go-e2e.git
 cd go-e2e
