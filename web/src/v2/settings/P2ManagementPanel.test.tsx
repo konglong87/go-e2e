@@ -1,13 +1,13 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { listEffectiveSkills, listMemories, saveMemory, saveSkill } from "../../lib/api";
+import { listLocalSkills, listEffectiveSkills, listMemories, saveMemory, saveSkill } from "../../lib/api";
 import { I18nProvider } from "../../lib/i18n";
 import type { IdentityConfig } from "../../lib/types";
 import { P2ManagementPanel } from "./P2ManagementPanel";
 
 vi.mock("../../lib/api", () => ({
-  listMemories: vi.fn(), listEffectiveSkills: vi.fn(), saveMemory: vi.fn(), saveSkill: vi.fn()
+  listLocalSkills: vi.fn(), listMemories: vi.fn(), listEffectiveSkills: vi.fn(), saveMemory: vi.fn(), saveSkill: vi.fn()
 }));
 const identity: IdentityConfig = { apiBase: "/api", apiToken: "token", mobileJwt: "", tenantKey: "tenant", userId: "user", deviceId: "device", model: "model" };
 let host: HTMLDivElement;
@@ -16,12 +16,34 @@ let root: Root;
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.mocked(listMemories).mockResolvedValue([]);
+  vi.mocked(listLocalSkills).mockResolvedValue([]);
   vi.mocked(listEffectiveSkills).mockResolvedValue([]);
   vi.mocked(saveMemory).mockResolvedValue(undefined);
   vi.mocked(saveSkill).mockResolvedValue(undefined);
   host = document.createElement("div");
   document.body.replaceChildren(host);
   root = createRoot(host);
+});
+
+it("shows local and tenant skills in separate groups", async () => {
+  vi.mocked(listLocalSkills).mockResolvedValue([{
+    name: "anysearch",
+    path: "/Users/test/.claude/skills/anysearch/SKILL.md",
+    description: "Search the web",
+    source: "user",
+    plugin: "browser-pack"
+  }]);
+  vi.mocked(listEffectiveSkills).mockResolvedValue([{ skill_key: "review", name: "Review" }]);
+
+  await render("skills");
+
+  expect(listLocalSkills).toHaveBeenCalledWith(identity);
+  expect(listEffectiveSkills).toHaveBeenCalledWith(identity);
+  expect(host.textContent).toContain("Locally installed skills");
+  expect(host.textContent).toContain("anysearch");
+  expect(host.textContent).toContain("/Users/test/.claude/skills/anysearch/SKILL.md");
+  expect(host.textContent).toContain("Tenant skills");
+  expect(host.textContent).toContain("review");
 });
 afterEach(() => { act(() => root.unmount()); vi.resetAllMocks(); vi.unstubAllGlobals(); });
 

@@ -1,7 +1,7 @@
-import { Brain, Plus, RefreshCw, Save, Sparkles } from "lucide-react";
+import { Brain, RefreshCw, Save, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { listMemories, listEffectiveSkills, saveMemory, saveSkill } from "../../lib/api";
-import type { IdentityConfig, MemoryRecord, SkillRecord } from "../../lib/types";
+import { listLocalSkills, listMemories, listEffectiveSkills, saveMemory, saveSkill } from "../../lib/api";
+import type { IdentityConfig, LocalSkillRecord, MemoryRecord, SkillRecord } from "../../lib/types";
 import type { SaveMemoryRequest } from "../../lib/api";
 import { useI18n } from "../../lib/i18n";
 
@@ -27,6 +27,9 @@ function ManagementEditor({ identity, section }: Props) {
   const zh = language === "zh";
   const [memories, setMemories] = useState<MemoryRecord[]>([]);
   const [skills, setSkills] = useState<SkillRecord[]>([]);
+  const [localSkills, setLocalSkills] = useState<LocalSkillRecord[]>([]);
+  const [localError, setLocalError] = useState("");
+  const [tenantError, setTenantError] = useState("");
   const [key, setKey] = useState(section === "memory" ? "desktop.preference" : "desktop-skill");
   const [name, setName] = useState("Desktop skill");
   const [content, setContent] = useState("");
@@ -43,8 +46,18 @@ function ManagementEditor({ identity, section }: Props) {
         const records = await listMemories(identity);
         if (active.current) setMemories(records);
       } else {
-        const records = await listEffectiveSkills(identity);
-        if (active.current) setSkills(records);
+        setLocalError("");
+        setTenantError("");
+        await Promise.all([
+          listLocalSkills(identity).then(
+            (records) => { if (active.current) setLocalSkills(records); },
+            (error) => { if (active.current) setLocalError(error instanceof Error ? error.message : String(error)); }
+          ),
+          listEffectiveSkills(identity).then(
+            (records) => { if (active.current) setSkills(records); },
+            (error) => { if (active.current) setTenantError(error instanceof Error ? error.message : String(error)); }
+          )
+        ]);
       }
     } catch (error) {
       if (active.current) setStatus(error instanceof Error ? error.message : String(error));
@@ -77,19 +90,43 @@ function ManagementEditor({ identity, section }: Props) {
 
   return <section className="p2-management-panel">
     <header className="p2-management-toolbar">
-      <div><h2>{section === "memory" ? <><Brain size={18} />{zh ? "持久记忆" : "Persistent memory"}</> : <><Sparkles size={18} />{zh ? "可用 Skills" : "Available skills"}</>}</h2><p>{section === "memory" ? (zh ? "保存后会进入桌面端运行时上下文。" : "Saved records can be used by the desktop runtime.") : (zh ? "Profile 引用的技能会在对话中注入。" : "Skills referenced by Profiles are injected into conversations.")}</p></div>
-      <button type="button" onClick={() => void refresh()} disabled={busy} title={zh ? "刷新" : "Refresh"}><RefreshCw size={15} />{zh ? "刷新" : "Refresh"}</button>
+      <div><h2>{section === "memory" ? <><Brain size={18} />{zh ? "持久记忆" : "Persistent memory"}</> : <><Sparkles size={18} />{zh ? "可用 Skills" : "Available skills"}</>}</h2></div>
+      <button className="settings-icon-button" type="button" onClick={() => void refresh()} disabled={busy} aria-label={zh ? "刷新" : "Refresh"} title={zh ? "刷新" : "Refresh"}><RefreshCw size={15} /></button>
     </header>
-    <div className="p2-management-create">
-      <label>{section === "memory" ? (zh ? "记忆 Key" : "Memory key") : (zh ? "Skill Key" : "Skill key")}<input disabled={busy} value={key} onChange={(event) => setKey(event.target.value)} /></label>
-      {section === "skills" ? <label>{zh ? "名称" : "Name"}<input disabled={busy} value={name} onChange={(event) => setName(event.target.value)} /></label> : null}
-      <label className="full">{section === "memory" ? (zh ? "内容" : "Content") : "Markdown"}<textarea disabled={busy} rows={4} value={content} onChange={(event) => setContent(event.target.value)} /></label>
-      <button className="primary" type="button" onClick={() => void create()} disabled={busy || !key.trim() || !content.trim()}><Plus size={15} /><Save size={15} />{zh ? "保存" : "Save"}</button>
-    </div>
     {status ? <p role="status" className="p2-management-status">{status}</p> : null}
-    <div className="p2-management-list">
-      {section === "memory" ? memories.map((item) => <article key={String(item.memory_key)}><strong>{item.memory_key}</strong><p>{item.content}</p></article>) : skills.map((item) => <article key={String(item.skill_key)}><strong>{item.skill_key}</strong><p>{item.name}</p></article>)}
-      {!busy && (section === "memory" ? memories : skills).length === 0 ? <p>{zh ? "暂无记录。" : "No records yet."}</p> : null}
-    </div>
+    {section === "skills" ? <section className="p2-management-group" aria-label={zh ? "本机已安装 Skills" : "Locally installed skills"}>
+        <header className="p2-management-group-heading">
+          <h3>{zh ? "本机已安装 Skills" : "Locally installed skills"}</h3>
+          <span>{localSkills.length}</span>
+        </header>
+        {localError ? <p role="alert" className="settings-error">{localError}</p> : null}
+        <div className="p2-management-list">
+          {localSkills.map((item) => <article key={`${item.name}:${item.path}`}>
+            <strong>{item.name || item.local_name || item.path}</strong>
+            {item.description ? <p>{item.description}</p> : null}
+            <p className="p2-skill-meta">{[item.source, item.plugin ? `plugin: ${item.plugin}` : "", item.version ? `v${item.version}` : ""].filter(Boolean).join(" · ") || (zh ? "本机发现" : "Local discovery")}</p>
+            {item.legacy ? <p className="p2-skill-meta">{zh ? "兼容命令" : "Legacy command"}</p> : null}
+            <code className="p2-skill-path">{item.path}</code>
+          </article>)}
+          {!busy && !localError && localSkills.length === 0 ? <p>{zh ? "没有发现本机 Skills。" : "No local skills discovered."}</p> : null}
+        </div>
+    </section> : null}
+    <section className="p2-management-group" aria-label={section === "skills" ? (zh ? "租户 Skills" : "Tenant skills") : undefined}>
+      {section === "skills" ? <header className="p2-management-group-heading">
+        <h3>{zh ? "租户 Skills" : "Tenant skills"}</h3>
+        <span>{skills.length}</span>
+      </header> : null}
+      {tenantError ? <p role="alert" className="settings-error">{tenantError}</p> : null}
+      <div className="p2-management-create">
+        <label>{section === "memory" ? (zh ? "记忆 Key" : "Memory key") : (zh ? "Skill Key" : "Skill key")}<input disabled={busy} value={key} onChange={(event) => setKey(event.target.value)} /></label>
+        {section === "skills" ? <label>{zh ? "名称" : "Name"}<input disabled={busy} value={name} onChange={(event) => setName(event.target.value)} /></label> : null}
+        <label className="full">{section === "memory" ? (zh ? "内容" : "Content") : "Markdown"}<textarea disabled={busy} rows={4} value={content} onChange={(event) => setContent(event.target.value)} /></label>
+        <button className="primary" type="button" onClick={() => void create()} disabled={busy || !key.trim() || !content.trim()}><Save size={15} />{zh ? "保存" : "Save"}</button>
+      </div>
+      <div className="p2-management-list">
+        {section === "memory" ? memories.map((item) => <article key={String(item.memory_key)}><strong>{item.memory_key}</strong><p>{item.content}</p></article>) : skills.map((item) => <article key={String(item.skill_key)}><strong>{item.skill_key}</strong><p>{item.name}</p></article>)}
+        {!busy && !tenantError && (section === "memory" ? memories : skills).length === 0 ? <p>{zh ? "暂无记录。" : "No records yet."}</p> : null}
+      </div>
+    </section>
   </section>;
 }

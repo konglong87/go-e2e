@@ -36,6 +36,7 @@ import (
 	"github.com/konglong87/go-e2e/internal/scheduler"
 	"github.com/konglong87/go-e2e/internal/session"
 	"github.com/konglong87/go-e2e/internal/sessioncontrol"
+	"github.com/konglong87/go-e2e/internal/skills"
 	mysqlstore "github.com/konglong87/go-e2e/internal/storage/mysql"
 	"github.com/konglong87/go-e2e/internal/telemetry"
 	tenantservice "github.com/konglong87/go-e2e/internal/tenant"
@@ -51,6 +52,7 @@ type Options struct {
 	StatusFunc       SnapshotFunc
 	ToolsFunc        SnapshotFunc
 	SessionsFunc     SnapshotFunc
+	LocalSkillsFunc  func(context.Context) ([]skills.Skill, error)
 	StreamQueryFunc  StreamQueryFunc
 	SessionTitleFunc SessionTitleFunc
 	NextStepsFunc    NextStepsFunc
@@ -443,6 +445,7 @@ func newRouter(opts Options, queryFn QueryFunc) *gin.Engine {
 	router.Any("/metrics", gin.WrapF(metricsHandler(opts.AuthToken, opts.TelemetryMetrics)))
 	router.Any("/tools", gin.WrapF(snapshotHandler(opts.AuthToken, opts.ToolsFunc, []any{})))
 	router.Any("/sessions", gin.WrapF(snapshotHandler(opts.AuthToken, opts.SessionsFunc, []any{})))
+	router.Any("/local/skills", gin.WrapF(localSkillsHandler(opts)))
 	registerWebUIRoutes(router, opts)
 	registerRuntimeRoutes(router, opts)
 	registerSettingsRoutes(router, opts)

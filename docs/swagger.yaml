@@ -232,6 +232,19 @@ definitions:
       version:
         type: string
     type: object
+  github_com_konglong87_go-e2e_internal_config.HookCommand:
+    properties:
+      command:
+        type: string
+      matcher:
+        type: string
+      tool:
+        type: string
+      tools:
+        items:
+          type: string
+        type: array
+    type: object
   github_com_konglong87_go-e2e_internal_config.ImageModelCapability:
     properties:
       aspectRatios:
@@ -1134,6 +1147,87 @@ definitions:
     x-enum-varnames:
     - SourceTenant
     - SourceLocal
+  github_com_konglong87_go-e2e_internal_skills.Skill:
+    properties:
+      agent:
+        type: string
+      allowed_tools:
+        items:
+          type: string
+        type: array
+      argument_hint:
+        type: string
+      arguments:
+        items:
+          type: string
+        type: array
+      content:
+        type: string
+      description:
+        type: string
+      disable_model_invocation:
+        type: boolean
+      effort:
+        type: string
+      execution_context:
+        type: string
+      hooks:
+        additionalProperties:
+          items:
+            $ref: '#/definitions/github_com_konglong87_go-e2e_internal_config.HookCommand'
+          type: array
+        type: object
+      legacy:
+        type: boolean
+      local_name:
+        type: string
+      model:
+        type: string
+      name:
+        type: string
+      package_ref:
+        type: string
+      package_sha256:
+        type: string
+      path:
+        type: string
+      paths:
+        items:
+          type: string
+        type: array
+      plugin:
+        type: string
+      root:
+        type: string
+      runtime_ref:
+        type: string
+      source:
+        $ref: '#/definitions/github_com_konglong87_go-e2e_internal_skills.Source'
+      user_invocable:
+        type: boolean
+      version:
+        type: string
+      when_to_use:
+        type: string
+    type: object
+  github_com_konglong87_go-e2e_internal_skills.Source:
+    enum:
+    - user
+    - project
+    - plugin
+    - bundled
+    - marketplace
+    - mcp
+    - tenant
+    type: string
+    x-enum-varnames:
+    - SourceUser
+    - SourceProject
+    - SourcePlugin
+    - SourceBundled
+    - SourceMarketplace
+    - SourceMCP
+    - SourceTenant
   github_com_konglong87_go-e2e_internal_storage_mysql.AgentProfile:
     properties:
       config_json:
@@ -3169,6 +3263,15 @@ definitions:
         items:
           $ref: '#/definitions/github_com_konglong87_go-e2e_internal_storage_mysql.KnowledgeDocument'
         type: array
+    type: object
+  internal_server.SwaggerListLocalSkillsResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_konglong87_go-e2e_internal_skills.Skill'
+        type: array
+      workspace:
+        type: string
     type: object
   internal_server.SwaggerListMemoriesResponse:
     properties:
@@ -5416,6 +5519,35 @@ paths:
       summary: Liveness probe
       tags:
       - System
+  /local/skills:
+    get:
+      description: Lists skills discovered from the current workspace, user skill
+        roots, bundled skills, MCP roots, and installed plugins. These records are
+        read-only local state and are not tenant skill records.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_server.SwaggerListLocalSkillsResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+        "405":
+          description: Method not allowed
+          schema:
+            type: string
+        "500":
+          description: Local discovery failed
+          schema:
+            type: string
+      security:
+      - ApiKeyAuth: []
+      summary: List locally installed skills
+      tags:
+      - Local Skills
   /metrics:
     get:
       produces:
@@ -6189,7 +6321,7 @@ paths:
         name: If-Match
         type: string
       - description: Fallback provider index used to restore promoted credentials
-          during save
+          during validation and save
         in: header
         name: X-Settings-Promoted-Provider-Index
         type: integer

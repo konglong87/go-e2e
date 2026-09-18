@@ -171,6 +171,49 @@ const docTemplate = `{
                 }
             }
         },
+        "/local/skills": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Lists skills discovered from the current workspace, user skill roots, bundled skills, MCP roots, and installed plugins. These records are read-only local state and are not tenant skill records.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Local Skills"
+                ],
+                "summary": "List locally installed skills",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_server.SwaggerListLocalSkillsResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "405": {
+                        "description": "Method not allowed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Local discovery failed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/metrics": {
             "get": {
                 "security": [
@@ -1400,7 +1443,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
-                        "description": "Fallback provider index used to restore promoted credentials during save",
+                        "description": "Fallback provider index used to restore promoted credentials during validation and save",
                         "name": "X-Settings-Promoted-Provider-Index",
                         "in": "header"
                     }
@@ -11248,6 +11291,26 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_konglong87_go-e2e_internal_config.HookCommand": {
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "string"
+                },
+                "matcher": {
+                    "type": "string"
+                },
+                "tool": {
+                    "type": "string"
+                },
+                "tools": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "github_com_konglong87_go-e2e_internal_config.ImageModelCapability": {
             "type": "object",
             "properties": {
@@ -12563,6 +12626,122 @@ const docTemplate = `{
             "x-enum-varnames": [
                 "SourceTenant",
                 "SourceLocal"
+            ]
+        },
+        "github_com_konglong87_go-e2e_internal_skills.Skill": {
+            "type": "object",
+            "properties": {
+                "agent": {
+                    "type": "string"
+                },
+                "allowed_tools": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "argument_hint": {
+                    "type": "string"
+                },
+                "arguments": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "content": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "disable_model_invocation": {
+                    "type": "boolean"
+                },
+                "effort": {
+                    "type": "string"
+                },
+                "execution_context": {
+                    "type": "string"
+                },
+                "hooks": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/definitions/github_com_konglong87_go-e2e_internal_config.HookCommand"
+                        }
+                    }
+                },
+                "legacy": {
+                    "type": "boolean"
+                },
+                "local_name": {
+                    "type": "string"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "package_ref": {
+                    "type": "string"
+                },
+                "package_sha256": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "paths": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "plugin": {
+                    "type": "string"
+                },
+                "root": {
+                    "type": "string"
+                },
+                "runtime_ref": {
+                    "type": "string"
+                },
+                "source": {
+                    "$ref": "#/definitions/github_com_konglong87_go-e2e_internal_skills.Source"
+                },
+                "user_invocable": {
+                    "type": "boolean"
+                },
+                "version": {
+                    "type": "string"
+                },
+                "when_to_use": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_konglong87_go-e2e_internal_skills.Source": {
+            "type": "string",
+            "enum": [
+                "user",
+                "project",
+                "plugin",
+                "bundled",
+                "marketplace",
+                "mcp",
+                "tenant"
+            ],
+            "x-enum-varnames": [
+                "SourceUser",
+                "SourceProject",
+                "SourcePlugin",
+                "SourceBundled",
+                "SourceMarketplace",
+                "SourceMCP",
+                "SourceTenant"
             ]
         },
         "github_com_konglong87_go-e2e_internal_storage_mysql.AgentProfile": {
@@ -15615,6 +15794,20 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/github_com_konglong87_go-e2e_internal_storage_mysql.KnowledgeDocument"
                     }
+                }
+            }
+        },
+        "internal_server.SwaggerListLocalSkillsResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_konglong87_go-e2e_internal_skills.Skill"
+                    }
+                },
+                "workspace": {
+                    "type": "string"
                 }
             }
         },

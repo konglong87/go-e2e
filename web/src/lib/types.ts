@@ -167,6 +167,11 @@ export type SkillRecord = OpenAPISchema<"github_com_konglong87_go-e2e_internal_s
   updated_at?: string;
 };
 
+export type LocalSkillRecord = OpenAPISchema<"github_com_konglong87_go-e2e_internal_skills.Skill"> & {
+  name: string;
+  path: string;
+};
+
 export type SkillRollbackResult = {
   id: number;
   skill_key: string;

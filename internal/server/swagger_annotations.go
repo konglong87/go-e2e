@@ -745,6 +745,19 @@ func swaggerTenantManagedMemoryList() {}
 // @Router /tenant/managed-memory [post]
 func swaggerTenantManagedMemorySave() {}
 
+// swaggerLocalSkillsList godoc
+// @Summary List locally installed skills
+// @Description Lists skills discovered from the current workspace, user skill roots, bundled skills, MCP roots, and installed plugins. These records are read-only local state and are not tenant skill records.
+// @Tags Local Skills
+// @Security ApiKeyAuth
+// @Produce json
+// @Success 200 {object} SwaggerListLocalSkillsResponse
+// @Failure 401 {string} string "Unauthorized"
+// @Failure 405 {string} string "Method not allowed"
+// @Failure 500 {string} string "Local discovery failed"
+// @Router /local/skills [get]
+func swaggerLocalSkillsList() {}
+
 // swaggerTenantSkillsList godoc
 // @Summary List tenant skills
 // @Tags Tenant Skills

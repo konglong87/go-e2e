@@ -43,6 +43,7 @@ import {
   saveTenantUser,
   saveTeamMemory,
   listEffectiveSkills,
+  listLocalSkills,
   listSkillOverrides,
   listTenantSkills,
   listTenantSessions,
@@ -626,6 +627,12 @@ describe("api helpers", () => {
       if (url === "/api/tenant/effective-skills?enabled=true&limit=50") {
         return Promise.resolve(new Response(JSON.stringify({ data: [{ skill_key: "review", source: "tenant" }] }), { status: 200 }));
       }
+      if (url === "/api/local/skills") {
+        return Promise.resolve(new Response(JSON.stringify({
+          workspace: "/workspace/project",
+          data: [{ name: "anysearch", path: "/Users/test/.claude/skills/anysearch/SKILL.md", source: "user" }]
+        }), { status: 200 }));
+      }
       if (url === "/api/tenant/effective-skills?skill_key=review&version=2") {
         return Promise.resolve(new Response(JSON.stringify({ skill_key: "review", source: "tenant", version: 2 }), { status: 200 }));
       }
@@ -655,6 +662,7 @@ describe("api helpers", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const effective = await listEffectiveSkills(identity);
+    const local = await listLocalSkills(identity);
     const tenant = await listTenantSkills(identity);
     const overrides = await listSkillOverrides(identity);
     await saveTenantSkill(identity, { skill_key: "review", name: "Review", version: 2, enabled: true, content_md: "# Review" });
@@ -667,6 +675,7 @@ describe("api helpers", () => {
     const rolledBackSkill = await getTenantSkill(identity, "review", 3);
 
     expect(effective[0].source).toBe("tenant");
+    expect(local[0].name).toBe("anysearch");
     expect(effectiveDetail.skill_key).toBe("review");
     expect(rollback.id).toBe(1);
     expect(rendered.package_sha256).toBe("sha-render");
@@ -684,12 +693,12 @@ describe("api helpers", () => {
     expect(calls.map((call) => [call[0], call[1]?.method || "GET"])).toContainEqual(["/api/tenant/skill-packages/publish", "POST"]);
     expect(calls.map((call) => [call[0], call[1]?.method || "GET"])).toContainEqual(["/api/tenant/skill-packages/verify-runtime", "POST"]);
     expect(calls.map((call) => [call[0], call[1]?.method || "GET"])).toContainEqual(["/api/tenant/skills?skill_key=review&version=3", "GET"]);
-    expect(JSON.parse(calls[3][1]?.body as string)).toMatchObject({ skill_key: "review", version: 2, enabled: true });
-    expect(JSON.parse(calls[4][1]?.body as string)).toMatchObject({ skill_key: "review", enabled: false, config_json: '{"source":"test"}' });
-    expect(JSON.parse(calls[6][1]?.body as string)).toEqual({ skill_key: "review", version: 1 });
-    expect(JSON.parse(calls[7][1]?.body as string)).toMatchObject({ skill_key: "review", source_path: "/tmp/review" });
-    expect(JSON.parse(calls[8][1]?.body as string)).toMatchObject({ skill_key: "review", enabled: true, content_base64: "emlw" });
-    expect(JSON.parse(calls[9][1]?.body as string)).toMatchObject({ skill_key: "review", schema_name: "review_decision_v1", expected_version: 4 });
+    expect(JSON.parse(calls[4][1]?.body as string)).toMatchObject({ skill_key: "review", version: 2, enabled: true });
+    expect(JSON.parse(calls[5][1]?.body as string)).toMatchObject({ skill_key: "review", enabled: false, config_json: '{"source":"test"}' });
+    expect(JSON.parse(calls[7][1]?.body as string)).toEqual({ skill_key: "review", version: 1 });
+    expect(JSON.parse(calls[8][1]?.body as string)).toMatchObject({ skill_key: "review", source_path: "/tmp/review" });
+    expect(JSON.parse(calls[9][1]?.body as string)).toMatchObject({ skill_key: "review", enabled: true, content_base64: "emlw" });
+    expect(JSON.parse(calls[10][1]?.body as string)).toMatchObject({ skill_key: "review", schema_name: "review_decision_v1", expected_version: 4 });
   });
 
   it("saves knowledge documents and scoped memory", async () => {

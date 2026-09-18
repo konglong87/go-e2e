@@ -29,6 +29,7 @@ import (
 	"github.com/konglong87/go-e2e/internal/quota"
 	"github.com/konglong87/go-e2e/internal/scheduler"
 	"github.com/konglong87/go-e2e/internal/session"
+	"github.com/konglong87/go-e2e/internal/skills"
 	mysqlstore "github.com/konglong87/go-e2e/internal/storage/mysql"
 	"github.com/konglong87/go-e2e/internal/telemetry"
 	tenantservice "github.com/konglong87/go-e2e/internal/tenant"
@@ -100,6 +101,92 @@ func TestHandlerQuery(t *testing.T) {
 			t.Fatalf("%s status=%d body=%s", item.path, rec.Code, rec.Body.String())
 		}
 	}
+}
+
+func TestLocalSkillsEndpoint(t *testing.T) {
+	called := false
+	handler := NewHandler(Options{
+		AuthToken: "token",
+		Workspace: "/workspace/project",
+		LocalSkillsFunc: func(context.Context) ([]skills.Skill, error) {
+			called = true
+			return []skills.Skill{{
+				Name:        "anysearch",
+				Path:        "/Users/test/.claude/skills/anysearch/SKILL.md",
+				Description: "Search the web",
+				Source:      skills.SourceUser,
+				Plugin:      "browser-pack",
+			}}, nil
+		},
+	}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/local/skills", nil)
+	req.Header.Set("authorization", "Bearer token")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var response struct {
+		Workspace string         `json:"workspace"`
+		Data      []skills.Skill `json:"data"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !called || response.Workspace != "/workspace/project" || len(response.Data) != 1 {
+		t.Fatalf("response = %+v called=%v", response, called)
+	}
+	if response.Data[0].Name != "anysearch" || response.Data[0].Source != skills.SourceUser || response.Data[0].Plugin != "browser-pack" {
+		t.Fatalf("skill = %+v", response.Data[0])
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/local/skills", nil)
+	req.Header.Set("authorization", "Bearer token")
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("POST status = %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/local/skills", nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthorized status = %d", rec.Code)
+	}
+}
+
+func TestLocalSkillsEndpointUsesWorkspaceDiscovery(t *testing.T) {
+	workspace := t.TempDir()
+	skillDir := filepath.Join(workspace, ".claude", "skills", "workspace-skill")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	skillPath := filepath.Join(skillDir, "SKILL.md")
+	if err := os.WriteFile(skillPath, []byte("---\nname: workspace-skill\ndescription: Workspace discovery fixture.\n---\n\n# Workspace skill\n"), 0o644); err != nil {
+		t.Fatalf("write skill: %v", err)
+	}
+
+	handler := NewHandler(Options{Workspace: workspace}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/local/skills", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var response struct {
+		Data []skills.Skill `json:"data"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	for _, item := range response.Data {
+		if item.Name == "workspace-skill" && item.Path == skillPath && item.Source == skills.SourceProject {
+			return
+		}
+	}
+	t.Fatalf("workspace skill not discovered in %+v", response.Data)
 }
 
 func TestHandlerQueryPersistsTenantSession(t *testing.T) {
@@ -5081,6 +5168,7 @@ func TestHandlerServesSwaggerDocs(t *testing.T) {
 		"/metrics":                                   {"get"},
 		"/tools":                                     {"get"},
 		"/sessions":                                  {"get"},
+		"/local/skills":                              {"get"},
 		"/runtime/background":                        {"get", "post"},
 		"/runtime/background/{id}":                   {"patch"},
 		"/runtime/background/{id}/logs":              {"get"},
@@ -5089,10 +5177,10 @@ func TestHandlerServesSwaggerDocs(t *testing.T) {
 		"/runtime/background/events":                 {"get"},
 		"/runtime/background/{id}/stop":              {"post"},
 		"/runtime/settings":                          {"get", "put"},
-		"/runtime/settings/validate":                  {"post"},
-		"/runtime/settings/promote-provider":          {"post"},
+		"/runtime/settings/validate":                 {"post"},
+		"/runtime/settings/promote-provider":         {"post"},
 		"/runtime/settings/effective":                {"get"},
-		"/runtime/settings/test-provider":             {"post"},
+		"/runtime/settings/test-provider":            {"post"},
 		"/query":                                     {"post"},
 		"/v1/models":                                 {"get"},
 		"/v1/chat/completions":                       {"post"},

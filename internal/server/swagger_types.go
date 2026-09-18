@@ -15,6 +15,7 @@ import (
 	"github.com/konglong87/go-e2e/internal/query"
 	"github.com/konglong87/go-e2e/internal/scheduler"
 	"github.com/konglong87/go-e2e/internal/sessioncontrol"
+	"github.com/konglong87/go-e2e/internal/skills"
 	mysqlstore "github.com/konglong87/go-e2e/internal/storage/mysql"
 	tenantservice "github.com/konglong87/go-e2e/internal/tenant"
 )
@@ -439,6 +440,11 @@ type SwaggerMemoryReviewRequest = tenantservice.MemoryReviewRequest
 
 type SwaggerListSkillsResponse struct {
 	Data []mysqlstore.Skill `json:"data"`
+}
+
+type SwaggerListLocalSkillsResponse struct {
+	Workspace string         `json:"workspace"`
+	Data      []skills.Skill `json:"data"`
 }
 
 type SwaggerListSkillOverridesResponse struct {

@@ -206,6 +206,72 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/local/skills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List locally installed skills
+         * @description Lists skills discovered from the current workspace, user skill roots, bundled skills, MCP roots, and installed plugins. These records are read-only local state and are not tenant skill records.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["internal_server.SwaggerListLocalSkillsResponse"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": string;
+                    };
+                };
+                /** @description Method not allowed */
+                405: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": string;
+                    };
+                };
+                /** @description Local discovery failed */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/metrics": {
         parameters: {
             query?: never;
@@ -1518,7 +1584,7 @@ export interface paths {
                 header?: {
                     /** @description Revision from GET (raw or quoted ETag); stale revisions return 409 */
                     "If-Match"?: string;
-                    /** @description Fallback provider index used to restore promoted credentials during save */
+                    /** @description Fallback provider index used to restore promoted credentials during validation and save */
                     "X-Settings-Promoted-Provider-Index"?: number;
                 };
                 path?: never;
@@ -10408,6 +10474,12 @@ export interface components {
             schema_version?: string;
             version?: string;
         };
+        "github_com_konglong87_go-e2e_internal_config.HookCommand": {
+            command?: string;
+            matcher?: string;
+            tool?: string;
+            tools?: string[];
+        };
         "github_com_konglong87_go-e2e_internal_config.ImageModelCapability": {
             aspectRatios?: string[];
             maxInputImages?: number;
@@ -10793,6 +10865,37 @@ export interface components {
         "github_com_konglong87_go-e2e_internal_sessioncontrol.SessionStatus": "idle" | "queued" | "running" | "waiting_permission" | "waiting_input" | "blocked" | "completed" | "failed" | "stopped" | "archived";
         /** @enum {string} */
         "github_com_konglong87_go-e2e_internal_sessioncontrol.Source": "tenant" | "local";
+        "github_com_konglong87_go-e2e_internal_skills.Skill": {
+            agent?: string;
+            allowed_tools?: string[];
+            argument_hint?: string;
+            arguments?: string[];
+            content?: string;
+            description?: string;
+            disable_model_invocation?: boolean;
+            effort?: string;
+            execution_context?: string;
+            hooks?: {
+                [key: string]: components["schemas"]["github_com_konglong87_go-e2e_internal_config.HookCommand"][];
+            };
+            legacy?: boolean;
+            local_name?: string;
+            model?: string;
+            name?: string;
+            package_ref?: string;
+            package_sha256?: string;
+            path?: string;
+            paths?: string[];
+            plugin?: string;
+            root?: string;
+            runtime_ref?: string;
+            source?: components["schemas"]["github_com_konglong87_go-e2e_internal_skills.Source"];
+            user_invocable?: boolean;
+            version?: string;
+            when_to_use?: string;
+        };
+        /** @enum {string} */
+        "github_com_konglong87_go-e2e_internal_skills.Source": "user" | "project" | "plugin" | "bundled" | "marketplace" | "mcp" | "tenant";
         "github_com_konglong87_go-e2e_internal_storage_mysql.AgentProfile": {
             config_json?: string;
             created_at?: string;
@@ -11908,6 +12011,10 @@ export interface components {
         };
         "internal_server.SwaggerListKnowledgeDocumentsResponse": {
             data?: components["schemas"]["github_com_konglong87_go-e2e_internal_storage_mysql.KnowledgeDocument"][];
+        };
+        "internal_server.SwaggerListLocalSkillsResponse": {
+            data?: components["schemas"]["github_com_konglong87_go-e2e_internal_skills.Skill"][];
+            workspace?: string;
         };
         "internal_server.SwaggerListMemoriesResponse": {
             data?: components["schemas"]["github_com_konglong87_go-e2e_internal_storage_mysql.Memory"][];

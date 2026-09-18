@@ -31,6 +31,7 @@ import type {
   AttachmentPresignResponse,
   KnowledgeChunkRecord,
   KnowledgeDocumentRecord,
+  LocalSkillRecord,
   GoalCreateRequest,
   GoalEvidence,
   GoalEventRecord,
@@ -910,6 +911,11 @@ export async function getProvisioningLogs(identity: IdentityConfig, id: number, 
 export async function listEffectiveSkills(identity: IdentityConfig): Promise<SkillRecord[]> {
   const value = await apiRequest<unknown>(identity, "/tenant/effective-skills?enabled=true&limit=50");
   return unwrapData<SkillRecord[]>(value, []);
+}
+
+export async function listLocalSkills(identity: IdentityConfig): Promise<LocalSkillRecord[]> {
+  const value = await apiRequest<unknown>(identity, "/local/skills");
+  return unwrapData<LocalSkillRecord[]>(value, []);
 }
 
 export async function saveSkill(identity: IdentityConfig, request: { skill_key: string; name: string; content_md: string; version?: number; enabled?: boolean }): Promise<void> {
