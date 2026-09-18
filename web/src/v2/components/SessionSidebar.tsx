@@ -1,4 +1,4 @@
-import { Archive, ChevronDown, ChevronRight, Ellipsis, Filter, Folder, GripVertical, PanelLeftClose, Plus, Search, Settings, Share2, Square, X } from "lucide-react";
+import { Archive, ChevronDown, ChevronRight, Ellipsis, Filter, Folder, Info, PanelLeftClose, Plus, Search, Settings, Share2, Square, X } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type DragEvent, type JSX, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { useI18n } from "../../lib/i18n";
 import type { IdentityConfig } from "../../lib/types";
@@ -7,6 +7,7 @@ import type { SessionListFilters, SessionRef, SessionSource, SessionStatus, Sess
 import { SESSION_REF_MIME_TYPE } from "./sessionContextDrag";
 import "./composerExperience.css";
 import brandLogo from "../assets/go-e2e-mark.svg";
+import { SessionRow } from "./SessionRow";
 
 type SessionSidebarProps = {
   sessions: SessionSummary[];
@@ -188,7 +189,6 @@ type SessionGroupProps = {
 
 function SessionGroup({ sessions, title, subtitle, hideTitle, source, selectedRef, onSelect, onContextDragStart, copyRef, onStop, onArchive }: SessionGroupProps): JSX.Element | null {
   const { t } = useI18n();
-  const draggedRef = useRef<SessionRef | null>(null);
   const previousSelectedRef = useRef<SessionRef | null | undefined>(undefined);
   const [collapsedWorkspaces, setCollapsedWorkspaces] = useState(loadCollapsedWorkspaces);
   const workspaces = new Map<string, SessionSummary[]>();
@@ -241,18 +241,9 @@ function SessionGroup({ sessions, title, subtitle, hideTitle, source, selectedRe
           <span className="webui2-workspace-count">{items.length}</span>
         </button>
         {!collapsed ? <div className="webui2-workspace-sessions" id={workspaceContentID}>
-          {items.map((session) => <div className="webui2-session-row" key={session.ref}>
-            <button aria-label={t("webui2.dragRef", { ref: session.ref })} className="webui2-drag-handle" draggable onDragStart={(event) => onContextDragStart(event, session.ref)} type="button"><GripVertical aria-hidden="true" size={14} /></button>
-            <button aria-pressed={selectedRef === session.ref} className="webui2-session-select" draggable onDragStart={(event) => { draggedRef.current = session.ref; onContextDragStart(event, session.ref); }} onPointerDown={() => { draggedRef.current = null; }} onClick={(event) => { if (draggedRef.current !== session.ref || event.detail === 0) onSelect(session.ref); draggedRef.current = null; }} type="button">
-              <span className="webui2-session-title" title={session.title}>{session.title}</span>
-              <span className="webui2-session-meta">
-                <span className="webui2-session-status" data-status={session.status}><span aria-hidden="true" className="webui2-session-status-dot" data-status={session.status} />{t(`webui2.status.${session.status}`)}</span>
-                <code title={session.ref}>{session.shortID}</code>
-                <time dateTime={session.updatedAt}>{formatTime(session.updatedAt)}</time>
-              </span>
-            </button>
-            <SessionOverflowMenu copyRef={copyRef} session={session} onStop={onStop} onArchive={onArchive} />
-          </div>)}
+          {items.map((session) => <SessionRow key={session.ref} session={session} selected={selectedRef === session.ref}
+            onSelect={onSelect} onContextDragStart={onContextDragStart}
+            actions={(onPreview) => <SessionOverflowMenu copyRef={copyRef} session={session} onStop={onStop} onArchive={onArchive} onPreview={onPreview} />} />)}
         </div> : null}
       </div>;
     })}
@@ -285,9 +276,10 @@ type SessionOverflowMenuProps = {
   copyRef: (ref: SessionRef) => Promise<void>;
   onStop?: (ref: SessionRef) => void;
   onArchive?: (ref: SessionRef) => void;
+  onPreview: () => void;
 };
 
-function SessionOverflowMenu({ session, copyRef, onStop, onArchive }: SessionOverflowMenuProps): JSX.Element {
+function SessionOverflowMenu({ session, copyRef, onStop, onArchive, onPreview }: SessionOverflowMenuProps): JSX.Element {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -334,6 +326,7 @@ function SessionOverflowMenu({ session, copyRef, onStop, onArchive }: SessionOve
   return <div className="webui2-session-actions" ref={menuRef}>
     <button aria-controls={menuID} aria-expanded={open} aria-haspopup="menu" aria-label={t("webui2.sessionActions", { ref: session.ref })} onClick={() => setOpen((current) => !current)} ref={triggerRef} title={t("webui2.sessionActions", { ref: session.ref })} type="button"><Ellipsis aria-hidden="true" size={16} /></button>
     {open ? <div aria-label={t("webui2.sessionActions", { ref: session.ref })} className="webui2-session-action-menu" id={menuID} role="menu">
+      <button onClick={() => { setOpen(false); triggerRef.current?.focus(); onPreview(); }} role="menuitem" type="button"><Info size={14} />{t("webui2.sessionDetails")}</button>
       <button aria-label={t("webui2.copyRef", { ref: session.ref })} onClick={() => void copyAndClose()} role="menuitem" title={t("webui2.copy")} type="button">{t("webui2.copy")}</button>
       <a aria-label={t("webui2.openRef", { ref: session.ref })} href={webUIV2SessionPath(session.ref)} onClick={() => setOpen(false)} role="menuitem" title={t("webui2.openSession")}>{t("webui2.openSession")}</a>
       <button onClick={() => void shareAndClose()} role="menuitem" type="button"><Share2 size={14} />{t("webui2.share")}</button>
@@ -341,14 +334,4 @@ function SessionOverflowMenu({ session, copyRef, onStop, onArchive }: SessionOve
       {session.source === "tenant" && onArchive ? <button onClick={() => mutateSession("archive")} role="menuitem" type="button"><Archive size={14} />{t("webui2.archive")}</button> : null}
     </div> : null}
   </div>;
-}
-
-function formatTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  const month = date.getMonth() + 1;
-  const day = date.getDate();
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-  return `${month}/${day} ${hours}:${minutes}`;
 }

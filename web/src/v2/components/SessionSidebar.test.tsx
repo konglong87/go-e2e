@@ -60,10 +60,44 @@ describe("SessionSidebar", () => {
     expect(host.textContent).toContain("Release coordination");
     expect(host.textContent).toContain("alpha");
     expect(host.textContent).toContain("running");
-    expect(host.querySelector(".webui2-session-status-dot[data-status=\"running\"]")).not.toBeNull();
+    expect(host.querySelector('.webui2-session-status-icon[data-status="running"][aria-label="running"]')).not.toBeNull();
     expect(host.querySelector("code")?.textContent).toBe("alpha");
-    expect(host.querySelector("time")?.getAttribute("dateTime")).toBe("2026-09-05T00:00:00.000Z");
+    expect(host.querySelector(".webui2-session-row time")).toBeNull();
     expect(host.textContent).toContain("Local sessions are read only");
+  });
+
+  it("shows full metadata on keyboard focus and dismisses on Escape", () => {
+    render();
+    const button = host.querySelector<HTMLButtonElement>(".webui2-session-select");
+    act(() => button?.focus());
+    const preview = document.querySelector('[role="tooltip"]');
+    expect(preview?.textContent).toContain("Release coordination");
+    expect(preview?.querySelector("time")?.dateTime).toBe(sessions[0].updatedAt);
+    expect(button?.getAttribute("aria-describedby")).toBe(preview?.id);
+    act(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(document.querySelector('[role="tooltip"]')).toBeNull();
+    expect(document.activeElement).toBe(button);
+  });
+
+  it("opens metadata explicitly from the menu without selecting the session", () => {
+    render();
+    const row = host.querySelector(".webui2-session-row");
+    act(() => row?.querySelector<HTMLButtonElement>(".webui2-session-actions > button")?.click());
+    const details = Array.from(row?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []).find((button) => button.textContent === "Session details");
+    act(() => details?.click());
+    expect(document.querySelector('[role="tooltip"] time')).not.toBeNull();
+    expect(select).not.toHaveBeenCalled();
+    expect(host.querySelector('[role="menu"]')).toBeNull();
+    act(() => document.body.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+    expect(document.querySelector('[role="tooltip"]')).toBeNull();
+  });
+
+  it("sets whole-row selection and animates only active statuses", () => {
+    render();
+    expect(host.querySelector(".webui2-session-row")?.getAttribute("data-selected")).toBe("true");
+    expect(host.querySelector('[data-status="running"]')?.getAttribute("data-motion")).toBe("spin");
+    expect(host.querySelector('[data-status="completed"]')?.getAttribute("data-motion")).toBeNull();
+    expect(host.querySelector(".webui2-session-meta")?.textContent).toBe("alpha");
   });
 
   it("groups by full workspace path and includes that path in search", () => {
