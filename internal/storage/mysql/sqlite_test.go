@@ -25,6 +25,28 @@ func TestSQLiteDesktopRepositorySupportsSessionControlPersistence(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := repo.SetUserRole(ctx, tenantID, userID, DesktopLocalUserRole); err != nil {
+		t.Fatal(err)
+	}
+	user, err := repo.GetUser(ctx, tenantID, userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user.Role != DesktopLocalUserRole {
+		t.Fatalf("desktop user role = %q, want %q", user.Role, DesktopLocalUserRole)
+	}
+	if _, err := repo.GetTenantQuotaConfig(ctx, tenantID); err != nil {
+		t.Fatalf("get default quota config: %v", err)
+	}
+	if _, err := repo.ListTenantUsageDaily(ctx, tenantID, ListOptions{Limit: 10}); err != nil {
+		t.Fatalf("list usage daily: %v", err)
+	}
+	if _, err := repo.ListTenantUsageLedger(ctx, tenantID, ListOptions{Limit: 10}); err != nil {
+		t.Fatalf("list usage ledger: %v", err)
+	}
+	if _, err := repo.ListQuotaEvents(ctx, tenantID, ListOptions{Limit: 10}); err != nil {
+		t.Fatalf("list quota events: %v", err)
+	}
 	sessionID, err := repo.UpsertSession(ctx, SessionInput{
 		TenantID: tenantID, UserID: userID, SessionKey: "session-1",
 		Title: "SQLite test", Status: "idle", MetadataJSON: `{}`,

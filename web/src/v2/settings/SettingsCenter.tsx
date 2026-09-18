@@ -20,6 +20,7 @@ import { AppearanceSettingsPanel } from "./AppearanceSettingsPanel";
 import { PetSettingsPanel } from "./PetSettingsPanel";
 import { ObservabilityPanel } from "./ObservabilityPanel";
 import { readVisualSettings, type GlobalVisualSettings } from "./globalVisualSettings";
+import { SettingsSelect } from "./SettingsSelect";
 import brandLogo from "../assets/go-e2e-mark.svg";
 import "./settingsCenter.css";
 
@@ -30,7 +31,9 @@ type Props = {
   section: SettingsSection;
   onSectionChange: (section: SettingsSection) => void;
   onBack: () => void;
+  onRequestNavigation: (action: () => void) => void;
   onDirtyChange: (dirty: boolean) => void;
+  onBusyChange: (busy: boolean) => void;
   theme: WebUIV2Theme;
   onThemeChange: (theme: WebUIV2Theme) => void;
   inspectorOpen: boolean;
@@ -45,7 +48,6 @@ export function SettingsCenter(props: Props): JSX.Element {
   const zh = language === "zh";
   const environments = useSettingsEnvironments(props.identity);
   const [environmentID, setEnvironmentID] = useState(CURRENT_SETTINGS_ENVIRONMENT);
-  const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const fallback: SettingsEnvironment = { id: CURRENT_SETTINGS_ENVIRONMENT, label: zh ? "Web 对话" : "Web chat", database: "", tenant_key: props.identity.tenantKey, user_id: props.identity.userId, api_path: "", available: true };
   const items = environments.data?.environments || [fallback];
@@ -54,15 +56,17 @@ export function SettingsCenter(props: Props): JSX.Element {
   const environmentAPIPath = environment?.api_path;
   // Catalog refreshes must not replace the connection object and reset editors.
   const identity = useMemo(() => environmentKey ? settingsEnvironmentIdentity(props.identity, { id: environmentKey, api_path: environmentAPIPath || "" }) : props.identity, [props.identity, environmentKey, environmentAPIPath]);
-  const dirtyChanged = useCallback((value: boolean) => { setDirty(value); props.onDirtyChange(value); }, [props.onDirtyChange]);
+  const dirtyChanged = useCallback((value: boolean) => { props.onDirtyChange(value); }, [props.onDirtyChange]);
   function switchEnvironment(next: string): void {
     if (busy || next === environmentID) return;
-    if (dirty && !window.confirm(zh ? "切换环境将放弃未保存的修改，继续？" : "Switch environments and discard unsaved changes?")) return;
-    setDirty(false); props.onDirtyChange(false); setEnvironmentID(next);
+    props.onRequestNavigation(() => {
+      props.onDirtyChange(false);
+      setEnvironmentID(next);
+    });
   }
-  const selector = <label className="settings-environment-selector"><span>{zh ? "设置环境" : "Settings environment"}</span><select aria-label={zh ? "设置环境" : "Settings environment"} value={environmentID} disabled={busy || environments.isPending} onChange={(event) => switchEnvironment(event.target.value)}>{items.map((item) => <option key={item.id} value={item.id} disabled={!item.available}>{item.id === CURRENT_SETTINGS_ENVIRONMENT ? (zh ? "Web 对话" : "Web chat") : item.label}{!item.available ? (zh ? "（连接不可用）" : " (unavailable)") : ""}</option>)}</select><small>{environment?.database || (zh ? "当前服务" : "Current server")}</small><small>{environment?.tenant_key} / {environment?.user_id}</small>{environments.error ? <span role="alert">{zh ? "环境目录读取失败" : "Environment catalog unavailable"}</span> : null}</label>;
+  const selector = <label className="settings-environment-selector" htmlFor="settings-environment-select"><span>{zh ? "设置环境" : "Settings environment"}</span><SettingsSelect id="settings-environment-select" ariaLabel={zh ? "设置环境" : "Settings environment"} value={environmentID} disabled={busy || environments.isPending} onChange={switchEnvironment} options={items.map((item) => ({ value: item.id, disabled: !item.available, label: <>{item.id === CURRENT_SETTINGS_ENVIRONMENT ? (zh ? "Web 对话" : "Web chat") : item.label}{!item.available ? (zh ? "（连接不可用）" : " (unavailable)") : ""}</> }))} /><small>{environment?.database || (zh ? "当前服务" : "Current server")}</small><small>{environment?.tenant_key} / {environment?.user_id}</small>{environments.error ? <span role="alert">{zh ? "环境目录读取失败" : "Environment catalog unavailable"}</span> : null}</label>;
   if (!environment) return <section className="webui2-settings-center"><aside className="settings-navigation">{selector}<button type="button" onClick={() => switchEnvironment(CURRENT_SETTINGS_ENVIRONMENT)}>{zh ? "返回当前环境" : "Return to current environment"}</button></aside><p role="alert">{zh ? "所选环境不再可用，请重新选择。" : "Selected environment is no longer available."}</p></section>;
-  return <SettingsEnvironmentContent key={environment.id} {...props} identity={identity} globalIdentity={props.identity} environment={environment} selector={selector} settingsPath={environments.data?.global_settings_path || ""} sharedSettings={Boolean(environments.data?.global_settings_shared)} onDirtyChange={dirtyChanged} onBusyChange={setBusy} />;
+  return <SettingsEnvironmentContent key={environment.id} {...props} identity={identity} globalIdentity={props.identity} environment={environment} selector={selector} settingsPath={environments.data?.global_settings_path || ""} sharedSettings={Boolean(environments.data?.global_settings_shared)} onDirtyChange={dirtyChanged} onBusyChange={(value) => { setBusy(value); props.onBusyChange(value); }} />;
 }
 
 function SettingsEnvironmentContent(props: Props & { globalIdentity: IdentityConfig; environment: SettingsEnvironment; selector: JSX.Element; settingsPath: string; sharedSettings: boolean; onBusyChange: (busy: boolean) => void }): JSX.Element {
@@ -87,7 +91,7 @@ function SettingsEnvironmentContent(props: Props & { globalIdentity: IdentityCon
   const profilesChanged = useCallback(() => setProfileRevision((revision) => revision + 1), []);
 
   useEffect(() => { setVisited((previous) => previous.has(section) ? previous : new Set([...previous, section])); setNavOpen(false); }, [section]);
-  useEffect(() => { onDirtyChange(dirty || busy); props.onBusyChange(busy); }, [dirty, busy, onDirtyChange, props.onBusyChange]);
+  useEffect(() => { onDirtyChange(dirty); props.onBusyChange(busy); }, [dirty, busy, onDirtyChange, props.onBusyChange]);
   useEffect(() => {
     props.onVisualPreview(draft.doc ? readVisualSettings(draft.doc) : null);
     return () => props.onVisualPreview(null);
@@ -145,7 +149,7 @@ function GeneralSettings({ identity, theme, onThemeChange, inspectorOpen, onInsp
   const { language, setLanguage, t } = useI18n();
   const zh = language === "zh";
   return <div className="settings-general">
-    <section className="settings-section"><h2>{zh ? "语言" : "Language"}</h2><div className="settings-form-grid"><label>{t("webui2.language")}<select aria-label={t("webui2.language")} value={language} onChange={(event) => setLanguage(event.target.value === "zh" ? "zh" : "en")}><option value="zh">简体中文</option><option value="en">English</option></select></label></div></section>
+    <section className="settings-section"><h2>{zh ? "语言" : "Language"}</h2><div className="settings-form-grid"><label htmlFor="settings-language-select">{t("webui2.language")}<SettingsSelect id="settings-language-select" ariaLabel={t("webui2.language")} value={language} onChange={(value) => setLanguage(value === "zh" ? "zh" : "en")} options={[{ value: "zh", label: "简体中文" }, { value: "en", label: "English" }]} /></label></div></section>
     <section className="settings-section"><h2>{zh ? "外观" : "Appearance"}</h2><fieldset aria-label={t("webui2.theme")} className="settings-theme-options">{(["light", "dark"] as const).map((value) => <button aria-pressed={theme === value} key={value} onClick={() => onThemeChange(value)} type="button"><span aria-hidden="true" className="settings-theme-sample" data-theme={value}><span /></span>{t(`webui2.theme${value === "light" ? "Light" : "Dark"}`)}</button>)}</fieldset></section>
     <section className="settings-section"><h2>{zh ? "对话界面" : "Conversation"}</h2><div className="settings-preference-row"><div><strong>{zh ? "Inspector 默认展开" : "Open Inspector by default"}</strong><p>{zh ? "查看会话活动、上下文与运行详情。" : "Show activity, context and run details."}</p></div><input aria-label={t("webui2.inspector")} aria-checked={inspectorOpen} checked={inspectorOpen} onChange={(event) => onInspectorChange(event.target.checked)} type="checkbox" role="switch" /></div></section>
     <section className="settings-section"><h2>{zh ? "连接身份" : "Connection identity"}</h2><dl className="settings-identity-fields"><div><dt>{zh ? "租户" : "Tenant"}</dt><dd>{identity.tenantKey || "—"}</dd></div><div><dt>{zh ? "用户" : "User"}</dt><dd>{identity.userId || "—"}</dd></div></dl><div className="settings-notice"><ShieldCheck size={16} /><span>{identity.apiToken ? t("webui2.authTokenPresent") : t("webui2.authTokenMissing")}</span><span>{identity.mobileJwt ? t("webui2.authMobilePresent") : t("webui2.authMobileMissing")}</span></div></section>

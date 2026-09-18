@@ -8,6 +8,20 @@
 .webui2-settings-center input, .webui2-settings-center select, .webui2-settings-center textarea { background: var(--webui2-surface); border: 1px solid var(--webui2-border); border-radius: 7px; color: var(--webui2-text); font: inherit; max-width: 100%; min-height: 38px; min-width: 0; padding: 9px 11px; }
 .webui2-settings-center textarea { line-height: 1.7; resize: vertical; }
 .webui2-settings-center input[type="checkbox"] { accent-color: #39896d; min-height: 18px; width: 18px; height: 18px; padding: 0; }
+.webui2-settings-center .webui2-settings-select { min-width: 0; position: relative; }
+.webui2-settings-center .webui2-settings-select-trigger { appearance: none; background: var(--webui2-surface); border: 1px solid var(--webui2-border); border-radius: 7px; color: var(--webui2-text); cursor: pointer; font: inherit; gap: 10px; justify-content: space-between; min-height: 38px; padding: 8px 10px 8px 11px; text-align: left; width: 100%; }
+.webui2-settings-center .webui2-settings-select-trigger:hover { background: var(--webui2-surface-muted); border-color: var(--webui2-accent); }
+.webui2-settings-center .webui2-settings-select-trigger:focus-visible { border-color: var(--webui2-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--webui2-accent) 18%, transparent); outline: 0; }
+.webui2-settings-center .webui2-settings-select-trigger:disabled { cursor: not-allowed; opacity: .55; }
+.webui2-settings-center .webui2-settings-select-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.webui2-settings-center .webui2-settings-select-chevron { color: var(--webui2-text-muted); flex: 0 0 auto; transition: transform 140ms ease; }
+.webui2-settings-center .webui2-settings-select-trigger[aria-expanded="true"] .webui2-settings-select-chevron { color: var(--webui2-accent); transform: rotate(180deg); }
+.webui2-settings-center .webui2-settings-select-menu { background: var(--webui2-surface); border: 1px solid var(--webui2-border); border-radius: 7px; box-shadow: 0 12px 28px rgb(20 30 40 / 16%); display: grid; gap: 3px; left: 0; max-height: 280px; overflow: auto; padding: 5px; position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; }
+.webui2-settings-center .webui2-settings-select-option { background: transparent; border: 0; border-radius: 5px; color: var(--webui2-text); cursor: pointer; font: inherit; gap: 10px; justify-content: space-between; min-height: 34px; padding: 7px 8px; text-align: left; width: 100%; }
+.webui2-settings-center .webui2-settings-select-option:hover, .webui2-settings-center .webui2-settings-select-option.is-active { background: var(--webui2-surface-muted); }
+.webui2-settings-center .webui2-settings-select-option[aria-selected="true"] { background: var(--webui2-accent-surface); color: var(--webui2-text); font-weight: 600; }
+.webui2-settings-center .webui2-settings-select-option:disabled { cursor: not-allowed; opacity: .45; }
+.webui2-settings-center .webui2-settings-select-option svg { color: var(--webui2-accent); }
 .webui2-settings-center .settings-navigation { background: var(--webui2-bg); border-right: 1px solid var(--webui2-border); display: flex; flex-direction: column; overflow: hidden; padding: 25px 16px 18px; }
 .webui2-settings-center .settings-brand { display: flex; align-items: center; font-weight: 700; font-size: 18px; gap: 9px; padding: 0 10px; }
 .webui2-settings-center .settings-brand img { width: 27px; height: 27px; }
@@ -78,7 +92,7 @@
 .webui2-settings-center .settings-effective-sources code { font-size: 12px; overflow-wrap: anywhere; }
 .webui2-settings-center .settings-environment-selector { display: grid; gap: 7px; margin: 0 10px 23px; min-width: 0; }
 .webui2-settings-center .settings-environment-selector > span { font-size: 11px; color: var(--webui2-text-muted); }
-.webui2-settings-center .settings-environment-selector select { width: 100%; font-size: 13px; }
+.webui2-settings-center .settings-environment-selector .webui2-settings-select { width: 100%; font-size: 13px; }
 .webui2-settings-center .settings-environment-selector small { font-size: 10px; color: var(--webui2-text-muted); overflow-wrap: anywhere; line-height: 1.5; }
 .webui2-settings-center .settings-environment-notice { border-left: 3px solid var(--webui2-accent); background: var(--webui2-surface-muted); border-radius: 4px; padding: 12px 15px; margin-bottom: 24px; display: grid; gap: 7px; font-size: 12px; line-height: 1.6; }
 .webui2-settings-center .settings-environment-notice code { font-size: 11px; overflow-wrap: anywhere; }

@@ -29,6 +29,41 @@ func TestDriverDSNAddsUTCTimeDefaults(t *testing.T) {
 	}
 }
 
+func TestScanUserNormalizesNullRole(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectQuery("SELECT user").WillReturnRows(sqlmock.NewRows([]string{
+		"id", "tenant_id", "user_key", "email", "display_name", "role", "status", "user_info_json", "metadata_json", "updated_at",
+	}).AddRow(7, 3, "operator", nil, nil, nil, "active", nil, nil, nil))
+
+	rows, err := db.QueryContext(testContext(), "SELECT user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		t.Fatal("missing user row")
+	}
+	user, err := scanUser(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user.Role != DefaultUserRole {
+		t.Fatalf("role = %q, want %q", user.Role, DefaultUserRole)
+	}
+	if user.Status != "active" {
+		t.Fatalf("status = %q", user.Status)
+	}
+	if !user.UpdatedAt.IsZero() {
+		t.Fatalf("null updated_at = %v", user.UpdatedAt)
+	}
+	assertExpectations(t, mock)
+}
+
 func TestScanUsageLedgerRowsAllowsNullFinishedAt(t *testing.T) {
 	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 	if err != nil {

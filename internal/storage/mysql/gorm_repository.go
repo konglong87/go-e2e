@@ -49,6 +49,8 @@ type gormTenantUserEnsure struct {
 	ID        uint64     `gorm:"column:id;primaryKey"`
 	TenantID  uint64     `gorm:"column:tenant_id"`
 	UserKey   string     `gorm:"column:user_key"`
+	CreatedAt time.Time  `gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt time.Time  `gorm:"column:updated_at;autoUpdateTime"`
 	DeletedAt *time.Time `gorm:"column:deleted_at"`
 }
 
@@ -623,6 +625,27 @@ func (r *GormRepository) EnsureUser(ctx context.Context, tenantID uint64, userKe
 		return gormInsertedID(row.ID, err)
 	}
 	return r.userIDByKey(ctx, tenantID, userKey)
+}
+
+func (r *GormRepository) SetUserRole(ctx context.Context, tenantID, userID uint64, role string) error {
+	r.log(ctx, "user.role.set", "mysql.GormRepository.SetUserRole", "set tenant user role")
+	role = strings.TrimSpace(role)
+	if tenantID == 0 || userID == 0 || role == "" {
+		return ErrInvalidInput
+	}
+	result := r.with(ctx).Table("tenant_users").
+		Where("tenant_id = ? AND id = ? AND deleted_at IS NULL", tenantID, userID).
+		Updates(map[string]any{
+			"role":       role,
+			"updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (r *GormRepository) userIDByKey(ctx context.Context, tenantID uint64, userKey string) (uint64, error) {

@@ -1,10 +1,11 @@
 import { Check, RotateCcw, Save, ShieldCheck } from "lucide-react";
-import type { JSX } from "react";
+import { useId, type JSX } from "react";
 import { useI18n } from "../../lib/i18n";
 import { settingsValue, type GlobalSettingsDraft, type SettingsPath } from "./globalSettingsDraft";
 import { DEFAULT_PET, PET_FIELD_LABELS, PET_ROOT, readVisualSettings } from "./globalVisualSettings";
 import { PET_ASSETS } from "../components/petAssets";
 import { PetScene } from "../components/PetScene";
+import { SettingsSelect } from "./SettingsSelect";
 
 type Props = { draft: GlobalSettingsDraft };
 
@@ -42,12 +43,15 @@ function NumberField({ draft, path, name, min, max, step = 1, fallback }: { draf
 function Toggle({ draft, path, name, fallback = false }: { draft: GlobalSettingsDraft; path: SettingsPath; name: readonly [string, string]; fallback?: boolean }): JSX.Element {
   const { language } = useI18n();
   const title = text(language, name);
-  return <label className="visual-settings-toggle"><span>{title}</span><input aria-label={title} role="switch" type="checkbox" disabled={draft.busy || !draft.doc || Boolean(draft.syntaxError)} checked={bool(settingsValue(draft.doc, path), fallback)} onChange={(event) => draft.setField(path, event.target.checked)} /></label>;
+  const checked = bool(settingsValue(draft.doc, path), fallback);
+  return <label className="visual-settings-toggle"><span>{title}</span><input aria-label={title} aria-checked={checked} role="switch" type="checkbox" disabled={draft.busy || !draft.doc || Boolean(draft.syntaxError)} checked={checked} onChange={(event) => draft.setField(path, event.target.checked)} /></label>;
 }
 
 export function PetSettingsPanel({ draft }: Props): JSX.Element {
   const { language } = useI18n();
   const zh = language === "zh";
+  const modelID = useId();
+  const animationID = useId();
   const disabled = draft.busy || !draft.doc || Boolean(draft.syntaxError);
   const previewSettings = {
     enabled: bool(settingsValue(draft.doc, paths.enabled)),
@@ -69,15 +73,15 @@ export function PetSettingsPanel({ draft }: Props): JSX.Element {
       <div className="pet-settings-layout">
         <fieldset className="visual-settings-grid" disabled={disabled}>
           <Toggle draft={draft} path={paths.visible} name={PET_FIELD_LABELS.visible} fallback />
-          <label className="visual-settings-field"><span>{text(language, PET_FIELD_LABELS.model)}</span><select aria-label={text(language, PET_FIELD_LABELS.model)} value={previewSettings.model} onChange={(event) => draft.setField(paths.model, event.target.value)}>{Object.entries(PET_ASSETS).map(([key, asset]) => <option value={key} key={key}>{asset.label}</option>)}</select></label>
-          <label className="visual-settings-field"><span>{text(language, PET_FIELD_LABELS.animation)}</span><select aria-label={text(language, PET_FIELD_LABELS.animation)} value={previewSettings.animation} onChange={(event) => draft.setField(paths.animation, event.target.value)}><option value="idle">{zh ? "待机" : "Idle"}</option><option value="focus">{zh ? "专注" : "Focus"}</option><option value="celebrate">{zh ? "庆祝" : "Celebrate"}</option></select></label>
+          <label className="visual-settings-field" htmlFor={modelID}><span>{text(language, PET_FIELD_LABELS.model)}</span><SettingsSelect id={modelID} ariaLabel={text(language, PET_FIELD_LABELS.model)} value={previewSettings.model} onChange={(value) => draft.setField(paths.model, value)} options={Object.entries(PET_ASSETS).map(([key, asset]) => ({ value: key, label: asset.label }))} /></label>
+          <label className="visual-settings-field" htmlFor={animationID}><span>{text(language, PET_FIELD_LABELS.animation)}</span><SettingsSelect id={animationID} ariaLabel={text(language, PET_FIELD_LABELS.animation)} value={previewSettings.animation} onChange={(value) => draft.setField(paths.animation, value)} options={[{ value: "idle", label: zh ? "待机" : "Idle" }, { value: "focus", label: zh ? "专注" : "Focus" }, { value: "celebrate", label: zh ? "庆祝" : "Celebrate" }]} /></label>
           <NumberField draft={draft} path={paths.scale} name={PET_FIELD_LABELS.scale} min={0.5} max={2} step={0.05} fallback={DEFAULT_PET.scale} />
           <NumberField draft={draft} path={paths.right} name={PET_FIELD_LABELS.right} min={0} max={160} fallback={DEFAULT_PET.right} />
           <NumberField draft={draft} path={paths.bottom} name={PET_FIELD_LABELS.bottom} min={0} max={160} fallback={DEFAULT_PET.bottom} />
           <Toggle draft={draft} path={paths.statusBubble} name={PET_FIELD_LABELS.statusBubble} fallback />
           <NumberField draft={draft} path={paths.fontScale} name={PET_FIELD_LABELS.fontScale} min={0.75} max={1.5} step={0.05} fallback={DEFAULT_PET.fontScale} />
         </fieldset>
-        <div className="pet-settings-preview" aria-label={zh ? "宠物预览" : "Pet preview"}><PetScene settings={readVisualSettings(draft.doc).pet} status="running" /></div>
+        <div className="pet-settings-preview" role="img" aria-label={zh ? "宠物预览" : "Pet preview"}><PetScene settings={readVisualSettings(draft.doc).pet} status="running" /></div>
       </div>
     </section>
     {draft.error ? <p className="visual-settings-error" role="alert">{draft.error}</p> : null}

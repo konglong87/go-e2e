@@ -136,8 +136,12 @@ func serverCommand(ctx context.Context, args []string, opts options, stdout io.W
 		if err != nil {
 			return fmt.Errorf("initialize desktop tenant: %w", err)
 		}
-		if _, err := repo.EnsureUser(ctx, tenantID, userKey); err != nil {
+		userID, err := repo.EnsureUser(ctx, tenantID, userKey)
+		if err != nil {
 			return fmt.Errorf("initialize desktop user: %w", err)
+		}
+		if err := repo.SetUserRole(ctx, tenantID, userID, mysqlstore.DesktopLocalUserRole); err != nil {
+			return fmt.Errorf("initialize desktop user role: %w", err)
 		}
 		serverOpts.TenantService = tenantSvc
 		serverOpts.PromptTemplateService = prompttemplate.NewService(repo)

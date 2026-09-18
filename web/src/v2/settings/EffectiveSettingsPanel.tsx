@@ -7,6 +7,7 @@ import type { IdentityConfig } from "../../lib/types";
 import type { SessionRef } from "../routes";
 import { useSessionDetail } from "../api/sessionControlQueries";
 import { useSessionRuntimeDetails } from "../api/useSessionRuntime";
+import { SettingsSelect } from "./SettingsSelect";
 
 type EffectiveSettings = {
   workspace: string;
@@ -30,7 +31,7 @@ export function EffectiveSettingsPanel({ identity, selectedRef }: { identity: Id
   const inspection = useQuery({ queryKey: ["webui2-settings-effective", identity.apiBase, identity.tenantKey, identity.userId], queryFn: ({ signal }) => apiRequest<EffectiveSettings>(identity, "/runtime/settings/effective", { signal }), retry: false, staleTime: 0 });
   const data = inspection.data;
   return <>
-    <div className="settings-effective-controls"><label>{zh ? "查看范围" : "Scope"} <select aria-label={zh ? "配置范围" : "Configuration scope"} value={scope} onChange={(event) => setScope(event.target.value)}><option value="files">{zh ? "文件解析结果" : "Resolved files"}</option><option value="process">{zh ? "服务启动快照" : "Server startup snapshot"}</option>{selectedRef ? <option value="session">{zh ? "当前会话 / Run" : "Current session / Run"}</option> : null}</select></label><input aria-label={zh ? "搜索配置项" : "Search configuration"} placeholder={zh ? "搜索配置项" : "Search configuration"} value={query} onChange={(event) => setQuery(event.target.value)} /><button disabled={inspection.isFetching} onClick={() => void refresh()} title={zh ? "刷新配置" : "Refresh configuration"} type="button"><RefreshCw size={15} />{zh ? "刷新" : "Refresh"}</button></div>
+    <div className="settings-effective-controls"><label htmlFor="settings-effective-scope">{zh ? "查看范围" : "Scope"} <SettingsSelect id="settings-effective-scope" ariaLabel={zh ? "配置范围" : "Configuration scope"} value={scope} onChange={setScope} options={[{ value: "files", label: zh ? "文件解析结果" : "Resolved files" }, { value: "process", label: zh ? "服务启动快照" : "Server startup snapshot" }, ...(selectedRef ? [{ value: "session", label: zh ? "当前会话 / Run" : "Current session / Run" }] : [])]} /></label><input aria-label={zh ? "搜索配置项" : "Search configuration"} placeholder={zh ? "搜索配置项" : "Search configuration"} value={query} onChange={(event) => setQuery(event.target.value)} /><button disabled={inspection.isFetching} onClick={() => void refresh()} title={zh ? "刷新配置" : "Refresh configuration"} type="button"><RefreshCw size={15} />{zh ? "刷新" : "Refresh"}</button></div>
     {scope === "session" && selectedRef ? <SessionConfiguration identity={identity} selectedRef={selectedRef} query={query} /> : <>
       {inspection.isPending ? <p role="status">{zh ? "正在读取配置…" : "Loading configuration…"}</p> : null}
       {inspection.error ? <p role="alert" className="settings-error">{inspection.error.message}</p> : null}

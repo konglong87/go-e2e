@@ -101,25 +101,32 @@ type skillScanner interface {
 
 func scanUser(scanner skillScanner) (User, error) {
 	var user User
-	var email, displayName, userInfoJSON, metadataJSON sql.NullString
+	var email, displayName, role, status, userInfoJSON, metadataJSON sql.NullString
+	var updatedAt sql.NullTime
 	if err := scanner.Scan(
 		&user.ID,
 		&user.TenantID,
 		&user.UserKey,
 		&email,
 		&displayName,
-		&user.Role,
-		&user.Status,
+		&role,
+		&status,
 		&userInfoJSON,
 		&metadataJSON,
-		&user.UpdatedAt,
+		&updatedAt,
 	); err != nil {
 		return User{}, err
 	}
 	user.Email = email.String
 	user.DisplayName = displayName.String
+	user.Role = role.String
+	if user.Role == "" {
+		user.Role = DefaultUserRole
+	}
+	user.Status = status.String
 	user.UserInfoJSON = userInfoJSON.String
 	user.MetadataJSON = metadataJSON.String
+	user.UpdatedAt = updatedAt.Time
 	return user, nil
 }
 

@@ -3,6 +3,7 @@ import { Activity, ArrowUpRight, Braces, Check, Cpu, Eye, EyeOff, Plus, RotateCc
 import type { ReactNode } from "react";
 import { SETTINGS_SECRET_SENTINEL, settingsValue, type GlobalSettingsDraft, type SettingsPath } from "./globalSettingsDraft";
 import { useGlobalSettingsText } from "./globalSettingsCopy";
+import { SettingsSelect } from "./SettingsSelect";
 import "./globalSettings.css";
 
 type Props = { draft: GlobalSettingsDraft; view: "models" | "json" };
@@ -25,7 +26,7 @@ function Field({ draft, path, label, type = "text", options, placeholder, full }
   const change = (text: string) => draft.setField(path, type === "number" ? text === "" ? undefined : Number(text) : text);
   return <label htmlFor={id} className={`global-settings-field${full ? " full" : ""}`}>
     <span>{t(label)}</span>
-    {choices ? <select id={id} value={value} onChange={(event) => draft.setField(path, event.target.value || undefined)}>{choices.map(([key, title]) => <option value={key} key={key}>{t(title)}</option>)}</select>
+    {choices ? <SettingsSelect id={id} ariaLabel={t(label)} value={value} onChange={(next) => draft.setField(path, next || undefined)} options={choices.map(([key, title]) => ({ value: key, label: t(title) }))} />
       : <span className="global-settings-input-row"><input id={id} aria-label={t(label)} type={type === "password" && visible ? "text" : type} value={value} placeholder={placeholder ? t(placeholder) : undefined} autoComplete={type === "password" ? "new-password" : "off"} spellCheck={false} onChange={(event) => change(event.target.value)} />
         {type === "password" && <button type="button" className="global-settings-icon" title={t(visible ? "隐藏密钥" : "显示密钥")} aria-label={t(visible ? "隐藏密钥" : "显示密钥")} onClick={(event) => { event.preventDefault(); setVisible(!visible); }}>{visible ? <EyeOff size={16} /> : <Eye size={16} />}</button>}
       </span>}
@@ -35,8 +36,9 @@ function Field({ draft, path, label, type = "text", options, placeholder, full }
 
 function BooleanField({ draft, path, label }: Pick<FieldProps, "draft" | "path" | "label">) {
   const t = useGlobalSettingsText();
+  const id = useId();
   const value = settingsValue(draft.doc, path);
-  return <label className="global-settings-field"><span>{t(label)}</span><select value={typeof value === "boolean" ? String(value) : ""} onChange={(event) => draft.setField(path, event.target.value === "" ? undefined : event.target.value === "true")}>{BOOL_OPTIONS.map(([key, title]) => <option key={key} value={key}>{t(title)}</option>)}</select></label>;
+  return <label className="global-settings-field" htmlFor={id}><span>{t(label)}</span><SettingsSelect id={id} ariaLabel={t(label)} value={typeof value === "boolean" ? String(value) : ""} onChange={(next) => draft.setField(path, next === "" ? undefined : next === "true")} options={BOOL_OPTIONS.map(([key, title]) => ({ value: key, label: t(title) }))} /></label>;
 }
 
 function StringListField({ draft, path, label }: Pick<FieldProps, "draft" | "path" | "label">) {

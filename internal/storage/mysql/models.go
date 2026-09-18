@@ -12,6 +12,11 @@ import (
 	"github.com/konglong87/go-e2e/internal/telemetry"
 )
 
+const (
+	DefaultUserRole      = "member"
+	DesktopLocalUserRole = "owner"
+)
+
 var (
 	ErrNotFound                 = errors.New("mysql storage: not found")
 	ErrInvalidInput             = errors.New("mysql storage: invalid input")

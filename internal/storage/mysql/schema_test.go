@@ -390,6 +390,21 @@ func TestMigrationURLHelpers(t *testing.T) {
 	}
 }
 
+func TestTenantUserRoleIntegrityMigration(t *testing.T) {
+	up := readMigration(t, "000027_tenant_user_role_integrity.up.sql")
+	for _, clause := range []string{
+		"UPDATE tenant_users",
+		"SET role = 'member'",
+		"WHERE role IS NULL",
+		"MODIFY COLUMN role VARCHAR(64) NOT NULL DEFAULT 'member'",
+	} {
+		assertContains(t, up, clause)
+	}
+
+	down := readMigration(t, "000027_tenant_user_role_integrity.down.sql")
+	assertContains(t, down, "MODIFY COLUMN role VARCHAR(64) NULL DEFAULT NULL")
+}
+
 func readMigration(t *testing.T, name string) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)

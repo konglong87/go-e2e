@@ -255,16 +255,17 @@ describe("WebUIV2App", () => {
     expect(host.querySelector(".settings-content")?.textContent).toContain("JSON");
     act(() => nav("全局 Settings JSON")?.click());
     expect(host.querySelector<HTMLTextAreaElement>(".global-settings-json textarea")?.value).toBe('{"model":');
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     act(() => host.querySelector<HTMLButtonElement>(".settings-back")?.click());
-    expect(confirm).toHaveBeenCalled();
+    expect(host.querySelector('[role="alertdialog"]')).not.toBeNull();
+    act(() => host.querySelector<HTMLButtonElement>(".webui2-unsaved-changes-cancel")?.click());
     expect(window.location.pathname).toBe("/webui/v2/settings/json");
     act(() => { window.history.replaceState({}, "", "/webui/v2/sessions/tenant%3Aalpha"); window.dispatchEvent(new PopStateEvent("popstate")); });
     expect(window.location.pathname).toBe("/webui/v2/settings/json");
+    act(() => host.querySelector<HTMLButtonElement>(".webui2-unsaved-changes-cancel")?.click());
     expect(subscriptionSignals.length).toBeGreaterThan(0);
     expect(subscriptionSignals.some((signal) => !signal.aborted)).toBe(true);
-    confirm.mockReturnValue(true);
     act(() => host.querySelector<HTMLButtonElement>(".settings-back")?.click());
+    act(() => host.querySelector<HTMLButtonElement>(".webui2-unsaved-changes-discard")?.click());
     expect(window.location.pathname).toBe("/webui/v2/sessions/tenant%3Aalpha");
     expect(host.querySelector(".webui2-settings-center")).toBeNull();
   });
@@ -292,10 +293,10 @@ describe("WebUIV2App", () => {
     act(() => { setter.call(composer, "Keep this chat draft"); composer.dispatchEvent(new Event("input", { bubbles: true })); });
     act(() => host.querySelector<HTMLButtonElement>('button[aria-label="Settings"]')?.click());
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
-    const switchTo = (id: string) => act(() => {
-      const select = host.querySelector<HTMLSelectElement>('select[aria-label="Settings environment"]')!;
-      select.value = id; select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    const switchTo = (id: string) => {
+      act(() => { host.querySelector<HTMLButtonElement>('button[aria-label="Settings environment"]')?.click(); });
+      act(() => { host.querySelector<HTMLButtonElement>(`[role="option"][data-value="${id}"]`)?.click(); });
+    };
     const nav = (label: string) => act(() => Array.from(host.querySelectorAll<HTMLButtonElement>(".settings-navigation nav button")).find((button) => button.textContent === label)?.click());
     switchTo("channel");
     nav("Profiles");
@@ -313,15 +314,15 @@ describe("WebUIV2App", () => {
     expect(host.textContent).toContain("Global settings shared by Web and channel workers");
     const editor = host.querySelector<HTMLTextAreaElement>(".global-settings-json textarea")!;
     act(() => { setter.call(editor, '{"model":'); editor.dispatchEvent(new Event("input", { bubbles: true })); });
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     switchTo("current");
-    expect(confirm).toHaveBeenCalled();
-    expect(host.querySelector<HTMLSelectElement>('select[aria-label="Settings environment"]')?.value).toBe("channel");
+    expect(host.querySelector('[role="alertdialog"]')).not.toBeNull();
+    act(() => host.querySelector<HTMLButtonElement>(".webui2-unsaved-changes-cancel")?.click());
+    expect(host.querySelector<HTMLButtonElement>('button[aria-label="Settings environment"]')?.dataset.value).toBe("channel");
     expect(editor.value).toBe('{"model":');
-    confirm.mockReturnValue(true);
     switchTo("current");
+    act(() => host.querySelector<HTMLButtonElement>(".webui2-unsaved-changes-discard")?.click());
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
-    expect(host.querySelector<HTMLSelectElement>('select[aria-label="Settings environment"]')?.value).toBe("current");
+    expect(host.querySelector<HTMLButtonElement>('button[aria-label="Settings environment"]')?.dataset.value).toBe("current");
     expect(host.querySelector(".webui2-composer textarea")).toBe(composer);
     expect(composer.value).toBe("Keep this chat draft");
     expect(signals.length).toBeGreaterThan(0);
@@ -341,11 +342,8 @@ describe("WebUIV2App", () => {
     vi.stubGlobal("fetch", fetchMock);
     renderAt("/webui/v2/settings/general", "en");
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
-    act(() => {
-      const select = host.querySelector<HTMLSelectElement>('select[aria-label="Settings environment"]')!;
-      select.value = "channel";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    act(() => { host.querySelector<HTMLButtonElement>('button[aria-label="Settings environment"]')?.click(); });
+    act(() => { host.querySelector<HTMLButtonElement>('[role="option"][data-value="channel"]')?.click(); });
     const unsupported = ["Common prompts", "Memory", "Skills", "Teams", "Channel workers"];
     for (const button of host.querySelectorAll<HTMLButtonElement>(".settings-navigation nav button")) {
       expect(button.disabled).toBe(unsupported.includes(button.textContent!));
@@ -360,13 +358,12 @@ describe("WebUIV2App", () => {
       expect(host.querySelector(".p2-management-panel")).toBeNull();
       expect(fetchMock).not.toHaveBeenCalled();
     }
-    await act(async () => {
-      window.history.pushState({}, "", "/webui/v2/settings/memory");
-      window.dispatchEvent(new PopStateEvent("popstate"));
-      const select = host.querySelector<HTMLSelectElement>('select[aria-label="Settings environment"]')!;
-      select.value = "current";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+      await act(async () => {
+        window.history.pushState({}, "", "/webui/v2/settings/memory");
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      });
+      act(() => { host.querySelector<HTMLButtonElement>('button[aria-label="Settings environment"]')?.click(); });
+      act(() => { host.querySelector<HTMLButtonElement>('[role="option"][data-value="current"]')?.click(); });
     expect(host.querySelector(".p2-management-panel")).not.toBeNull();
     expect(fetchMock.mock.calls.some(([url]) => url === "/api/tenant/memories?limit=20")).toBe(true);
     expect(fetchMock.mock.calls.some(([url]) => url.startsWith(`${prefix}/channel/`))).toBe(false);
@@ -504,10 +501,10 @@ describe("WebUIV2App", () => {
 
     act(() => host.querySelector<HTMLButtonElement>('button[aria-label="Settings"]')?.click());
     expect(host.querySelector(".webui2-settings-center")).not.toBeNull();
-    const language = host.querySelector<HTMLSelectElement>('select[aria-label="Language"]');
     const theme = host.querySelector<HTMLButtonElement>(".settings-theme-options button:last-child");
     act(() => theme?.click());
-    act(() => { language!.value = "zh"; language?.dispatchEvent(new Event("change", { bubbles: true })); });
+    act(() => { host.querySelector<HTMLButtonElement>('button[aria-label="Language"]')?.click(); });
+    act(() => { host.querySelector<HTMLButtonElement>('[role="option"][data-value="zh"]')?.click(); });
     act(() => host.querySelector<HTMLInputElement>(".settings-preference-row input")?.click());
 
     expect(host.querySelector("main.webui2-page")?.getAttribute("data-session-ref")).toMatch(/^tenant:session-/);

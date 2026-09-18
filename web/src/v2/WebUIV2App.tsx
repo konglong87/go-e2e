@@ -28,6 +28,7 @@ import { loadInspectorPreference, saveInspectorPreference } from "./settings/pre
 import { parseWebUIV2Route, settingsReturnSession, webUIV2SettingsPath, webUIV2SessionPath, type SettingsSection, type SessionRef, type WebUIV2Route } from "./routes";
 import type { OperationResult, SessionListFilters, SessionMessage, SessionStatus, SessionSummary } from "./types";
 import { PetScene } from "./components/PetScene";
+import { UnsavedChangesDialog } from "./components/UnsavedChangesDialog";
 import { useGlobalVisualSettings } from "./settings/useGlobalVisualSettings";
 import { visualSettingsStyle, type GlobalVisualSettings } from "./settings/globalVisualSettings";
 import "./styles.css";
@@ -38,6 +39,8 @@ type RouteState = {
   route: WebUIV2Route;
   selectedRef: SessionRef | null;
 };
+
+type LeaveDialogKind = "dirty" | "busy";
 
 const ACTIVE_RUNTIME_STATUSES = new Set<SessionStatus>(["running", "queued", "waiting_permission", "waiting_input"]);
 
@@ -61,6 +64,9 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
   const [filters, setFilters] = useState<SessionListFilters>({ query: "", statuses: [] });
   const settingsOpen = state.route.kind === "settings";
   const settingsDirty = useRef(false);
+  const settingsBusy = useRef(false);
+  const pendingNavigation = useRef<(() => void) | null>(null);
+  const [leaveDialog, setLeaveDialog] = useState<LeaveDialogKind | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarHidden, setSidebarHidden] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -124,15 +130,34 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
     return () => { active = false; window.clearInterval(timer); controller?.abort(); };
   }, [identity.apiBase, identity.apiToken, isDesktop]);
 
-  const selectSession = useCallback((ref: SessionRef): void => {
-    if (settingsDirty.current && !window.confirm(language === "zh" ? "放弃尚未保存的设置并返回会话？" : "Discard unsaved settings and return to the session?")) return;
-    settingsDirty.current = false;
+  const navigateToSession = useCallback((ref: SessionRef): void => {
     window.history.pushState({}, "", webUIV2SessionPath(ref));
     setState({ route: { kind: "session", ref }, selectedRef: ref });
     setErrorCode("");
     setSidebarOpen(false);
     setSearchOpen(false);
-  }, [language]);
+  }, []);
+
+  const requestSettingsNavigation = useCallback((action: () => void): void => {
+    if (!settingsOpen) {
+      action();
+      return;
+    }
+    if (settingsBusy.current) {
+      setLeaveDialog("busy");
+      return;
+    }
+    if (settingsDirty.current) {
+      pendingNavigation.current = action;
+      setLeaveDialog("dirty");
+      return;
+    }
+    action();
+  }, [settingsOpen]);
+
+  const selectSession = useCallback((ref: SessionRef): void => {
+    requestSettingsNavigation(() => navigateToSession(ref));
+  }, [navigateToSession, requestSettingsNavigation]);
 
   function openSettings(section: SettingsSection = "general"): void {
     window.history.pushState({}, "", webUIV2SettingsPath(section, state.selectedRef));
@@ -150,12 +175,26 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
     openNewSession();
   }
 
-  function closeSettings(): void {
-    if (settingsDirty.current && !window.confirm(language === "zh" ? "放弃尚未保存的设置并返回会话？" : "Discard unsaved settings and return to the session?")) return;
-    settingsDirty.current = false;
+  const closeSettings = useCallback((): void => {
     const ref = state.selectedRef;
-    window.history.pushState({}, "", ref ? webUIV2SessionPath(ref) : "/webui/v2");
-    setState({ route: ref ? { kind: "session", ref } : { kind: "index" }, selectedRef: ref });
+    requestSettingsNavigation(() => {
+      settingsDirty.current = false;
+      window.history.pushState({}, "", ref ? webUIV2SessionPath(ref) : "/webui/v2");
+      setState({ route: ref ? { kind: "session", ref } : { kind: "index" }, selectedRef: ref });
+    });
+  }, [requestSettingsNavigation, state.selectedRef]);
+
+  function cancelPendingNavigation(): void {
+    pendingNavigation.current = null;
+    setLeaveDialog(null);
+  }
+
+  function discardPendingNavigation(): void {
+    const action = pendingNavigation.current;
+    pendingNavigation.current = null;
+    settingsDirty.current = false;
+    setLeaveDialog(null);
+    action?.();
   }
 
   function changeTheme(next: WebUIV2Theme): void {
@@ -202,8 +241,13 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
   useEffect(() => {
     function restoreRoute() {
       const next = routeState(window.location.pathname);
-      if (state.route.kind === "settings" && next.route.kind !== "settings" && settingsDirty.current && !window.confirm(language === "zh" ? "放弃尚未保存的设置？" : "Discard unsaved settings?")) {
+      if (state.route.kind === "settings" && next.route.kind !== "settings" && (settingsDirty.current || settingsBusy.current)) {
         window.history.pushState({}, "", webUIV2SettingsPath(state.route.section, state.selectedRef));
+        requestSettingsNavigation(() => {
+          if (next.route.kind !== "settings") settingsDirty.current = false;
+          setState(next);
+          setErrorCode("");
+        });
         return;
       }
       if (next.route.kind !== "settings") settingsDirty.current = false;
@@ -213,7 +257,7 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
 
     window.addEventListener("popstate", restoreRoute);
     return () => window.removeEventListener("popstate", restoreRoute);
-  }, [state, language]);
+  }, [requestSettingsNavigation, state]);
 
   useEffect(() => {
     if (!refSearch || settingsOpen || state.selectedRef === refSearch) return;
@@ -299,7 +343,8 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
     <SessionSearchDialog open={searchOpen} sessions={searchSessions} onClose={() => setSearchOpen(false)} onCreateSession={openNewSession} onSelect={selectSession} />
     <CommandPalette open={commandsOpen} onClose={() => setCommandsOpen(false)} commands={commands} placeholder={language === "zh" ? "搜索会话或操作" : "Search sessions or actions"} emptyLabel={t("webui2.emptySessions")} ariaLabel={language === "zh" ? "命令面板" : "Command palette"} />
     </div>
-    {state.route.kind === "settings" && desktopReady ? <SettingsCenter identity={identity} section={state.route.section} onSectionChange={openSettings} onBack={closeSettings} onDirtyChange={(dirty) => { settingsDirty.current = dirty; }} theme={theme} onThemeChange={changeTheme} inspectorOpen={inspectorOpen} onInspectorChange={changeInspector} selectedRef={state.selectedRef} onOpenSession={selectSession} onVisualPreview={setVisualPreview} /> : null}
+    {state.route.kind === "settings" && desktopReady ? <SettingsCenter identity={identity} section={state.route.section} onSectionChange={openSettings} onBack={closeSettings} onRequestNavigation={requestSettingsNavigation} onDirtyChange={(dirty) => { settingsDirty.current = dirty; }} onBusyChange={(busy) => { settingsBusy.current = busy; }} theme={theme} onThemeChange={changeTheme} inspectorOpen={inspectorOpen} onInspectorChange={changeInspector} selectedRef={state.selectedRef} onOpenSession={selectSession} onVisualPreview={setVisualPreview} /> : null}
+    {leaveDialog ? <UnsavedChangesDialog kind={leaveDialog} language={language} onCancel={cancelPendingNavigation} onDiscard={discardPendingNavigation} /> : null}
     {state.route.kind !== "settings" ? <PetScene settings={savedVisual.visual.pet} status={selectedSession?.status} /> : null}
     {onboardingOpen && state.route.kind !== "settings" ? <section className="webui2-onboarding-backdrop" role="dialog" aria-modal="true" aria-labelledby="webui2-onboarding-title">
       <div className="webui2-onboarding">

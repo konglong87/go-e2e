@@ -161,7 +161,7 @@ func TestGormRepositoryEnsureUserFallsBackToSelectWhenIDNotReturned(t *testing.T
 	repo, mock, closeDB := newMockGormRepository(t)
 	defer closeDB()
 	mock.ExpectExec("INSERT INTO `tenant_users` .*ON DUPLICATE KEY UPDATE .*LAST_INSERT_ID").
-		WithArgs(uint64(1), "user-1", nil, nil).
+		WithArgs(uint64(1), "user-1", sqlmock.AnyArg(), sqlmock.AnyArg(), nil, nil).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT `id` FROM `tenant_users` WHERE tenant_id = ? AND user_key = ? AND deleted_at IS NULL LIMIT ?")).
 		WithArgs(uint64(1), "user-1", 1).
