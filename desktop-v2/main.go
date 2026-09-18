@@ -20,6 +20,7 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	macoptions "github.com/wailsapp/wails/v2/pkg/options/mac"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -27,14 +28,16 @@ import (
 var bundledAssets embed.FS
 
 type app struct {
-	mu         sync.Mutex
-	server     *exec.Cmd
-	done       chan error
-	config     desktopConfig
-	port       int
-	token      string
-	windowCtx  context.Context
-	windowDone chan struct{}
+	mu          sync.Mutex
+	server      *exec.Cmd
+	done        chan error
+	config      desktopConfig
+	port        int
+	token       string
+	windowCtx   context.Context
+	windowDone  chan struct{}
+	serverReady chan struct{}
+	readyOnce   sync.Once
 }
 
 func main() {
@@ -48,7 +51,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	application := &app{port: port, token: token}
+	application := &app{port: port, token: token, serverReady: make(chan struct{})}
 	config, err := loadDesktopConfig()
 	if err != nil {
 		startupLog("load desktop config for window: " + err.Error())
@@ -59,25 +62,32 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	if err := wails.Run(&options.App{
+	if err := wails.Run(desktopWailsOptions(application, config, target)); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func desktopWailsOptions(application *app, config desktopConfig, target *url.URL) *options.App {
+	return &options.App{
 		Title:            "go-e2e",
 		Width:            windowWidth(config),
 		Height:           windowHeight(config),
 		MinWidth:         minWindowWidth,
 		MinHeight:        minWindowHeight,
 		WindowStartState: windowStartState(config),
-		OnStartup:        application.startup,
-		OnDomReady:       application.domReady,
-		OnBeforeClose:    application.beforeClose,
-		OnShutdown:       application.shutdown,
+		// Wails disables macOS's native Zoom button when Mac options are nil.
+		// Keep it enabled so the green button exposes the system fullscreen menu.
+		Mac:           &macoptions.Options{DisableZoom: false},
+		OnStartup:     application.startup,
+		OnDomReady:    application.domReady,
+		OnBeforeClose: application.beforeClose,
+		OnShutdown:    application.shutdown,
 		AssetServer: &assetserver.Options{
 			Assets:  bundledAssets,
 			Handler: httputil.NewSingleHostReverseProxy(target),
 		},
 		Bind: []interface{}{application},
-	}); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
 	}
 }
 
@@ -88,6 +98,7 @@ func (a *app) startup(ctx context.Context) {
 	if err != nil {
 		startupLog("load config: " + err.Error())
 		wailsruntime.LogErrorf(ctx, "load desktop config: %v", err)
+		a.signalServerReady()
 		return
 	}
 	restoreWindowGeometry(ctx, config)
@@ -97,10 +108,12 @@ func (a *app) startup(ctx context.Context) {
 		if err != nil {
 			startupLog("choose workspace: " + err.Error())
 			wailsruntime.LogErrorf(ctx, "choose workspace: %v", err)
+			a.signalServerReady()
 			return
 		}
 		if err := saveDesktopConfig(config); err != nil {
 			wailsruntime.LogErrorf(ctx, "save desktop config: %v", err)
+			a.signalServerReady()
 			return
 		}
 	}
@@ -110,6 +123,7 @@ func (a *app) startup(ctx context.Context) {
 	if err != nil {
 		startupLog("locate server: " + err.Error())
 		wailsruntime.LogErrorf(ctx, "locate go-e2e executable: %v", err)
+		a.signalServerReady()
 		return
 	}
 	startupLog("server executable=" + executable)
@@ -126,6 +140,7 @@ func (a *app) startup(ctx context.Context) {
 	if sqliteErr != nil {
 		startupLog("sqlite path: " + sqliteErr.Error())
 		wailsruntime.LogErrorf(ctx, "resolve desktop sqlite path: %v", sqliteErr)
+		a.signalServerReady()
 		return
 	}
 	startupLog("sqlite path=" + sqlitePath)
@@ -143,6 +158,7 @@ func (a *app) startup(ctx context.Context) {
 	if logErr != nil {
 		startupLog("open server log: " + logErr.Error())
 		wailsruntime.LogErrorf(ctx, "open server log: %v", logErr)
+		a.signalServerReady()
 		return
 	}
 	defer func() { _ = serverLog.Close() }()
@@ -152,6 +168,7 @@ func (a *app) startup(ctx context.Context) {
 	if err := cmd.Start(); err != nil {
 		startupLog("start server: " + err.Error())
 		wailsruntime.LogErrorf(ctx, "start local go-e2e server: %v", err)
+		a.signalServerReady()
 		return
 	}
 	startupLog(fmt.Sprintf("server started pid=%d port=%d", cmd.Process.Pid, a.port))
@@ -167,21 +184,43 @@ func (a *app) startup(ctx context.Context) {
 	}()
 
 	if !a.waitForServer(ctx) {
+		readyErr := fmt.Errorf("local go-e2e server did not become ready on port %d", a.port)
 		if state := cmd.ProcessState; state != nil && state.Exited() {
 			wailsruntime.LogErrorf(ctx, "local go-e2e server exited before readiness with code %d", state.ExitCode())
+			readyErr = fmt.Errorf("local go-e2e server exited before readiness with code %d", state.ExitCode())
 		}
-		wailsruntime.LogErrorf(ctx, "local go-e2e server did not become ready on port %d", a.port)
+		wailsruntime.LogErrorf(ctx, "%v", readyErr)
 		startupLog(fmt.Sprintf("server not ready port=%d", a.port))
+		a.signalServerReady()
 	} else {
 		startupLog(fmt.Sprintf("server ready port=%d", a.port))
+		a.signalServerReady()
 	}
 }
 
 func (a *app) domReady(ctx context.Context) {
 	a.setWindowContext(ctx)
-	script := fmt.Sprintf(`window.__GO_E2E_DESKTOP_TOKEN__=%q; window.dispatchEvent(new Event("go-e2e-desktop-token"));`, a.token)
-	wailsruntime.WindowExecJS(ctx, script)
+	go func() {
+		if a.serverReady != nil {
+			select {
+			case <-a.serverReady:
+			case <-ctx.Done():
+				return
+			}
+		}
+		script := fmt.Sprintf(`window.__GO_E2E_DESKTOP_TOKEN__=%q; window.dispatchEvent(new Event("go-e2e-desktop-token"));`, a.token)
+		wailsruntime.WindowExecJS(ctx, script)
+	}()
 	a.startWindowStateWatcher(ctx)
+}
+
+func (a *app) signalServerReady() {
+	if a.serverReady == nil {
+		return
+	}
+	a.readyOnce.Do(func() {
+		close(a.serverReady)
+	})
 }
 
 func (a *app) beforeClose(ctx context.Context) bool {
@@ -298,22 +337,27 @@ func (a *app) waitForServer(ctx context.Context) bool {
 		case <-deadline.C:
 			return false
 		case <-ticker.C:
-			reqCtx, cancel := context.WithTimeout(ctx, time.Second)
-			req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d/health", a.port), nil)
-			if err == nil {
-				req.Header.Set("Authorization", "Bearer "+a.token)
-				resp, requestErr := http.DefaultClient.Do(req)
-				if requestErr == nil {
-					_ = resp.Body.Close()
-					if resp.StatusCode == http.StatusOK {
-						cancel()
-						return true
-					}
-				}
+			if a.serverEndpointReady(ctx, "/health") && a.serverEndpointReady(ctx, "/readyz") {
+				return true
 			}
-			cancel()
 		}
 	}
+}
+
+func (a *app) serverEndpointReady(ctx context.Context, path string) bool {
+	reqCtx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d%s", a.port, path), nil)
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Authorization", "Bearer "+a.token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
 }
 
 func waitWithTimeout(done <-chan error, cmd *exec.Cmd, timeout time.Duration) error {

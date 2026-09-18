@@ -90,21 +90,29 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
     let controller: AbortController | undefined;
     const check = async (): Promise<void> => {
       controller?.abort();
-      controller = new AbortController();
+      const requestController = new AbortController();
+      controller = requestController;
+      let timeout: number | undefined;
       try {
         const headers = { Authorization: `Bearer ${identity.apiToken}` };
-        const timeout = window.setTimeout(() => controller?.abort(), 1500);
-        const health = await fetch(`${identity.apiBase}/health`, { headers, signal: controller.signal });
-        const ready = await fetch(`${identity.apiBase}/readyz`, { headers, signal: controller.signal });
-        window.clearTimeout(timeout);
-        if (active) {
+        timeout = window.setTimeout(() => requestController.abort(), 1500);
+        const health = await fetch(`${identity.apiBase}/health`, { headers, signal: requestController.signal });
+        const ready = await fetch(`${identity.apiBase}/readyz`, { headers, signal: requestController.signal });
+        if (active && controller === requestController) {
           setReadyToken(health.ok && ready.ok ? identity.apiToken : null);
           setDesktopError(!(health.ok && ready.ok));
         }
       } catch {
-        if (active && !controller.signal.aborted) {
+        if (active && controller === requestController && !requestController.signal.aborted) {
           setReadyToken(null);
           setDesktopError(true);
+        }
+      } finally {
+        if (timeout !== undefined) {
+          window.clearTimeout(timeout);
+        }
+        if (controller === requestController) {
+          controller = undefined;
         }
       }
     };

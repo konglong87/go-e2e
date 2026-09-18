@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net/url"
 	"reflect"
 	"testing"
 
@@ -48,6 +49,19 @@ func TestWindowStateBridgeContract(t *testing.T) {
 	}
 	if windowStateChangedEvent != "go-e2e:window-state-changed" {
 		t.Fatalf("window state event = %q", windowStateChangedEvent)
+	}
+}
+
+func TestDesktopWailsOptionsKeepMacZoomButtonEnabled(t *testing.T) {
+	appOptions := desktopWailsOptions(&app{}, desktopConfig{}, &url.URL{})
+	if appOptions.Mac == nil {
+		t.Fatal("Mac options must be initialized so Wails keeps the native Zoom button enabled")
+	}
+	if appOptions.Mac.DisableZoom {
+		t.Fatal("Mac DisableZoom = true, want false")
+	}
+	if appOptions.DisableResize {
+		t.Fatal("DisableResize = true, want resizable window")
 	}
 }
 
