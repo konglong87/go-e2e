@@ -47,6 +47,14 @@ func TestWindowStateBridgeContract(t *testing.T) {
 	if !ok || getWindowState.Type.NumOut() != 1 || getWindowState.Type.Out(0) != reflect.TypeOf(DesktopWindowState{}) {
 		t.Fatalf("GetWindowState has unexpected signature %s", getWindowState.Type)
 	}
+	restartService, ok := appType.MethodByName("RestartLocalService")
+	if !ok || restartService.Type.NumOut() != 1 || restartService.Type.Out(0) != reflect.TypeOf((*error)(nil)).Elem() {
+		t.Fatalf("RestartLocalService has unexpected signature %s", restartService.Type)
+	}
+	getServiceStatus, ok := appType.MethodByName("GetLocalServiceStatus")
+	if !ok || getServiceStatus.Type.NumOut() != 1 || getServiceStatus.Type.Out(0) != reflect.TypeOf(LocalServiceStatus{}) {
+		t.Fatalf("GetLocalServiceStatus has unexpected signature %s", getServiceStatus.Type)
+	}
 	if windowStateChangedEvent != "go-e2e:window-state-changed" {
 		t.Fatalf("window state event = %q", windowStateChangedEvent)
 	}

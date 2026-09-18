@@ -99,13 +99,13 @@ desktop-v2 固定使用用户 home 下的 `.golang-cc` 目录，和平台默认�
 desktop-v2 的 host 绑定提供以下 Wails bridge 方法：
 
 ```javascript
-await window.go.main.App.Maximize();
-await window.go.main.App.Unmaximize();
-await window.go.main.App.ToggleMaximize();
-await window.go.main.App.Fullscreen();
-await window.go.main.App.Unfullscreen();
-await window.go.main.App.ToggleFullscreen();
-const state = await window.go.main.App.GetWindowState();
+await window.go.main.app.Maximize();
+await window.go.main.app.Unmaximize();
+await window.go.main.app.ToggleMaximize();
+await window.go.main.app.Fullscreen();
+await window.go.main.app.Unfullscreen();
+await window.go.main.app.ToggleFullscreen();
+const state = await window.go.main.app.GetWindowState();
 ```
 
 窗口状态变化会通过 `window.runtime.EventsOn` 广播：

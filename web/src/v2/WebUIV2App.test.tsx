@@ -44,6 +44,7 @@ describe("WebUIV2App", () => {
 
   afterEach(() => {
     act(() => root.unmount());
+    delete window.go;
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
@@ -413,6 +414,41 @@ describe("WebUIV2App", () => {
         expect(calls.some(([url, init]) => url === path && new Headers(init.headers).get("Authorization") === `Bearer ${token}`)).toBe(true);
       }
     }
+  });
+
+  it.each(["wails://wails", "http://wails.localhost"])("keeps the desktop shell visible and can restart the local service on %s", async (origin) => {
+    vi.stubEnv("VITE_DESKTOP_UI_VERSION", "2");
+    storage.set("go-e2e.desktop.onboarding.v1", "done");
+    setDesktopOrigin(origin, "/webui/v2");
+    let serviceReady = false;
+    const fetchMock = vi.fn(async () => {
+      if (!serviceReady) {
+        throw new DOMException("local service timeout", "AbortError");
+      }
+      return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    const restartLocalService = vi.fn(async () => {
+      serviceReady = true;
+    });
+    Object.defineProperty(window, "go", {
+      configurable: true,
+      value: { main: { app: { RestartLocalService: restartLocalService } } }
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createMockSessionControlClient();
+    client.list = vi.fn(async () => []);
+
+    await act(async () => root.render(
+      <I18nProvider><QueryClientProvider client={new QueryClient()}><WebUIV2App client={client} identity={{ ...identity, apiBase: "", apiToken: "desktop-process" }} /></QueryClientProvider></I18nProvider>
+    ));
+    await vi.waitFor(() => expect(host.querySelector(".webui2-desktop-readiness")).not.toBeNull());
+    expect(host.querySelector(".webui2-chat-shell")).not.toBeNull();
+
+    const restartButton = Array.from(host.querySelectorAll("button")).find((button) => button.textContent?.includes("Restart local service"));
+    expect(restartButton).toBeDefined();
+    act(() => restartButton?.click());
+    await vi.waitFor(() => expect(restartLocalService).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(host.querySelector(".webui2-desktop-readiness")).toBeNull(), { timeout: 3500 });
   });
 
   it.each(["wails://wails", "http://wails.localhost"])("opens the new-session dialog before model verification in desktop-v2 on %s", async (origin) => {

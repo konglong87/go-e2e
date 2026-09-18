@@ -6,11 +6,9 @@ import (
 	"embed"
 	"fmt"
 	"net"
-	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	stdruntime "runtime"
 	"strconv"
@@ -28,16 +26,13 @@ import (
 var bundledAssets embed.FS
 
 type app struct {
-	mu          sync.Mutex
-	server      *exec.Cmd
-	done        chan error
-	config      desktopConfig
-	port        int
-	token       string
-	windowCtx   context.Context
-	windowDone  chan struct{}
-	serverReady chan struct{}
-	readyOnce   sync.Once
+	mu         sync.Mutex
+	config     desktopConfig
+	port       int
+	token      string
+	service    *localServiceController
+	windowCtx  context.Context
+	windowDone chan struct{}
 }
 
 func main() {
@@ -51,7 +46,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	application := &app{port: port, token: token, serverReady: make(chan struct{})}
+	application := &app{port: port, token: token}
 	config, err := loadDesktopConfig()
 	if err != nil {
 		startupLog("load desktop config for window: " + err.Error())
@@ -98,7 +93,6 @@ func (a *app) startup(ctx context.Context) {
 	if err != nil {
 		startupLog("load config: " + err.Error())
 		wailsruntime.LogErrorf(ctx, "load desktop config: %v", err)
-		a.signalServerReady()
 		return
 	}
 	restoreWindowGeometry(ctx, config)
@@ -108,12 +102,10 @@ func (a *app) startup(ctx context.Context) {
 		if err != nil {
 			startupLog("choose workspace: " + err.Error())
 			wailsruntime.LogErrorf(ctx, "choose workspace: %v", err)
-			a.signalServerReady()
 			return
 		}
 		if err := saveDesktopConfig(config); err != nil {
 			wailsruntime.LogErrorf(ctx, "save desktop config: %v", err)
-			a.signalServerReady()
 			return
 		}
 	}
@@ -123,104 +115,48 @@ func (a *app) startup(ctx context.Context) {
 	if err != nil {
 		startupLog("locate server: " + err.Error())
 		wailsruntime.LogErrorf(ctx, "locate go-e2e executable: %v", err)
-		a.signalServerReady()
 		return
 	}
 	startupLog("server executable=" + executable)
-	// Wails' startup context is scoped to the startup callback. The server
-	// must outlive that callback and be stopped explicitly from OnShutdown.
-	cmd := exec.Command(executable,
-		"--cwd", config.Workspace,
-		"server",
-		"--host", "127.0.0.1",
-		"--port", strconv.Itoa(a.port),
-		"--auth-token", a.token,
-	)
 	sqlitePath, sqliteErr := desktopSQLitePath()
 	if sqliteErr != nil {
 		startupLog("sqlite path: " + sqliteErr.Error())
 		wailsruntime.LogErrorf(ctx, "resolve desktop sqlite path: %v", sqliteErr)
-		a.signalServerReady()
 		return
 	}
 	startupLog("sqlite path=" + sqlitePath)
-	cmd.Env = append(os.Environ(),
-		"GOLANG_CC_SQLITE_PATH="+sqlitePath,
-		"GOLANG_CC_TENANT_KEY=webui-local",
-		"GOLANG_CC_USER_ID=webui-local-user",
-		// Desktop MVP does not expose scheduled jobs. Disabling the scheduler
-		// keeps startup independent from stale daemon locks left by a crashed
-		// desktop/server process.
-		"GOLANG_CC_DISABLE_SCHEDULER=1",
-	)
 	serverLogPath := filepath.Join(filepath.Dir(sqlitePath), "go-e2e-server.log")
-	serverLog, logErr := os.OpenFile(serverLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-	if logErr != nil {
-		startupLog("open server log: " + logErr.Error())
-		wailsruntime.LogErrorf(ctx, "open server log: %v", logErr)
-		a.signalServerReady()
-		return
-	}
-	defer func() { _ = serverLog.Close() }()
-	cmd.Stdout = serverLog
-	cmd.Stderr = serverLog
-	cmd.Dir, _ = os.Getwd()
-	if err := cmd.Start(); err != nil {
-		startupLog("start server: " + err.Error())
-		wailsruntime.LogErrorf(ctx, "start local go-e2e server: %v", err)
-		a.signalServerReady()
-		return
-	}
-	startupLog(fmt.Sprintf("server started pid=%d port=%d", cmd.Process.Pid, a.port))
+	service := newLocalServiceController(localServiceConfig{
+		executable: executable,
+		workspace:  config.Workspace,
+		port:       a.port,
+		token:      a.token,
+		env: []string{
+			"GOLANG_CC_SQLITE_PATH=" + sqlitePath,
+			"GOLANG_CC_TENANT_KEY=webui-local",
+			"GOLANG_CC_USER_ID=webui-local-user",
+			// Desktop MVP does not expose scheduled jobs. Disabling the scheduler
+			// keeps startup independent from stale daemon locks left by a crashed
+			// desktop/server process.
+			"GOLANG_CC_DISABLE_SCHEDULER=1",
+		},
+		dir:     func() string { value, _ := os.Getwd(); return value }(),
+		logPath: serverLogPath,
+	})
 	a.mu.Lock()
-	a.server = cmd
-	a.done = make(chan error, 1)
-	done := a.done
+	a.service = service
 	a.mu.Unlock()
-	go func() {
-		err := cmd.Wait()
-		done <- err
-		startupLog(fmt.Sprintf("server exited pid=%d err=%v", cmd.Process.Pid, err))
-	}()
-
-	if !a.waitForServer(ctx) {
-		readyErr := fmt.Errorf("local go-e2e server did not become ready on port %d", a.port)
-		if state := cmd.ProcessState; state != nil && state.Exited() {
-			wailsruntime.LogErrorf(ctx, "local go-e2e server exited before readiness with code %d", state.ExitCode())
-			readyErr = fmt.Errorf("local go-e2e server exited before readiness with code %d", state.ExitCode())
-		}
-		wailsruntime.LogErrorf(ctx, "%v", readyErr)
-		startupLog(fmt.Sprintf("server not ready port=%d", a.port))
-		a.signalServerReady()
-	} else {
-		startupLog(fmt.Sprintf("server ready port=%d", a.port))
-		a.signalServerReady()
+	if err := service.start(); err != nil {
+		startupLog("start local service: " + err.Error())
+		wailsruntime.LogErrorf(ctx, "start local go-e2e server: %v", err)
 	}
 }
 
 func (a *app) domReady(ctx context.Context) {
 	a.setWindowContext(ctx)
-	go func() {
-		if a.serverReady != nil {
-			select {
-			case <-a.serverReady:
-			case <-ctx.Done():
-				return
-			}
-		}
-		script := fmt.Sprintf(`window.__GO_E2E_DESKTOP_TOKEN__=%q; window.dispatchEvent(new Event("go-e2e-desktop-token"));`, a.token)
-		wailsruntime.WindowExecJS(ctx, script)
-	}()
+	script := fmt.Sprintf(`window.__GO_E2E_DESKTOP_TOKEN__=%q; window.dispatchEvent(new Event("go-e2e-desktop-token"));`, a.token)
+	wailsruntime.WindowExecJS(ctx, script)
 	a.startWindowStateWatcher(ctx)
-}
-
-func (a *app) signalServerReady() {
-	if a.serverReady == nil {
-		return
-	}
-	a.readyOnce.Do(func() {
-		close(a.serverReady)
-	})
 }
 
 func (a *app) beforeClose(ctx context.Context) bool {
@@ -271,18 +207,15 @@ func (a *app) shutdown(ctx context.Context) {
 	}
 	a.stopWindowStateWatcher()
 	a.mu.Lock()
-	cmd := a.server
-	done := a.done
-	a.server = nil
-	a.done = nil
+	service := a.service
+	a.service = nil
 	a.mu.Unlock()
-	if cmd == nil || cmd.Process == nil {
+	if service == nil {
 		return
 	}
-	if err := cmd.Process.Signal(os.Interrupt); err != nil {
+	if err := service.stop(ctx); err != nil {
 		wailsruntime.LogErrorf(ctx, "stop local go-e2e server: %v", err)
 	}
-	_ = waitWithTimeout(done, cmd, 5*time.Second)
 }
 
 func locateServerExecutable() (string, error) {
@@ -323,51 +256,4 @@ func selectServerPort() (int, error) {
 		return 0, fmt.Errorf("release desktop server port: %w", err)
 	}
 	return port, nil
-}
-
-func (a *app) waitForServer(ctx context.Context) bool {
-	deadline := time.NewTimer(15 * time.Second)
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer deadline.Stop()
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return false
-		case <-deadline.C:
-			return false
-		case <-ticker.C:
-			if a.serverEndpointReady(ctx, "/health") && a.serverEndpointReady(ctx, "/readyz") {
-				return true
-			}
-		}
-	}
-}
-
-func (a *app) serverEndpointReady(ctx context.Context, path string) bool {
-	reqCtx, cancel := context.WithTimeout(ctx, time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d%s", a.port, path), nil)
-	if err != nil {
-		return false
-	}
-	req.Header.Set("Authorization", "Bearer "+a.token)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return false
-	}
-	defer resp.Body.Close()
-	return resp.StatusCode == http.StatusOK
-}
-
-func waitWithTimeout(done <-chan error, cmd *exec.Cmd, timeout time.Duration) error {
-	if done == nil {
-		return nil
-	}
-	select {
-	case err := <-done:
-		return err
-	case <-time.After(timeout):
-		return cmd.Process.Kill()
-	}
 }

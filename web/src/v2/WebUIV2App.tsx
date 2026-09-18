@@ -1,4 +1,4 @@
-import { MessageSquare, PanelLeftOpen, Plus, RefreshCw, Shield } from "lucide-react";
+import { AlertTriangle, MessageSquare, PanelLeftOpen, Plus, Power, RefreshCw, Shield } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type JSX } from "react";
 import { useSessionConversations } from "./api/useSessionConversations";
 import type { StreamState } from "../hooks/useAgentTaskStream";
@@ -28,6 +28,7 @@ import { loadInspectorPreference, saveInspectorPreference } from "./settings/pre
 import { parseWebUIV2Route, settingsReturnSession, webUIV2SettingsPath, webUIV2SessionPath, type SettingsSection, type SessionRef, type WebUIV2Route } from "./routes";
 import type { OperationResult, SessionListFilters, SessionMessage, SessionStatus, SessionSummary } from "./types";
 import { DesktopPet } from "./components/DesktopPet";
+import { getDesktopServiceBridge } from "./desktopServiceBridge";
 import { UnsavedChangesDialog } from "./components/UnsavedChangesDialog";
 import { useGlobalVisualSettings } from "./settings/useGlobalVisualSettings";
 import { visualSettingsStyle, type GlobalVisualSettings } from "./settings/globalVisualSettings";
@@ -82,6 +83,9 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
   const [readyToken, setReadyToken] = useState<string | null>(null);
   const desktopReady = !isDesktop || Boolean(identity.apiToken && readyToken === identity.apiToken);
   const [desktopError, setDesktopError] = useState(false);
+  const [desktopActionBusy, setDesktopActionBusy] = useState(false);
+  const [desktopActionError, setDesktopActionError] = useState("");
+  const desktopServiceBridge = isDesktop ? getDesktopServiceBridge() : null;
   const refSearch = completeSessionRef(filters.query);
   const sessionList = useSessionList(identity, refSearch ? { ...filters, query: "" } : filters, desktopReady);
   const stop = useStopSession(identity);
@@ -112,7 +116,7 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
           setDesktopError(!(health.ok && ready.ok));
         }
       } catch {
-        if (active && controller === requestController && !requestController.signal.aborted) {
+        if (active && controller === requestController) {
           setReadyToken(null);
           setDesktopError(true);
         }
@@ -229,7 +233,24 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
 
   function retryDesktopConnection(): void {
     setDesktopError(false);
+    setDesktopActionError("");
     setReadyToken(null);
+  }
+
+  async function restartDesktopService(): Promise<void> {
+    if (!desktopServiceBridge || desktopActionBusy) return;
+    setDesktopActionBusy(true);
+    setDesktopActionError("");
+    setDesktopError(false);
+    setReadyToken(null);
+    try {
+      await desktopServiceBridge.RestartLocalService();
+    } catch (error) {
+      setDesktopError(true);
+      setDesktopActionError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setDesktopActionBusy(false);
+    }
   }
 
   function handleCreated(result: OperationResult): void {
@@ -304,8 +325,18 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
 
   return <main aria-label={t("webui2.workspace")} className="webui2-page" data-appearance-enabled={visual.appearance.enabled ? "true" : "false"} data-inspector-open={inspectorOpen} data-session-ref={state.selectedRef ?? undefined} data-sidebar-hidden={sidebarHidden} data-sidebar-open={sidebarOpen} data-theme={theme} style={visualSettingsStyle(visual)}>
     {isDesktop && !desktopReady ? <section className="webui2-desktop-readiness" role="status">
-      <strong>{desktopError ? (language === "zh" ? "本地服务连接失败" : "Unable to connect to the local service") : (language === "zh" ? "正在连接本地会话服务…" : "Connecting to the local session service…")}</strong>
-      {desktopError ? <button type="button" onClick={retryDesktopConnection}>{language === "zh" ? "重试" : "Retry"}</button> : null}
+      <div className="webui2-desktop-status-copy">
+        <AlertTriangle aria-hidden="true" size={18} />
+        <div>
+          <strong>{desktopError ? (language === "zh" ? "本地服务连接失败" : "Unable to connect to the local service") : (language === "zh" ? "正在连接本地会话服务…" : "Connecting to the local session service…")}</strong>
+          <span>{desktopError ? (language === "zh" ? "页面仍可使用，恢复服务后会自动重新加载数据。" : "The app remains available and will reload data when the service recovers.") : (language === "zh" ? "桌面端正在准备本地会话能力。" : "The desktop app is preparing local session access.")}</span>
+        </div>
+      </div>
+      <div className="webui2-desktop-status-actions">
+        <button type="button" className="webui2-desktop-status-button secondary" disabled={desktopActionBusy} onClick={retryDesktopConnection}><RefreshCw aria-hidden="true" size={15} />{language === "zh" ? "重试连接" : "Retry connection"}</button>
+        {desktopServiceBridge ? <button type="button" className="webui2-desktop-status-button" disabled={desktopActionBusy} onClick={() => void restartDesktopService()}><Power aria-hidden="true" size={15} />{desktopActionBusy ? (language === "zh" ? "重启中…" : "Restarting…") : (language === "zh" ? "重启本地服务" : "Restart local service")}</button> : null}
+      </div>
+      {desktopActionError ? <span className="webui2-desktop-status-error" role="alert">{desktopActionError}</span> : null}
     </section> : null}
     <div className="webui2-chat-shell" hidden={settingsOpen} inert={settingsOpen}>
     <SessionSidebar
