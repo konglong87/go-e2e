@@ -58,10 +58,10 @@ describe("SessionSidebar", () => {
     expect(host.textContent).not.toContain("Managed");
     expect(host.textContent).toContain("Local - read only");
     expect(host.textContent).toContain("Release coordination");
-    expect(host.textContent).toContain("alpha");
     expect(host.textContent).toContain("running");
     expect(host.querySelector('.webui2-session-status-icon[data-status="running"][aria-label="running"]')).not.toBeNull();
-    expect(host.querySelector("code")?.textContent).toBe("alpha");
+    expect(host.querySelector(".webui2-session-select")?.textContent).toBe("Release coordination");
+    expect(host.querySelector(".webui2-session-row code")).toBeNull();
     expect(host.querySelector(".webui2-session-row time")).toBeNull();
     expect(host.textContent).toContain("Local sessions are read only");
   });
@@ -72,6 +72,7 @@ describe("SessionSidebar", () => {
     act(() => button?.focus());
     const preview = document.querySelector('[role="tooltip"]');
     expect(preview?.textContent).toContain("Release coordination");
+    expect(preview?.querySelector("code")?.textContent).toBe(sessions[0].ref);
     expect(preview?.querySelector("time")?.dateTime).toBe(sessions[0].updatedAt);
     expect(button?.getAttribute("aria-describedby")).toBe(preview?.id);
     act(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
@@ -97,7 +98,7 @@ describe("SessionSidebar", () => {
     expect(host.querySelector(".webui2-session-row")?.getAttribute("data-selected")).toBe("true");
     expect(host.querySelector('[data-status="running"]')?.getAttribute("data-motion")).toBe("spin");
     expect(host.querySelector('[data-status="completed"]')?.getAttribute("data-motion")).toBeNull();
-    expect(host.querySelector(".webui2-session-meta")?.textContent).toBe("alpha");
+    expect(host.querySelector(".webui2-session-title")?.nextElementSibling?.classList.contains("webui2-session-status-icon")).toBe(true);
   });
 
   it("groups by full workspace path and includes that path in search", () => {

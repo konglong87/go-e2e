@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { installWebUIV2Sessions } from "./fixtures/webuiV2Sessions";
 
+const COMPACT_ROW_HEIGHT = 40;
+
 test.beforeEach(async ({ page }) => {
   await installWebUIV2Sessions(page);
   await page.goto("/webui/v2/sessions/tenant%3Abeta?token=test-token");
@@ -13,7 +15,8 @@ test("session rows share one surface and show metadata only in an accessible pre
   const select = row.locator(".webui2-session-select");
   await expect(row).toHaveAttribute("data-selected", "true");
   await expect(row.locator("time")).toHaveCount(0);
-  await expect(row.locator(".webui2-session-meta")).toHaveText("beta");
+  await expect(row.locator("code")).toHaveCount(0);
+  await expect(select).toHaveText("Design review");
   const geometry = await row.evaluate((node) => {
     const button = node.querySelector(".webui2-session-select")!;
     const actions = node.querySelector(".webui2-session-actions")!;
@@ -35,6 +38,7 @@ test("session rows share one surface and show metadata only in an accessible pre
   const preview = page.getByRole("tooltip");
   await expect(preview).toBeVisible();
   await expect(preview).toContainText("Updated");
+  await expect(preview.locator("code")).toHaveText("tenant:beta");
   await expect(preview.locator("time")).toHaveAttribute("datetime", "2026-09-05T00:00:00.000Z");
   const box = await preview.boundingBox();
   const viewport = page.viewportSize()!;
@@ -73,6 +77,10 @@ test("status motion respects preferences and compact sidebar widths in both them
   await expect(active).toHaveCSS("animation-name", "none");
   await expect(page.locator('.webui2-session-row [data-status="completed"] svg')).toHaveCSS("animation-name", "none");
 
+  // Stress truncation without changing the shared session fixtures.
+  await page.locator(".webui2-session-title").first().evaluate((node) => {
+    node.textContent = "A long session title that must leave room for its status and action menu";
+  });
   for (const width of [232, 288, 380]) {
     // Set the existing resize preference, then exercise the rendered geometry.
     await page.locator(".webui2-sidebar").evaluate((node, size) => { (node as HTMLElement).style.width = `${size}px`; }, width);
@@ -81,6 +89,29 @@ test("status motion respects preferences and compact sidebar widths in both them
       const rows = page.locator(".webui2-session-row");
       for (const row of await rows.all()) {
         expect(await row.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+        const layout = await row.evaluate((node) => {
+          const title = node.querySelector(".webui2-session-title")!;
+          const status = node.querySelector(".webui2-session-status-icon")!;
+          const actions = node.querySelector(".webui2-session-actions")!;
+          const titleBox = title.getBoundingClientRect();
+          const statusBox = status.getBoundingClientRect();
+          return {
+            height: node.getBoundingClientRect().height,
+            titleHeight: titleBox.height,
+            statusWidth: statusBox.width,
+            gap: statusBox.left - titleBox.right,
+            centerOffset: Math.abs(titleBox.top + titleBox.height / 2 - statusBox.top - statusBox.height / 2),
+            actionsOverlap: statusBox.right > actions.getBoundingClientRect().left,
+            ellipsis: getComputedStyle(title).textOverflow
+          };
+        });
+        expect(layout.height).toBe(COMPACT_ROW_HEIGHT);
+        expect(layout.titleHeight).toBe(20);
+        expect(layout.statusWidth).toBe(16);
+        expect(layout.gap).toBeCloseTo(6);
+        expect(layout.centerOffset).toBeLessThan(1);
+        expect(layout.actionsOverlap).toBe(false);
+        expect(layout.ellipsis).toBe("ellipsis");
       }
       await page.screenshot({ path: testInfo.outputPath(`sidebar-${width}-${theme}.png`) });
     }

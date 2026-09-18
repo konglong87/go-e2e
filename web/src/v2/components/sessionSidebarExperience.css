@@ -8,8 +8,8 @@
   display: grid;
   grid-template-columns: 16px minmax(0, 1fr) 30px;
   gap: 2px;
-  margin: 3px 0;
-  min-height: 54px;
+  margin: 2px 0;
+  height: 40px;
   min-width: 0;
   padding: 0 4px;
   position: relative;
@@ -17,33 +17,33 @@
 .webui2-page .webui2-sidebar .webui2-session-row:hover { background: color-mix(in srgb, var(--webui2-text) 4%, var(--webui2-surface)); }
 .webui2-page .webui2-sidebar .webui2-session-row[data-selected="true"] { background: color-mix(in srgb, var(--webui2-text) 9%, var(--webui2-surface)); }
 .webui2-page .webui2-session-row .webui2-session-select {
+  align-items: center;
   align-self: stretch;
   background: transparent;
   border: 0;
   border-radius: 4px;
   box-shadow: none;
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  justify-content: center;
-  padding: 7px 5px;
+  gap: 6px;
+  justify-content: flex-start;
+  padding: 0 5px;
   min-width: 0;
   text-align: left;
   width: 100%;
 }
 .webui2-page .webui2-session-row .webui2-session-title {
   display: block;
-  font-size: 13px;
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 14px;
   font-weight: 500;
-  line-height: 19px;
+  line-height: 20px;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .webui2-page .webui2-session-row[data-selected="true"] .webui2-session-title { font-weight: 650; }
-.webui2-page .webui2-session-row .webui2-session-meta { align-items: center; display: flex; gap: 6px; height: 16px; min-width: 0; width: 100%; }
-.webui2-page .webui2-session-row .webui2-session-meta code { color: var(--webui2-text-muted); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .webui2-page .webui2-session-row .webui2-drag-handle { align-items: center; background: transparent; border: 0; color: var(--webui2-text-muted); cursor: grab; display: inline-flex; height: 30px; justify-content: center; opacity: 0; padding: 0; width: 16px; }
 .webui2-page .webui2-session-row:hover .webui2-drag-handle,
 .webui2-page .webui2-session-row:focus-within .webui2-drag-handle { opacity: .65; }

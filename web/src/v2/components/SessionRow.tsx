@@ -79,7 +79,7 @@ export function SessionRow({ session, selected, onSelect, onContextDragStart, ac
         dragged.current = false;
       }} type="button">
       <span className="webui2-session-title">{session.title}</span>
-      <span className="webui2-session-meta"><SessionStatusIcon status={session.status} /><code>{session.shortID}</code></span>
+      <SessionStatusIcon status={session.status} />
     </button>
     <div className="webui2-session-action-slot" onPointerEnter={closePreview} onFocusCapture={closePreview}>
       {actions(showPreview)}
