@@ -345,6 +345,34 @@ func TestOpenAIResponsesCanFallbackBeforeAnyDelta(t *testing.T) {
 	}
 }
 
+func TestOpenAIResponsesProviderTimeoutFallsBack(t *testing.T) {
+	previousTimeouts := providerTimeouts
+	providerTimeouts = providerHTTPTimeouts{responseHeader: 25 * time.Millisecond}
+	t.Cleanup(func() { providerTimeouts = previousTimeouts })
+
+	primary := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		time.Sleep(150 * time.Millisecond)
+	}))
+	defer primary.Close()
+	fallback := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeAnthropicTextStream(w, "responses-timeout-fallback")
+	}))
+	defer fallback.Close()
+
+	client := NewClient(config.Config{
+		Provider: "custom", ProviderProtocol: config.ProviderProtocolOpenAIResponses,
+		APIKey: "primary-key", BaseURL: primary.URL + "/v1",
+		FallbackProviders: []config.ProviderConfig{{Name: "backup", Type: "anthropic", BaseURL: fallback.URL, APIKey: "fallback-key"}},
+	})
+	result, err := client.StreamMessages(context.Background(), basicResponsesRequest(), StreamCallbacks{})
+	if err != nil {
+		t.Fatalf("timeout should fail over to the next provider: %v", err)
+	}
+	if result == nil || len(result.Message.Content) != 1 || result.Message.Content[0].Text != "responses-timeout-fallback" {
+		t.Fatalf("result = %+v, want fallback response", result)
+	}
+}
+
 func TestOpenAIResponsesBackendCanBeFallbackProvider(t *testing.T) {
 	var path string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

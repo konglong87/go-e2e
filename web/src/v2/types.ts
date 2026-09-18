@@ -5,7 +5,7 @@ export type SessionStatus = "idle" | "queued" | "running" | "waiting_permission"
 export type SessionRef = `${SessionSource}:${string}`;
 export type SessionMessageKind = "message" | "thinking" | "tool" | "handoff" | "operation" | "error" | "compact" | "question";
 export type OperationKind = "create" | "send" | "stop" | "attach" | "archive" | "profile_draft";
-export type SessionControlErrorCode = "forbidden" | "not_found" | "invalid_state" | "local_read_only" | "idempotency_conflict" | "budget_exceeded" | "network_unavailable";
+export type SessionControlErrorCode = "forbidden" | "not_found" | "invalid_state" | "local_read_only" | "idempotency_conflict" | "budget_exceeded" | "network_unavailable" | "stream_disconnected";
 export type SessionRunConfig = { provider?: string; model?: string; permissionMode?: string; effort?: string; promptMode?: string };
 
 export type SessionSummary = {

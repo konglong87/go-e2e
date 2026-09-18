@@ -32,6 +32,7 @@ const operationErrorKeys: Record<SessionControlErrorCode, string> = {
   local_read_only: "webui2.error.local_read_only",
   budget_exceeded: "webui2.error.budget_exceeded",
   network_unavailable: "webui2.error.network_unavailable",
+  stream_disconnected: "webui2.error.stream_disconnected",
   not_found: "webui2.error.not_found"
 };
 

@@ -53,3 +53,31 @@ it("keeps bootstrap pages historical, animates only loaded-session increments, a
     delete environment.IS_REACT_ACT_ENVIRONMENT;
   }
 });
+
+it("reads the persisted terminal state when the live stream drops", async () => {
+  const identity: IdentityConfig = { apiBase: "/api", apiToken: "test", mobileJwt: "", tenantKey: "tenant", userId: "user", deviceId: "device", model: "model" };
+  const detail: SessionDetail = { ref: "tenant:failed", source: "tenant", title: "Failed", status: "running", updatedAt: "", shortID: "failed", messages: [], activity: [], context: [], changes: [], runs: [] };
+  const terminal = { ...detail, status: "failed" as const, updatedAt: "2026-09-18T10:00:00Z" };
+  const unsupported = async (): Promise<never> => { throw new Error("unused method"); };
+  const client: SessionControlClient = {
+    list: unsupported, create: unsupported, send: unsupported, stop: unsupported, archive: unsupported,
+    get: async () => terminal,
+    subscribe: async () => { throw new Error("SSE disconnected"); }
+  };
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  const environment = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
+  environment.IS_REACT_ACT_ENVIRONMENT = true;
+  const key = sessionControlQueryKeys.detail(identity, detail.ref);
+  function Harness() { const stream = useSessionConversations(identity, [detail], detail.ref); return <span>{stream.state}</span>; }
+  try {
+    await act(async () => root.render(<QueryClientProvider client={queryClient}><SessionControlClientProvider client={client}><Harness /></SessionControlClientProvider></QueryClientProvider>));
+    await vi.waitFor(() => expect(queryClient.getQueryData<SessionDetail>(key)?.status).toBe("failed"));
+    expect(host.textContent).toBe("closed");
+  } finally {
+    await act(async () => root.unmount());
+    queryClient.clear();
+    delete environment.IS_REACT_ACT_ENVIRONMENT;
+  }
+});
