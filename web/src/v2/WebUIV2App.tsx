@@ -18,6 +18,7 @@ import { useArchiveSession, useSendSession, useSessionDetail, useSessionList, us
 import { Composer, type ComposerDraft } from "./components/Composer";
 import { EmptyState } from "./components/EmptyState";
 import { SessionSidebar } from "./components/SessionSidebar";
+import { SessionSearchDialog } from "./components/SessionSearchDialog";
 import { ConversationWorkspace } from "./components/ConversationWorkspace";
 import { Inspector, type InspectorTab } from "./components/Inspector";
 import { NewSessionDialog } from "./components/NewSessionDialog";
@@ -61,6 +62,8 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
   const settingsOpen = state.route.kind === "settings";
   const settingsDirty = useRef(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarHidden, setSidebarHidden] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [newSessionOpen, setNewSessionOpen] = useState(false);
   const [commandsOpen, setCommandsOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(loadInspectorPreference);
@@ -128,6 +131,7 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
     setState({ route: { kind: "session", ref }, selectedRef: ref });
     setErrorCode("");
     setSidebarOpen(false);
+    setSearchOpen(false);
   }, [language]);
 
   function openSettings(section: SettingsSection = "general"): void {
@@ -168,6 +172,20 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
     if (isDesktop && !desktopReady) return;
     setSidebarOpen(false);
     setNewSessionOpen(true);
+  }
+
+  function openSessionSearch(): void {
+    setSidebarOpen(false);
+    setSearchOpen(true);
+  }
+
+  function hideSidebar(): void {
+    setSidebarOpen(false);
+    setSidebarHidden(true);
+  }
+
+  function showSidebar(): void {
+    setSidebarHidden(false);
   }
 
   function retryDesktopConnection(): void {
@@ -238,7 +256,9 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
     ...(allSessions.data ?? sessions).map((session) => ({ id: session.ref, label: session.title, section: session.cwd || t("webui2.sessions"), keywords: session.ref, icon: <MessageSquare size={16} />, run: () => selectSession(session.ref) }))
   ];
 
-  return <main aria-label={t("webui2.workspace")} className="webui2-page" data-appearance-enabled={visual.appearance.enabled ? "true" : "false"} data-inspector-open={inspectorOpen} data-session-ref={state.selectedRef ?? undefined} data-sidebar-open={sidebarOpen} data-theme={theme} style={visualSettingsStyle(visual)}>
+  const searchSessions = allSessions.data ?? sessions;
+
+  return <main aria-label={t("webui2.workspace")} className="webui2-page" data-appearance-enabled={visual.appearance.enabled ? "true" : "false"} data-inspector-open={inspectorOpen} data-session-ref={state.selectedRef ?? undefined} data-sidebar-hidden={sidebarHidden} data-sidebar-open={sidebarOpen} data-theme={theme} style={visualSettingsStyle(visual)}>
     {isDesktop && !desktopReady ? <section className="webui2-desktop-readiness" role="status">
       <strong>{desktopError ? (language === "zh" ? "本地服务连接失败" : "Unable to connect to the local service") : (language === "zh" ? "正在连接本地会话服务…" : "Connecting to the local session service…")}</strong>
       {desktopError ? <button type="button" onClick={retryDesktopConnection}>{language === "zh" ? "重试" : "Retry"}</button> : null}
@@ -250,6 +270,8 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
       onContextDragStart={() => undefined}
       onFiltersChange={setFilters}
       onMobileClose={() => setSidebarOpen(false)}
+      onOpenSearch={openSessionSearch}
+      onHideSidebar={hideSidebar}
       onCreateSession={openNewSession}
       onOpenSettings={() => openSettings()}
       onArchive={handleArchive}
@@ -258,6 +280,7 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
       selectedRef={state.selectedRef}
       sessions={sessions}
     />
+    {sidebarHidden ? <button aria-label={t("webui2.showSidebar")} className="webui2-sidebar-restore" onClick={showSidebar} title={t("webui2.showSidebar")} type="button"><PanelLeftOpen aria-hidden="true" size={18} /></button> : null}
     {sidebarOpen ? <button aria-label={t("webui2.closeSessions")} className="webui2-mobile-sidebar-backdrop" onClick={() => setSidebarOpen(false)} tabIndex={-1} type="button" /> : null}
     <button aria-controls="webui2-session-sidebar" aria-expanded={sidebarOpen} aria-label={t("webui2.openSessions")} className="webui2-mobile-sidebar-open" onClick={() => setSidebarOpen(true)} title={t("webui2.openSessions")} type="button"><PanelLeftOpen aria-hidden="true" size={18} /></button>
     <div className="webui2-content">
@@ -273,6 +296,7 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
       {state.selectedRef && desktopReady ? <SelectedSessionInspector identity={identity} onClose={() => setInspectorOpen(false)} onTabChange={setInspectorTab} open={inspectorOpen} selectedRef={state.selectedRef} tab={inspectorTab} /> : null}
     </div>
     <NewSessionDialog identity={identity} defaultCWD={(allSessions.data ?? sessions).find((session) => session.ref === state.selectedRef)?.cwd} onClose={() => setNewSessionOpen(false)} onCreated={handleCreated} open={newSessionOpen} />
+    <SessionSearchDialog open={searchOpen} sessions={searchSessions} onClose={() => setSearchOpen(false)} onCreateSession={openNewSession} onSelect={selectSession} />
     <CommandPalette open={commandsOpen} onClose={() => setCommandsOpen(false)} commands={commands} placeholder={language === "zh" ? "搜索会话或操作" : "Search sessions or actions"} emptyLabel={t("webui2.emptySessions")} ariaLabel={language === "zh" ? "命令面板" : "Command palette"} />
     </div>
     {state.route.kind === "settings" && desktopReady ? <SettingsCenter identity={identity} section={state.route.section} onSectionChange={openSettings} onBack={closeSettings} onDirtyChange={(dirty) => { settingsDirty.current = dirty; }} theme={theme} onThemeChange={changeTheme} inspectorOpen={inspectorOpen} onInspectorChange={changeInspector} selectedRef={state.selectedRef} onOpenSession={selectSession} onVisualPreview={setVisualPreview} /> : null}

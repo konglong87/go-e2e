@@ -158,61 +158,50 @@ describe("WebUIV2App", () => {
 	expect(host.textContent).toContain("Create a session");
   });
 
-  it("resolves a complete session ref entered through sidebar search", async () => {
-    const session: SessionDetail = { ref: "local:workspace", source: "local", title: "Local workspace", status: "idle", updatedAt: "2026-09-05T00:00:00.000Z", shortID: "workspace", messages: [], activity: [], context: [], changes: [], runs: [] };
-    const client: SessionControlClient = {
-      list: vi.fn(async () => [session]),
-      get: vi.fn(async () => session),
-      create: vi.fn(),
-      send: vi.fn(),
-      stop: vi.fn(),
-      archive: vi.fn()
-    };
-    renderAt("/webui/v2", undefined, client);
-    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-    vi.mocked(client.list).mockClear();
-    const pushState = vi.spyOn(window.history, "pushState");
-    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="Search sessions"]')?.click());
-    const input = host.querySelector<HTMLInputElement>('input[aria-label="Search sessions"]');
-
-    expect(input).not.toBeNull();
-    if (input) enterSessionRef(input, "local:workspace");
-    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-
-    expect(pushState).toHaveBeenCalledWith({}, "", "/webui/v2/sessions/local%3Aworkspace");
-    expect(client.get).toHaveBeenCalledWith(identity, "local:workspace");
-    expect(client.list).not.toHaveBeenCalled();
-    expect(client.create).not.toHaveBeenCalled();
-    expect(client.send).not.toHaveBeenCalled();
-    expect(client.stop).not.toHaveBeenCalled();
-    expect(client.archive).not.toHaveBeenCalled();
-    expect(window.location.pathname).toBe("/webui/v2/sessions/local%3Aworkspace");
-    expect(host.querySelector('main[aria-label="Session workspace"]')?.getAttribute("data-session-ref")).toBe("local:workspace");
-  });
-
-  it("keeps an incomplete search term in the sidebar without navigating", () => {
+  it("opens a dedicated search page with recent sessions and searches the full session list", async () => {
     renderAt("/webui/v2");
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
     act(() => host.querySelector<HTMLButtonElement>('button[aria-label="Search sessions"]')?.click());
-    const input = host.querySelector<HTMLInputElement>('input[aria-label="Search sessions"]');
+    await act(async () => { await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())); });
+    expect(host.querySelector(".webui2-session-search-dialog")).not.toBeNull();
+    expect(host.querySelector(".webui2-session-search-results")?.querySelectorAll(".webui2-session-search-result")).toHaveLength(3);
 
-    if (input) enterSessionRef(input, "not-a-ref");
+    const input = host.querySelector<HTMLInputElement>('.webui2-session-search-dialog input[aria-label="Search sessions"]');
+    expect(document.activeElement).toBe(input);
+    enterSessionRef(input!, "beta");
 
     expect(window.location.pathname).toBe("/webui/v2");
-    expect(host.querySelector('[role="alert"]')).toBeNull();
+    const searchDialog = host.querySelector<HTMLElement>(".webui2-session-search-dialog");
+    expect(searchDialog?.querySelectorAll(".webui2-session-search-result")).toHaveLength(1);
+    expect(searchDialog?.textContent).toContain("Design review");
+    expect(searchDialog?.textContent).not.toContain("Release coordination");
+    expect(searchDialog?.textContent).not.toContain("Local workspace");
+
+    act(() => host.querySelector<HTMLButtonElement>(".webui2-session-search-result")?.click());
+    expect(window.location.pathname).toBe("/webui/v2/sessions/tenant%3Abeta");
+    expect(host.querySelector(".webui2-session-search-dialog")).toBeNull();
+    expect(host.querySelector('main[aria-label="Session workspace"]')?.getAttribute("data-session-ref")).toBe("tenant:beta");
   });
 
-  it("does not repeat a previous reference search when changing settings language", async () => {
+  it("closes the dedicated search page with Escape", async () => {
     renderAt("/webui/v2");
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
     act(() => host.querySelector<HTMLButtonElement>('button[aria-label="Search sessions"]')?.click());
-    enterSessionRef(host.querySelector<HTMLInputElement>('input[aria-label="Search sessions"]')!, "tenant:alpha");
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
-    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="Settings"]')?.click());
-    const language = host.querySelector<HTMLSelectElement>('select[aria-label="Language"]');
-    act(() => { language!.value = "zh"; language?.dispatchEvent(new Event("change", { bubbles: true })); });
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
-    expect(window.location.pathname).toBe("/webui/v2/settings/general");
-    expect(host.querySelector(".webui2-settings-center")).not.toBeNull();
+    const input = host.querySelector<HTMLInputElement>('.webui2-session-search-dialog input[aria-label="Search sessions"]');
+    act(() => input?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(host.querySelector(".webui2-session-search-dialog")).toBeNull();
+  });
+
+  it("hides and restores the session sidebar while keeping the workspace mounted", () => {
+    renderAt("/webui/v2/sessions/tenant%3Aalpha");
+    const page = host.querySelector<HTMLElement>(".webui2-page");
+    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="Hide sidebar"]')?.click());
+    expect(page?.getAttribute("data-sidebar-hidden")).toBe("true");
+    expect(host.querySelector(".webui2-sidebar")).not.toBeNull();
+    expect(host.querySelector<HTMLButtonElement>('button[aria-label="Show sidebar"]')).not.toBeNull();
+
+    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="Show sidebar"]')?.click());
+    expect(page?.getAttribute("data-sidebar-hidden")).toBe("false");
+    expect(host.querySelector<HTMLButtonElement>('button[aria-label="Hide sidebar"]')).not.toBeNull();
   });
 
   it("opens full settings without unmounting the current composer and returns to the same session", async () => {

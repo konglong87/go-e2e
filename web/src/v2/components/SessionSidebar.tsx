@@ -1,5 +1,5 @@
-import { Archive, Ellipsis, Filter, Folder, GripVertical, Plus, Search, Settings, Share2, Square, X } from "lucide-react";
-import { useCallback, useEffect, useId, useRef, useState, type ChangeEvent, type CSSProperties, type DragEvent, type JSX, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { Archive, Ellipsis, Filter, Folder, GripVertical, PanelLeftClose, Plus, Search, Settings, Share2, Square, X } from "lucide-react";
+import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type DragEvent, type JSX, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { useI18n } from "../../lib/i18n";
 import type { IdentityConfig } from "../../lib/types";
 import { webUIV2SessionPath } from "../routes";
@@ -16,6 +16,8 @@ type SessionSidebarProps = {
   onSelect: (ref: SessionRef) => void;
   onContextDragStart: (ref: SessionRef) => void;
   onOpenSettings: () => void;
+  onOpenSearch: () => void;
+  onHideSidebar: () => void;
   onCreateSession: () => void;
   onMobileClose?: () => void;
   onStop?: (ref: SessionRef) => void;
@@ -30,12 +32,8 @@ const sidebarMaxWidth = 380;
 const sidebarDefaultWidth = 288;
 const sidebarKeyboardStep = 8;
 
-export function SessionSidebar({ sessions, filters, selectedRef, onFiltersChange, onSelect, onContextDragStart, onOpenSettings, onCreateSession, onMobileClose, onStop, onArchive, identity }: SessionSidebarProps): JSX.Element {
+export function SessionSidebar({ sessions, filters, selectedRef, onFiltersChange, onSelect, onContextDragStart, onOpenSettings, onOpenSearch, onHideSidebar, onCreateSession, onMobileClose, onStop, onArchive, identity }: SessionSidebarProps): JSX.Element {
   const { t } = useI18n();
-  const [searchOpen, setSearchOpen] = useState(false);
-  const searchButtonRef = useRef<HTMLButtonElement>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const searchID = useId();
   const [copyStatus, setCopyStatus] = useState("");
   const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth);
   const resizeStartRef = useRef<{ pointerX: number; width: number } | null>(null);
@@ -71,20 +69,6 @@ export function SessionSidebar({ sessions, filters, selectedRef, onFiltersChange
       window.removeEventListener("pointercancel", finishResize);
     };
   }, [updateSidebarWidth]);
-
-  useEffect(() => {
-    if (searchOpen) searchInputRef.current?.focus();
-  }, [searchOpen]);
-
-  function changeQuery(event: ChangeEvent<HTMLInputElement>): void {
-    onFiltersChange({ ...filters, query: event.target.value });
-  }
-
-  function closeSearch(): void {
-    setSearchOpen(false);
-    onFiltersChange({ ...filters, query: "" });
-    searchButtonRef.current?.focus();
-  }
 
   function toggleStatus(status: SessionStatus): void {
     const current = new Set(filters.statuses);
@@ -137,15 +121,15 @@ export function SessionSidebar({ sessions, filters, selectedRef, onFiltersChange
   return (
     <aside aria-label={t("webui2.sessions")} className="webui2-sidebar" id="webui2-session-sidebar" style={{ width: `${sidebarWidth}px` } as CSSProperties}>
       <div className="webui2-sidebar-controls">
-        <div className="webui2-brand"><span className="webui2-brand-mark"><img alt="" src={brandLogo} />{t("webui2.brand")}</span>{onMobileClose ? <button aria-label={t("webui2.closeSessions")} className="webui2-sidebar-mobile-close" onClick={onMobileClose} title={t("webui2.closeSessions")} type="button"><X aria-hidden="true" size={17} /></button> : null}</div>
-        <div className="webui2-sidebar-primary-actions">
-          <button className="webui2-new-session" onClick={onCreateSession} type="button"><Plus aria-hidden="true" size={16} />{t("webui2.newSession")}</button>
-          <button aria-controls={searchOpen ? searchID : undefined} aria-expanded={searchOpen} aria-label={t("webui2.searchSessions")} className="webui2-sidebar-search-toggle" onClick={() => searchOpen ? closeSearch() : setSearchOpen(true)} ref={searchButtonRef} title={t("webui2.searchSessions")} type="button"><Search aria-hidden="true" size={18} /></button>
+        <div className="webui2-sidebar-toolbar">
+          <span className="webui2-brand-mark"><img alt="" src={brandLogo} />{t("webui2.brand")}</span>
+          <div className="webui2-sidebar-icon-actions">
+            <button aria-label={t("webui2.searchSessions")} className="webui2-sidebar-icon-button" onClick={onOpenSearch} title={t("webui2.searchSessions")} type="button"><Search aria-hidden="true" size={18} /></button>
+            <button aria-label={t("webui2.hideSidebar")} className="webui2-sidebar-icon-button" onClick={onHideSidebar} title={t("webui2.hideSidebar")} type="button"><PanelLeftClose aria-hidden="true" size={18} /></button>
+            {onMobileClose ? <button aria-label={t("webui2.closeSessions")} className="webui2-sidebar-mobile-close" onClick={onMobileClose} title={t("webui2.closeSessions")} type="button"><X aria-hidden="true" size={17} /></button> : null}
+          </div>
         </div>
-        {searchOpen ? <label className="webui2-search" id={searchID}>
-          <Search aria-hidden="true" size={15} />
-          <input aria-label={t("webui2.searchSessions")} ref={searchInputRef} onChange={changeQuery} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); closeSearch(); } }} placeholder={t("webui2.searchSessions")} type="search" value={filters.query} />
-        </label> : null}
+        <button className="webui2-new-session" onClick={onCreateSession} type="button"><Plus aria-hidden="true" size={17} />{t("webui2.newSession")}</button>
         {/* Temporarily hide status filtering while retaining the existing controls. */}
         <details className="webui2-status-filter-disclosure" hidden>
           <summary aria-label={t("webui2.filterStatus")} onKeyDown={toggleStatusDisclosureWithKeyboard}>

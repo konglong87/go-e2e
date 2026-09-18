@@ -41,13 +41,13 @@ describe("SessionSidebar", () => {
   });
 
   function render(items = sessions) {
-    act(() => root.render(<I18nProvider><SessionSidebar sessions={items} filters={filters} selectedRef={selected} onCreateSession={vi.fn()} onFiltersChange={(next) => { filters = next; }} onSelect={select} onContextDragStart={drag} onOpenSettings={vi.fn()} /></I18nProvider>));
+    act(() => root.render(<I18nProvider><SessionSidebar sessions={items} filters={filters} selectedRef={selected} onCreateSession={vi.fn()} onFiltersChange={(next) => { filters = next; }} onSelect={select} onContextDragStart={drag} onOpenSettings={vi.fn()} onOpenSearch={vi.fn()} onHideSidebar={vi.fn()} /></I18nProvider>));
   }
 
   function renderControlled() {
     function Harness() {
       const [currentFilters, setCurrentFilters] = useState<SessionListFilters>({ query: "", statuses: [] });
-      return <SessionSidebar sessions={sessions} filters={currentFilters} selectedRef={selected} onCreateSession={vi.fn()} onFiltersChange={setCurrentFilters} onSelect={select} onContextDragStart={drag} onOpenSettings={vi.fn()} />;
+      return <SessionSidebar sessions={sessions} filters={currentFilters} selectedRef={selected} onCreateSession={vi.fn()} onFiltersChange={setCurrentFilters} onSelect={select} onContextDragStart={drag} onOpenSettings={vi.fn()} onOpenSearch={vi.fn()} onHideSidebar={vi.fn()} />;
     }
     act(() => root.render(<I18nProvider><Harness /></I18nProvider>));
   }
@@ -88,51 +88,21 @@ describe("SessionSidebar", () => {
 
   });
 
-  it("keeps one icon beside new session and clears search when collapsed", () => {
+  it("keeps search as a dedicated toolbar action", () => {
     renderControlled();
     const toggle = host.querySelector<HTMLButtonElement>('button[aria-label="Search sessions"]');
     expect(host.querySelectorAll('button[aria-label="Search sessions"]')).toHaveLength(1);
-    expect(toggle?.parentElement?.querySelector(".webui2-new-session")).not.toBeNull();
+    expect(host.querySelector(".webui2-sidebar-toolbar")?.contains(toggle)).toBe(true);
+    expect(host.querySelector(".webui2-new-session")).not.toBeNull();
     expect(toggle?.textContent).toBe("");
     expect(toggle?.title).toBe("Search sessions");
     expect(host.querySelector('.webui2-sidebar-bottom button[aria-label="Search sessions"]')).toBeNull();
-    expect(host.querySelector('input[type="search"]')).toBeNull();
-    act(() => toggle?.click());
-    const search = host.querySelector<HTMLInputElement>('input[type="search"]');
-    expect(document.activeElement).toBe(search);
-    const inputSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
-    act(() => { inputSetter?.call(search, "release"); search?.dispatchEvent(new Event("input", { bubbles: true })); });
-    expect(host.querySelectorAll(".webui2-session-row")).toHaveLength(1);
-    act(() => search?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
-    expect(host.querySelector('input[type="search"]')).toBeNull();
-    expect(host.querySelectorAll(".webui2-session-row")).toHaveLength(3);
-    expect(document.activeElement).toBe(toggle);
-    expect(toggle?.getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("rerenders only matching rows after search and status changes and shows the active count", () => {
+  it("exposes the hidden-sidebar action without changing session filters", () => {
     renderControlled();
-    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="Search sessions"]')?.click());
-    const search = host.querySelector<HTMLInputElement>('input[aria-label="Search sessions"]');
-    const inputSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
-    act(() => {
-      inputSetter?.call(search, "release");
-      search?.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    expect(host.textContent).toContain("Release coordination");
-    expect(host.textContent).not.toContain("Design review");
-    expect(host.textContent).not.toContain("Local workspace");
-
-    act(() => {
-      inputSetter?.call(search, "");
-      search?.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    const completed = host.querySelector<HTMLInputElement>('input[aria-label="completed"]');
-    act(() => completed?.click());
-    expect(host.querySelector(".webui2-status-filter-count")?.textContent).toContain("1 selected");
-    expect(host.textContent).toContain("Design review");
-    expect(host.textContent).not.toContain("Release coordination");
-    expect(host.textContent).not.toContain("Local workspace");
+    expect(host.querySelector('button[aria-label="Hide sidebar"]')).not.toBeNull();
+    expect(host.querySelector('button[aria-label="Search sessions"]')).not.toBeNull();
   });
 
   it("resizes between 232 and 380 pixels with keyboard controls and persists width", () => {
