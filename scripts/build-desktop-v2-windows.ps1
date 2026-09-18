@@ -13,7 +13,6 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $desktop = Join-Path $root "desktop-v2"
 $frontendDist = Join-Path $desktop "frontend\dist"
 $desktopBinary = Join-Path $desktop "go-e2e.exe"
-$compatibilityBinary = Join-Path $desktop "golang-cc.exe"
 $dist = Join-Path $root "dist"
 $installer = Join-Path $desktop "build\bin\go-e2e-amd64-installer.exe"
 
@@ -50,11 +49,10 @@ try {
     $env:GOARCH = "amd64"
     # go-sqlite3 otherwise compiles a stub that fails only when SQLite is opened.
     $env:CGO_ENABLED = "1"
-    Invoke-CheckedCommand "go" @("build", "-o", $desktopBinary, "./cmd/go-e2e")
+    Invoke-CheckedCommand "go" @("build", "-trimpath", "-ldflags", "-s -w", "-o", $desktopBinary, "./cmd/go-e2e")
     if (-not (Test-Path $desktopBinary -PathType Leaf) -or (Get-Item $desktopBinary).Length -eq 0) {
         throw "The go-e2e.exe sidecar was not generated"
     }
-    Copy-Item $desktopBinary $compatibilityBinary -Force
 
     Push-Location $desktop
     try {
