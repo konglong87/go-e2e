@@ -540,7 +540,7 @@ func (r *GormRepository) RecoverSessionControlStop(ctx context.Context, tenantID
 	err := r.with(ctx).Table("tenant_agent_task_events AS events").
 		Select("events.id AS event_id, events.task_id AS task_id, events.payload_json AS payload_json").
 		Joins("JOIN tenant_agent_tasks AS tasks ON tasks.id = events.task_id AND tasks.tenant_id = events.tenant_id AND tasks.user_id = events.user_id").
-		Where("events.tenant_id = ? AND events.user_id = ? AND tasks.parent_session_id = ? AND events.event_type = ? AND JSON_UNQUOTE(JSON_EXTRACT(events.payload_json, '$.operation.key_hash')) = ?", tenantID, userID, sessionID, agenttasks.EventSessionControlStop, keyHash).
+		Where("events.tenant_id = ? AND events.user_id = ? AND tasks.parent_session_id = ? AND events.event_type = ? AND "+jsonTextEqualsPredicate(r.db, "events.payload_json", "$.operation.key_hash"), tenantID, userID, sessionID, agenttasks.EventSessionControlStop, keyHash).
 		Order("events.id DESC").Limit(1).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return SessionControlStopRecovery{}, nil
@@ -589,6 +589,12 @@ func (r *GormRepository) InsertSessionControlAudit(ctx context.Context, input Se
 		if err := tx.Create(&row).Error; err != nil {
 			return err
 		}
+		if isSQLite(tx) {
+			if err := tx.Table("tenant_audit_logs").Where("id = ?", row.ID).
+				Update("created_at", time.Now().UTC()).Error; err != nil {
+				return err
+			}
+		}
 		result.Audit = AuditLog{ID: row.ID, TenantID: item.TenantID, ActorUserID: item.ActorUserID, Action: item.Action, ResourceType: item.ResourceType, ResourceID: item.ResourceID, MetadataJSON: item.MetadataJSON, TraceID: item.TraceID, CreatedAt: time.Now().UTC()}
 		return nil
 	})
@@ -600,10 +606,7 @@ func (r *GormRepository) GetSessionControlAuditByKeyHash(ctx context.Context, te
 		return AuditLog{}, ErrInvalidInput
 	}
 	var rows []gormAuditLog
-	keyHashWhere := "JSON_UNQUOTE(JSON_EXTRACT(metadata_json, '$.session_control_operation.key_hash')) = ?"
-	if isSQLite(r.db) {
-		keyHashWhere = "json_extract(metadata_json, '$.session_control_operation.key_hash') = ?"
-	}
+	keyHashWhere := jsonTextEqualsPredicate(r.db, "metadata_json", "$.session_control_operation.key_hash")
 	err := r.with(ctx).Table("tenant_audit_logs").
 		Where("tenant_id = ? AND actor_user_id = ? AND action = ? AND "+keyHashWhere, tenantID, userID, action, keyHash).
 		Order("id ASC").Limit(2).Find(&rows).Error

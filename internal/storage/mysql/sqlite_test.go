@@ -2,7 +2,9 @@ package mysql
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/konglong87/go-e2e/internal/agenttasks"
@@ -183,5 +185,159 @@ func TestSQLiteDesktopRepositorySupportsProfilesAndSkills(t *testing.T) {
 	}
 	if len(skills) != 1 || skills[0].SkillKey != "welcome" {
 		t.Fatalf("effective skills = %+v", skills)
+	}
+}
+
+// The desktop stop button failed on SQLite because the stop idempotency
+// recovery query used the MySQL-only JSON_UNQUOTE function. This round trip
+// exercises cancel + recovery + audit lookup against a real SQLite database.
+func TestSQLiteSessionControlStopRecoveryRoundTrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "desktop.sqlite")
+	ctx := context.Background()
+	repo, err := OpenSQLiteGormRepository(ctx, path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Close()
+
+	tenantID, err := repo.UpsertTenant(ctx, TenantInput{TenantKey: "webui-local", Name: "Local Desktop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	userID, err := repo.EnsureUser(ctx, tenantID, "webui-local-user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionID, err := repo.UpsertSession(ctx, SessionInput{
+		TenantID: tenantID, UserID: userID, SessionKey: "stop-session",
+		Title: "stop", Status: "running", MetadataJSON: `{}`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	taskID, err := repo.CreateAgentTask(ctx, agenttasks.TaskInput{
+		TenantID: tenantID, UserID: userID, ParentSessionID: sessionID,
+		AgentName: agenttasks.AgentNameWeb, Status: agenttasks.StatusRunning, MetadataJSON: `{}`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	keyHash := strings.Repeat("ab", 32)
+	stopPayload := `{"schema":"golang-cc.session-control-stop.v1","operation":{"key_hash":"` + keyHash + `"}}`
+	cancelled, err := repo.CancelAgentTaskForSessionControl(ctx, SessionControlStopInput{
+		TenantID: tenantID, UserID: userID, TaskID: taskID,
+		ResultJSON: `{"status":"cancelled"}`, EventPayloadJSON: stopPayload, TraceID: "trace-stop",
+	})
+	if err != nil || !cancelled.Cancelled {
+		t.Fatalf("CancelAgentTaskForSessionControl() = %+v, err = %v", cancelled, err)
+	}
+
+	recovered, err := repo.RecoverSessionControlStop(ctx, tenantID, userID, sessionID, keyHash)
+	if err != nil {
+		t.Fatalf("RecoverSessionControlStop() err = %v", err)
+	}
+	if !recovered.Found || recovered.TaskID != taskID || recovered.EventID != cancelled.EventID || recovered.EventPayloadJSON != stopPayload {
+		t.Fatalf("recovered = %+v, want task %d event %d", recovered, taskID, cancelled.EventID)
+	}
+	missing, err := repo.RecoverSessionControlStop(ctx, tenantID, userID, sessionID, strings.Repeat("cd", 32))
+	if err != nil || missing.Found {
+		t.Fatalf("missing recovery = %+v, err = %v", missing, err)
+	}
+
+	auditKeyHash := strings.Repeat("ef", 32)
+	if _, err := repo.InsertSessionControlAudit(ctx, SessionControlAuditInput{AuditLogInput: AuditLogInput{
+		TenantID: tenantID, ActorUserID: userID, Action: "session_control.stop",
+		ResourceType: "session", ResourceID: "1",
+		MetadataJSON: `{"session_control_operation":{"key_hash":"` + auditKeyHash + `"}}`,
+		TraceID:      "trace-audit",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	audit, err := repo.GetSessionControlAuditByKeyHash(ctx, tenantID, userID, "session_control.stop", auditKeyHash)
+	if err != nil || audit.Action != "session_control.stop" {
+		t.Fatalf("audit = %+v, err = %v", audit, err)
+	}
+}
+
+// Handoff replay/recovery predicates share the same JSON extraction helper.
+// Links and events are staged directly so this test only covers the JSON
+// predicate dialect, not the link upsert path.
+func TestSQLiteHandoffRecoveryJSONPredicates(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "desktop.sqlite")
+	ctx := context.Background()
+	repo, err := OpenSQLiteGormRepository(ctx, path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Close()
+
+	tenantID, err := repo.UpsertTenant(ctx, TenantInput{TenantKey: "webui-local", Name: "Local Desktop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	userID, err := repo.EnsureUser(ctx, tenantID, "webui-local-user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionID, err := repo.UpsertSession(ctx, SessionInput{
+		TenantID: tenantID, UserID: userID, SessionKey: "handoff-target",
+		Title: "handoff", Status: "running", MetadataJSON: `{}`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	taskID, err := repo.CreateAgentTask(ctx, agenttasks.TaskInput{
+		TenantID: tenantID, UserID: userID, ParentSessionID: sessionID,
+		AgentName: agenttasks.AgentNameWeb, Status: agenttasks.StatusRunning, MetadataJSON: `{}`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The desktop SQLite schema has no tenant_session_links table (handoff is
+	// a managed-MySQL feature); create the minimal shape so the recovery query
+	// can join links while we validate the JSON predicate dialect on SQLite.
+	if err := repo.db.Exec(`CREATE TABLE tenant_session_links (id integer PRIMARY KEY AUTOINCREMENT, tenant_id integer, user_id integer, target_session_id integer, source_kind text, source_session_key text, source_session_id integer, relation_type text, status text, metadata_json text, created_by_user_id integer, created_at datetime, updated_at datetime)`).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	operationIdentity := strings.Repeat("01", 32)
+	sources := []string{"tenant:source-a", "tenant:source-b"}
+	for index, sourceRef := range sources {
+		payload := testSessionHandoffEventForOperation(t, taskID, sourceRef, fmt.Sprintf("task_event:%d", 21+index), operationIdentity)
+		if _, err := repo.AppendAgentTaskEvent(ctx, agenttasks.EventInput{
+			TenantID: tenantID, UserID: userID, TaskID: taskID,
+			EventType: agenttasks.EventSessionHandoff, PayloadJSON: payload,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		kind, key, ok := strings.Cut(sourceRef, ":")
+		if !ok {
+			t.Fatalf("source ref %q", sourceRef)
+		}
+		if err := repo.db.Create(&gormSessionLink{
+			TenantID: tenantID, UserID: userID, TargetSessionID: sessionID,
+			SourceKind: kind, SourceSessionKey: key, RelationType: agenttasks.SessionHandoffRelationType,
+			Status: agenttasks.SessionHandoffLinkStatus, CreatedByUserID: userID,
+		}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	recovered, err := repo.RecoverHandoffBatch(ctx, agenttasks.HandoffRecoveryInput{
+		TenantID: tenantID, UserID: userID, TargetSessionID: sessionID,
+		TargetTaskID: taskID, OperationIdentity: operationIdentity, ExpectedSources: sources,
+	})
+	if err != nil {
+		t.Fatalf("RecoverHandoffBatch() err = %v", err)
+	}
+	if !recovered.Found || len(recovered.Items) != len(sources) {
+		t.Fatalf("recovered = %+v", recovered)
+	}
+	for index, item := range recovered.Items {
+		if item.SourceRef != sources[index] || item.LinkID == 0 || item.EventID == 0 || item.PackageSHA256 == "" {
+			t.Fatalf("recovered item %d = %+v", index, item)
+		}
 	}
 }

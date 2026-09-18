@@ -32,6 +32,17 @@ func isSQLite(db *gorm.DB) bool {
 	return db != nil && db.Dialector.Name() == "sqlite"
 }
 
+// jsonTextEqualsPredicate builds a dialect-aware "extract JSON text = ?" predicate.
+// MySQL needs JSON_UNQUOTE around JSON_EXTRACT to compare the raw scalar text,
+// while SQLite has no JSON_UNQUOTE and json_extract already returns the unquoted
+// scalar. Column and path are always package constants, never user input.
+func jsonTextEqualsPredicate(db *gorm.DB, column, path string) string {
+	if isSQLite(db) {
+		return fmt.Sprintf("json_extract(%s, '%s') = ?", column, path)
+	}
+	return fmt.Sprintf("JSON_UNQUOTE(JSON_EXTRACT(%s, '%s')) = ?", column, path)
+}
+
 var _ agenttasks.Store = (*GormRepository)(nil)
 
 type gormTenant struct {
@@ -1670,7 +1681,7 @@ func (r *GormRepository) CreateHandoffLinkAndEvent(ctx context.Context, input ag
 		}
 		err = tx.Table("tenant_agent_task_events").
 			Select("id").
-			Where("tenant_id = ? AND user_id = ? AND task_id = ? AND event_type = ? AND JSON_UNQUOTE(JSON_EXTRACT(payload_json, '$.package_sha256')) = ? AND JSON_UNQUOTE(JSON_EXTRACT(payload_json, '$.package_id')) = ?", input.TenantID, input.UserID, input.TargetTaskID, agenttasks.EventSessionHandoff, decoded.PackageSHA256, decoded.PackageID).
+			Where("tenant_id = ? AND user_id = ? AND task_id = ? AND event_type = ? AND "+jsonTextEqualsPredicate(tx, "payload_json", "$.package_sha256")+" AND "+jsonTextEqualsPredicate(tx, "payload_json", "$.package_id"), input.TenantID, input.UserID, input.TargetTaskID, agenttasks.EventSessionHandoff, decoded.PackageSHA256, decoded.PackageID).
 			Clauses(clause.Locking{Strength: "UPDATE"}).
 			Take(&existing).Error
 		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -1759,7 +1770,7 @@ func (r *GormRepository) CreateHandoffBatch(ctx context.Context, input agenttask
 			return err
 		}
 		var existing []gormAgentTaskEvent
-		err = tx.Table("tenant_agent_task_events").Select("id, payload_json").Where("tenant_id = ? AND user_id = ? AND task_id = ? AND event_type = ? AND JSON_UNQUOTE(JSON_EXTRACT(payload_json, '$.operation_identity')) = ?", input.TenantID, input.UserID, input.TargetTaskID, agenttasks.EventSessionHandoff, input.OperationIdentity).Clauses(clause.Locking{Strength: "UPDATE"}).Find(&existing).Error
+		err = tx.Table("tenant_agent_task_events").Select("id, payload_json").Where("tenant_id = ? AND user_id = ? AND task_id = ? AND event_type = ? AND "+jsonTextEqualsPredicate(tx, "payload_json", "$.operation_identity"), input.TenantID, input.UserID, input.TargetTaskID, agenttasks.EventSessionHandoff, input.OperationIdentity).Clauses(clause.Locking{Strength: "UPDATE"}).Find(&existing).Error
 		if err != nil {
 			return err
 		}
@@ -1846,7 +1857,7 @@ func (r *GormRepository) RecoverHandoffBatch(ctx context.Context, input agenttas
 			return err
 		}
 		var rows []gormAgentTaskEvent
-		if err := tx.Table("tenant_agent_task_events").Select("id, payload_json").Where("tenant_id = ? AND user_id = ? AND task_id = ? AND event_type = ? AND JSON_UNQUOTE(JSON_EXTRACT(payload_json, '$.operation_identity')) = ?", input.TenantID, input.UserID, input.TargetTaskID, agenttasks.EventSessionHandoff, input.OperationIdentity).Find(&rows).Error; err != nil {
+		if err := tx.Table("tenant_agent_task_events").Select("id, payload_json").Where("tenant_id = ? AND user_id = ? AND task_id = ? AND event_type = ? AND "+jsonTextEqualsPredicate(tx, "payload_json", "$.operation_identity"), input.TenantID, input.UserID, input.TargetTaskID, agenttasks.EventSessionHandoff, input.OperationIdentity).Find(&rows).Error; err != nil {
 			return err
 		}
 		if len(rows) == 0 {

@@ -496,15 +496,21 @@ func scanAgentTasks(rows *sql.Rows) ([]AgentTask, error) {
 
 func scanAgentTaskEvent(scanner skillScanner) (AgentTaskEvent, error) {
 	var item AgentTaskEvent
+	// SQLite desktop rows written before created_at was populated stay NULL;
+	// MySQL fills the column DEFAULT. Tolerate NULL instead of failing the scan.
+	var createdAt sql.NullTime
 	if err := scanner.Scan(
 		&item.ID,
 		&item.TaskID,
 		&item.EventType,
 		&item.PayloadJSON,
 		&item.TraceID,
-		&item.CreatedAt,
+		&createdAt,
 	); err != nil {
 		return AgentTaskEvent{}, err
+	}
+	if createdAt.Valid {
+		item.CreatedAt = createdAt.Time
 	}
 	return item, nil
 }
@@ -661,6 +667,9 @@ func isTerminalAgentTaskStatus(status string) bool {
 
 func scanAuditLog(scanner skillScanner) (AuditLog, error) {
 	var item AuditLog
+	// SQLite desktop rows written before created_at existed stay NULL; MySQL
+	// fills the column DEFAULT. Tolerate NULL instead of failing the scan.
+	var createdAt sql.NullTime
 	if err := scanner.Scan(
 		&item.ID,
 		&item.TenantID,
@@ -670,9 +679,12 @@ func scanAuditLog(scanner skillScanner) (AuditLog, error) {
 		&item.ResourceID,
 		&item.MetadataJSON,
 		&item.TraceID,
-		&item.CreatedAt,
+		&createdAt,
 	); err != nil {
 		return AuditLog{}, err
+	}
+	if createdAt.Valid {
+		item.CreatedAt = createdAt.Time
 	}
 	return item, nil
 }
