@@ -6,6 +6,16 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import type { PetAsset } from "./petAssets";
 
 const FIT_VIEW_SIZE = 1.9;
+const CHINESE_DRAGON_ASSET_MARKER = "/chinese-dragon.glb";
+const DRAGON_RIG_NAMES = ["HeadRig", "TailRig", "LeftArmRig", "RightArmRig"] as const;
+type DragonRigName = typeof DRAGON_RIG_NAMES[number];
+
+type DragonRigBase = {
+  node: Object3D;
+  x: number;
+  y: number;
+  z: number;
+};
 
 function disposeModel(model: Object3D): void {
   const materials = new Set<Material>();
@@ -38,6 +48,8 @@ export function createPetRenderer(canvas: HTMLCanvasElement, asset: PetAsset, ge
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   let closed = false;
   let model: Object3D | undefined;
+  const dragonRigs: Partial<Record<DragonRigName, DragonRigBase>> = {};
+  const isChineseDragon = asset.url.includes(CHINESE_DRAGON_ASSET_MARKER);
   let frame = 0;
   const start = performance.now();
   const draw = (now: number): void => {
@@ -52,6 +64,23 @@ export function createPetRenderer(canvas: HTMLCanvasElement, asset: PetAsset, ge
     pivot.position.y = moving ? Math.sin(time * (animation === "celebrate" ? 5 : 2)) * 0.035 : 0;
     const breath = moving ? 1 + Math.sin(time * 2.2) * 0.012 : 1;
     pivot.scale.setScalar(breath);
+    if (isChineseDragon) {
+      const dragonMotion = moving ? energy : 0;
+      const setRigRotation = (name: DragonRigName, x: number, y: number, z: number): void => {
+        const base = dragonRigs[name];
+        if (!base) return;
+        base.node.rotation.set(base.x + x * dragonMotion, base.y + y * dragonMotion, base.z + z * dragonMotion);
+      };
+      setRigRotation("HeadRig", Math.sin(time * 1.9 + 0.3) * 0.035, Math.sin(time * 1.25) * 0.018, Math.sin(time * 1.35) * 0.055);
+      setRigRotation("TailRig", 0, 0, Math.sin(time * 2.0 - 0.8) * 0.22);
+      setRigRotation(
+        "LeftArmRig",
+        animation === "celebrate" ? -0.13 + Math.sin(time * 3.7) * 0.05 : Math.sin(time * 1.7) * 0.025,
+        0,
+        animation === "celebrate" ? -0.33 + Math.sin(time * 3.7) * 0.08 : Math.sin(time * 1.7 + 0.5) * 0.035,
+      );
+      setRigRotation("RightArmRig", 0, 0, Math.sin(time * 1.55 + 1.2) * 0.025);
+    }
     if (!document.hidden && canvas.getClientRects().length > 0) renderer.render(scene, camera);
     frame = window.requestAnimationFrame(draw);
   };
@@ -66,6 +95,12 @@ export function createPetRenderer(canvas: HTMLCanvasElement, asset: PetAsset, ge
     if (maxDimension > 0) model.scale.setScalar(FIT_VIEW_SIZE / maxDimension);
     const center = new Box3().setFromObject(model).getCenter(new Vector3());
     model.position.sub(center);
+    if (isChineseDragon) {
+      for (const name of DRAGON_RIG_NAMES) {
+        const node = model.getObjectByName(name);
+        if (node) dragonRigs[name] = { node, x: node.rotation.x, y: node.rotation.y, z: node.rotation.z };
+      }
+    }
     pivot.add(model);
     renderer.render(scene, camera);
     onReady();
