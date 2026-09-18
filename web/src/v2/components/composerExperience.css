@@ -1,6 +1,6 @@
 .webui2-page .webui2-composer.webui2-composer { border: 0; gap: 7px; min-height: 0; padding: 10px 0 0; }
-.webui2-page .webui2-composer .webui2-composer-shell { position: relative; display: grid; gap: 8px; border: 1px solid var(--webui2-border); border-radius: 22px; background: var(--webui2-surface); padding: 13px 12px 9px; transition: border-color 120ms ease, box-shadow 120ms ease; }
-.webui2-page .webui2-composer .webui2-composer-shell:focus-within { border-color: var(--webui2-text-muted); box-shadow: 0 0 0 1px color-mix(in srgb, var(--webui2-border) 55%, transparent); }
+.webui2-page .webui2-composer .webui2-composer-shell { position: relative; display: grid; gap: 8px; border: 1px solid var(--webui2-border); border-radius: 18px; background: var(--webui2-surface-raised, var(--webui2-surface)); box-shadow: var(--webui2-shadow-card); padding: 13px 12px 9px; transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease; }
+.webui2-page .webui2-composer .webui2-composer-shell:focus-within { border-color: var(--webui2-text-muted); box-shadow: 0 0 0 1px color-mix(in srgb, var(--webui2-border) 55%, transparent), var(--webui2-shadow-card); transform: translateY(-1px); }
 .webui2-page .webui2-composer.is-drag-over .webui2-composer-shell { outline: 2px solid var(--webui2-accent); outline-offset: -2px; background: var(--webui2-accent-surface); }
 .webui2-page .webui2-composer .webui2-composer-shell > textarea,
 .webui2-page .webui2-composer .webui2-composer-shell > textarea:focus,
