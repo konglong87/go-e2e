@@ -1,9 +1,9 @@
-import { Archive, Ellipsis, Filter, Folder, GripVertical, PanelLeftClose, Plus, Search, Settings, Share2, Square, X } from "lucide-react";
+import { Archive, ChevronDown, ChevronRight, Ellipsis, Filter, Folder, GripVertical, PanelLeftClose, Plus, Search, Settings, Share2, Square, X } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type DragEvent, type JSX, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { useI18n } from "../../lib/i18n";
 import type { IdentityConfig } from "../../lib/types";
 import { webUIV2SessionPath } from "../routes";
-import type { SessionListFilters, SessionRef, SessionStatus, SessionSummary } from "../types";
+import type { SessionListFilters, SessionRef, SessionSource, SessionStatus, SessionSummary } from "../types";
 import { SESSION_REF_MIME_TYPE } from "./sessionContextDrag";
 import "./composerExperience.css";
 import brandLogo from "../assets/go-e2e-mark.svg";
@@ -31,6 +31,7 @@ const sidebarMinWidth = 232;
 const sidebarMaxWidth = 380;
 const sidebarDefaultWidth = 288;
 const sidebarKeyboardStep = 8;
+const workspaceCollapseStorageKey = "golang-cc-webui.v2.workspace-collapse.v1";
 
 export function SessionSidebar({ sessions, filters, selectedRef, onFiltersChange, onSelect, onContextDragStart, onOpenSettings, onOpenSearch, onHideSidebar, onCreateSession, onMobileClose, onStop, onArchive, identity }: SessionSidebarProps): JSX.Element {
   const { t } = useI18n();
@@ -144,8 +145,8 @@ export function SessionSidebar({ sessions, filters, selectedRef, onFiltersChange
         </details>
       </div>
       <div className="webui2-session-list">
-        <SessionGroup copyRef={copyRef} hideTitle onContextDragStart={dragStart} onSelect={onSelect} onStop={onStop} onArchive={onArchive} selectedRef={selectedRef} sessions={managed} title={t("webui2.managed")} />
-        <SessionGroup copyRef={copyRef} onContextDragStart={dragStart} onSelect={onSelect} selectedRef={selectedRef} sessions={local} subtitle={t("webui2.localReadOnly")} title={t("webui2.local")} />
+        <SessionGroup copyRef={copyRef} hideTitle onContextDragStart={dragStart} onSelect={onSelect} onStop={onStop} onArchive={onArchive} selectedRef={selectedRef} sessions={managed} source="tenant" title={t("webui2.managed")} />
+        <SessionGroup copyRef={copyRef} onContextDragStart={dragStart} onSelect={onSelect} selectedRef={selectedRef} sessions={local} source="local" subtitle={t("webui2.localReadOnly")} title={t("webui2.local")} />
         {visibleSessions.length === 0 ? <p className="webui2-list-empty">{t("webui2.emptySessions")}</p> : null}
       </div>
       <div className="webui2-sidebar-bottom">
@@ -176,6 +177,7 @@ type SessionGroupProps = {
   title: string;
   subtitle?: string;
   hideTitle?: boolean;
+  source: SessionSource;
   onStop?: (ref: SessionRef) => void;
   onArchive?: (ref: SessionRef) => void;
   selectedRef: SessionRef | null;
@@ -184,33 +186,98 @@ type SessionGroupProps = {
   copyRef: (ref: SessionRef) => Promise<void>;
 };
 
-function SessionGroup({ sessions, title, subtitle, hideTitle, selectedRef, onSelect, onContextDragStart, copyRef, onStop, onArchive }: SessionGroupProps): JSX.Element | null {
+function SessionGroup({ sessions, title, subtitle, hideTitle, source, selectedRef, onSelect, onContextDragStart, copyRef, onStop, onArchive }: SessionGroupProps): JSX.Element | null {
   const { t } = useI18n();
   const draggedRef = useRef<SessionRef | null>(null);
+  const previousSelectedRef = useRef<SessionRef | null | undefined>(undefined);
+  const [collapsedWorkspaces, setCollapsedWorkspaces] = useState(loadCollapsedWorkspaces);
   const workspaces = new Map<string, SessionSummary[]>();
   for (const session of sessions) {
     const cwd = session.cwd || "";
     workspaces.set(cwd, [...(workspaces.get(cwd) ?? []), session]);
   }
+
+  useEffect(() => {
+    const selectionChanged = previousSelectedRef.current !== selectedRef;
+    previousSelectedRef.current = selectedRef;
+    if (!selectionChanged) return;
+    const selected = sessions.find((session) => session.ref === selectedRef);
+    if (!selected) return;
+    const key = workspaceKey(source, selected.cwd);
+    setCollapsedWorkspaces((current) => {
+      if (!current.has(key)) return current;
+      const next = new Set(current);
+      next.delete(key);
+      persistCollapsedWorkspaces(next);
+      return next;
+    });
+  }, [selectedRef, sessions, source]);
+
+  function toggleWorkspace(cwd: string): void {
+    const key = workspaceKey(source, cwd);
+    setCollapsedWorkspaces((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      persistCollapsedWorkspaces(next);
+      return next;
+    });
+  }
+
   if (sessions.length === 0) return null;
   return <section aria-label={title} className="webui2-session-group">
     {hideTitle ? null : <header><strong>{title}</strong>{subtitle ? <span>{subtitle}</span> : null}</header>}
-    {[...workspaces].map(([cwd, items]) => <div className="webui2-workspace-group" key={cwd}>
-    {cwd ? <div className="webui2-workspace-label" title={cwd}><Folder aria-hidden="true" size={13} /><span>{cwd.replace(/\/$/, "").split("/").pop() || cwd}</span><span>{items.length}</span></div> : null}
-    {items.map((session) => <div className="webui2-session-row" key={session.ref}>
-      <button aria-label={t("webui2.dragRef", { ref: session.ref })} className="webui2-drag-handle" draggable onDragStart={(event) => onContextDragStart(event, session.ref)} type="button"><GripVertical aria-hidden="true" size={14} /></button>
-      <button aria-pressed={selectedRef === session.ref} className="webui2-session-select" draggable onDragStart={(event) => { draggedRef.current = session.ref; onContextDragStart(event, session.ref); }} onPointerDown={() => { draggedRef.current = null; }} onClick={(event) => { if (draggedRef.current !== session.ref || event.detail === 0) onSelect(session.ref); draggedRef.current = null; }} type="button">
-        <span className="webui2-session-title">{session.title}</span>
-        <span className="webui2-session-meta">
-          <span className="webui2-session-status"><span aria-hidden="true" className="webui2-session-status-dot" data-status={session.status} />{t(`webui2.status.${session.status}`)}</span>
-          <code>{session.shortID}</code>
-          <time dateTime={session.updatedAt}>{formatTime(session.updatedAt)}</time>
-        </span>
-      </button>
-      <SessionOverflowMenu copyRef={copyRef} session={session} onStop={onStop} onArchive={onArchive} />
-    </div>)}
-    </div>)}
+    {[...workspaces].map(([cwd, items]) => {
+      const key = workspaceKey(source, cwd);
+      const collapsed = collapsedWorkspaces.has(key);
+      const workspaceName = cwd.replace(/\/$/, "").split("/").pop() || t("webui2.unknownWorkspace");
+      const workspaceContentID = `webui2-workspace-${key}`;
+      const hasSelectedSession = items.some((session) => session.ref === selectedRef);
+      return <div className={`webui2-workspace-group${collapsed ? " is-collapsed" : ""}${hasSelectedSession ? " is-active" : ""}`} data-collapsed={collapsed ? "true" : "false"} key={cwd}>
+        <button aria-controls={workspaceContentID} aria-expanded={!collapsed} aria-label={t(collapsed ? "webui2.expandWorkspace" : "webui2.collapseWorkspace", { name: workspaceName })} className="webui2-workspace-toggle" onClick={() => toggleWorkspace(cwd)} title={cwd || workspaceName} type="button">
+          {collapsed ? <ChevronRight aria-hidden="true" size={15} /> : <ChevronDown aria-hidden="true" size={15} />}
+          <Folder aria-hidden="true" size={16} />
+          <span className="webui2-workspace-name">{workspaceName}</span>
+          <span className="webui2-workspace-count">{items.length}</span>
+        </button>
+        {!collapsed ? <div className="webui2-workspace-sessions" id={workspaceContentID}>
+          {items.map((session) => <div className="webui2-session-row" key={session.ref}>
+            <button aria-label={t("webui2.dragRef", { ref: session.ref })} className="webui2-drag-handle" draggable onDragStart={(event) => onContextDragStart(event, session.ref)} type="button"><GripVertical aria-hidden="true" size={14} /></button>
+            <button aria-pressed={selectedRef === session.ref} className="webui2-session-select" draggable onDragStart={(event) => { draggedRef.current = session.ref; onContextDragStart(event, session.ref); }} onPointerDown={() => { draggedRef.current = null; }} onClick={(event) => { if (draggedRef.current !== session.ref || event.detail === 0) onSelect(session.ref); draggedRef.current = null; }} type="button">
+              <span className="webui2-session-title" title={session.title}>{session.title}</span>
+              <span className="webui2-session-meta">
+                <span className="webui2-session-status" data-status={session.status}><span aria-hidden="true" className="webui2-session-status-dot" data-status={session.status} />{t(`webui2.status.${session.status}`)}</span>
+                <code title={session.ref}>{session.shortID}</code>
+                <time dateTime={session.updatedAt}>{formatTime(session.updatedAt)}</time>
+              </span>
+            </button>
+            <SessionOverflowMenu copyRef={copyRef} session={session} onStop={onStop} onArchive={onArchive} />
+          </div>)}
+        </div> : null}
+      </div>;
+    })}
   </section>;
+}
+
+function workspaceKey(source: SessionSource, cwd?: string): string {
+  return `${source}:${encodeURIComponent(cwd || "__default__")}`;
+}
+
+function loadCollapsedWorkspaces(): Set<string> {
+  try {
+    const value = JSON.parse(window.localStorage.getItem(workspaceCollapseStorageKey) || "[]");
+    return Array.isArray(value) ? new Set(value.filter((item): item is string => typeof item === "string")) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function persistCollapsedWorkspaces(value: Set<string>): void {
+  try {
+    window.localStorage.setItem(workspaceCollapseStorageKey, JSON.stringify([...value]));
+  } catch {
+    // Disclosure state is optional; the current render remains interactive.
+  }
 }
 
 type SessionOverflowMenuProps = {
@@ -278,5 +345,10 @@ function SessionOverflowMenu({ session, copyRef, onStop, onArchive }: SessionOve
 
 function formatTime(value: string): string {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+  if (Number.isNaN(date.getTime())) return value;
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${month}/${day} ${hours}:${minutes}`;
 }

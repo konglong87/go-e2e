@@ -69,11 +69,44 @@ describe("SessionSidebar", () => {
   it("groups by full workspace path and includes that path in search", () => {
     const items = sessions.map((session, index) => ({ ...session, cwd: index === 0 ? "/work/service" : "/other/service" }));
     render(items);
-    expect(host.querySelectorAll('.webui2-workspace-label[title="/work/service"]')).toHaveLength(1);
+    expect(host.querySelectorAll('.webui2-workspace-toggle[title="/work/service"]')).toHaveLength(1);
     filters = { query: "/work/", statuses: [] };
     render(items);
     expect(host.querySelectorAll(".webui2-session-row")).toHaveLength(1);
     expect(host.textContent).toContain("Release coordination");
+  });
+
+  it("expands and collapses workspaces and persists the disclosure state", () => {
+    const items = sessions.map((session) => ({ ...session, cwd: "/work/service" }));
+    render(items);
+    const toggle = host.querySelector<HTMLButtonElement>('.webui2-workspace-toggle[title="/work/service"]');
+    expect(toggle?.getAttribute("aria-expanded")).toBe("true");
+    expect(host.querySelectorAll(".webui2-session-row")).toHaveLength(3);
+
+    act(() => toggle?.click());
+    expect(toggle?.getAttribute("aria-expanded")).toBe("false");
+    expect(host.querySelectorAll(".webui2-session-row")).toHaveLength(1);
+    expect(window.localStorage.getItem("golang-cc-webui.v2.workspace-collapse.v1")).toContain("tenant:%2Fwork%2Fservice");
+
+    act(() => toggle?.click());
+    expect(toggle?.getAttribute("aria-expanded")).toBe("true");
+    expect(host.querySelectorAll(".webui2-session-row")).toHaveLength(3);
+  });
+
+  it("automatically reopens the selected workspace after it was collapsed", () => {
+    const items = sessions.map((session, index) => ({ ...session, cwd: index === 0 ? "/work/service" : "/other/service" }));
+    render(items);
+    const firstToggle = host.querySelector<HTMLButtonElement>('.webui2-workspace-toggle[title="/work/service"]');
+    act(() => firstToggle?.click());
+    expect(firstToggle?.getAttribute("aria-expanded")).toBe("false");
+
+    selected = "tenant:beta";
+    render(items);
+    expect(host.querySelector<HTMLButtonElement>('.webui2-workspace-toggle[title="/work/service"]')?.getAttribute("aria-expanded")).toBe("false");
+    selected = "tenant:alpha";
+    render(items);
+    expect(host.querySelector<HTMLButtonElement>('.webui2-workspace-toggle[title="/work/service"]')?.getAttribute("aria-expanded")).toBe("true");
+    expect(host.querySelectorAll(".webui2-session-row")).toHaveLength(3);
   });
 
   it("temporarily hides the retained status filter controls", () => {
