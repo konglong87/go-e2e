@@ -236,7 +236,8 @@ describe("Inspector", () => {
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
     expect(host.querySelector(".webui2-inspector")).toBeNull();
 
-    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="Settings"]')?.click());
+    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="Account menu"]')?.click());
+    act(() => host.querySelector<HTMLButtonElement>('[role="menuitem"][aria-label="System settings"]')?.click());
     act(() => host.querySelector<HTMLInputElement>('input[aria-label="Inspector"]')?.click());
     act(() => host.querySelector<HTMLButtonElement>(".settings-back")?.click());
     expect(host.querySelector("aside.webui2-inspector")).not.toBeNull();
@@ -267,7 +268,8 @@ describe("Inspector", () => {
     window.history.replaceState({}, "", "/webui/v2/sessions/tenant%3Aalpha");
     act(() => root.render(<I18nProvider><QueryClientProvider client={new QueryClient()}><WebUIV2App client={client} identity={identity} /></QueryClientProvider></I18nProvider>));
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="Settings"]')?.click());
+    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="Account menu"]')?.click());
+    act(() => host.querySelector<HTMLButtonElement>('[role="menuitem"][aria-label="System settings"]')?.click());
     act(() => host.querySelector<HTMLInputElement>('input[aria-label="Inspector"]')?.click());
     act(() => host.querySelector<HTMLButtonElement>('[role="tab"]:last-child')?.click());
 

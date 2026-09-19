@@ -212,7 +212,8 @@ describe("WebUIV2App", () => {
     const composer = host.querySelector<HTMLTextAreaElement>(".webui2-composer textarea");
     const textSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
     act(() => { textSetter?.call(composer, "Keep my draft"); composer?.dispatchEvent(new Event("input", { bubbles: true })); });
-    const settings = host.querySelector<HTMLButtonElement>('button[aria-label="Settings"]');
+    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="Account menu"]')?.click());
+    const settings = host.querySelector<HTMLButtonElement>('[role="menuitem"][aria-label="System settings"]');
     act(() => settings?.click());
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
     expect(window.location.pathname).toBe("/webui/v2/settings/general");
@@ -233,7 +234,8 @@ describe("WebUIV2App", () => {
     expect(openSessions).not.toBeNull();
     act(() => openSessions?.click());
     expect(host.querySelector(".webui2-page")?.getAttribute("data-sidebar-open")).toBe("true");
-    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="Settings"]')?.click());
+    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="Account menu"]')?.click());
+    act(() => host.querySelector<HTMLButtonElement>('[role="menuitem"][aria-label="System settings"]')?.click());
     expect(host.querySelector(".webui2-page")?.getAttribute("data-sidebar-open")).toBe("false");
     expect(host.querySelector(".webui2-settings-center")).not.toBeNull();
   });
@@ -245,7 +247,8 @@ describe("WebUIV2App", () => {
     client.subscribe = vi.fn(async (_identity, _sessions, _onPage, signal) => new Promise<void>((resolve) => { subscriptionSignals.push(signal); signal.addEventListener("abort", () => resolve(), { once: true }); }));
     renderAt("/webui/v2/sessions/tenant%3Aalpha", "zh", client);
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
-    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="设置"]')?.click());
+    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="账户菜单"]')?.click());
+    act(() => host.querySelector<HTMLButtonElement>('[role="menuitem"][aria-label="系统设置"]')?.click());
     const nav = (label: string) => Array.from(host.querySelectorAll<HTMLButtonElement>(".settings-navigation nav button")).find((button) => button.textContent?.includes(label));
     act(() => nav("全局 Settings JSON")?.click());
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
@@ -293,7 +296,8 @@ describe("WebUIV2App", () => {
     const composer = host.querySelector<HTMLTextAreaElement>(".webui2-composer textarea")!;
     const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!;
     act(() => { setter.call(composer, "Keep this chat draft"); composer.dispatchEvent(new Event("input", { bubbles: true })); });
-    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="Settings"]')?.click());
+    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="Account menu"]')?.click());
+    act(() => host.querySelector<HTMLButtonElement>('[role="menuitem"][aria-label="System settings"]')?.click());
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
     const switchTo = (id: string) => {
       act(() => { host.querySelector<HTMLButtonElement>('button[aria-label="Settings environment"]')?.click(); });
@@ -536,7 +540,8 @@ describe("WebUIV2App", () => {
     await act(async () => host.querySelector<HTMLButtonElement>('button[type="submit"]')?.click());
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
 
-    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="Settings"]')?.click());
+    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="Account menu"]')?.click());
+    act(() => host.querySelector<HTMLButtonElement>('[role="menuitem"][aria-label="System settings"]')?.click());
     expect(host.querySelector(".webui2-settings-center")).not.toBeNull();
     const theme = host.querySelector<HTMLButtonElement>(".settings-theme-options button:last-child");
     act(() => theme?.click());

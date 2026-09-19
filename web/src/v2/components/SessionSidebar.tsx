@@ -1,4 +1,4 @@
-import { Archive, ChevronDown, ChevronRight, Ellipsis, Filter, Folder, Info, PanelLeftClose, Plus, Search, Settings, Share2, Square, X } from "lucide-react";
+import { Archive, ChevronDown, ChevronRight, Ellipsis, Filter, Folder, Info, PanelLeftClose, Plus, Search, Share2, Square, X } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type DragEvent, type JSX, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { useI18n } from "../../lib/i18n";
 import type { IdentityConfig } from "../../lib/types";
@@ -8,6 +8,7 @@ import { SESSION_REF_MIME_TYPE } from "./sessionContextDrag";
 import "./composerExperience.css";
 import brandLogo from "../assets/go-e2e-mark.svg";
 import { SessionRow } from "./SessionRow";
+import { SidebarAccountFooter } from "./SidebarAccountFooter";
 
 type SessionSidebarProps = {
   sessions: SessionSummary[];
@@ -152,8 +153,7 @@ export function SessionSidebar({ sessions, filters, selectedRef, onFiltersChange
       </div>
       <div className="webui2-sidebar-bottom">
         {copyStatus ? <p aria-live="polite" className="webui2-copy-status">{copyStatus}</p> : null}
-        <button aria-label={t("webui2.settings")} className="webui2-settings-launcher" onClick={onOpenSettings} title={t("webui2.settings")} type="button"><Settings aria-hidden="true" size={17} />{t("webui2.settings")}</button>
-        {identity ? <div className="webui2-sidebar-identity"><span className="webui2-sidebar-avatar">{(identity.userId || "U").slice(0, 1).toUpperCase()}</span><div><strong>{identity.tenantKey || t("webui2.brand")}</strong><small>{identity.userId || "—"}</small></div></div> : null}
+        {identity ? <SidebarAccountFooter identity={identity} onOpenSettings={onOpenSettings} /> : null}
       </div>
       <hr aria-label={t("webui2.resizeSidebar")} aria-orientation="vertical" aria-valuemax={sidebarMaxWidth} aria-valuemin={sidebarMinWidth} aria-valuenow={sidebarWidth} className="webui2-sidebar-resize" onKeyDown={resizeWithKeyboard} onPointerDown={startResize} tabIndex={0} />
     </aside>

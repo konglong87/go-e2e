@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../lib/i18n";
 import type { SessionListFilters, SessionRef, SessionSummary } from "../types";
+import type { IdentityConfig } from "../../lib/types";
 import { SessionSidebar } from "./SessionSidebar";
 import { SESSION_REF_MIME_TYPE } from "./sessionContextDrag";
 
@@ -11,6 +12,7 @@ const sessions: SessionSummary[] = [
   { ref: "tenant:beta", source: "tenant", title: "Design review", status: "completed", updatedAt: "2026-09-04T00:00:00.000Z", shortID: "beta" },
   { ref: "local:workspace", source: "local", title: "Local workspace", status: "idle", updatedAt: "2026-09-03T00:00:00.000Z", shortID: "workspace" }
 ];
+const identity: IdentityConfig = { apiBase: "/api", apiToken: "token", mobileJwt: "", tenantKey: "webui-local", userId: "webui-local-user", deviceId: "device", model: "model" };
 
 describe("SessionSidebar", () => {
   let host: HTMLDivElement;
@@ -20,6 +22,7 @@ describe("SessionSidebar", () => {
   let storage: Map<string, string>;
   let select = vi.fn<(ref: SessionRef) => void>();
   let drag = vi.fn<(ref: SessionRef) => void>();
+  let openSettings = vi.fn<() => void>();
 
   beforeEach(() => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -32,6 +35,7 @@ describe("SessionSidebar", () => {
     selected = "tenant:alpha";
     select = vi.fn<(ref: SessionRef) => void>();
     drag = vi.fn<(ref: SessionRef) => void>();
+    openSettings = vi.fn<() => void>();
     Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
   });
 
@@ -41,13 +45,13 @@ describe("SessionSidebar", () => {
   });
 
   function render(items = sessions) {
-    act(() => root.render(<I18nProvider><SessionSidebar sessions={items} filters={filters} selectedRef={selected} onCreateSession={vi.fn()} onFiltersChange={(next) => { filters = next; }} onSelect={select} onContextDragStart={drag} onOpenSettings={vi.fn()} onOpenSearch={vi.fn()} onHideSidebar={vi.fn()} /></I18nProvider>));
+    act(() => root.render(<I18nProvider><SessionSidebar identity={identity} sessions={items} filters={filters} selectedRef={selected} onCreateSession={vi.fn()} onFiltersChange={(next) => { filters = next; }} onSelect={select} onContextDragStart={drag} onOpenSettings={openSettings} onOpenSearch={vi.fn()} onHideSidebar={vi.fn()} /></I18nProvider>));
   }
 
   function renderControlled() {
     function Harness() {
       const [currentFilters, setCurrentFilters] = useState<SessionListFilters>({ query: "", statuses: [] });
-      return <SessionSidebar sessions={sessions} filters={currentFilters} selectedRef={selected} onCreateSession={vi.fn()} onFiltersChange={setCurrentFilters} onSelect={select} onContextDragStart={drag} onOpenSettings={vi.fn()} onOpenSearch={vi.fn()} onHideSidebar={vi.fn()} />;
+      return <SessionSidebar identity={identity} sessions={sessions} filters={currentFilters} selectedRef={selected} onCreateSession={vi.fn()} onFiltersChange={setCurrentFilters} onSelect={select} onContextDragStart={drag} onOpenSettings={openSettings} onOpenSearch={vi.fn()} onHideSidebar={vi.fn()} />;
     }
     act(() => root.render(<I18nProvider><Harness /></I18nProvider>));
   }
@@ -99,6 +103,20 @@ describe("SessionSidebar", () => {
     expect(host.querySelector('[data-status="running"]')?.getAttribute("data-motion")).toBe("spin");
     expect(host.querySelector('[data-status="completed"]')?.getAttribute("data-motion")).toBeNull();
     expect(host.querySelector(".webui2-session-title")?.nextElementSibling?.classList.contains("webui2-session-status-icon")).toBe(true);
+  });
+
+  it("moves settings into the account menu without adding a fixed-height launcher", () => {
+    render();
+    expect(host.querySelector(".webui2-settings-launcher")).toBeNull();
+    const account = host.querySelector<HTMLButtonElement>(".webui2-account-trigger");
+    expect(account?.textContent).toContain("webui-local");
+    act(() => account?.click());
+    expect(host.querySelector('[role="menu"]')).not.toBeNull();
+    const settings = host.querySelector<HTMLButtonElement>('[role="menuitem"]');
+    expect(settings?.textContent).toBe("System settings");
+    act(() => settings?.click());
+    expect(openSettings).toHaveBeenCalledTimes(1);
+    expect(host.querySelector('[role="menu"]')).toBeNull();
   });
 
   it("groups by full workspace path and includes that path in search", () => {

@@ -117,3 +117,15 @@ test("status motion respects preferences and compact sidebar widths in both them
     }
   }
 });
+
+test("account footer replaces the fixed settings button and opens settings from the menu", async ({ page }) => {
+  const sidebar = page.locator(".webui2-sidebar");
+  await expect(sidebar.locator(".webui2-settings-launcher")).toHaveCount(0);
+  const account = sidebar.locator(".webui2-account-trigger");
+  await expect(account).toContainText("webui-local");
+  await account.click();
+  await expect(sidebar.getByRole("menu")).toBeVisible();
+  await expect(sidebar.getByRole("menuitem", { name: "System settings" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(sidebar.getByRole("menu")).toHaveCount(0);
+});
