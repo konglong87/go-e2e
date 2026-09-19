@@ -10,9 +10,11 @@
 .webui2-skill-picker-header strong { font-size: 13px; font-weight: 700; }
 .webui2-skill-picker-header span { color: var(--webui2-text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .webui2-skill-picker-spinner { animation: webui2-skill-picker-spin 1s linear infinite; color: var(--webui2-accent); }
-.webui2-skill-picker-search { align-items: center; display: flex; gap: 7px; min-height: 32px; padding: 0 8px; border: 1px solid var(--webui2-border); border-radius: 6px; background: var(--webui2-bg); color: var(--webui2-text-muted); }
-.webui2-skill-picker-search:focus-within { border-color: var(--webui2-accent); outline: 2px solid var(--webui2-accent-surface); }
-.webui2-skill-picker-search input { width: 100%; min-width: 0; padding: 0; border: 0; outline: 0; background: transparent; color: var(--webui2-text); font: inherit; font-size: 12px; }
+.webui2-skill-picker-search { align-items: center; display: flex; gap: 7px; min-height: 32px; padding: 0 8px; border: 0; outline: 0; background: transparent; color: var(--webui2-text-muted); }
+.webui2-skill-picker-search:focus-within { border: 0; outline: 0; box-shadow: none; }
+.webui2-skill-picker-search input { width: 100%; min-width: 0; padding: 0; border: 0; outline: 0; box-shadow: none; background: transparent; color: var(--webui2-text); font: inherit; font-size: 12px; }
+.webui2-page .webui2-skill-picker-search input:focus,
+.webui2-page .webui2-skill-picker-search input:focus-visible { border: 0; outline: 0; box-shadow: none; }
 .webui2-skill-picker-options { display: grid; gap: 3px; }
 .webui2-page .webui2-skill-picker-option { align-items: center; display: flex; gap: 9px; width: 100%; min-width: 0; padding: 9px 8px; border: 0; border-radius: 7px; background: transparent; color: var(--webui2-text); text-align: left; }
 .webui2-page .webui2-skill-picker-option:hover, .webui2-page .webui2-skill-picker-option.is-active { background: var(--webui2-surface-muted); }

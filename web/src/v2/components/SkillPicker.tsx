@@ -27,6 +27,8 @@ export function SkillPicker({ identity, cwd, disabled = false, selectedName, onC
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const autoSelectedKeyRef = useRef("");
+  const manuallySelectedQueryRef = useRef<string | null>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [items, setItems] = useState<AgentSlashCommand[]>([]);
@@ -41,6 +43,7 @@ export function SkillPicker({ identity, cwd, disabled = false, selectedName, onC
     return `${item.name} ${item.description ?? ""}`.toLowerCase().includes(needle);
   });
   const options = [{ name: "", description: defaultDescription }, ...filteredItems];
+  const firstFilteredName = filteredItems[0]?.name ?? "";
   const selectedItem = skillItems.find((item) => item.name === selectedName);
   const selectedLabel = selectedItem?.name || selectedName || label;
   const listLabel = zh ? "可用 Skills" : "Available Skills";
@@ -59,6 +62,20 @@ export function SkillPicker({ identity, cwd, disabled = false, selectedName, onC
     });
     return () => { active = false; };
   }, [cwd, identity, open]);
+
+  useEffect(() => {
+    const normalizedQuery = query.trim();
+    if (!normalizedQuery) {
+      autoSelectedKeyRef.current = "";
+      manuallySelectedQueryRef.current = null;
+      return;
+    }
+    if (!open || !firstFilteredName || manuallySelectedQueryRef.current === normalizedQuery) return;
+    const selectionKey = `${normalizedQuery}\u0000${firstFilteredName}`;
+    if (autoSelectedKeyRef.current === selectionKey) return;
+    autoSelectedKeyRef.current = selectionKey;
+    onChange(firstFilteredName);
+  }, [firstFilteredName, onChange, open, query]);
 
   const selectedIndex = Math.max(0, options.findIndex((option) => option.name === selectedName));
   useEffect(() => {
@@ -84,6 +101,8 @@ export function SkillPicker({ identity, cwd, disabled = false, selectedName, onC
   function commit(index: number): void {
     const option = options[index];
     if (!option) return;
+    manuallySelectedQueryRef.current = query.trim() || null;
+    autoSelectedKeyRef.current = "";
     onChange(option.name);
     setOpen(false);
     triggerRef.current?.focus();

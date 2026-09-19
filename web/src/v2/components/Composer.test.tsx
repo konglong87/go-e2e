@@ -219,6 +219,43 @@ describe("Composer", () => {
     expect(send.mock.calls[0][0].text).toBe("/新会话\n\n请帮我创建一个新的会话");
   });
 
+  it("selects the first filtered Skill and keeps a manual selection for the current query", async () => {
+    const commands = [
+      { name: "新会话", description: "Create a focused new session", source: "skill" },
+      { name: "新建项目", description: "Start a new project", source: "skill" },
+      { name: "新建文档", description: "Start a new document", source: "skill" },
+      { name: "新建任务", description: "Start a new task", source: "skill" },
+      { name: "新建报告", description: "Start a new report", source: "skill" },
+      { name: "新建页面", description: "Start a new page", source: "skill" },
+      { name: "新建流程", description: "Start a new workflow", source: "skill" },
+      { name: "新建看板", description: "Start a new board", source: "skill" },
+      { name: "新建目录", description: "Start a new directory", source: "skill" }
+    ];
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(commands), { status: 200 })));
+    render({ cwd: "/work/project" });
+
+    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="Select Skill"]')?.click());
+    await act(async () => { await Promise.resolve(); });
+
+    const search = host.querySelector<HTMLInputElement>('input[aria-label="Search Skill"]');
+    expect(search).not.toBeNull();
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    act(() => {
+      setter?.call(search, "新");
+      search?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    expect(host.querySelector<HTMLButtonElement>('[role="option"][aria-selected="true"]')?.textContent).toContain("新会话");
+    const defaultOption = Array.from(host.querySelectorAll<HTMLButtonElement>('[role="option"]')).find((button) => button.textContent?.includes("No Skill") || button.textContent?.includes("不指定 Skill"));
+    expect(defaultOption?.getAttribute("aria-selected")).toBe("false");
+
+    act(() => Array.from(host.querySelectorAll<HTMLButtonElement>('[role="option"]')).find((button) => button.textContent?.includes("新建项目"))?.click());
+    expect(host.querySelector<HTMLButtonElement>('button[aria-label="Select Skill"]')?.textContent).toContain("新建项目");
+    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="Select Skill"]')?.click());
+    await act(async () => { await Promise.resolve(); });
+    expect(host.querySelector<HTMLButtonElement>('button[aria-label="Select Skill"]')?.textContent).toContain("新建项目");
+  });
+
   it("does not duplicate a manually typed selected Skill command", () => {
     expect(applySelectedSkill("/新会话\n\n继续刚才的工作", "新会话")).toBe("/新会话\n\n继续刚才的工作");
     expect(applySelectedSkill("继续刚才的工作", "新会话")).toBe("/新会话\n\n继续刚才的工作");
