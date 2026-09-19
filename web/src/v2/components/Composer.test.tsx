@@ -203,7 +203,10 @@ describe("Composer", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(commands), { status: 200 })));
     const { send } = render({ cwd: "/work/project" });
 
-    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="Select Skill"]')?.click());
+    const skillTrigger = host.querySelector<HTMLButtonElement>('button[aria-label="Select Skill"]');
+    expect(skillTrigger?.textContent).toContain("Select Skill");
+    expect(skillTrigger?.querySelectorAll("svg")).toHaveLength(1);
+    act(() => skillTrigger?.click());
     await act(async () => { await Promise.resolve(); });
 
     const menu = host.querySelector<HTMLElement>(".webui2-skill-picker-menu");

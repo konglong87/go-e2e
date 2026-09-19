@@ -1,11 +1,10 @@
 .webui2-skill-picker { position: relative; min-width: 0; flex: 0 1 auto; }
-.webui2-page .webui2-skill-picker-trigger { align-items: center; background: var(--webui2-surface); border: 1px solid var(--webui2-border); border-radius: 8px; color: var(--webui2-text); display: inline-flex; flex: 0 1 auto; gap: 6px; height: 32px; max-width: 220px; min-width: 116px; padding: 0 9px; }
-.webui2-page .webui2-skill-picker-trigger:hover:not(:disabled) { background: var(--webui2-surface-muted); border-color: var(--webui2-text-muted); }
+.webui2-page .webui2-skill-picker-trigger { align-items: center; background: transparent; border: 0; border-radius: 6px; color: var(--webui2-text-muted); display: inline-flex; flex: 0 1 auto; font: inherit; font-size: 12px; font-weight: 550; gap: 4px; height: 30px; max-width: 150px; min-width: 0; padding: 0 5px; }
+.webui2-page .webui2-skill-picker-trigger:hover:not(:disabled) { background: var(--webui2-surface-muted); color: var(--webui2-text); }
 .webui2-page .webui2-skill-picker-trigger:focus-visible { border-color: var(--webui2-accent); outline: 2px solid var(--webui2-accent-surface); outline-offset: 1px; }
-.webui2-page .webui2-skill-picker-trigger svg:first-child { color: var(--webui2-accent); flex: 0 0 auto; }
 .webui2-page .webui2-skill-picker-trigger svg:last-child { color: var(--webui2-text-muted); flex: 0 0 auto; }
 .webui2-page .webui2-skill-picker-trigger span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.webui2-page .webui2-skill-picker-trigger.has-selection { border-color: color-mix(in srgb, var(--webui2-accent) 52%, var(--webui2-border)); }
+.webui2-page .webui2-skill-picker-trigger.has-selection { color: var(--webui2-text); }
 .webui2-skill-picker-menu { position: absolute; z-index: 60; bottom: calc(100% + 10px); left: 0; display: grid; gap: 8px; width: min(380px, calc(100vw - 32px)); max-height: min(390px, 54vh); min-height: 80px; overflow-y: auto; padding: 10px; border: 1px solid var(--webui2-border); border-radius: 10px; background: var(--webui2-surface); color: var(--webui2-text); box-shadow: var(--webui2-shadow-card); }
 .webui2-skill-picker-header { align-items: center; display: flex; justify-content: space-between; min-height: 24px; padding: 0 4px; }
 .webui2-skill-picker-header strong { font-size: 13px; font-weight: 700; }

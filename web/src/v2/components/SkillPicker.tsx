@@ -19,7 +19,7 @@ type SkillPickerProps = {
 export function SkillPicker({ identity, cwd, disabled = false, selectedName, onChange }: SkillPickerProps): JSX.Element {
   const { language } = useI18n();
   const zh = language === "zh";
-  const label = zh ? "选择 Skill" : "Select Skill";
+  const label = zh ? "选择技能" : "Select Skill";
   const defaultLabel = zh ? "不指定 Skill" : "No Skill";
   const defaultDescription = zh ? "使用会话默认能力" : "Use the session default";
   const menuID = useId();
@@ -124,7 +124,6 @@ export function SkillPicker({ identity, cwd, disabled = false, selectedName, onC
       title={selectedItem?.description ? `${selectedItem.name}: ${selectedItem.description}` : selectedLabel}
       type="button"
     >
-      <Sparkles aria-hidden="true" size={17} />
       <span>{selectedLabel}</span>
       <ChevronDown aria-hidden="true" size={14} />
     </button>
