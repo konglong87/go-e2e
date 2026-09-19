@@ -60,17 +60,20 @@ describe("NewSessionDialog", () => {
     });
   }
 
-  it("uses the saved primary model for the default provider", async () => {
+  it("inherits the server runtime route without exposing provider or model controls", async () => {
     vi.mocked(getStatus).mockResolvedValueOnce({ provider: "custom", model: "gpt-5.6-sol", runtime_defaults: { configured: true, needs_setup: false, provider: "custom", model: "gpt-5.6-sol" } });
     render();
 
-    await vi.waitFor(() => expect(host.querySelector<HTMLInputElement>('input[aria-label="Model"]')?.value).toBe("gpt-5.6-sol"));
-    expect(host.querySelector<HTMLSelectElement>('select[aria-label="Provider"]')?.value).toBe("custom");
+    await vi.waitFor(() => expect(getStatus).toHaveBeenCalled());
+    expect(host.querySelector('input[aria-label="Model"]')).toBeNull();
+    expect(host.querySelector('select[aria-label="Provider"]')).toBeNull();
 
     setValue('input[aria-label="Session title"]', "Primary model test");
     await act(async () => host.querySelector<HTMLButtonElement>('button[type="submit"]')?.click());
 
-    expect(client.create).toHaveBeenCalledWith(identity, expect.objectContaining({ provider: "custom", model: "gpt-5.6-sol" }));
+    const input = vi.mocked(client.create).mock.calls[0]?.[1];
+    expect(input).not.toHaveProperty("provider");
+    expect(input).not.toHaveProperty("model");
   });
 
   it("focuses its title, uses the default title when empty, and creates once with the optional instruction", async () => {

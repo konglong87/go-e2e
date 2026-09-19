@@ -114,7 +114,22 @@ describe("HTTP session control client", () => {
     expect(url).toBe("/api/tenant/session-control/sessions");
     expect(request.method).toBe("POST");
     expect(new Headers(request.headers).get("Idempotency-Key")).toBe("create-1");
-    expect(JSON.parse(String(request.body))).toEqual({ title: "Release coordination", model: "test-model", initial_text: "Plan the release" });
+    expect(JSON.parse(String(request.body))).toEqual({ title: "Release coordination", initial_text: "Plan the release" });
+  });
+
+  it("keeps an explicit runtime route override when supplied", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ data: operation }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createHTTPSessionControlClient().create(identity, {
+      title: "Use alternate route",
+      provider: "provider-b",
+      model: "model-b",
+      idempotencyKey: "create-route"
+    });
+
+    const [, request] = (fetchMock.mock.calls as unknown as Array<[string, RequestInit]>)[0] as [string, RequestInit];
+    expect(JSON.parse(String(request.body))).toMatchObject({ title: "Use alternate route", provider: "provider-b", model: "model-b" });
   });
 
   it("sends message content, references, and sanitized attachment metadata in one idempotent request", async () => {

@@ -5,7 +5,7 @@ import type { IdentityConfig } from "../../lib/types";
 import { sessionControlErrorCode } from "../api/sessionControlClient";
 import { useCreateSession } from "../api/sessionControlQueries";
 import { validateAgentWorkspace } from "../../lib/api";
-import { useRuntimeCatalog } from "../api/useSessionRuntime";
+import { useRuntimeDefaults } from "../api/useSessionRuntime";
 import type { OperationResult } from "../types";
 
 type NewSessionDialogProps = {
@@ -25,23 +25,14 @@ export function NewSessionDialog({ identity, open, defaultCWD, onSelectWorkspace
   const create = useCreateSession(identity);
   const [title, setTitle] = useState("");
   const [initialText, setInitialText] = useState("");
-  const [provider, setProvider] = useState(identity.provider ?? "");
-  const [model, setModel] = useState(identity.model);
-  const modelEditedRef = useRef(false);
   const wasOpenRef = useRef(false);
   const [cwd, setCWD] = useState<string | null>(null);
   const [promptMode, setPromptMode] = useState("code");
   const [validating, setValidating] = useState(false);
   const [selectingWorkspace, setSelectingWorkspace] = useState(false);
   const [workspaceError, setWorkspaceError] = useState("");
-  const { providers, models, status } = useRuntimeCatalog(identity, open);
+  const status = useRuntimeDefaults(identity, open);
   const runtimeDefaults = status.data?.runtime_defaults;
-  const defaultProvider = runtimeDefaults?.provider?.trim() || status.data?.provider?.trim() || identity.provider?.trim() || "";
-  const defaultModel = runtimeDefaults?.model?.trim() || status.data?.model?.trim() || identity.model.trim();
-  const providerOptions = [...(providers.data ?? [])];
-  if (defaultProvider && !providerOptions.some((item) => item.name === defaultProvider)) {
-    providerOptions.unshift({ name: defaultProvider, model: defaultModel });
-  }
   const workspace = cwd ?? defaultCWD ?? status.data?.workspace ?? "";
   const workspaceName = workspace.split(/[\\/]/).filter(Boolean).at(-1) || workspace || t("webui2.unknownWorkspace");
   const busy = create.isPending || validating || selectingWorkspace;
@@ -59,19 +50,9 @@ export function NewSessionDialog({ identity, open, defaultCWD, onSelectWorkspace
     }
     if (wasOpenRef.current) return;
     wasOpenRef.current = true;
-    modelEditedRef.current = false;
     setCWD(null);
     setWorkspaceError("");
-    setProvider(defaultProvider);
-    setModel(defaultModel);
-  }, [defaultModel, defaultProvider, open]);
-
-  useEffect(() => {
-    if (open && !modelEditedRef.current && (!provider || provider === defaultProvider)) {
-      if (!provider && defaultProvider) setProvider(defaultProvider);
-      if (defaultModel) setModel(defaultModel);
-    }
-  }, [defaultModel, defaultProvider, model, open, provider]);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -129,7 +110,7 @@ export function NewSessionDialog({ identity, open, defaultCWD, onSelectWorkspace
     setErrorCode("");
     setWorkspaceError("");
     try {
-      if (runtimeDefaults?.needs_setup && (!provider.trim() || !model.trim())) {
+      if (runtimeDefaults?.needs_setup) {
         setErrorCode("runtime_not_configured");
         return;
       }
@@ -150,10 +131,10 @@ export function NewSessionDialog({ identity, open, defaultCWD, onSelectWorkspace
         setValidating(false);
       }
       const trimmedInitialText = initialText.trim();
-      const fingerprint = JSON.stringify({ title: trimmedTitle, initialText: trimmedInitialText, provider, model, cwd: validatedCWD, promptMode });
+      const fingerprint = JSON.stringify({ title: trimmedTitle, initialText: trimmedInitialText, cwd: validatedCWD, promptMode });
       const submission = submissionRef.current?.fingerprint === fingerprint ? submissionRef.current : { fingerprint, idempotencyKey: crypto.randomUUID() };
       submissionRef.current = submission;
-      const result = await create.mutateAsync({ title: trimmedTitle, ...(trimmedInitialText ? { initialText: trimmedInitialText } : {}), provider, model, cwd: validatedCWD, promptMode, idempotencyKey: submission.idempotencyKey });
+      const result = await create.mutateAsync({ title: trimmedTitle, ...(trimmedInitialText ? { initialText: trimmedInitialText } : {}), cwd: validatedCWD, promptMode, idempotencyKey: submission.idempotencyKey });
       submissionRef.current = null;
       setTitle("");
       setInitialText("");
@@ -174,10 +155,6 @@ export function NewSessionDialog({ identity, open, defaultCWD, onSelectWorkspace
           <button aria-pressed={promptMode === "code"} disabled={busy} onClick={() => setPromptMode("code")} type="button"><Code size={15} />Code</button>
         </fieldset>
         <label>{t("webui2.sessionTitle")}<input aria-label={t("webui2.sessionTitle")} autoComplete="off" disabled={busy} onChange={(event) => { setErrorCode(""); setTitle(event.target.value); }} placeholder={t("webui2.defaultSessionTitle")} ref={titleRef} value={title} /></label>
-        <div className="webui2-session-routing">
-          <label>Provider<select aria-label="Provider" disabled={busy} value={provider} onChange={(event) => { const nextProvider = event.target.value; setProvider(nextProvider); modelEditedRef.current = false; const selected = providerOptions.find((item) => item.name === nextProvider); if (selected?.model) setModel(selected.model); else if (!nextProvider) setModel(defaultModel); }}>{providerOptions.length === 0 ? <option value="">{t("webui2.provider.default")}</option> : null}{providerOptions.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}</select></label>
-          <label>Model<input aria-label="Model" list={`${titleID}-models`} disabled={busy} value={model} onChange={(event) => { modelEditedRef.current = true; setModel(event.target.value); }} /><datalist id={`${titleID}-models`}>{[...new Set([...(models.data ?? []), ...(providers.data ?? []).map((item) => item.model)])].map((item) => <option key={item} value={item} />)}</datalist></label>
-        </div>
         <div className="webui2-workspace-picker">
           <div className="webui2-workspace-picker-heading">
             <span>{t("webui2.workspaceSection")}</span>
@@ -192,7 +169,7 @@ export function NewSessionDialog({ identity, open, defaultCWD, onSelectWorkspace
           </div>
         </div>
         {workspaceError ? <p role="alert">{workspaceError}</p> : null}
-        {providers.isError ? <p role="alert">{t("webui2.error.network_unavailable")}</p> : null}
+        {status.isError ? <p role="alert">{t("webui2.error.network_unavailable")}</p> : null}
         <label>{t("webui2.initialInstruction")}<textarea aria-label={t("webui2.initialInstruction")} disabled={busy} onChange={(event) => setInitialText(event.target.value)} rows={3} value={initialText} /></label>
         {errorCode ? <p role="alert">{t(`webui2.error.${errorCode}`)}</p> : null}
         <footer><button disabled={busy} onClick={close} type="button">{t("webui2.cancel")}</button><button disabled={busy} type="submit">{busy ? t("webui2.creatingSession") : t("webui2.createSession")}</button></footer>

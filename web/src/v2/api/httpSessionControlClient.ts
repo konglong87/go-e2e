@@ -79,8 +79,8 @@ export function createHTTPSessionControlClient(): SessionControlClient {
         method: "POST",
         body: {
           title: input.title.trim(),
-          model: input.model ?? identity.model,
-          ...((input.provider ?? identity.provider)?.trim() ? { provider: (input.provider ?? identity.provider)!.trim() } : {}),
+          ...(input.model?.trim() ? { model: input.model.trim() } : {}),
+          ...(input.provider?.trim() ? { provider: input.provider.trim() } : {}),
           ...(input.cwd?.trim() ? { cwd: input.cwd.trim() } : {}),
           ...runtimeOptions(input),
           ...(input.initialText?.trim() ? { initial_text: input.initialText.trim() } : {})

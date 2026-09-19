@@ -363,29 +363,35 @@
 .webui2-page .webui2-route-error { border: 1px solid var(--webui2-border); border-radius: 6px; padding: 16px; }
 .webui2-page .webui2-route-error button { background: var(--webui2-surface-muted); border: 1px solid var(--webui2-border); border-radius: 6px; height: var(--webui2-control-height); padding: 0 10px; }
 .webui2-page .webui2-new-session-backdrop { background: var(--webui2-overlay); border: 0; inset: 0; position: fixed; z-index: 40; }
-.webui2-page .webui2-new-session-dialog { background: var(--webui2-surface); border: 1px solid var(--webui2-border); border-radius: 16px; left: 50%; max-width: calc(100vw - 32px); max-height: calc(100dvh - 32px); overflow-y: auto; position: fixed; top: 50%; transform: translate(-50%, -50%); width: min(500px, 100%); z-index: 41; }
-.webui2-page .webui2-new-session-dialog header { align-items: center; border-bottom: 1px solid var(--webui2-border); display: flex; justify-content: space-between; min-height: 52px; padding: 0 14px; }
-.webui2-page .webui2-new-session-dialog h2 { font-size: 15px; margin: 0; }
-.webui2-page .webui2-new-session-dialog header button { background: transparent; border: 0; border-radius: 4px; color: var(--webui2-text); display: inline-flex; height: 30px; justify-content: center; width: 30px; }
-.webui2-page .webui2-new-session-dialog form { display: grid; gap: 14px; padding: 16px; }
-.webui2-page .webui2-session-mode { display: flex; gap: 4px; background: var(--webui2-surface-muted); border: 0; margin: 0; min-width: 0; border-radius: 8px; padding: 4px; }
-.webui2-page .webui2-session-mode button { display: inline-flex; flex: 1; justify-content: center; align-items: center; gap: 6px; padding: 8px; background: transparent; color: var(--webui2-text-muted); border: 1px solid transparent; border-radius: 6px; }
+.webui2-page .webui2-new-session-dialog { background: var(--webui2-surface); border: 1px solid var(--webui2-border); border-radius: 8px; left: 50%; max-width: calc(100vw - 32px); max-height: calc(100dvh - 32px); overflow-y: auto; position: fixed; top: 50%; transform: translate(-50%, -50%); width: min(520px, 100%); z-index: 41; }
+.webui2-page .webui2-new-session-dialog header { align-items: center; border-bottom: 1px solid var(--webui2-border-subtle); display: flex; justify-content: space-between; min-height: 58px; padding: 0 18px; }
+.webui2-page .webui2-new-session-dialog h2 { color: var(--webui2-text); font-size: 18px; font-weight: 760; letter-spacing: 0; margin: 0; }
+.webui2-page .webui2-new-session-dialog header button { align-items: center; background: transparent; border: 0; border-radius: 7px; color: var(--webui2-text-muted); display: inline-flex; height: 32px; justify-content: center; padding: 0; width: 32px; }
+.webui2-page .webui2-new-session-dialog header button:hover:not(:disabled) { background: var(--webui2-surface-muted); color: var(--webui2-text); }
+.webui2-page .webui2-new-session-dialog form { display: grid; gap: 16px; padding: 18px; }
+.webui2-page .webui2-session-mode { background: var(--webui2-surface-muted); border: 1px solid var(--webui2-border-subtle); border-radius: 7px; display: flex; gap: 4px; margin: 0; min-width: 0; padding: 3px; }
+.webui2-page .webui2-session-mode button { align-items: center; background: transparent; border: 1px solid transparent; border-radius: 5px; color: var(--webui2-text-muted); display: inline-flex; flex: 1; font-size: 13px; font-weight: 650; gap: 7px; justify-content: center; min-height: 36px; padding: 0 8px; }
+.webui2-page .webui2-session-mode button:hover:not(:disabled) { color: var(--webui2-text); }
 .webui2-page .webui2-session-mode button[aria-pressed="true"] { background: var(--webui2-surface); border-color: var(--webui2-border); color: var(--webui2-text); }
-.webui2-page .webui2-session-routing { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
-.webui2-page .webui2-new-session-dialog label { color: var(--webui2-text-muted); display: grid; font-size: 13px; gap: 6px; }
-.webui2-page .webui2-new-session-dialog input, .webui2-page .webui2-new-session-dialog textarea, .webui2-page .webui2-new-session-dialog select { background: var(--webui2-surface); border: 1px solid var(--webui2-border); border-radius: 4px; color: var(--webui2-text); font: inherit; padding: 8px; resize: vertical; min-width: 0; max-width: 100%; }
+.webui2-page .webui2-new-session-dialog label { color: var(--webui2-text-muted); display: grid; font-size: 12px; font-weight: 700; gap: 7px; }
+.webui2-page .webui2-new-session-dialog input, .webui2-page .webui2-new-session-dialog textarea { background: var(--webui2-surface); border: 1px solid var(--webui2-border); border-radius: 6px; color: var(--webui2-text); font: inherit; font-size: 13px; min-width: 0; max-width: 100%; padding: 9px 11px; resize: vertical; }
+.webui2-page .webui2-new-session-dialog input { min-height: 40px; }
+.webui2-page .webui2-new-session-dialog textarea { line-height: 1.5; min-height: 96px; }
+.webui2-page .webui2-new-session-dialog input:focus, .webui2-page .webui2-new-session-dialog textarea:focus { border-color: var(--webui2-accent); outline: 2px solid color-mix(in srgb, var(--webui2-accent) 18%, transparent); outline-offset: 0; }
 .webui2-page .webui2-workspace-picker { display: grid; gap: 7px; }
-.webui2-page .webui2-workspace-picker-heading { align-items: center; color: var(--webui2-text-muted); display: flex; font-size: 13px; justify-content: space-between; gap: 10px; }
-.webui2-page .webui2-workspace-picker-action { align-items: center; background: transparent; border: 1px solid var(--webui2-border); border-radius: 5px; color: var(--webui2-text); cursor: pointer; display: inline-flex; flex: 0 0 auto; font: inherit; gap: 6px; min-height: 30px; padding: 0 9px; }
+.webui2-page .webui2-workspace-picker-heading { align-items: center; color: var(--webui2-text-muted); display: flex; font-size: 12px; font-weight: 700; justify-content: space-between; gap: 10px; }
+.webui2-page .webui2-workspace-picker-action { align-items: center; background: var(--webui2-surface); border: 1px solid var(--webui2-border); border-radius: 6px; color: var(--webui2-text); cursor: pointer; display: inline-flex; flex: 0 0 auto; font: inherit; font-size: 12px; font-weight: 650; gap: 6px; min-height: 34px; padding: 0 10px; }
 .webui2-page .webui2-workspace-picker-action:hover:not(:disabled) { background: var(--webui2-surface-muted); }
 .webui2-page .webui2-workspace-picker-action:disabled { cursor: default; opacity: .55; }
-.webui2-page .webui2-workspace-picker-copy { background: var(--webui2-surface-muted); border: 1px solid var(--webui2-border); border-radius: 5px; display: grid; gap: 3px; min-width: 0; padding: 9px 10px; }
-.webui2-page .webui2-workspace-picker-name { color: var(--webui2-text); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.webui2-page .webui2-workspace-picker-location { color: var(--webui2-text-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.webui2-page .webui2-new-session-dialog [role="alert"] { color: var(--webui2-danger); font-size: 13px; margin: 0; }
-.webui2-page .webui2-new-session-dialog footer { display: flex; gap: 8px; justify-content: flex-end; }
-.webui2-page .webui2-new-session-dialog footer button { background: var(--webui2-surface-muted); border: 1px solid var(--webui2-border); border-radius: 4px; color: var(--webui2-text); height: var(--webui2-control-height); padding: 0 10px; }
+.webui2-page .webui2-workspace-picker-copy { background: var(--webui2-bg); border: 1px solid var(--webui2-border-subtle); border-radius: 7px; display: grid; gap: 4px; min-width: 0; padding: 11px 12px; }
+.webui2-page .webui2-workspace-picker-name { color: var(--webui2-text); font-size: 14px; font-weight: 720; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.webui2-page .webui2-workspace-picker-location { color: var(--webui2-text-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.webui2-page .webui2-new-session-dialog [role="alert"] { background: var(--webui2-danger-surface); border: 1px solid color-mix(in srgb, var(--webui2-danger) 24%, var(--webui2-border)); border-radius: 6px; color: var(--webui2-danger); font-size: 12px; line-height: 1.45; margin: 0; padding: 9px 10px; }
+.webui2-page .webui2-new-session-dialog footer { border-top: 1px solid var(--webui2-border-subtle); display: flex; gap: 8px; justify-content: flex-end; margin-top: 2px; padding-top: 14px; }
+.webui2-page .webui2-new-session-dialog footer button { background: var(--webui2-surface); border: 1px solid var(--webui2-border); border-radius: 6px; color: var(--webui2-text); font-size: 13px; font-weight: 650; min-height: 36px; padding: 0 13px; }
+.webui2-page .webui2-new-session-dialog footer button:hover:not(:disabled) { background: var(--webui2-surface-muted); }
 .webui2-page .webui2-new-session-dialog footer button[type="submit"] { background: var(--webui2-accent); border-color: var(--webui2-accent); color: var(--webui2-accent-text); }
+.webui2-page .webui2-new-session-dialog footer button[type="submit"]:hover:not(:disabled) { filter: brightness(.95); }
 .webui2-page .webui2-session-search-layer { align-items: flex-start; display: flex; inset: 0; justify-content: center; padding: max(8vh, 42px) 24px 24px; position: fixed; z-index: 50; }
 .webui2-page .webui2-session-search-backdrop { background: rgba(20, 28, 36, .42); border: 0; inset: 0; position: absolute; }
 .webui2-page .webui2-session-search-dialog { background: var(--webui2-surface); border: 1px solid var(--webui2-border); border-radius: 24px; box-shadow: 0 24px 80px rgba(20, 28, 36, .24); display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; max-height: calc(100dvh - max(8vh, 42px) - 24px); max-width: 780px; min-height: 360px; overflow: hidden; position: relative; width: 100%; }
