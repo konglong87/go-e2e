@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { IdentityConfig } from "../../lib/types";
 import type { SessionControlClient } from "./sessionControlClient";
 import { SessionControlClientProvider, SessionControlError, sessionControlErrorCode, sessionControlQueryKeys } from "./sessionControlClient";
-import { useArchiveSession, useCreateSession, useSendSession, useSessionDetail, useSessionList, useStopSession } from "./sessionControlQueries";
+import { useArchiveSession, useCreateSession, useRenameSession, useSendSession, useSessionDetail, useSessionList, useStopSession } from "./sessionControlQueries";
 import type { OperationKind, OperationResult, SessionDetail, SessionSummary } from "../types";
 import { applyConversationEvents } from "./sessionEventReducer";
 
@@ -85,6 +85,41 @@ describe("session control query hooks", () => {
     expect(detailData).toEqual(detail);
     expect(queryClient.getQueryData(sessionControlQueryKeys.list(identity, { query: "", statuses: [] }))).toEqual([summary]);
     expect(queryClient.getQueryData(sessionControlQueryKeys.detail(identity, "tenant:alpha"))).toEqual(detail);
+  });
+
+  it("updates only the renamed title in matching list and detail caches, preserving streamed content and other identities", async () => {
+    const client = fakeClient({ rename: vi.fn().mockResolvedValue(undefined) });
+    const listKey = sessionControlQueryKeys.list(identity, { query: "", statuses: [] });
+    const detailKey = sessionControlQueryKeys.detail(identity, summary.ref);
+    const otherBaseKey = sessionControlQueryKeys.list({ ...identity, apiBase: "/other" }, { query: "", statuses: [] });
+    const otherTenantKey = sessionControlQueryKeys.list({ ...identity, tenantKey: "other" }, { query: "", statuses: [] });
+    queryClient.setQueryData(listKey, [summary]);
+    queryClient.setQueryData(detailKey, sentDetail);
+    queryClient.setQueryData(otherBaseKey, [summary]);
+    queryClient.setQueryData(otherTenantKey, [summary]);
+    let rename!: ReturnType<typeof useRenameSession>;
+    function Harness() { rename = useRenameSession(identity); return null; }
+    act(() => root.render(<QueryClientProvider client={queryClient}><SessionControlClientProvider client={client}><Harness /></SessionControlClientProvider></QueryClientProvider>));
+    await act(async () => { await rename.mutateAsync({ ref: summary.ref, id: 7, title: "  Release plan  " }); });
+    expect(client.rename).toHaveBeenCalledWith(identity, { ref: summary.ref, id: 7, title: "Release plan" });
+    expect(queryClient.getQueryData(listKey)).toEqual([{ ...summary, title: "Release plan" }]);
+    expect(queryClient.getQueryData(detailKey)).toEqual({ ...sentDetail, title: "Release plan" });
+    expect(queryClient.getQueryData(otherBaseKey)).toEqual([summary]);
+    expect(queryClient.getQueryData(otherTenantKey)).toEqual([summary]);
+    expect(queryClient.getQueryState(otherBaseKey)?.isInvalidated).toBe(false);
+    expect(queryClient.getQueryState(listKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(detailKey)?.isInvalidated).toBe(true);
+  });
+
+  it("does not change cached titles when rename fails", async () => {
+    const client = fakeClient({ rename: vi.fn().mockRejectedValue(new SessionControlError("network_unavailable")) });
+    const key = sessionControlQueryKeys.list(identity, { query: "", statuses: [] });
+    queryClient.setQueryData(key, [summary]);
+    let rename!: ReturnType<typeof useRenameSession>;
+    function Harness() { rename = useRenameSession(identity); return null; }
+    act(() => root.render(<QueryClientProvider client={queryClient}><SessionControlClientProvider client={client}><Harness /></SessionControlClientProvider></QueryClientProvider>));
+    await act(async () => { await expect(rename.mutateAsync({ ref: summary.ref, id: 7, title: "Changed" })).rejects.toMatchObject({ code: "network_unavailable" }); });
+    expect(queryClient.getQueryData(key)).toEqual([summary]);
   });
 
   it("forwards React Query cancellation signals to read-only client calls", async () => {

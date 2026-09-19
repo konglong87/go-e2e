@@ -1,32 +1,43 @@
-import { GripVertical } from "lucide-react";
-import { useEffect, useId, useRef, useState, type DragEvent, type ReactNode } from "react";
+import { GripVertical, Pencil } from "lucide-react";
+import { useEffect, useId, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useI18n } from "../../lib/i18n";
 import type { SessionRef, SessionSummary } from "../types";
 import { SessionHoverPreview } from "./SessionHoverPreview";
 import { SessionStatusIcon } from "./SessionStatusIcon";
+import { SessionTitleEditor } from "./SessionTitleEditor";
 import "./sessionSidebarExperience.css";
 
 const PREVIEW_OPEN_DELAY = 450;
 const PREVIEW_CLOSE_DELAY = 180;
+const CONTEXT_MENU_WIDTH = 180;
+const CONTEXT_MENU_HEIGHT = 48;
+const CONTEXT_MENU_MARGIN = 8;
 
 type Props = {
   session: SessionSummary;
   selected: boolean;
   onSelect: (ref: SessionRef) => void;
   onContextDragStart: (event: DragEvent<HTMLElement>, ref: SessionRef) => void;
-  actions: (showDetails: () => void) => ReactNode;
+  onRename?: (title: string) => Promise<boolean>;
+  actions: (showDetails: () => void, startRename?: () => void) => ReactNode;
 };
 
-export function SessionRow({ session, selected, onSelect, onContextDragStart, actions }: Props) {
+export function SessionRow({ session, selected, onSelect, onContextDragStart, onRename, actions }: Props) {
   const { t } = useI18n();
   const anchor = useRef<HTMLDivElement>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+  const selectRef = useRef<HTMLButtonElement>(null);
   const dragged = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ left: number; top: number } | null>(null);
+  const [editing, setEditing] = useState(false);
   const previewID = useId();
+  const canRename = session.source === "tenant" && (session.id ?? 0) > 0 && Boolean(onRename);
   function clearTimer() { clearTimeout(timer.current); }
   function closePreview() { clearTimer(); setPreviewOpen(false); }
-  function showPreview() { clearTimer(); setPreviewOpen(true); }
+  function showPreview() { clearTimer(); if (!editing && !contextMenu) setPreviewOpen(true); }
   function scheduleClose() {
     clearTimer();
     timer.current = setTimeout(() => setPreviewOpen(false), PREVIEW_CLOSE_DELAY);
@@ -54,22 +65,66 @@ export function SessionRow({ session, selected, onSelect, onContextDragStart, ac
       window.removeEventListener("scroll", scroll, true);
     };
   }, [previewOpen, previewID]);
+  useEffect(() => {
+    if (!contextMenu) return;
+    contextMenuRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    function dismiss(event: PointerEvent): void {
+      if (!contextMenuRef.current?.contains(event.target as Node)) setContextMenu(null);
+    }
+    function escape(event: KeyboardEvent): void {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      selectRef.current?.focus();
+      setContextMenu(null);
+    }
+    function reposition(): void {
+      setContextMenu(null);
+    }
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("keydown", escape);
+    window.addEventListener("resize", reposition);
+    window.addEventListener("scroll", reposition, true);
+    return () => {
+      document.removeEventListener("pointerdown", dismiss);
+      document.removeEventListener("keydown", escape);
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition, true);
+    };
+  }, [contextMenu]);
+  function startRename(): void {
+    if (!canRename) return;
+    closePreview();
+    setContextMenu(null);
+    setEditing(true);
+  }
+  function openContextMenu(event: ReactMouseEvent<HTMLDivElement>): void {
+    if (!canRename || editing) return;
+    event.preventDefault();
+    closePreview();
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const x = event.clientX || bounds.left;
+    const y = event.clientY || bounds.bottom;
+    const left = Math.max(CONTEXT_MENU_MARGIN, Math.min(x, window.innerWidth - CONTEXT_MENU_WIDTH - CONTEXT_MENU_MARGIN));
+    const top = Math.max(CONTEXT_MENU_MARGIN, Math.min(y, window.innerHeight - CONTEXT_MENU_HEIGHT - CONTEXT_MENU_MARGIN));
+    setContextMenu({ left, top });
+  }
   function dragStart(event: DragEvent<HTMLElement>) {
     closePreview();
     dragged.current = true;
     onContextDragStart(event, session.ref);
   }
-  return <div ref={anchor} className="webui2-session-row" data-selected={selected}
+  return <div ref={anchor} className="webui2-session-row" data-selected={selected} onContextMenu={openContextMenu}
     onPointerEnter={(event) => {
-      if (event.pointerType === "touch") return;
+      if (event.pointerType === "touch" || editing || contextMenu) return;
       clearTimer();
       timer.current = setTimeout(() => setPreviewOpen(true), PREVIEW_OPEN_DELAY);
     }} onPointerLeave={scheduleClose}>
     <button aria-label={t("webui2.dragRef", { ref: session.ref })} className="webui2-drag-handle"
-      title={t("webui2.dragRef", { ref: session.ref })} draggable onDragStart={dragStart} type="button">
+      title={t("webui2.dragRef", { ref: session.ref })} disabled={editing} draggable={!editing} onDragStart={dragStart} type="button">
       <GripVertical aria-hidden="true" size={14} />
     </button>
-    <button aria-pressed={selected} aria-describedby={previewOpen ? previewID : undefined}
+    {editing && onRename ? <SessionTitleEditor title={session.title} onSave={onRename} onClose={() => setEditing(false)} /> : <button aria-pressed={selected} aria-describedby={previewOpen ? previewID : undefined}
+      ref={selectRef}
       className="webui2-session-select" draggable onDragStart={dragStart}
       onPointerDown={() => { dragged.current = false; }}
       onFocus={showPreview} onBlur={scheduleClose}
@@ -80,10 +135,13 @@ export function SessionRow({ session, selected, onSelect, onContextDragStart, ac
       }} type="button">
       <span className="webui2-session-title">{session.title}</span>
       <SessionStatusIcon status={session.status} />
-    </button>
-    <div className="webui2-session-action-slot" onPointerEnter={closePreview} onFocusCapture={closePreview}>
-      {actions(showPreview)}
-    </div>
+    </button>}
+    {!editing ? <div className="webui2-session-action-slot" onPointerEnter={closePreview} onFocusCapture={closePreview}>
+      {actions(showPreview, canRename ? startRename : undefined)}
+    </div> : null}
     {previewOpen ? <SessionHoverPreview id={previewID} session={session} anchor={anchor} onEnter={clearTimer} onLeave={scheduleClose} /> : null}
+    {contextMenu && canRename ? createPortal(<div className="webui2-session-context-menu" ref={contextMenuRef} role="menu" aria-label={t("webui2.sessionActions", { ref: session.ref })} style={{ ...contextMenu, width: CONTEXT_MENU_WIDTH }}>
+      <button onClick={startRename} role="menuitem" type="button"><Pencil aria-hidden="true" size={14} />{t("webui2.renameSession")}</button>
+    </div>, anchor.current?.closest(".webui2-page") ?? document.body) : null}
   </div>;
 }

@@ -32,10 +32,11 @@ type OperationWire = {
 };
 
 type RequestOptions = {
-  method?: "GET" | "POST";
+  method?: "GET" | "POST" | "PATCH";
   body?: unknown;
   idempotencyKey?: string;
   signal?: AbortSignal;
+  dataEnvelope?: boolean;
 };
 
 export function createHTTPSessionControlClient(): SessionControlClient {
@@ -113,6 +114,17 @@ export function createHTTPSessionControlClient(): SessionControlClient {
       return operationResult(data, "stop");
     },
 
+    async rename(identity, input) {
+      if (!input.ref.startsWith("tenant:")) throw new SessionControlError("local_read_only");
+      if (!Number.isSafeInteger(input.id) || input.id <= 0 || !input.title.trim()) throw new SessionControlError("invalid_request");
+      const result = await request<unknown>(identity, `/tenant/sessions/${input.id}`, {
+        method: "PATCH",
+        body: { title: input.title.trim() },
+        dataEnvelope: false
+      });
+      if (objectValue(result)?.id !== input.id) throw unavailable();
+    },
+
     async archive() {
       // The isolated Session Control API intentionally has no archive route.
       throw new SessionControlError("invalid_state");
@@ -155,6 +167,7 @@ async function request<T>(identity: IdentityConfig, path: string, options: Reque
   const body = await responseText(response);
   if (!response.ok) throw errorFromBody(body);
   const value = parseJSON(body);
+  if (options.dataEnvelope === false) return value as T;
   if (!isDataEnvelope(value)) throw unavailable();
   return value.data as T;
 }

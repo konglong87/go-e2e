@@ -2,6 +2,8 @@ import { createContext, createElement, useContext, type ReactNode } from "react"
 import type { IdentityConfig } from "../../lib/types";
 import type { CreateSessionInput, OperationResult, SendSessionInput, SessionControlErrorCode, SessionDetail, SessionListFilters, SessionRef, SessionSummary } from "../types";
 
+export type RenameSessionInput = { ref: SessionRef; id: number; title: string };
+
 export type SessionControlClient = {
   subscribe?(identity: IdentityConfig, sessions: Array<{ref: SessionRef; cursor: string}>, onPage: (summary: SessionDetail, events: NonNullable<SessionDetail["events"]>) => void, signal: AbortSignal): Promise<void>;
   list(identity: IdentityConfig, filters: SessionListFilters, signal?: AbortSignal): Promise<SessionSummary[]>;
@@ -10,6 +12,7 @@ export type SessionControlClient = {
   send(identity: IdentityConfig, input: SendSessionInput): Promise<OperationResult>;
   stop(identity: IdentityConfig, input: { ref: SessionRef; idempotencyKey: string }): Promise<OperationResult>;
   archive(identity: IdentityConfig, input: { ref: SessionRef; idempotencyKey: string }): Promise<OperationResult>;
+  rename?(identity: IdentityConfig, input: RenameSessionInput): Promise<void>;
 };
 
 export class SessionControlError extends Error {

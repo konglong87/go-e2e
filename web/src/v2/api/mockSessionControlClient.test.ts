@@ -13,6 +13,15 @@ const identity: IdentityConfig = {
 };
 
 describe("mock session control client", () => {
+  it("persists only the requested title and keeps local sessions read-only", async () => {
+    const client = createMockSessionControlClient();
+    const before = await client.get(identity, "tenant:beta");
+    await client.rename!(identity, { ref: before.ref, id: 2, title: "  New title  " });
+    expect(await client.get(identity, before.ref)).toEqual({ ...before, title: "New title" });
+    await expect(client.rename!(identity, { ref: "local:workspace", id: 1, title: "New" })).rejects.toMatchObject({ code: "local_read_only" });
+    await expect(client.rename!(identity, { ref: before.ref, id: 0, title: "New" })).rejects.toMatchObject({ code: "invalid_request" });
+  });
+
   it("lists managed and read-only local sessions through the same summary contract", async () => {
     const client = createMockSessionControlClient();
 

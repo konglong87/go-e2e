@@ -25,6 +25,7 @@ describe("SessionSidebar", () => {
   let openSettings = vi.fn<() => void>();
   let createSession = vi.fn<() => void>();
   let createSessionInWorkspace = vi.fn<(cwd: string) => void>();
+  let rename = vi.fn<(session: SessionSummary, title: string) => Promise<boolean>>();
 
   beforeEach(() => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -40,6 +41,7 @@ describe("SessionSidebar", () => {
     openSettings = vi.fn<() => void>();
     createSession = vi.fn<() => void>();
     createSessionInWorkspace = vi.fn<(cwd: string) => void>();
+    rename = vi.fn().mockResolvedValue(true);
     Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
   });
 
@@ -49,8 +51,121 @@ describe("SessionSidebar", () => {
   });
 
   function render(items = sessions) {
-    act(() => root.render(<I18nProvider><SessionSidebar identity={identity} sessions={items} filters={filters} selectedRef={selected} onCreateSession={createSession} onCreateSessionInWorkspace={createSessionInWorkspace} onFiltersChange={(next) => { filters = next; }} onSelect={select} onContextDragStart={drag} onOpenSettings={openSettings} onOpenSearch={vi.fn()} onHideSidebar={vi.fn()} /></I18nProvider>));
+    act(() => root.render(<I18nProvider><SessionSidebar identity={identity} sessions={items} filters={filters} selectedRef={selected} onRenameSession={rename} onCreateSession={createSession} onCreateSessionInWorkspace={createSessionInWorkspace} onFiltersChange={(next) => { filters = next; }} onSelect={select} onContextDragStart={drag} onOpenSettings={openSettings} onOpenSearch={vi.fn()} onHideSidebar={vi.fn()} /></I18nProvider>));
   }
+
+  function openRename(entry: "overflow" | "context") {
+    render(sessions.map((session, index) => ({ ...session, id: index + 1 })));
+    const row = host.querySelector<HTMLElement>(".webui2-session-row")!;
+    if (entry === "overflow") act(() => row.querySelector<HTMLButtonElement>(".webui2-session-actions > button")!.click());
+    else act(() => row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 100, clientY: 120 })));
+    const command = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((button) => button.textContent === "Rename session")!;
+    expect(command).toBeDefined();
+    act(() => command.click());
+    return host.querySelector<HTMLInputElement>(".webui2-session-title-input")!;
+  }
+
+  function changeTitle(input: HTMLInputElement, title: string) {
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, title);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
+
+  it.each(["overflow", "context"] as const)("renames inline from %s without selecting or dragging", async (entry) => {
+    const input = openRename(entry);
+    expect(document.activeElement).toBe(input);
+    expect(input.value).toBe("Release coordination");
+    expect(input.selectionEnd).toBe(input.value.length);
+    expect(document.querySelector('[role="menu"]')).toBeNull();
+    changeTitle(input, "  Release plan  ");
+    await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    expect(rename).toHaveBeenCalledWith(expect.objectContaining({ ref: "tenant:alpha", id: 1 }), "Release plan");
+    expect(host.querySelector(".webui2-session-title-input")).toBeNull();
+    expect(select).not.toHaveBeenCalled();
+    expect(drag).not.toHaveBeenCalled();
+  });
+
+  it("cancels with Escape or outside focus and keeps an unchanged title without a write", async () => {
+    let input = openRename("overflow");
+    changeTitle(input, "Uncommitted");
+    act(() => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(host.querySelector(".webui2-session-title")?.textContent).toBe("Release coordination");
+    input = openRename("context");
+    changeTitle(input, "Uncommitted");
+    act(() => host.querySelector<HTMLButtonElement>(".webui2-new-session")!.focus());
+    expect(host.querySelector(".webui2-session-title-input")).toBeNull();
+    input = openRename("overflow");
+    await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    expect(rename).not.toHaveBeenCalled();
+  });
+
+  it("rejects whitespace, waits for IME composition and saves with its button", async () => {
+    const input = openRename("overflow");
+    changeTitle(input, "   ");
+    await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    expect(host.querySelector('[role="alert"]')?.textContent).toBe("Enter a session title.");
+    expect(rename).not.toHaveBeenCalled();
+    changeTitle(input, "Release");
+    await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", isComposing: true, bubbles: true })));
+    expect(rename).not.toHaveBeenCalled();
+    const save = host.querySelector<HTMLButtonElement>('.webui2-session-editing [aria-label="Save"]')!;
+    act(() => save.focus());
+    expect(host.querySelector(".webui2-session-title-input")).not.toBeNull();
+    await act(async () => save.click());
+    expect(rename).toHaveBeenCalledOnce();
+  });
+
+  it("prevents duplicate saves and preserves the old title on failure", async () => {
+    const input = openRename("context");
+    let finish!: (value: boolean) => void;
+    rename.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    changeTitle(input, "Changed");
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    expect(rename).toHaveBeenCalledOnce();
+    expect(input.readOnly).toBe(true);
+    await act(async () => finish(false));
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain("could not be saved");
+    act(() => host.querySelector<HTMLButtonElement>('.webui2-session-editing [aria-label="Cancel"]')!.click());
+    expect(host.querySelector(".webui2-session-title")?.textContent).toBe("Release coordination");
+  });
+
+  it("keeps focus until a save click completes when buttons do not receive mouse focus", async () => {
+    const input = openRename("context");
+    changeTitle(input, "Mac title");
+    const save = host.querySelector<HTMLButtonElement>('.webui2-session-editing [aria-label="Save"]')!;
+    act(() => {
+      const down = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+      save.dispatchEvent(down);
+      if (!down.defaultPrevented) input.blur();
+    });
+    expect(host.contains(save)).toBe(true);
+    expect(document.activeElement).toBe(input);
+    await act(async () => save.click());
+    expect(rename).toHaveBeenCalledWith(expect.objectContaining({ ref: "tenant:alpha" }), "Mac title");
+  });
+
+  it("hides rename for read-only sessions and unknown numeric IDs, and dismisses the context menu", () => {
+    render();
+    const row = host.querySelector<HTMLElement>(".webui2-session-row")!;
+    act(() => row.querySelector<HTMLButtonElement>(".webui2-session-actions > button")!.click());
+    expect(row.textContent).not.toContain("Rename session");
+    act(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    render(sessions.map((session, index) => ({ ...session, id: index + 1 })));
+    const local = host.querySelectorAll<HTMLElement>(".webui2-session-row")[2];
+    act(() => local.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true })));
+    expect(document.querySelector(".webui2-session-context-menu")).toBeNull();
+    act(() => row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 9999, clientY: 9999 })));
+    const menu = document.querySelector<HTMLElement>(".webui2-session-context-menu")!;
+    expect(parseFloat(menu.style.left)).toBeLessThan(window.innerWidth);
+    expect(parseFloat(menu.style.top)).toBeLessThan(window.innerHeight);
+    act(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(document.querySelector(".webui2-session-context-menu")).toBeNull();
+    expect(document.activeElement).toBe(row.querySelector(".webui2-session-select"));
+  });
 
   function renderControlled() {
     function Harness() {

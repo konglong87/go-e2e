@@ -26,6 +26,13 @@ export async function installWebUIV2Sessions(page: Page): Promise<void> {
   await page.route((url) => /^(?:\/api)?\/(?:tenant|v1|agent|health)(?:\/|$)/.test(url.pathname), async (route) => {
     const request = route.request();
     const url = new URL(request.url());
+    const rename = /\/tenant\/sessions\/(\d+)$/.exec(url.pathname);
+    if (rename && request.method() === "PATCH") {
+      const session = sessions.find((item) => item.id === Number(rename[1]) && item.source === "tenant");
+      if (!session) return route.fulfill({ status: 404, json: { error: "not_found" } });
+      session.title = (request.postDataJSON() as { title: string }).title;
+      return route.fulfill({ json: { id: session.id } });
+    }
     if (url.pathname.endsWith("/conversations/stream")) {
       const requested = request.postDataJSON() as { sessions?: Array<{ ref: string }> };
       const body = sessions.filter((session) => session.source === "tenant" && requested.sessions?.some((item) => item.ref === session.ref)).map((session) => `event: conversation\ndata: ${JSON.stringify(conversation(session))}\n\n`).join("");

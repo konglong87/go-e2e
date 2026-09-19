@@ -250,6 +250,14 @@ export function createMockSessionControlClient(): SessionControlClient {
         session.updatedAt = operationCard.createdAt;
         return resultFor(operationCard, session);
       });
+    },
+
+    async rename(_identity: IdentityConfig, input): Promise<void> {
+      const session = mutableSession(input.ref);
+      const title = input.title.trim();
+      if (!title) throw new SessionControlError("invalid_request");
+      if (!Number.isSafeInteger(input.id) || input.id <= 0) throw new SessionControlError("invalid_request");
+      session.title = title;
     }
   };
 }

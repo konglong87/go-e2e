@@ -17,6 +17,7 @@
 ## 重点能力
 
 - WebUI 2.0 与 `desktop-v2`：窄导航设置中心、模型、Profile、背景、3D 宠物、数据观测、飞书和 Multi-Agent。
+- 会话标题支持三个点菜单和卡片右键修改，原位编辑并持久化；见[演示截图与验收记录](docs/webui/session-title-rename.md)。
 - 连续评测：`--session-id` 可重复进入同一会话，追加对话并保留历史上下文；`--sessionId` 同样兼容。
 - Provider-neutral 配置：模型、地址和凭据只从全局 `~/.golang-cc/settings.json` 读取，设置页面编辑的也是同一个文件。
 - 数据库按部署场景选择：默认 SQLite，无需额外服务；需要多租户、审计和并发服务能力时可选 MySQL。

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { IdentityConfig } from "../../lib/types";
-import type { CreateSessionInput, OperationResult, SendSessionInput, SessionDetail, SessionListFilters, SessionRef } from "../types";
-import { sessionControlQueryKeys, useSessionControlClient } from "./sessionControlClient";
+import type { CreateSessionInput, OperationResult, SendSessionInput, SessionDetail, SessionListFilters, SessionRef, SessionSummary } from "../types";
+import { SessionControlError, sessionControlQueryKeys, useSessionControlClient, type RenameSessionInput } from "./sessionControlClient";
 import { mergeSessionDetail } from "./sessionDetailMerge";
 
 type CreateSessionMutationInput = Omit<CreateSessionInput, "idempotencyKey"> & { idempotencyKey?: string };
@@ -87,5 +87,28 @@ export function useArchiveSession(identity: IdentityConfig) {
   return useMutation({
     mutationFn: (input: SessionRefMutationInput) => client.archive(identity, { ...input, idempotencyKey: crypto.randomUUID() }),
     onSuccess: applyReadback
+  });
+}
+
+export function useRenameSession(identity: IdentityConfig) {
+  const client = useSessionControlClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: RenameSessionInput) => {
+      if (!client.rename) throw new SessionControlError("invalid_state");
+      await client.rename(identity, { ...input, title: input.title.trim() });
+    },
+    onSuccess: async (_result, input) => {
+      const detailKey = sessionControlQueryKeys.detail(identity, input.ref);
+      const lists = {
+        queryKey: ["session-control", "list", identity.tenantKey, identity.userId],
+        predicate: (query: { queryKey: readonly unknown[] }) => query.queryKey.at(-1) === identity.apiBase
+      };
+      await Promise.all([queryClient.cancelQueries({ queryKey: detailKey, exact: true }), queryClient.cancelQueries(lists)]);
+      const title = input.title.trim();
+      queryClient.setQueryData<SessionDetail>(detailKey, (current) => current ? { ...current, title } : current);
+      queryClient.setQueriesData<SessionSummary[]>(lists, (current) => current?.map((session) => session.ref === input.ref ? { ...session, title } : session));
+      await Promise.all([queryClient.invalidateQueries({ queryKey: detailKey, exact: true }), queryClient.invalidateQueries(lists)]);
+    }
   });
 }

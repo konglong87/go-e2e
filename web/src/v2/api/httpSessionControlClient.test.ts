@@ -35,6 +35,43 @@ afterEach(() => {
 });
 
 describe("HTTP session control client", () => {
+  it("renames through the existing tenant PATCH route with only the trimmed title", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ id: 7 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await createHTTPSessionControlClient().rename!(identity, { ref: "tenant:release", id: 7, title: "  Updated title  " });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, request] = fetchMock.mock.calls[0];
+    expect(url).toBe("/api/tenant/sessions/7");
+    expect(request.method).toBe("PATCH");
+    expect(JSON.parse(request.body)).toEqual({ title: "Updated title" });
+    const headers = new Headers(request.headers);
+    expect(headers.get("Authorization")).toBe("Bearer test-token");
+    expect(headers.get("X-Tenant-Key")).toBe("tenant-a");
+    expect(headers.get("X-User-ID")).toBe("user-a");
+  });
+
+  it("rejects invalid or read-only rename targets before sending a request", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const rename = createHTTPSessionControlClient().rename!;
+    await expect(rename(identity, { ref: "local:workspace", id: 7, title: "Changed" })).rejects.toMatchObject({ code: "local_read_only" });
+    await expect(rename(identity, { ref: "tenant:release", id: 0, title: "Changed" })).rejects.toMatchObject({ code: "invalid_request" });
+    await expect(rename(identity, { ref: "tenant:release", id: 7, title: "  " })).rejects.toMatchObject({ code: "invalid_request" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not report rename success on malformed acknowledgments or failed writes", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ id: 8 }))
+      .mockResolvedValueOnce(jsonResponse({ error: "forbidden" }, 403))
+      .mockRejectedValueOnce(new TypeError("offline")));
+    const rename = createHTTPSessionControlClient().rename!;
+    const input = { ref: "tenant:release" as const, id: 7, title: "Changed" };
+    await expect(rename(identity, input)).rejects.toMatchObject({ code: "network_unavailable" });
+    await expect(rename(identity, input)).rejects.toMatchObject({ code: "forbidden" });
+    await expect(rename(identity, input)).rejects.toMatchObject({ code: "network_unavailable" });
+  });
+
   it("round trips per-run configuration and inline images without copying upload credentials", async () => {
     const config = { provider: "custom", model: "sol", permission_mode: "ask", effort: "high", prompt_mode: "chat" };
     const fetchMock = vi.fn(async () => jsonResponse({ data: { ...operation, session: { ...summary, ...config } } }));

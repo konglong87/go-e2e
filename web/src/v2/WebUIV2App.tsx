@@ -15,7 +15,7 @@ import { validateAgentWorkspace } from "../lib/api";
 import type { IdentityConfig, PendingInputSideChatResponse } from "../lib/types";
 import { createHTTPSessionControlClient } from "./api/httpSessionControlClient";
 import { SessionControlClientProvider, sessionControlErrorCode, useSessionControlClient, type SessionControlClient } from "./api/sessionControlClient";
-import { useArchiveSession, useCreateSession, useSendSession, useSessionDetail, useSessionList, useStopSession } from "./api/sessionControlQueries";
+import { useArchiveSession, useCreateSession, useRenameSession, useSendSession, useSessionDetail, useSessionList, useStopSession } from "./api/sessionControlQueries";
 import { Composer, type ComposerDraft } from "./components/Composer";
 import { EmptyState } from "./components/EmptyState";
 import { SessionSidebar } from "./components/SessionSidebar";
@@ -91,6 +91,7 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
   const create = useCreateSession(identity);
   const stop = useStopSession(identity);
   const archive = useArchiveSession(identity);
+  const rename = useRenameSession(identity);
   const sessions = sessionList.data ?? [];
   const allSessions = useSessionList(identity, { query: "", statuses: [] }, desktopReady);
   const selectedSession = sessions.find((session) => session.ref === state.selectedRef) ?? (allSessions.data ?? []).find((session) => session.ref === state.selectedRef);
@@ -353,6 +354,21 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
     archive.mutate({ ref }, { onError: (error) => setErrorCode(sessionControlErrorCode(error)) });
   }
 
+  async function handleRename(session: SessionSummary, title: string): Promise<boolean> {
+    if (session.source !== "tenant" || session.id === undefined) {
+      setErrorCode("invalid_state");
+      return false;
+    }
+    try {
+      await rename.mutateAsync({ ref: session.ref, id: session.id, title });
+      setErrorCode("");
+      return true;
+    } catch (error) {
+      setErrorCode(sessionControlErrorCode(error));
+      return false;
+    }
+  }
+
   useEffect(() => {
     function handleCommandKey(event: KeyboardEvent) {
       if (settingsOpen) return;
@@ -399,6 +415,7 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
       onCreateSessionInWorkspace={(cwd) => { void createSessionInWorkspace(cwd); }}
       onOpenSettings={() => openSettings()}
       onArchive={handleArchive}
+      onRenameSession={client.rename ? handleRename : undefined}
       onStop={handleStop}
       onSelect={selectSession}
       selectedRef={state.selectedRef}

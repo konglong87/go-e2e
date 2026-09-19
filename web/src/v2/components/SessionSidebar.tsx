@@ -1,4 +1,4 @@
-import { Archive, ChevronDown, ChevronRight, Ellipsis, Filter, Folder, Info, PanelLeftClose, Plus, Search, Share2, Square, X } from "lucide-react";
+import { Archive, ChevronDown, ChevronRight, Ellipsis, Filter, Folder, Info, PanelLeftClose, Pencil, Plus, Search, Share2, Square, X } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type DragEvent, type JSX, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { useI18n } from "../../lib/i18n";
 import type { IdentityConfig } from "../../lib/types";
@@ -25,6 +25,7 @@ type SessionSidebarProps = {
   onMobileClose?: () => void;
   onStop?: (ref: SessionRef) => void;
   onArchive?: (ref: SessionRef) => void;
+  onRenameSession?: (session: SessionSummary, title: string) => Promise<boolean>;
   identity?: IdentityConfig;
 };
 
@@ -36,7 +37,7 @@ const sidebarDefaultWidth = 288;
 const sidebarKeyboardStep = 8;
 const workspaceCollapseStorageKey = "golang-cc-webui.v2.workspace-collapse.v1";
 
-export function SessionSidebar({ sessions, filters, selectedRef, onFiltersChange, onSelect, onContextDragStart, onOpenSettings, onOpenSearch, onHideSidebar, onCreateSession, onCreateSessionInWorkspace, onMobileClose, onStop, onArchive, identity }: SessionSidebarProps): JSX.Element {
+export function SessionSidebar({ sessions, filters, selectedRef, onFiltersChange, onSelect, onContextDragStart, onOpenSettings, onOpenSearch, onHideSidebar, onCreateSession, onCreateSessionInWorkspace, onMobileClose, onStop, onArchive, onRenameSession, identity }: SessionSidebarProps): JSX.Element {
   const { t } = useI18n();
   const [copyStatus, setCopyStatus] = useState("");
   const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth);
@@ -148,8 +149,8 @@ export function SessionSidebar({ sessions, filters, selectedRef, onFiltersChange
         </details>
       </div>
       <div className="webui2-session-list">
-        <SessionGroup copyRef={copyRef} hideTitle onContextDragStart={dragStart} onCreateSessionInWorkspace={onCreateSessionInWorkspace} onSelect={onSelect} onStop={onStop} onArchive={onArchive} selectedRef={selectedRef} sessions={managed} source="tenant" title={t("webui2.managed")} />
-        <SessionGroup copyRef={copyRef} onContextDragStart={dragStart} onCreateSessionInWorkspace={onCreateSessionInWorkspace} onSelect={onSelect} selectedRef={selectedRef} sessions={local} source="local" subtitle={t("webui2.localReadOnly")} title={t("webui2.local")} />
+        <SessionGroup copyRef={copyRef} hideTitle onContextDragStart={dragStart} onCreateSessionInWorkspace={onCreateSessionInWorkspace} onRenameSession={onRenameSession} onSelect={onSelect} onStop={onStop} onArchive={onArchive} selectedRef={selectedRef} sessions={managed} source="tenant" title={t("webui2.managed")} />
+        <SessionGroup copyRef={copyRef} onContextDragStart={dragStart} onCreateSessionInWorkspace={onCreateSessionInWorkspace} onRenameSession={onRenameSession} onSelect={onSelect} selectedRef={selectedRef} sessions={local} source="local" subtitle={t("webui2.localReadOnly")} title={t("webui2.local")} />
         {visibleSessions.length === 0 ? <p className="webui2-list-empty">{t("webui2.emptySessions")}</p> : null}
       </div>
       <div className="webui2-sidebar-bottom">
@@ -183,13 +184,14 @@ type SessionGroupProps = {
   onStop?: (ref: SessionRef) => void;
   onArchive?: (ref: SessionRef) => void;
   onCreateSessionInWorkspace?: (cwd: string) => void;
+  onRenameSession?: (session: SessionSummary, title: string) => Promise<boolean>;
   selectedRef: SessionRef | null;
   onSelect: (ref: SessionRef) => void;
   onContextDragStart: (event: DragEvent<HTMLElement>, ref: SessionRef) => void;
   copyRef: (ref: SessionRef) => Promise<void>;
 };
 
-function SessionGroup({ sessions, title, subtitle, hideTitle, source, selectedRef, onSelect, onContextDragStart, onCreateSessionInWorkspace, copyRef, onStop, onArchive }: SessionGroupProps): JSX.Element | null {
+function SessionGroup({ sessions, title, subtitle, hideTitle, source, selectedRef, onSelect, onContextDragStart, onCreateSessionInWorkspace, onRenameSession, copyRef, onStop, onArchive }: SessionGroupProps): JSX.Element | null {
   const { t } = useI18n();
   const previousSelectedRef = useRef<SessionRef | null | undefined>(undefined);
   const [collapsedWorkspaces, setCollapsedWorkspaces] = useState(loadCollapsedWorkspaces);
@@ -248,7 +250,8 @@ function SessionGroup({ sessions, title, subtitle, hideTitle, source, selectedRe
         {!collapsed ? <div className="webui2-workspace-sessions" id={workspaceContentID}>
           {items.map((session) => <SessionRow key={session.ref} session={session} selected={selectedRef === session.ref}
             onSelect={onSelect} onContextDragStart={onContextDragStart}
-            actions={(onPreview) => <SessionOverflowMenu copyRef={copyRef} session={session} onStop={onStop} onArchive={onArchive} onPreview={onPreview} />} />)}
+            onRename={onRenameSession ? (title) => onRenameSession(session, title) : undefined}
+            actions={(onPreview, startRename) => <SessionOverflowMenu copyRef={copyRef} session={session} onStop={onStop} onArchive={onArchive} onPreview={onPreview} onRename={startRename} />} />)}
         </div> : null}
       </div>;
     })}
@@ -282,9 +285,10 @@ type SessionOverflowMenuProps = {
   onStop?: (ref: SessionRef) => void;
   onArchive?: (ref: SessionRef) => void;
   onPreview: () => void;
+  onRename?: () => void;
 };
 
-function SessionOverflowMenu({ session, copyRef, onStop, onArchive, onPreview }: SessionOverflowMenuProps): JSX.Element {
+function SessionOverflowMenu({ session, copyRef, onStop, onArchive, onPreview, onRename }: SessionOverflowMenuProps): JSX.Element {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -331,6 +335,7 @@ function SessionOverflowMenu({ session, copyRef, onStop, onArchive, onPreview }:
   return <div className="webui2-session-actions" ref={menuRef}>
     <button aria-controls={menuID} aria-expanded={open} aria-haspopup="menu" aria-label={t("webui2.sessionActions", { ref: session.ref })} onClick={() => setOpen((current) => !current)} ref={triggerRef} title={t("webui2.sessionActions", { ref: session.ref })} type="button"><Ellipsis aria-hidden="true" size={16} /></button>
     {open ? <div aria-label={t("webui2.sessionActions", { ref: session.ref })} className="webui2-session-action-menu" id={menuID} role="menu">
+      {onRename ? <button onClick={() => { setOpen(false); onRename(); }} role="menuitem" type="button"><Pencil aria-hidden="true" size={14} />{t("webui2.renameSession")}</button> : null}
       <button onClick={() => { setOpen(false); triggerRef.current?.focus(); onPreview(); }} role="menuitem" type="button"><Info size={14} />{t("webui2.sessionDetails")}</button>
       <button aria-label={t("webui2.copyRef", { ref: session.ref })} onClick={() => void copyAndClose()} role="menuitem" title={t("webui2.copy")} type="button">{t("webui2.copy")}</button>
       <a aria-label={t("webui2.openRef", { ref: session.ref })} href={webUIV2SessionPath(session.ref)} onClick={() => setOpen(false)} role="menuitem" title={t("webui2.openSession")}>{t("webui2.openSession")}</a>
