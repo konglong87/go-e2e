@@ -9,7 +9,8 @@
   grid-template-columns: 16px minmax(0, 1fr) 30px;
   gap: 2px;
   margin: 2px 0;
-  height: 40px;
+  height: var(--session-row-height);
+  min-height: var(--session-row-height);
   min-width: 0;
   padding: 0 4px;
   position: relative;
@@ -35,7 +36,7 @@
   display: block;
   flex: 0 1 auto;
   min-width: 0;
-  font-size: 14px;
+  font-size: var(--session-title-size);
   font-weight: 500;
   line-height: 20px;
   max-width: 100%;
@@ -44,13 +45,13 @@
   white-space: nowrap;
 }
 .webui2-page .webui2-session-row[data-selected="true"] .webui2-session-title { font-weight: 650; }
-.webui2-page .webui2-session-row .webui2-drag-handle { align-items: center; background: transparent; border: 0; color: var(--webui2-text-muted); cursor: grab; display: inline-flex; height: 30px; justify-content: center; opacity: 0; padding: 0; width: 16px; }
+.webui2-page .webui2-session-row .webui2-drag-handle { align-items: center; background: transparent; border: 0; color: var(--webui2-text-muted); cursor: grab; display: inline-flex; height: var(--session-row-height); justify-content: center; opacity: 0; padding: 0; width: 16px; }
 .webui2-page .webui2-session-row:hover .webui2-drag-handle,
 .webui2-page .webui2-session-row:focus-within .webui2-drag-handle { opacity: .65; }
 .webui2-page .webui2-session-row .webui2-session-actions { display: flex; opacity: 1; padding: 0; position: relative; }
 .webui2-page .webui2-session-row .webui2-session-actions > button { color: var(--webui2-text-muted); opacity: .45; }
 .webui2-page .webui2-session-row:is(:hover, :focus-within, [data-selected="true"]) .webui2-session-actions > button { opacity: 1; }
-.webui2-page .webui2-session-row .webui2-session-action-menu { top: 30px; }
+.webui2-page .webui2-session-row .webui2-session-action-menu { top: var(--session-row-height); }
 .webui2-page .webui2-session-status-icon { align-items: center; color: var(--webui2-text-muted); display: inline-flex; flex: 0 0 16px; height: 16px; justify-content: center; width: 16px; }
 .webui2-page .webui2-session-status-icon[data-tone="active"] { color: var(--webui2-accent); }
 .webui2-page .webui2-session-status-icon[data-tone="success"] { color: var(--webui2-success); }

@@ -34,6 +34,10 @@
   --webui2-control-height: 34px;
   --webui2-sidebar-control-height: 40px;
   --webui2-composer-command-height: 40px;
+  --workspace-row-height: 68px;
+  --session-row-height: 46px;
+  --workspace-title-size: 18px;
+  --session-title-size: 14px;
   background: var(--webui2-bg);
   color: var(--webui2-text);
   display: grid;
@@ -150,12 +154,12 @@
 .webui2-page .webui2-workspace-group { min-width: 0; }
 .webui2-page .webui2-workspace-group.is-active .webui2-workspace-toggle { color: var(--webui2-text); }
 .webui2-page .webui2-workspace-heading { align-items: center; display: flex; gap: 2px; min-width: 0; }
-.webui2-page .webui2-workspace-toggle { align-items: center; background: transparent; border: 0; border-radius: 8px; color: var(--webui2-text-muted); display: flex; flex: 1 1 auto; gap: 6px; min-height: 34px; min-width: 0; padding: 6px 8px; text-align: left; }
+.webui2-page .webui2-workspace-toggle { align-items: center; background: transparent; border: 0; border-radius: 8px; color: var(--webui2-text-muted); display: flex; flex: 1 1 auto; gap: 6px; height: var(--workspace-row-height); min-height: var(--workspace-row-height); min-width: 0; padding: 0 8px; text-align: left; }
 .webui2-page .webui2-workspace-toggle:hover { background: var(--webui2-surface-muted); color: var(--webui2-text); }
 .webui2-page .webui2-workspace-toggle:focus-visible { outline: 2px solid var(--webui2-accent); outline-offset: 1px; }
 .webui2-page .webui2-workspace-toggle > svg:first-child { color: var(--webui2-text-muted); flex: 0 0 15px; }
 .webui2-page .webui2-workspace-toggle > svg:nth-child(2) { color: var(--webui2-accent); flex: 0 0 16px; }
-.webui2-page .webui2-workspace-name { color: var(--webui2-text); font-size: 13px; font-weight: 720; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.webui2-page .webui2-workspace-name { color: var(--webui2-text); font-size: var(--workspace-title-size); font-weight: 720; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .webui2-page .webui2-workspace-new { align-items: center; background: transparent; border: 0; border-radius: 7px; color: var(--webui2-text-muted); display: inline-flex; flex: 0 0 28px; height: 28px; justify-content: center; padding: 0; }
 .webui2-page .webui2-workspace-new:hover { background: var(--webui2-accent-surface); color: var(--webui2-accent); }
 .webui2-page .webui2-workspace-new:focus-visible { outline: 2px solid var(--webui2-accent); outline-offset: -1px; }
