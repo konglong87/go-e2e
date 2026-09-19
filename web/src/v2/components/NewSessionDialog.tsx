@@ -99,12 +99,7 @@ export function NewSessionDialog({ identity, open, defaultCWD, onClose, onCreate
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     if (busy) return;
-    const trimmedTitle = title.trim();
-    if (!trimmedTitle) {
-      setErrorCode("title_required");
-      titleRef.current?.focus();
-      return;
-    }
+    const trimmedTitle = title.trim() || t("webui2.defaultSessionTitle");
     setErrorCode("");
     setWorkspaceError("");
     try {
@@ -144,7 +139,7 @@ export function NewSessionDialog({ identity, open, defaultCWD, onClose, onCreate
           <button aria-pressed={promptMode === "chat"} disabled={busy} onClick={() => setPromptMode("chat")} type="button"><MessageSquare size={15} />Chat</button>
           <button aria-pressed={promptMode === "code"} disabled={busy} onClick={() => setPromptMode("code")} type="button"><Code size={15} />Code</button>
         </fieldset>
-        <label>{t("webui2.sessionTitle")}<input aria-label={t("webui2.sessionTitle")} autoComplete="off" disabled={busy} onChange={(event) => setTitle(event.target.value)} ref={titleRef} value={title} /></label>
+        <label>{t("webui2.sessionTitle")}<input aria-label={t("webui2.sessionTitle")} autoComplete="off" disabled={busy} onChange={(event) => { setErrorCode(""); setTitle(event.target.value); }} placeholder={t("webui2.defaultSessionTitle")} ref={titleRef} value={title} /></label>
         <div className="webui2-session-routing">
           <label>Provider<select aria-label="Provider" disabled={busy} value={provider} onChange={(event) => { const nextProvider = event.target.value; setProvider(nextProvider); modelEditedRef.current = false; const selected = providers.data?.find((item) => item.name === nextProvider); if (selected?.model) setModel(selected.model); else if (!nextProvider) setModel(defaultModel); }}><option value="">{t("webui2.provider.default")}</option>{providers.data?.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}</select></label>
           <label>Model<input aria-label="Model" list={`${titleID}-models`} disabled={busy} value={model} onChange={(event) => { modelEditedRef.current = true; setModel(event.target.value); }} /><datalist id={`${titleID}-models`}>{[...new Set([...(models.data ?? []), ...(providers.data ?? []).map((item) => item.model)])].map((item) => <option key={item} value={item} />)}</datalist></label>

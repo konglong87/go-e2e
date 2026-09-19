@@ -20,7 +20,7 @@ type SessionSidebarProps = {
   onOpenSettings: () => void;
   onOpenSearch: () => void;
   onHideSidebar: () => void;
-  onCreateSession: () => void;
+  onCreateSession: (cwd?: string) => void;
   onMobileClose?: () => void;
   onStop?: (ref: SessionRef) => void;
   onArchive?: (ref: SessionRef) => void;
@@ -132,7 +132,7 @@ export function SessionSidebar({ sessions, filters, selectedRef, onFiltersChange
             {onMobileClose ? <button aria-label={t("webui2.closeSessions")} className="webui2-sidebar-mobile-close" onClick={onMobileClose} title={t("webui2.closeSessions")} type="button"><X aria-hidden="true" size={17} /></button> : null}
           </div>
         </div>
-        <button className="webui2-new-session" onClick={onCreateSession} type="button"><Plus aria-hidden="true" size={17} />{t("webui2.newSession")}</button>
+        <button className="webui2-new-session" onClick={() => onCreateSession()} type="button"><Plus aria-hidden="true" size={17} />{t("webui2.newSession")}</button>
         {/* Temporarily hide status filtering while retaining the existing controls. */}
         <details className="webui2-status-filter-disclosure" hidden>
           <summary aria-label={t("webui2.filterStatus")} onKeyDown={toggleStatusDisclosureWithKeyboard}>
@@ -147,8 +147,8 @@ export function SessionSidebar({ sessions, filters, selectedRef, onFiltersChange
         </details>
       </div>
       <div className="webui2-session-list">
-        <SessionGroup copyRef={copyRef} hideTitle onContextDragStart={dragStart} onSelect={onSelect} onStop={onStop} onArchive={onArchive} selectedRef={selectedRef} sessions={managed} source="tenant" title={t("webui2.managed")} />
-        <SessionGroup copyRef={copyRef} onContextDragStart={dragStart} onSelect={onSelect} selectedRef={selectedRef} sessions={local} source="local" subtitle={t("webui2.localReadOnly")} title={t("webui2.local")} />
+        <SessionGroup copyRef={copyRef} hideTitle onContextDragStart={dragStart} onCreateSession={onCreateSession} onSelect={onSelect} onStop={onStop} onArchive={onArchive} selectedRef={selectedRef} sessions={managed} source="tenant" title={t("webui2.managed")} />
+        <SessionGroup copyRef={copyRef} onContextDragStart={dragStart} onCreateSession={onCreateSession} onSelect={onSelect} selectedRef={selectedRef} sessions={local} source="local" subtitle={t("webui2.localReadOnly")} title={t("webui2.local")} />
         {visibleSessions.length === 0 ? <p className="webui2-list-empty">{t("webui2.emptySessions")}</p> : null}
       </div>
       <div className="webui2-sidebar-bottom">
@@ -181,13 +181,14 @@ type SessionGroupProps = {
   source: SessionSource;
   onStop?: (ref: SessionRef) => void;
   onArchive?: (ref: SessionRef) => void;
+  onCreateSession: (cwd?: string) => void;
   selectedRef: SessionRef | null;
   onSelect: (ref: SessionRef) => void;
   onContextDragStart: (event: DragEvent<HTMLElement>, ref: SessionRef) => void;
   copyRef: (ref: SessionRef) => Promise<void>;
 };
 
-function SessionGroup({ sessions, title, subtitle, hideTitle, source, selectedRef, onSelect, onContextDragStart, copyRef, onStop, onArchive }: SessionGroupProps): JSX.Element | null {
+function SessionGroup({ sessions, title, subtitle, hideTitle, source, selectedRef, onSelect, onContextDragStart, onCreateSession, copyRef, onStop, onArchive }: SessionGroupProps): JSX.Element | null {
   const { t } = useI18n();
   const previousSelectedRef = useRef<SessionRef | null | undefined>(undefined);
   const [collapsedWorkspaces, setCollapsedWorkspaces] = useState(loadCollapsedWorkspaces);
@@ -234,12 +235,15 @@ function SessionGroup({ sessions, title, subtitle, hideTitle, source, selectedRe
       const workspaceContentID = `webui2-workspace-${key}`;
       const hasSelectedSession = items.some((session) => session.ref === selectedRef);
       return <div className={`webui2-workspace-group${collapsed ? " is-collapsed" : ""}${hasSelectedSession ? " is-active" : ""}`} data-collapsed={collapsed ? "true" : "false"} key={cwd}>
-        <button aria-controls={workspaceContentID} aria-expanded={!collapsed} aria-label={t(collapsed ? "webui2.expandWorkspace" : "webui2.collapseWorkspace", { name: workspaceName })} className="webui2-workspace-toggle" onClick={() => toggleWorkspace(cwd)} title={cwd || workspaceName} type="button">
-          {collapsed ? <ChevronRight aria-hidden="true" size={15} /> : <ChevronDown aria-hidden="true" size={15} />}
-          <Folder aria-hidden="true" size={16} />
-          <span className="webui2-workspace-name">{workspaceName}</span>
+        <div className="webui2-workspace-heading">
+          <button aria-controls={workspaceContentID} aria-expanded={!collapsed} aria-label={t(collapsed ? "webui2.expandWorkspace" : "webui2.collapseWorkspace", { name: workspaceName })} className="webui2-workspace-toggle" onClick={() => toggleWorkspace(cwd)} title={cwd || workspaceName} type="button">
+            {collapsed ? <ChevronRight aria-hidden="true" size={15} /> : <ChevronDown aria-hidden="true" size={15} />}
+            <Folder aria-hidden="true" size={16} />
+            <span className="webui2-workspace-name">{workspaceName}</span>
+          </button>
+          {source === "tenant" ? <button aria-label={t("webui2.newSessionInWorkspace", { name: workspaceName })} className="webui2-workspace-new" onClick={(event) => { event.stopPropagation(); onCreateSession(cwd || undefined); }} title={t("webui2.newSessionInWorkspace", { name: workspaceName })} type="button"><Plus aria-hidden="true" size={15} /></button> : null}
           <span className="webui2-workspace-count">{items.length}</span>
-        </button>
+        </div>
         {!collapsed ? <div className="webui2-workspace-sessions" id={workspaceContentID}>
           {items.map((session) => <SessionRow key={session.ref} session={session} selected={selectedRef === session.ref}
             onSelect={onSelect} onContextDragStart={onContextDragStart}

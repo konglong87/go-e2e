@@ -129,3 +129,12 @@ test("account footer replaces the fixed settings button and opens settings from 
   await page.keyboard.press("Escape");
   await expect(sidebar.getByRole("menu")).toHaveCount(0);
 });
+
+test("workspace plus opens a pre-routed new session dialog", async ({ page }) => {
+  const plus = page.locator('.webui2-workspace-new[aria-label="New session in project"]');
+  await expect(plus).toBeVisible();
+  await plus.click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "cwd" })).toHaveValue("/workspace/project");
+  await expect(page.getByRole("textbox", { name: "Session title" })).toHaveAttribute("placeholder", "New session");
+});

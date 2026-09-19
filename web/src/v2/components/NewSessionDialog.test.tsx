@@ -71,7 +71,7 @@ describe("NewSessionDialog", () => {
     expect(client.create).toHaveBeenCalledWith(identity, expect.objectContaining({ provider: "", model: "gpt-5.6-sol" }));
   });
 
-  it("focuses its title, rejects an empty title, and creates once with the optional instruction", async () => {
+  it("focuses its title, uses the default title when empty, and creates once with the optional instruction", async () => {
     const onCreated = vi.fn<(result: OperationResult) => void>();
     render(onCreated);
     const dialog = host.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]');
@@ -79,17 +79,23 @@ describe("NewSessionDialog", () => {
 
     expect(dialog).not.toBeNull();
     expect(document.activeElement).toBe(title);
-    act(() => host.querySelector<HTMLButtonElement>('button[type="submit"]')?.click());
-    expect(client.create).not.toHaveBeenCalled();
-    expect(host.querySelector('[role="alert"]')?.textContent).toContain("Enter a session title");
+    await act(async () => host.querySelector<HTMLButtonElement>('button[type="submit"]')?.click());
+    expect(client.create).toHaveBeenCalledWith(identity, expect.objectContaining({ title: "New session" }));
 
+    render(onCreated);
     setValue('input[aria-label="Session title"]', "  Launch plan  ");
     setValue('textarea[aria-label="Initial instruction"]', "  Prepare the rollout  ");
     await act(async () => host.querySelector<HTMLButtonElement>('button[type="submit"]')?.click());
 
-    expect(client.create).toHaveBeenCalledTimes(1);
+    expect(client.create).toHaveBeenCalledTimes(2);
     expect(client.create).toHaveBeenCalledWith(identity, expect.objectContaining({ title: "Launch plan", initialText: "Prepare the rollout", idempotencyKey: expect.any(String) }));
     expect(onCreated).toHaveBeenCalledWith(expect.objectContaining({ session: expect.objectContaining({ ref: "tenant:created" }) }));
+  });
+
+  it("keeps the workspace inherited from a workspace shortcut", () => {
+    render(vi.fn(), "/work/project");
+    expect(host.querySelector<HTMLInputElement>('input[aria-label="cwd"]')?.value).toBe("/work/project");
+    expect(host.querySelector<HTMLInputElement>('input[aria-label="Session title"]')?.placeholder).toBe("New session");
   });
 
   it("reuses the idempotency key for an unchanged draft after an ambiguous failure", async () => {

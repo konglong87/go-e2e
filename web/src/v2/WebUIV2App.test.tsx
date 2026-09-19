@@ -518,7 +518,8 @@ describe("WebUIV2App", () => {
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
     act(() => { setter?.call(title, "Launch plan"); title?.dispatchEvent(new Event("input", { bubbles: true })); });
     await act(async () => host.querySelector<HTMLButtonElement>('button[type="submit"]')?.click());
-    await act(async () => { await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())); });
+    await vi.waitFor(() => expect(client.create).toHaveBeenCalledTimes(1));
+    await act(async () => { await Promise.resolve(); await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())); });
 
     expect(client.create).toHaveBeenCalledTimes(1);
     expect(window.location.pathname).toBe("/webui/v2/sessions/tenant%3Acreated");
@@ -538,6 +539,7 @@ describe("WebUIV2App", () => {
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
     act(() => { setter?.call(title, "Isolated session"); title?.dispatchEvent(new Event("input", { bubbles: true })); });
     await act(async () => host.querySelector<HTMLButtonElement>('button[type="submit"]')?.click());
+    await vi.waitFor(() => expect(host.querySelector("main.webui2-page")?.getAttribute("data-session-ref") ?? "").toMatch(/^tenant:session-/));
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
 
     act(() => host.querySelector<HTMLButtonElement>('button[aria-label="Account menu"]')?.click());
@@ -549,7 +551,7 @@ describe("WebUIV2App", () => {
     act(() => { host.querySelector<HTMLButtonElement>('[role="option"][data-value="zh"]')?.click(); });
     act(() => host.querySelector<HTMLInputElement>(".settings-preference-row input")?.click());
 
-    expect(host.querySelector("main.webui2-page")?.getAttribute("data-session-ref")).toMatch(/^tenant:session-/);
+    expect(host.querySelector("main.webui2-page")?.getAttribute("data-session-ref") ?? "").toMatch(/^tenant:session-/);
     expect(host.querySelector("main.webui2-page")?.getAttribute("data-inspector-open")).toBe("true");
     expect(host.querySelector(".webui2-settings-drawer")).toBeNull();
     expect(host.querySelector(".dashboard-shell")).toBeNull();

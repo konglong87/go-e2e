@@ -149,12 +149,16 @@
 .webui2-page .webui2-workspace-group + .webui2-workspace-group { margin-top: 10px; }
 .webui2-page .webui2-workspace-group { min-width: 0; }
 .webui2-page .webui2-workspace-group.is-active .webui2-workspace-toggle { color: var(--webui2-text); }
-.webui2-page .webui2-workspace-toggle { align-items: center; background: transparent; border: 0; border-radius: 8px; color: var(--webui2-text-muted); display: flex; gap: 6px; min-height: 34px; min-width: 0; padding: 6px 8px; text-align: left; width: 100%; }
+.webui2-page .webui2-workspace-heading { align-items: center; display: flex; gap: 2px; min-width: 0; }
+.webui2-page .webui2-workspace-toggle { align-items: center; background: transparent; border: 0; border-radius: 8px; color: var(--webui2-text-muted); display: flex; flex: 1 1 auto; gap: 6px; min-height: 34px; min-width: 0; padding: 6px 8px; text-align: left; }
 .webui2-page .webui2-workspace-toggle:hover { background: var(--webui2-surface-muted); color: var(--webui2-text); }
 .webui2-page .webui2-workspace-toggle:focus-visible { outline: 2px solid var(--webui2-accent); outline-offset: 1px; }
 .webui2-page .webui2-workspace-toggle > svg:first-child { color: var(--webui2-text-muted); flex: 0 0 15px; }
 .webui2-page .webui2-workspace-toggle > svg:nth-child(2) { color: var(--webui2-accent); flex: 0 0 16px; }
 .webui2-page .webui2-workspace-name { color: var(--webui2-text); font-size: 13px; font-weight: 720; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.webui2-page .webui2-workspace-new { align-items: center; background: transparent; border: 0; border-radius: 7px; color: var(--webui2-text-muted); display: inline-flex; flex: 0 0 28px; height: 28px; justify-content: center; padding: 0; }
+.webui2-page .webui2-workspace-new:hover { background: var(--webui2-accent-surface); color: var(--webui2-accent); }
+.webui2-page .webui2-workspace-new:focus-visible { outline: 2px solid var(--webui2-accent); outline-offset: -1px; }
 .webui2-page .webui2-workspace-count { align-items: center; background: var(--webui2-surface-muted); border: 1px solid var(--webui2-border-subtle); border-radius: 999px; color: var(--webui2-text-muted); display: inline-flex; flex: 0 0 auto; font-size: 10px; font-weight: 700; height: 20px; justify-content: center; margin-left: auto; min-width: 20px; padding: 0 6px; }
 .webui2-page .webui2-workspace-sessions { margin: 0 0 0 15px; padding-left: 7px; }
 .webui2-page .webui2-workspace-group.is-collapsed { margin-bottom: 2px; }

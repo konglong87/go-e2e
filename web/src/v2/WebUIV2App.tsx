@@ -72,6 +72,7 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
   const [sidebarHidden, setSidebarHidden] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [newSessionOpen, setNewSessionOpen] = useState(false);
+  const [newSessionCWD, setNewSessionCWD] = useState<string | undefined>(undefined);
   const [commandsOpen, setCommandsOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(loadInspectorPreference);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("activity");
@@ -211,9 +212,10 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
     setInspectorOpen(open);
   }
 
-  function openNewSession(): void {
+  function openNewSession(cwd?: string): void {
     if (isDesktop && !desktopReady) return;
     setSidebarOpen(false);
+    setNewSessionCWD(cwd);
     setNewSessionOpen(true);
   }
 
@@ -255,6 +257,7 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
 
   function handleCreated(result: OperationResult): void {
     setNewSessionOpen(false);
+    setNewSessionCWD(undefined);
     selectSession(result.session.ref);
     window.requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(".webui2-composer textarea")?.focus());
   }
@@ -370,7 +373,7 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
       </section>
       {state.selectedRef && desktopReady ? <SelectedSessionInspector identity={identity} onClose={() => setInspectorOpen(false)} onTabChange={setInspectorTab} open={inspectorOpen} selectedRef={state.selectedRef} tab={inspectorTab} /> : null}
     </div>
-    <NewSessionDialog identity={identity} defaultCWD={(allSessions.data ?? sessions).find((session) => session.ref === state.selectedRef)?.cwd} onClose={() => setNewSessionOpen(false)} onCreated={handleCreated} open={newSessionOpen} />
+    <NewSessionDialog identity={identity} defaultCWD={newSessionCWD ?? (allSessions.data ?? sessions).find((session) => session.ref === state.selectedRef)?.cwd} onClose={() => { setNewSessionOpen(false); setNewSessionCWD(undefined); }} onCreated={handleCreated} open={newSessionOpen} />
     <SessionSearchDialog open={searchOpen} sessions={searchSessions} onClose={() => setSearchOpen(false)} onCreateSession={openNewSession} onSelect={selectSession} />
     <CommandPalette open={commandsOpen} onClose={() => setCommandsOpen(false)} commands={commands} placeholder={language === "zh" ? "搜索会话或操作" : "Search sessions or actions"} emptyLabel={t("webui2.emptySessions")} ariaLabel={language === "zh" ? "命令面板" : "Command palette"} />
     </div>
