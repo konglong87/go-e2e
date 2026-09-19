@@ -20,7 +20,8 @@ type SessionSidebarProps = {
   onOpenSettings: () => void;
   onOpenSearch: () => void;
   onHideSidebar: () => void;
-  onCreateSession: (cwd?: string) => void;
+  onCreateSession: () => void;
+  onCreateSessionInWorkspace?: (cwd: string) => void;
   onMobileClose?: () => void;
   onStop?: (ref: SessionRef) => void;
   onArchive?: (ref: SessionRef) => void;
@@ -35,7 +36,7 @@ const sidebarDefaultWidth = 288;
 const sidebarKeyboardStep = 8;
 const workspaceCollapseStorageKey = "golang-cc-webui.v2.workspace-collapse.v1";
 
-export function SessionSidebar({ sessions, filters, selectedRef, onFiltersChange, onSelect, onContextDragStart, onOpenSettings, onOpenSearch, onHideSidebar, onCreateSession, onMobileClose, onStop, onArchive, identity }: SessionSidebarProps): JSX.Element {
+export function SessionSidebar({ sessions, filters, selectedRef, onFiltersChange, onSelect, onContextDragStart, onOpenSettings, onOpenSearch, onHideSidebar, onCreateSession, onCreateSessionInWorkspace, onMobileClose, onStop, onArchive, identity }: SessionSidebarProps): JSX.Element {
   const { t } = useI18n();
   const [copyStatus, setCopyStatus] = useState("");
   const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth);
@@ -147,8 +148,8 @@ export function SessionSidebar({ sessions, filters, selectedRef, onFiltersChange
         </details>
       </div>
       <div className="webui2-session-list">
-        <SessionGroup copyRef={copyRef} hideTitle onContextDragStart={dragStart} onCreateSession={onCreateSession} onSelect={onSelect} onStop={onStop} onArchive={onArchive} selectedRef={selectedRef} sessions={managed} source="tenant" title={t("webui2.managed")} />
-        <SessionGroup copyRef={copyRef} onContextDragStart={dragStart} onCreateSession={onCreateSession} onSelect={onSelect} selectedRef={selectedRef} sessions={local} source="local" subtitle={t("webui2.localReadOnly")} title={t("webui2.local")} />
+        <SessionGroup copyRef={copyRef} hideTitle onContextDragStart={dragStart} onCreateSessionInWorkspace={onCreateSessionInWorkspace} onSelect={onSelect} onStop={onStop} onArchive={onArchive} selectedRef={selectedRef} sessions={managed} source="tenant" title={t("webui2.managed")} />
+        <SessionGroup copyRef={copyRef} onContextDragStart={dragStart} onCreateSessionInWorkspace={onCreateSessionInWorkspace} onSelect={onSelect} selectedRef={selectedRef} sessions={local} source="local" subtitle={t("webui2.localReadOnly")} title={t("webui2.local")} />
         {visibleSessions.length === 0 ? <p className="webui2-list-empty">{t("webui2.emptySessions")}</p> : null}
       </div>
       <div className="webui2-sidebar-bottom">
@@ -181,14 +182,14 @@ type SessionGroupProps = {
   source: SessionSource;
   onStop?: (ref: SessionRef) => void;
   onArchive?: (ref: SessionRef) => void;
-  onCreateSession: (cwd?: string) => void;
+  onCreateSessionInWorkspace?: (cwd: string) => void;
   selectedRef: SessionRef | null;
   onSelect: (ref: SessionRef) => void;
   onContextDragStart: (event: DragEvent<HTMLElement>, ref: SessionRef) => void;
   copyRef: (ref: SessionRef) => Promise<void>;
 };
 
-function SessionGroup({ sessions, title, subtitle, hideTitle, source, selectedRef, onSelect, onContextDragStart, onCreateSession, copyRef, onStop, onArchive }: SessionGroupProps): JSX.Element | null {
+function SessionGroup({ sessions, title, subtitle, hideTitle, source, selectedRef, onSelect, onContextDragStart, onCreateSessionInWorkspace, copyRef, onStop, onArchive }: SessionGroupProps): JSX.Element | null {
   const { t } = useI18n();
   const previousSelectedRef = useRef<SessionRef | null | undefined>(undefined);
   const [collapsedWorkspaces, setCollapsedWorkspaces] = useState(loadCollapsedWorkspaces);
@@ -241,7 +242,7 @@ function SessionGroup({ sessions, title, subtitle, hideTitle, source, selectedRe
             <Folder aria-hidden="true" size={16} />
             <span className="webui2-workspace-name">{workspaceName}</span>
           </button>
-          {source === "tenant" ? <button aria-label={t("webui2.newSessionInWorkspace", { name: workspaceName })} className="webui2-workspace-new" onClick={(event) => { event.stopPropagation(); onCreateSession(cwd || undefined); }} title={t("webui2.newSessionInWorkspace", { name: workspaceName })} type="button"><Plus aria-hidden="true" size={15} /></button> : null}
+          {source === "tenant" && onCreateSessionInWorkspace ? <button aria-label={t("webui2.newSessionInWorkspace", { name: workspaceName })} className="webui2-workspace-new" onClick={(event) => { event.stopPropagation(); onCreateSessionInWorkspace(cwd); }} title={t("webui2.newSessionInWorkspace", { name: workspaceName })} type="button"><Plus aria-hidden="true" size={15} /></button> : null}
           <span className="webui2-workspace-count">{items.length}</span>
         </div>
         {!collapsed ? <div className="webui2-workspace-sessions" id={workspaceContentID}>

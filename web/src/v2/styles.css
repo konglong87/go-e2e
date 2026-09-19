@@ -373,6 +373,10 @@
 .webui2-page .webui2-session-mode button { align-items: center; background: transparent; border: 1px solid transparent; border-radius: 5px; color: var(--webui2-text-muted); display: inline-flex; flex: 1; font-size: 13px; font-weight: 650; gap: 7px; justify-content: center; min-height: 36px; padding: 0 8px; }
 .webui2-page .webui2-session-mode button:hover:not(:disabled) { color: var(--webui2-text); }
 .webui2-page .webui2-session-mode button[aria-pressed="true"] { background: var(--webui2-surface); border-color: var(--webui2-border); color: var(--webui2-text); }
+.webui2-page .webui2-custom-instruction { display: grid; gap: 10px; }
+.webui2-page .webui2-custom-instruction-toggle { align-items: center; background: transparent; border: 0; border-radius: 6px; color: var(--webui2-text-muted); display: inline-flex; font-size: 12px; font-weight: 700; gap: 6px; justify-content: flex-start; min-height: 30px; padding: 0 4px; text-align: left; width: fit-content; }
+.webui2-page .webui2-custom-instruction-toggle:hover:not(:disabled) { background: var(--webui2-surface-muted); color: var(--webui2-text); }
+.webui2-page .webui2-custom-instruction-toggle:focus-visible { outline: 2px solid var(--webui2-accent); outline-offset: 1px; }
 .webui2-page .webui2-new-session-dialog label { color: var(--webui2-text-muted); display: grid; font-size: 12px; font-weight: 700; gap: 7px; }
 .webui2-page .webui2-new-session-dialog input, .webui2-page .webui2-new-session-dialog textarea { background: var(--webui2-surface); border: 1px solid var(--webui2-border); border-radius: 6px; color: var(--webui2-text); font: inherit; font-size: 13px; min-width: 0; max-width: 100%; padding: 9px 11px; resize: vertical; }
 .webui2-page .webui2-new-session-dialog input { min-height: 40px; }

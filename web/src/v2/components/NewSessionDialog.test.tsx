@@ -76,7 +76,7 @@ describe("NewSessionDialog", () => {
     expect(input).not.toHaveProperty("model");
   });
 
-  it("focuses its title, uses the default title when empty, and creates once with the optional instruction", async () => {
+  it("focuses its title, keeps custom instructions collapsed, and creates once when expanded", async () => {
     const onCreated = vi.fn<(result: OperationResult) => void>();
     render(onCreated);
     const dialog = host.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]');
@@ -84,12 +84,17 @@ describe("NewSessionDialog", () => {
 
     expect(dialog).not.toBeNull();
     expect(document.activeElement).toBe(title);
+    expect(host.querySelector('textarea[aria-label="Custom instruction (optional)"]')).toBeNull();
+    const customInstructionToggle = host.querySelector<HTMLButtonElement>(".webui2-custom-instruction-toggle");
+    expect(customInstructionToggle?.getAttribute("aria-expanded")).toBe("false");
     await act(async () => host.querySelector<HTMLButtonElement>('button[type="submit"]')?.click());
     expect(client.create).toHaveBeenCalledWith(identity, expect.objectContaining({ title: "New session" }));
 
     render(onCreated);
     setValue('input[aria-label="Session title"]', "  Launch plan  ");
-    setValue('textarea[aria-label="Initial instruction"]', "  Prepare the rollout  ");
+    act(() => host.querySelector<HTMLButtonElement>(".webui2-custom-instruction-toggle")?.click());
+    expect(host.querySelector('textarea[aria-label="Custom instruction (optional)"]')).not.toBeNull();
+    setValue('textarea[aria-label="Custom instruction (optional)"]', "  Prepare the rollout  ");
     await act(async () => host.querySelector<HTMLButtonElement>('button[type="submit"]')?.click());
 
     expect(client.create).toHaveBeenCalledTimes(2);
@@ -151,7 +156,8 @@ describe("NewSessionDialog", () => {
     client = { ...client, create };
     render();
     setValue('input[aria-label="Session title"]', "Launch plan");
-    setValue('textarea[aria-label="Initial instruction"]', "Prepare the rollout");
+    act(() => host.querySelector<HTMLButtonElement>(".webui2-custom-instruction-toggle")?.click());
+    setValue('textarea[aria-label="Custom instruction (optional)"]', "Prepare the rollout");
 
     await act(async () => host.querySelector<HTMLButtonElement>('button[type="submit"]')?.click());
     await act(async () => host.querySelector<HTMLButtonElement>('button[type="submit"]')?.click());
@@ -160,7 +166,7 @@ describe("NewSessionDialog", () => {
     expect(create.mock.calls[1][1].idempotencyKey).toBe(create.mock.calls[0][1].idempotencyKey);
 
     setValue('input[aria-label="Session title"]', "Launch plan");
-    setValue('textarea[aria-label="Initial instruction"]', "Prepare the rollout");
+    setValue('textarea[aria-label="Custom instruction (optional)"]', "Prepare the rollout");
     await act(async () => host.querySelector<HTMLButtonElement>('button[type="submit"]')?.click());
     expect(create.mock.calls[2][1].idempotencyKey).not.toBe(create.mock.calls[1][1].idempotencyKey);
   });

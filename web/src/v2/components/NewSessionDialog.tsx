@@ -1,4 +1,4 @@
-import { Code, FolderOpen, MessageSquare, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Code, FolderOpen, MessageSquare, X } from "lucide-react";
 import { useEffect, useId, useRef, useState, type FormEvent, type JSX, type KeyboardEvent } from "react";
 import { useI18n } from "../../lib/i18n";
 import type { IdentityConfig } from "../../lib/types";
@@ -25,6 +25,7 @@ export function NewSessionDialog({ identity, open, defaultCWD, onSelectWorkspace
   const create = useCreateSession(identity);
   const [title, setTitle] = useState("");
   const [initialText, setInitialText] = useState("");
+  const [customInstructionOpen, setCustomInstructionOpen] = useState(false);
   const wasOpenRef = useRef(false);
   const [cwd, setCWD] = useState<string | null>(null);
   const [promptMode, setPromptMode] = useState("code");
@@ -52,6 +53,7 @@ export function NewSessionDialog({ identity, open, defaultCWD, onSelectWorkspace
     wasOpenRef.current = true;
     setCWD(null);
     setWorkspaceError("");
+    setCustomInstructionOpen(false);
   }, [open]);
 
   useEffect(() => {
@@ -170,7 +172,20 @@ export function NewSessionDialog({ identity, open, defaultCWD, onSelectWorkspace
         </div>
         {workspaceError ? <p role="alert">{workspaceError}</p> : null}
         {status.isError ? <p role="alert">{t("webui2.error.network_unavailable")}</p> : null}
-        <label>{t("webui2.initialInstruction")}<textarea aria-label={t("webui2.initialInstruction")} disabled={busy} onChange={(event) => setInitialText(event.target.value)} rows={3} value={initialText} /></label>
+        <div className="webui2-custom-instruction">
+          <button
+            aria-controls={`${titleID}-custom-instruction`}
+            aria-expanded={customInstructionOpen}
+            className="webui2-custom-instruction-toggle"
+            disabled={busy}
+            onClick={() => setCustomInstructionOpen((openState) => !openState)}
+            type="button"
+          >
+            {customInstructionOpen ? <ChevronUp aria-hidden="true" size={15} /> : <ChevronDown aria-hidden="true" size={15} />}
+            <span>{t("webui2.customInstruction")}</span>
+          </button>
+          {customInstructionOpen ? <label id={`${titleID}-custom-instruction`}>{t("webui2.customInstruction")}<textarea aria-label={t("webui2.customInstruction")} disabled={busy} onChange={(event) => setInitialText(event.target.value)} rows={3} value={initialText} /></label> : null}
+        </div>
         {errorCode ? <p role="alert">{t(`webui2.error.${errorCode}`)}</p> : null}
         <footer><button disabled={busy} onClick={close} type="button">{t("webui2.cancel")}</button><button disabled={busy} type="submit">{busy ? t("webui2.creatingSession") : t("webui2.createSession")}</button></footer>
       </form>

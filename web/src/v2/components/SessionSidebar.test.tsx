@@ -23,7 +23,8 @@ describe("SessionSidebar", () => {
   let select = vi.fn<(ref: SessionRef) => void>();
   let drag = vi.fn<(ref: SessionRef) => void>();
   let openSettings = vi.fn<() => void>();
-  let createSession = vi.fn<(cwd?: string) => void>();
+  let createSession = vi.fn<() => void>();
+  let createSessionInWorkspace = vi.fn<(cwd: string) => void>();
 
   beforeEach(() => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -37,7 +38,8 @@ describe("SessionSidebar", () => {
     select = vi.fn<(ref: SessionRef) => void>();
     drag = vi.fn<(ref: SessionRef) => void>();
     openSettings = vi.fn<() => void>();
-    createSession = vi.fn<(cwd?: string) => void>();
+    createSession = vi.fn<() => void>();
+    createSessionInWorkspace = vi.fn<(cwd: string) => void>();
     Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
   });
 
@@ -47,13 +49,13 @@ describe("SessionSidebar", () => {
   });
 
   function render(items = sessions) {
-    act(() => root.render(<I18nProvider><SessionSidebar identity={identity} sessions={items} filters={filters} selectedRef={selected} onCreateSession={createSession} onFiltersChange={(next) => { filters = next; }} onSelect={select} onContextDragStart={drag} onOpenSettings={openSettings} onOpenSearch={vi.fn()} onHideSidebar={vi.fn()} /></I18nProvider>));
+    act(() => root.render(<I18nProvider><SessionSidebar identity={identity} sessions={items} filters={filters} selectedRef={selected} onCreateSession={createSession} onCreateSessionInWorkspace={createSessionInWorkspace} onFiltersChange={(next) => { filters = next; }} onSelect={select} onContextDragStart={drag} onOpenSettings={openSettings} onOpenSearch={vi.fn()} onHideSidebar={vi.fn()} /></I18nProvider>));
   }
 
   function renderControlled() {
     function Harness() {
       const [currentFilters, setCurrentFilters] = useState<SessionListFilters>({ query: "", statuses: [] });
-      return <SessionSidebar identity={identity} sessions={sessions} filters={currentFilters} selectedRef={selected} onCreateSession={createSession} onFiltersChange={setCurrentFilters} onSelect={select} onContextDragStart={drag} onOpenSettings={openSettings} onOpenSearch={vi.fn()} onHideSidebar={vi.fn()} />;
+      return <SessionSidebar identity={identity} sessions={sessions} filters={currentFilters} selectedRef={selected} onCreateSession={createSession} onCreateSessionInWorkspace={createSessionInWorkspace} onFiltersChange={setCurrentFilters} onSelect={select} onContextDragStart={drag} onOpenSettings={openSettings} onOpenSearch={vi.fn()} onHideSidebar={vi.fn()} />;
     }
     act(() => root.render(<I18nProvider><Harness /></I18nProvider>));
   }
@@ -129,7 +131,7 @@ describe("SessionSidebar", () => {
     expect(create).not.toBeNull();
     expect(host.querySelector('.webui2-workspace-group[data-collapsed="false"] .webui2-workspace-new')).not.toBeNull();
     act(() => create?.click());
-    expect(createSession).toHaveBeenCalledWith("/work/project");
+    expect(createSessionInWorkspace).toHaveBeenCalledWith("/work/project");
     expect(toggle?.getAttribute("aria-expanded")).toBe("true");
     expect(host.querySelector('[aria-label="New session in local"]')).toBeNull();
   });

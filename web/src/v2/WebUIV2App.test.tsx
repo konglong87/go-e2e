@@ -535,6 +535,52 @@ describe("WebUIV2App", () => {
     expect(host.querySelector('[aria-label="Web Agent workspaces and sessions"]')).toBeNull();
   });
 
+  it("creates directly from a workspace shortcut without opening the workspace dialog", async () => {
+    vi.spyOn(api, "validateAgentWorkspace").mockResolvedValue({ cwd: "/work/project", workspace_name: "project", exists: true, is_dir: true, is_git_repo: false });
+    const created: SessionDetail = {
+      ref: "tenant:shortcut-created",
+      source: "tenant",
+      title: "New session",
+      status: "idle",
+      updatedAt: "2026-09-05T02:00:00.000Z",
+      shortID: "shortcut-created",
+      cwd: "/work/project",
+      messages: [],
+      activity: [],
+      context: [],
+      changes: [],
+      runs: []
+    };
+    const client: SessionControlClient = {
+      list: vi.fn(async () => [created]),
+      get: vi.fn(async () => created),
+      create: vi.fn(async () => ({
+        operation: { id: "operation-shortcut-create", kind: "create" as const, status: "completed" as const, title: "", detail: "", createdAt: created.updatedAt },
+        session: created,
+        replayed: false
+      })),
+      send: vi.fn(),
+      stop: vi.fn(),
+      archive: vi.fn()
+    };
+
+    renderAt("/webui/v2", undefined, client);
+    await vi.waitFor(() => expect(host.querySelector('[aria-label="New session in project"]')).not.toBeNull());
+
+    act(() => host.querySelector<HTMLButtonElement>('[aria-label="New session in project"]')?.click());
+
+    expect(host.querySelector(".webui2-new-session-dialog")).toBeNull();
+    await vi.waitFor(() => expect(client.create).toHaveBeenCalledTimes(1));
+    expect(client.create).toHaveBeenCalledWith(identity, expect.objectContaining({
+      title: "New session",
+      cwd: "/work/project",
+      promptMode: "code",
+      idempotencyKey: expect.any(String)
+    }));
+    await vi.waitFor(() => expect(window.location.pathname).toBe("/webui/v2/sessions/tenant%3Ashortcut-created"));
+    expect(host.querySelector('main[aria-label="Session workspace"]')?.getAttribute("data-session-ref")).toBe("tenant:shortcut-created");
+  });
+
   it("keeps created v2 state and transient controls isolated from legacy application DOM", async () => {
     vi.spyOn(api, "getStatus").mockResolvedValue({ workspace: "/work/project" });
     vi.spyOn(api, "validateAgentWorkspace").mockResolvedValue({ cwd: "/work/project", workspace_name: "project", exists: true, is_dir: true, is_git_repo: false });

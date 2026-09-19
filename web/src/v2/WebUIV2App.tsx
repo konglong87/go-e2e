@@ -11,10 +11,11 @@ import { collectConversationNextSteps, conversationRuntimeMetrics } from "./comp
 import type { ComposerRuntimeValue } from "./components/composerRuntimeControls";
 import { useI18n } from "../lib/i18n";
 import { isDesktopV2Host } from "../lib/config";
+import { validateAgentWorkspace } from "../lib/api";
 import type { IdentityConfig, PendingInputSideChatResponse } from "../lib/types";
 import { createHTTPSessionControlClient } from "./api/httpSessionControlClient";
 import { SessionControlClientProvider, sessionControlErrorCode, useSessionControlClient, type SessionControlClient } from "./api/sessionControlClient";
-import { useArchiveSession, useSendSession, useSessionDetail, useSessionList, useStopSession } from "./api/sessionControlQueries";
+import { useArchiveSession, useCreateSession, useSendSession, useSessionDetail, useSessionList, useStopSession } from "./api/sessionControlQueries";
 import { Composer, type ComposerDraft } from "./components/Composer";
 import { EmptyState } from "./components/EmptyState";
 import { SessionSidebar } from "./components/SessionSidebar";
@@ -71,7 +72,6 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
   const [sidebarHidden, setSidebarHidden] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [newSessionOpen, setNewSessionOpen] = useState(false);
-  const [newSessionCWD, setNewSessionCWD] = useState<string | undefined>(undefined);
   const [commandsOpen, setCommandsOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(loadInspectorPreference);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("activity");
@@ -87,6 +87,7 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
   const desktopServiceBridge = isDesktop ? getDesktopServiceBridge() : null;
   const refSearch = completeSessionRef(filters.query);
   const sessionList = useSessionList(identity, refSearch ? { ...filters, query: "" } : filters, desktopReady);
+  const create = useCreateSession(identity);
   const stop = useStopSession(identity);
   const archive = useArchiveSession(identity);
   const sessions = sessionList.data ?? [];
@@ -98,6 +99,7 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
   const runtimeDefaults = useRuntimeDefaults(identity, isDesktop && desktopReady);
   const needsModelSetup = isDesktop && desktopReady && runtimeDefaults.data?.runtime_defaults?.needs_setup === true;
   const previousReadyRef = useRef(false);
+  const directCreateBusyRef = useRef(false);
 
   useEffect(() => {
     if (!isDesktop || !identity.apiToken) return;
@@ -212,11 +214,44 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
     setInspectorOpen(open);
   }
 
-  function openNewSession(cwd?: string): void {
+  function openNewSession(): void {
     if (isDesktop && !desktopReady) return;
     setSidebarOpen(false);
-    setNewSessionCWD(cwd);
     setNewSessionOpen(true);
+  }
+
+  async function createSessionInWorkspace(cwd: string): Promise<void> {
+    if ((isDesktop && !desktopReady) || directCreateBusyRef.current) return;
+    const selectedCWD = cwd.trim();
+    if (!selectedCWD) {
+      setErrorCode("workspace_unavailable");
+      return;
+    }
+    if (runtimeDefaults.data?.runtime_defaults?.needs_setup) {
+      setErrorCode("runtime_not_configured");
+      return;
+    }
+    directCreateBusyRef.current = true;
+    setErrorCode("");
+    setSidebarOpen(false);
+    try {
+      const validation = await validateAgentWorkspace(identity, selectedCWD);
+      if (!validation.exists || !validation.is_dir) {
+        setErrorCode("workspace_unavailable");
+        return;
+      }
+      const result = await create.mutateAsync({
+        title: t("webui2.defaultSessionTitle"),
+        cwd: validation.cwd,
+        promptMode: "code",
+        idempotencyKey: crypto.randomUUID()
+      });
+      handleCreated(result);
+    } catch (error) {
+      setErrorCode(sessionControlErrorCode(error));
+    } finally {
+      directCreateBusyRef.current = false;
+    }
   }
 
   function openSessionSearch(): void {
@@ -257,7 +292,6 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
 
   function handleCreated(result: OperationResult): void {
     setNewSessionOpen(false);
-    setNewSessionCWD(undefined);
     selectSession(result.session.ref);
     window.requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>(".webui2-composer textarea")?.focus());
   }
@@ -351,6 +385,7 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
       onOpenSearch={openSessionSearch}
       onHideSidebar={hideSidebar}
       onCreateSession={openNewSession}
+      onCreateSessionInWorkspace={(cwd) => { void createSessionInWorkspace(cwd); }}
       onOpenSettings={() => openSettings()}
       onArchive={handleArchive}
       onStop={handleStop}
@@ -373,7 +408,7 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
       </section>
       {state.selectedRef && desktopReady ? <SelectedSessionInspector identity={identity} onClose={() => setInspectorOpen(false)} onTabChange={setInspectorTab} open={inspectorOpen} selectedRef={state.selectedRef} tab={inspectorTab} /> : null}
     </div>
-    <NewSessionDialog identity={identity} defaultCWD={newSessionCWD ?? (allSessions.data ?? sessions).find((session) => session.ref === state.selectedRef)?.cwd} onSelectWorkspace={desktopServiceBridge?.SelectWorkspace} onClose={() => { setNewSessionOpen(false); setNewSessionCWD(undefined); }} onCreated={handleCreated} open={newSessionOpen} />
+    <NewSessionDialog identity={identity} onSelectWorkspace={desktopServiceBridge?.SelectWorkspace} onClose={() => setNewSessionOpen(false)} onCreated={handleCreated} open={newSessionOpen} />
     <SessionSearchDialog open={searchOpen} sessions={searchSessions} onClose={() => setSearchOpen(false)} onCreateSession={openNewSession} onSelect={selectSession} />
     <CommandPalette open={commandsOpen} onClose={() => setCommandsOpen(false)} commands={commands} placeholder={language === "zh" ? "搜索会话或操作" : "Search sessions or actions"} emptyLabel={t("webui2.emptySessions")} ariaLabel={language === "zh" ? "命令面板" : "Command palette"} />
     </div>
