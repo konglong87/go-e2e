@@ -1,6 +1,7 @@
 import { ChevronUp, Settings } from "lucide-react";
 import { useEffect, useId, useRef, useState, type JSX } from "react";
 import { useI18n } from "../../lib/i18n";
+import { isDesktopV2Host } from "../../lib/config";
 import type { IdentityConfig } from "../../lib/types";
 
 type Props = {
@@ -13,9 +14,10 @@ export function SidebarAccountFooter({ identity, onOpenSettings }: Props): JSX.E
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const menuID = useId();
-  const tenant = identity.tenantKey || t("webui2.brand");
-  const user = identity.userId || "—";
-  const avatar = (identity.userId || "U").slice(0, 1).toUpperCase();
+  const desktop = isDesktopV2Host();
+  const accountLabel = desktop ? t("webui2.brand") : (identity.tenantKey || t("webui2.brand"));
+  const accountDetail = desktop ? t("webui2.localWorkspace") : (identity.userId || "—");
+  const avatar = desktop ? "G" : (identity.userId || "U").slice(0, 1).toUpperCase();
 
   useEffect(() => {
     if (!open) return;
@@ -46,7 +48,7 @@ export function SidebarAccountFooter({ identity, onOpenSettings }: Props): JSX.E
     </div> : null}
     <button aria-controls={menuID} aria-expanded={open} aria-haspopup="menu" aria-label={t("webui2.accountMenu")} className="webui2-account-trigger" onClick={() => setOpen((current) => !current)} type="button">
       <span className="webui2-sidebar-avatar" aria-hidden="true">{avatar}</span>
-      <span className="webui2-account-copy"><strong>{tenant}</strong><small>{user}</small></span>
+      <span className="webui2-account-copy"><strong>{accountLabel}</strong><small>{accountDetail}</small></span>
       <ChevronUp aria-hidden="true" className="webui2-account-chevron" size={16} />
     </button>
   </div>;

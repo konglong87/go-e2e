@@ -99,10 +99,10 @@ func (a *app) startup(ctx context.Context) {
 	restoreWindowGeometry(ctx, config)
 	startupLog("config workspace=" + config.Workspace)
 	if config.Workspace == "" {
-		config.Workspace, err = chooseWorkspace(ctx)
+		config.Workspace, err = ensureDefaultWorkspace()
 		if err != nil {
-			startupLog("choose workspace: " + err.Error())
-			wailsruntime.LogErrorf(ctx, "choose workspace: %v", err)
+			startupLog("create default workspace: " + err.Error())
+			wailsruntime.LogErrorf(ctx, "create default workspace: %v", err)
 			return
 		}
 		if err := saveDesktopConfig(config); err != nil {

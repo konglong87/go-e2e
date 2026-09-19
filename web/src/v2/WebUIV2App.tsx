@@ -6,7 +6,7 @@ import { sessionRetryInput } from "./api/sessionRetry";
 import { PendingQueueSettingsButton, SessionPendingQueue } from "./components/SessionPendingQueue";
 import { useQueryClient } from "@tanstack/react-query";
 import { CommandPalette, type Command } from "../components/AgentCommandPalette";
-import { sessionRuntimeConfig, useRuntimeCatalog, useSessionRuntimeDetails } from "./api/useSessionRuntime";
+import { sessionRuntimeConfig, useRuntimeCatalog, useRuntimeDefaults, useSessionRuntimeDetails } from "./api/useSessionRuntime";
 import { collectConversationNextSteps, conversationRuntimeMetrics } from "./components/conversationViewModel";
 import type { ComposerRuntimeValue } from "./components/composerRuntimeControls";
 import { useI18n } from "../lib/i18n";
@@ -34,7 +34,6 @@ import { useGlobalVisualSettings } from "./settings/useGlobalVisualSettings";
 import { visualSettingsStyle, type GlobalVisualSettings } from "./settings/globalVisualSettings";
 import "./styles.css";
 import "./components/thinkingMessage.css";
-import goE2E from "./assets/go-e2e-animation.svg";
 
 type RouteState = {
   route: WebUIV2Route;
@@ -78,7 +77,6 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("activity");
   const [theme, setTheme] = useState<WebUIV2Theme>(() => loadWebUIV2Theme());
   const [visualPreview, setVisualPreview] = useState<GlobalVisualSettings | null>(null);
-  const [onboardingOpen, setOnboardingOpen] = useState(() => import.meta.env.VITE_DESKTOP_UI_VERSION === "2" && localStorage.getItem("go-e2e.desktop.onboarding.v1") !== "done");
   const [errorCode, setErrorCode] = useState("");
   const isDesktop = isDesktopV2Host();
   const [readyToken, setReadyToken] = useState<string | null>(null);
@@ -97,6 +95,9 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
   const savedVisual = useGlobalVisualSettings(identity, desktopReady && !settingsOpen);
   const visual = visualPreview ?? savedVisual.visual;
   const stream = useSessionConversations(identity, allSessions.data ?? [], state.selectedRef, desktopReady);
+  const runtimeDefaults = useRuntimeDefaults(identity, isDesktop && desktopReady);
+  const needsModelSetup = isDesktop && desktopReady && runtimeDefaults.data?.runtime_defaults?.needs_setup === true;
+  const previousReadyRef = useRef(false);
 
   useEffect(() => {
     if (!isDesktop || !identity.apiToken) return;
@@ -113,8 +114,17 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
         const health = await fetch(`${identity.apiBase}/health`, { headers, signal: requestController.signal });
         const ready = await fetch(`${identity.apiBase}/readyz`, { headers, signal: requestController.signal });
         if (active && controller === requestController) {
-          setReadyToken(health.ok && ready.ok ? identity.apiToken : null);
-          setDesktopError(!(health.ok && ready.ok));
+          const isReady = health.ok && ready.ok;
+          const wasReady = previousReadyRef.current;
+          previousReadyRef.current = isReady;
+          setReadyToken(isReady ? identity.apiToken : null);
+          setDesktopError(!isReady);
+          if (isReady && !wasReady) {
+            void queryClient.invalidateQueries({ queryKey: ["webui2-server-status"] });
+            void queryClient.invalidateQueries({ queryKey: ["webui2-providers"] });
+            void queryClient.invalidateQueries({ queryKey: ["webui2-models"] });
+            void queryClient.invalidateQueries({ queryKey: ["session-control"] });
+          }
         }
       } catch {
         if (active && controller === requestController) {
@@ -133,7 +143,7 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
     void check();
     const timer = window.setInterval(() => void check(), 2000);
     return () => { active = false; window.clearInterval(timer); controller?.abort(); };
-  }, [identity.apiBase, identity.apiToken, isDesktop]);
+  }, [identity.apiBase, identity.apiToken, isDesktop, queryClient]);
 
   const navigateToSession = useCallback((ref: SessionRef): void => {
     window.history.pushState({}, "", webUIV2SessionPath(ref));
@@ -168,16 +178,6 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
     window.history.pushState({}, "", webUIV2SettingsPath(section, state.selectedRef));
     setState((current) => ({ ...current, route: { kind: "settings", section } }));
     setSidebarOpen(false);
-  }
-
-  function finishOnboarding(): void {
-    localStorage.setItem("go-e2e.desktop.onboarding.v1", "done");
-    setOnboardingOpen(false);
-  }
-
-  function startOnboardingSession(): void {
-    finishOnboarding();
-    openNewSession();
   }
 
   const closeSettings = useCallback((): void => {
@@ -380,20 +380,18 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
     {state.route.kind === "settings" && desktopReady ? <SettingsCenter identity={identity} section={state.route.section} onSectionChange={openSettings} onBack={closeSettings} onRequestNavigation={requestSettingsNavigation} onDirtyChange={(dirty) => { settingsDirty.current = dirty; }} onBusyChange={(busy) => { settingsBusy.current = busy; }} theme={theme} onThemeChange={changeTheme} inspectorOpen={inspectorOpen} onInspectorChange={changeInspector} selectedRef={state.selectedRef} onOpenSession={selectSession} onVisualPreview={setVisualPreview} /> : null}
     {leaveDialog ? <UnsavedChangesDialog kind={leaveDialog} language={language} onCancel={cancelPendingNavigation} onDiscard={discardPendingNavigation} /> : null}
     {state.route.kind !== "settings" ? <DesktopPet settings={savedVisual.visual.pet} status={selectedSession?.status} onOpenSettings={() => openSettings("pet")} /> : null}
-    {onboardingOpen && state.route.kind !== "settings" ? <section className="webui2-onboarding-backdrop" role="dialog" aria-modal="true" aria-labelledby="webui2-onboarding-title">
+    {needsModelSetup && state.route.kind !== "settings" ? <section className="webui2-onboarding-backdrop" role="dialog" aria-modal="true" aria-labelledby="webui2-onboarding-title">
       <div className="webui2-onboarding">
-        <img src={goE2E} alt="go-e2e" />
-        <p className="webui2-onboarding-kicker">{language === "zh" ? "欢迎使用" : "Welcome to"}</p>
-        <h1 id="webui2-onboarding-title">go-e2e</h1>
-        <p>{language === "zh" ? "你的桌面 AI 工作台已经准备好了。" : "Your desktop AI workspace is ready."}</p>
+        <p className="webui2-onboarding-kicker">{language === "zh" ? "开始使用" : "Get started"}</p>
+        <h1 id="webui2-onboarding-title">{language === "zh" ? "先配置你的模型" : "Configure your model"}</h1>
+        <p>{language === "zh" ? "Default 工作区已经准备好，配置模型后即可开始工作。" : "Your Default workspace is ready. Configure a model to start working."}</p>
         <div className="webui2-onboarding-steps">
-          <span><strong>1</strong>{language === "zh" ? "确认工作区" : "Workspace selected"}</span>
-          <span><strong>2</strong>{language === "zh" ? "配置模型" : "Configure a model"}</span>
-          <span><strong>3</strong>{language === "zh" ? "开始对话" : "Start chatting"}</span>
+          <span><strong>1</strong>{language === "zh" ? "模型配置" : "Model setup"}</span>
+          <span><strong>2</strong>{language === "zh" ? "Default 工作区" : "Default workspace"}</span>
+          <span><strong>3</strong>{language === "zh" ? "开始会话" : "Start a session"}</span>
         </div>
         <div className="webui2-onboarding-actions">
-          <button type="button" onClick={startOnboardingSession}>{language === "zh" ? "开始新会话" : "Start a session"}</button>
-          <button type="button" className="secondary" onClick={() => { finishOnboarding(); openSettings("models"); }}>{language === "zh" ? "先配置模型" : "Configure model first"}</button>
+          <button type="button" onClick={() => openSettings("models")}>{language === "zh" ? "配置模型" : "Configure model"}</button>
         </div>
       </div>
     </section> : null}

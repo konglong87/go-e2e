@@ -3835,24 +3835,27 @@ func statusCommand(cwd string, stdout io.Writer) error {
 
 func statusPayload(cwd string) map[string]any {
 	cfg := config.LoadForCWD(cwd)
+	runtimeDefaults := config.ResolveRuntimeDefaults(cwd)
 	summaries, _ := session.DefaultStore().List()
 	skillsList, _ := skills.List(cwd)
 	pluginsList, _ := plugins.List(cwd)
 	branch, _ := gitutil.Branch(context.Background(), cwd)
 	gitStatus, _ := gitutil.StatusShort(context.Background(), cwd)
 	payload := map[string]any{
-		"cwd":             cwd,
-		"model":           config.ResolveModel(cwd, ""),
-		"baseURL":         cfg.BaseURL,
-		"hasAuth":         cfg.APIKey != "" || cfg.AuthToken != "",
-		"settingsSources": cfg.Sources,
-		"mcpServers":      len(cfg.Settings.MCPServers),
-		"sessions":        len(summaries),
-		"skills":          len(skillsList),
-		"plugins":         len(pluginsList),
-		"gitBranch":       branch,
-		"gitDirty":        strings.TrimSpace(gitStatus) != "",
-		"promptContext":   statusPromptContext(cwd),
+		"cwd":              cwd,
+		"provider":         runtimeDefaults.Provider,
+		"model":            runtimeDefaults.Model,
+		"runtime_defaults": runtimeDefaults,
+		"baseURL":          cfg.BaseURL,
+		"hasAuth":          cfg.APIKey != "" || cfg.AuthToken != "",
+		"settingsSources":  cfg.Sources,
+		"mcpServers":       len(cfg.Settings.MCPServers),
+		"sessions":         len(summaries),
+		"skills":           len(skillsList),
+		"plugins":          len(pluginsList),
+		"gitBranch":        branch,
+		"gitDirty":         strings.TrimSpace(gitStatus) != "",
+		"promptContext":    statusPromptContext(cwd),
 	}
 	if len(cfg.Warnings) > 0 {
 		payload["configWarnings"] = cfg.Warnings

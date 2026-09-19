@@ -35,7 +35,13 @@ export function NewSessionDialog({ identity, open, defaultCWD, onSelectWorkspace
   const [selectingWorkspace, setSelectingWorkspace] = useState(false);
   const [workspaceError, setWorkspaceError] = useState("");
   const { providers, models, status } = useRuntimeCatalog(identity, open);
-  const defaultModel = status.data?.model?.trim() || identity.model;
+  const runtimeDefaults = status.data?.runtime_defaults;
+  const defaultProvider = runtimeDefaults?.provider?.trim() || status.data?.provider?.trim() || identity.provider?.trim() || "";
+  const defaultModel = runtimeDefaults?.model?.trim() || status.data?.model?.trim() || identity.model.trim();
+  const providerOptions = [...(providers.data ?? [])];
+  if (defaultProvider && !providerOptions.some((item) => item.name === defaultProvider)) {
+    providerOptions.unshift({ name: defaultProvider, model: defaultModel });
+  }
   const workspace = cwd ?? defaultCWD ?? status.data?.workspace ?? "";
   const workspaceName = workspace.split(/[\\/]/).filter(Boolean).at(-1) || workspace || t("webui2.unknownWorkspace");
   const busy = create.isPending || validating || selectingWorkspace;
@@ -56,15 +62,16 @@ export function NewSessionDialog({ identity, open, defaultCWD, onSelectWorkspace
     modelEditedRef.current = false;
     setCWD(null);
     setWorkspaceError("");
-    setProvider(identity.provider ?? "");
-    setModel(identity.model);
-  }, [identity.model, identity.provider, open]);
+    setProvider(defaultProvider);
+    setModel(defaultModel);
+  }, [defaultModel, defaultProvider, open]);
 
   useEffect(() => {
-    if (open && !provider && !modelEditedRef.current) {
-      setModel(defaultModel);
+    if (open && !modelEditedRef.current && (!provider || provider === defaultProvider)) {
+      if (!provider && defaultProvider) setProvider(defaultProvider);
+      if (defaultModel) setModel(defaultModel);
     }
-  }, [defaultModel, open, provider]);
+  }, [defaultModel, defaultProvider, model, open, provider]);
 
   useEffect(() => {
     if (!open) return;
@@ -122,6 +129,10 @@ export function NewSessionDialog({ identity, open, defaultCWD, onSelectWorkspace
     setErrorCode("");
     setWorkspaceError("");
     try {
+      if (runtimeDefaults?.needs_setup && (!provider.trim() || !model.trim())) {
+        setErrorCode("runtime_not_configured");
+        return;
+      }
       let validatedCWD = workspace.trim();
       if (!validatedCWD) {
         setWorkspaceError(t("webui2.workspaceNotSelected"));
@@ -164,7 +175,7 @@ export function NewSessionDialog({ identity, open, defaultCWD, onSelectWorkspace
         </fieldset>
         <label>{t("webui2.sessionTitle")}<input aria-label={t("webui2.sessionTitle")} autoComplete="off" disabled={busy} onChange={(event) => { setErrorCode(""); setTitle(event.target.value); }} placeholder={t("webui2.defaultSessionTitle")} ref={titleRef} value={title} /></label>
         <div className="webui2-session-routing">
-          <label>Provider<select aria-label="Provider" disabled={busy} value={provider} onChange={(event) => { const nextProvider = event.target.value; setProvider(nextProvider); modelEditedRef.current = false; const selected = providers.data?.find((item) => item.name === nextProvider); if (selected?.model) setModel(selected.model); else if (!nextProvider) setModel(defaultModel); }}><option value="">{t("webui2.provider.default")}</option>{providers.data?.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}</select></label>
+          <label>Provider<select aria-label="Provider" disabled={busy} value={provider} onChange={(event) => { const nextProvider = event.target.value; setProvider(nextProvider); modelEditedRef.current = false; const selected = providerOptions.find((item) => item.name === nextProvider); if (selected?.model) setModel(selected.model); else if (!nextProvider) setModel(defaultModel); }}>{providerOptions.length === 0 ? <option value="">{t("webui2.provider.default")}</option> : null}{providerOptions.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}</select></label>
           <label>Model<input aria-label="Model" list={`${titleID}-models`} disabled={busy} value={model} onChange={(event) => { modelEditedRef.current = true; setModel(event.target.value); }} /><datalist id={`${titleID}-models`}>{[...new Set([...(models.data ?? []), ...(providers.data ?? []).map((item) => item.model)])].map((item) => <option key={item} value={item} />)}</datalist></label>
         </div>
         <div className="webui2-workspace-picker">

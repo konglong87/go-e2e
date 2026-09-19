@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +16,8 @@ const (
 	desktopConfigFileName = "config-v2.json"
 	desktopDataDirName    = ".golang-cc"
 	desktopConfigDirEnv   = "GOLANG_CC_DESKTOP_CONFIG_DIR"
+	defaultWorkspaceRoot  = "go-e2e-workspace"
+	defaultWorkspaceName  = "go-e2e"
 )
 
 const (
@@ -136,6 +139,25 @@ func chooseWorkspace(ctx context.Context) (string, error) {
 		return "", errors.New("workspace selection cancelled")
 	}
 	return normalizeWorkspaceSelection(workspace)
+}
+
+func defaultWorkspacePath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, defaultWorkspaceRoot, defaultWorkspaceName), nil
+}
+
+func ensureDefaultWorkspace() (string, error) {
+	workspace, err := defaultWorkspacePath()
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(workspace, 0o755); err != nil {
+		return "", fmt.Errorf("create default workspace: %w", err)
+	}
+	return workspace, nil
 }
 
 func selectWorkspace(ctx context.Context) (string, error) {

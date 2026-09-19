@@ -61,16 +61,16 @@ describe("NewSessionDialog", () => {
   }
 
   it("uses the saved primary model for the default provider", async () => {
-    vi.mocked(getStatus).mockResolvedValueOnce({ model: "gpt-5.6-sol" });
+    vi.mocked(getStatus).mockResolvedValueOnce({ provider: "custom", model: "gpt-5.6-sol", runtime_defaults: { configured: true, needs_setup: false, provider: "custom", model: "gpt-5.6-sol" } });
     render();
 
     await vi.waitFor(() => expect(host.querySelector<HTMLInputElement>('input[aria-label="Model"]')?.value).toBe("gpt-5.6-sol"));
-    expect(host.querySelector<HTMLSelectElement>('select[aria-label="Provider"]')?.value).toBe("");
+    expect(host.querySelector<HTMLSelectElement>('select[aria-label="Provider"]')?.value).toBe("custom");
 
     setValue('input[aria-label="Session title"]', "Primary model test");
     await act(async () => host.querySelector<HTMLButtonElement>('button[type="submit"]')?.click());
 
-    expect(client.create).toHaveBeenCalledWith(identity, expect.objectContaining({ provider: "", model: "gpt-5.6-sol" }));
+    expect(client.create).toHaveBeenCalledWith(identity, expect.objectContaining({ provider: "custom", model: "gpt-5.6-sol" }));
   });
 
   it("focuses its title, uses the default title when empty, and creates once with the optional instruction", async () => {

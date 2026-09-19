@@ -18,8 +18,19 @@ export type ServerStatus = {
   ok?: boolean;
   workspace?: string;
   cwd?: string;
+  provider?: string;
   model?: string;
   baseURL?: string;
+  runtime_defaults?: RuntimeDefaults;
+};
+
+export type RuntimeDefaults = {
+  service?: "ready" | "starting" | "unavailable";
+  configured: boolean;
+  needs_setup: boolean;
+  provider?: string;
+  model?: string;
+  source?: string;
 };
 
 export type PromptTemplate = {

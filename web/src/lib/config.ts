@@ -56,7 +56,7 @@ export const defaultIdentity: IdentityConfig = {
   tenantKey: "webui-local",
   userId: "webui-local-user",
   deviceId: "web-browser",
-  model: "gpt-5.5"
+  model: ""
 };
 
 export function loadIdentity(): IdentityConfig {
@@ -98,6 +98,10 @@ export function normalizeIdentity(config: IdentityConfig): IdentityConfig {
       tenantKey: defaultIdentity.tenantKey,
       userId: defaultIdentity.userId
     };
+  }
+  // The old value was a UI placeholder, not a supported default route.
+  if (normalized.model === "gpt-5.5") {
+    normalized = { ...normalized, model: "" };
   }
   return normalized;
 }

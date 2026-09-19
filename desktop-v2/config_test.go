@@ -133,3 +133,28 @@ func TestNormalizeWorkspaceSelectionRequiresExistingDirectory(t *testing.T) {
 		t.Fatalf("normalized workspace = %q, want %q", got, workspace)
 	}
 }
+
+func TestEnsureDefaultWorkspaceUsesProductDirectoryAndReusesIt(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("HOME", root)
+	t.Setenv("GOLANG_CC_DESKTOP_CONFIG_DIR", "")
+
+	first, err := ensureDefaultWorkspace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(root, defaultWorkspaceRoot, defaultWorkspaceName)
+	if first != want {
+		t.Fatalf("default workspace = %q, want %q", first, want)
+	}
+	if info, err := os.Stat(first); err != nil || !info.IsDir() {
+		t.Fatalf("default workspace is not a directory: %v", err)
+	}
+	second, err := ensureDefaultWorkspace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second != first {
+		t.Fatalf("reused workspace = %q, want %q", second, first)
+	}
+}

@@ -4,13 +4,25 @@ import type { IdentityConfig, WebAgentConversationDetail } from "../../lib/types
 import type { SessionDetail, SessionRunConfig } from "../types";
 
 const CATALOG_STALE_MS = 60000;
+const RUNTIME_STATUS_STALE_MS = 5000;
 
 export function useRuntimeCatalog(identity: IdentityConfig, enabled = true) {
   const scope = [identity.apiBase, identity.tenantKey, identity.userId];
   const providers = useQuery({ queryKey: ["webui2-providers", ...scope], queryFn: () => listProviders(identity), staleTime: CATALOG_STALE_MS, enabled });
   const models = useQuery({ queryKey: ["webui2-models", ...scope], queryFn: () => listModels(identity), staleTime: CATALOG_STALE_MS, enabled });
-  const status = useQuery({ queryKey: ["webui2-server-status", ...scope], queryFn: () => getStatus(identity), staleTime: CATALOG_STALE_MS, enabled });
+  const status = useRuntimeDefaults(identity, enabled);
   return { providers, models, status };
+}
+
+export function useRuntimeDefaults(identity: IdentityConfig, enabled = true) {
+  const scope = [identity.apiBase, identity.tenantKey, identity.userId];
+  return useQuery({
+    queryKey: ["webui2-server-status", ...scope],
+    queryFn: () => getStatus(identity),
+    staleTime: RUNTIME_STATUS_STALE_MS,
+    refetchOnMount: true,
+    enabled
+  });
 }
 
 export function useSessionRuntimeDetails(identity: IdentityConfig, detail: SessionDetail | undefined, enabled = true) {
