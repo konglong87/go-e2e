@@ -34,8 +34,8 @@
   --webui2-control-height: 34px;
   --webui2-sidebar-control-height: 40px;
   --webui2-composer-command-height: 40px;
-  --workspace-row-height: 68px;
-  --session-row-height: 46px;
+  --workspace-row-height: 34px;
+  --session-row-height: 31px;
   --workspace-title-size: 18px;
   --session-title-size: 14px;
   background: var(--webui2-bg);
