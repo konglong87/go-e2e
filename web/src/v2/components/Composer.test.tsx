@@ -6,10 +6,10 @@ import type { IdentityConfig } from "../../lib/types";
 import { createMockSessionControlClient } from "../api/mockSessionControlClient";
 import { SessionControlError } from "../api/sessionControlClient";
 import type { OperationResult, PreparedAttachment, SendSessionInput, SessionDetail, SessionSummary } from "../types";
-import { Composer, prepareSendInput } from "./Composer";
-import { SESSION_REF_MIME_TYPE } from "./sessionContextDrag";
+import { applySelectedSkill, Composer, prepareSendInput } from "./Composer";
 import { readComposerDraft } from "./composerDraftStorage";
 import type { ComposerRuntimeControls } from "./composerRuntimeControls";
+import { SESSION_REF_MIME_TYPE } from "./sessionContextDrag";
 
 const identity: IdentityConfig = { apiBase: "/api", apiToken: "test-token", mobileJwt: "mobile-token", tenantKey: "tenant", userId: "user", deviceId: "device", model: "model" };
 
@@ -193,6 +193,32 @@ describe("Composer", () => {
     keyDown("Escape");
     expect(host.querySelector('[role="listbox"]')).toBeNull();
     expect(host.querySelector<HTMLTextAreaElement>("textarea")?.value).toBe("/h");
+  });
+
+  it("selects a Skill from the composer and sends the same slash invocation semantics", async () => {
+    const commands = [
+      { name: "新会话", description: "Create a focused new session", source: "skill" },
+      { name: "help", description: "Help", source: "builtin" }
+    ];
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(commands), { status: 200 })));
+    const { send } = render({ cwd: "/work/project" });
+
+    act(() => host.querySelector<HTMLButtonElement>('button[aria-label="Select Skill"]')?.click());
+    await act(async () => { await Promise.resolve(); });
+
+    const menu = host.querySelector<HTMLElement>(".webui2-skill-picker-menu");
+    expect(menu?.textContent).toContain("新会话");
+    expect(menu?.textContent).not.toContain("help");
+    act(() => Array.from(menu?.querySelectorAll<HTMLButtonElement>('[role="option"]') ?? []).find((button) => button.textContent?.includes("新会话"))?.click());
+    setText("请帮我创建一个新的会话");
+
+    await act(async () => { host.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')?.click(); });
+    expect(send.mock.calls[0][0].text).toBe("/新会话\n\n请帮我创建一个新的会话");
+  });
+
+  it("does not duplicate a manually typed selected Skill command", () => {
+    expect(applySelectedSkill("/新会话\n\n继续刚才的工作", "新会话")).toBe("/新会话\n\n继续刚才的工作");
+    expect(applySelectedSkill("继续刚才的工作", "新会话")).toBe("/新会话\n\n继续刚才的工作");
   });
 
   it("keeps dropped context in memory until send and removes it without mutations", () => {

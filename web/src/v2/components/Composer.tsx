@@ -1,21 +1,22 @@
 import { ArrowUp, Sparkles, Square, X } from "lucide-react";
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type JSX, type KeyboardEvent, type ReactNode } from "react";
+import { type ChangeEvent, type ClipboardEvent, type DragEvent, type JSX, type KeyboardEvent, type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { resizeComposerTextarea } from "../../components/agent/Composer";
 import { ApiError, presignMobileAttachment, uploadAttachmentBinary } from "../../lib/api";
-import { dataURLPayload, fileToDataURL, imageFilesFromClipboard, selectImageFiles, sha256File } from "../../lib/imageAttachments";
 import { useI18n } from "../../lib/i18n";
+import { dataURLPayload, fileToDataURL, imageFilesFromClipboard, selectImageFiles, sha256File } from "../../lib/imageAttachments";
 import type { IdentityConfig } from "../../lib/types";
+import { sessionControlErrorCode } from "../api/sessionControlClient";
 import { parseWebUIV2Route } from "../routes";
 import type { ContextChip, OperationResult, PreparedAttachment, SendSessionInput, SessionDetail, SessionRef, SessionStatus, SessionSummary } from "../types";
-import { sessionControlErrorCode } from "../api/sessionControlClient";
 import { ComposerImagePreview } from "./ComposerImagePreview";
 import { ComposerMoreMenu } from "./ComposerMoreMenu";
 import { ComposerRuntimeToolbar } from "./ComposerRuntimeToolbar";
 import { clearComposerDraft, composerDraftMemoryKey, readComposerDraft, writeComposerDraft } from "./composerDraftStorage";
 import type { ComposerRuntimeControls, ComposerRuntimeValue } from "./composerRuntimeControls";
+import { PromptPicker } from "./PromptPicker";
+import { SkillPicker } from "./SkillPicker";
 import { SESSION_REF_MIME_TYPE, supportsComposerDrop } from "./sessionContextDrag";
 import { useComposerSlashCommands } from "./useComposerSlashCommands";
-import { PromptPicker } from "./PromptPicker";
 import "./composerExperience.css";
 
 const EMPTY_FILES: File[] = [];
@@ -39,7 +40,7 @@ type ComposerProps = {
   onSent: (session: SessionDetail) => void;
   promptPicker?: ReactNode;
 };
-export type ComposerDraft = { text: string; files: File[]; chips: ContextChip[]; scope?: string };
+export type ComposerDraft = { text: string; files: File[]; chips: ContextChip[]; skillName?: string; scope?: string };
 export type { ComposerRuntimeControls, ComposerRuntimeValue } from "./composerRuntimeControls";
 
 type PrepareSendInputOptions = {
@@ -94,16 +95,17 @@ function ScopedComposer({ drafts, identity, targetRef, sessionStatus, availableS
     const memoryDraft = drafts?.get(targetRef);
     if (memoryDraft?.scope === scope) return memoryDraft;
     const stored = readComposerDraft({ identity, targetRef, cwd });
-    return { text: stored?.text ?? "", files: EMPTY_FILES, chips: stored?.sourceRefs.map((ref) => sourceChip(ref, availableSources)) ?? [] };
+    return { text: stored?.text ?? "", files: EMPTY_FILES, chips: stored?.sourceRefs.map((ref) => sourceChip(ref, availableSources)) ?? [], ...(stored?.skillName ? { skillName: stored.skillName } : {}) };
   });
   const [text, setText] = useState(initialDraft.text);
   const [files, setFiles] = useState<File[]>(initialDraft.files);
   const [chips, setChips] = useState<ContextChip[]>(initialDraft.chips);
+  const [skillName, setSkillName] = useState(initialDraft.skillName ?? "");
   useEffect(() => {
     const scope = { identity, targetRef, cwd };
-    drafts?.set(targetRef, { text, files, chips, scope: composerDraftMemoryKey(scope) });
-    writeComposerDraft(scope, { text, sourceRefs: chips.map((chip) => chip.sourceRef) });
-  }, [drafts, identity, targetRef, cwd, text, files, chips]);
+    drafts?.set(targetRef, { text, files, chips, skillName: skillName || undefined, scope: composerDraftMemoryKey(scope) });
+    writeComposerDraft(scope, { text, sourceRefs: chips.map((chip) => chip.sourceRef), skillName });
+  }, [drafts, identity, targetRef, cwd, text, files, chips, skillName]);
   const [isSending, setIsSending] = useState(false);
   const [isPreparingAttachments, setIsPreparingAttachments] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
@@ -142,6 +144,12 @@ function ScopedComposer({ drafts, identity, targetRef, sessionStatus, availableS
     invalidateSubmission();
     setText(value);
     textareaRef.current?.focus();
+  }
+
+  function changeSkill(value: string): void {
+    if (inputDisabled) return;
+    invalidateSubmission();
+    setSkillName(value.trim());
   }
 
   function addSourceRef(value: string): void {
@@ -209,7 +217,8 @@ function ScopedComposer({ drafts, identity, targetRef, sessionStatus, availableS
     setUploadStatus(files.length > 0 ? t("webui2.attachmentsPreparing", { count: files.length }) : "");
     setIsSending(true);
     const runtimeValue = runtimeControls ? { ...runtimeControls.value } : undefined;
-    const fingerprint = draftFingerprint(targetRef, text, files, chips.map((chip) => chip.sourceRef), runtimeValue);
+    const submissionText = applySelectedSkill(text, skillName);
+    const fingerprint = draftFingerprint(targetRef, submissionText, files, chips.map((chip) => chip.sourceRef), skillName, runtimeValue);
     const cached = submissionRef.current?.fingerprint === fingerprint ? submissionRef.current : { fingerprint, idempotencyKey: crypto.randomUUID() };
     submissionRef.current = cached;
     const controller = new AbortController();
@@ -219,7 +228,7 @@ function ScopedComposer({ drafts, identity, targetRef, sessionStatus, availableS
       const input = cached.input ?? await prepareSendInput({
         identity,
         ref: targetRef,
-        text,
+        text: submissionText,
         files,
         sourceRefs: chips.map((chip) => chip.sourceRef),
         idempotencyKey: cached.idempotencyKey,
@@ -236,6 +245,7 @@ function ScopedComposer({ drafts, identity, targetRef, sessionStatus, availableS
       setText("");
       setFiles(EMPTY_FILES);
       setChips([]);
+      setSkillName("");
       setUploadStatus("");
       onSent(result.session);
     } catch (error) {
@@ -280,6 +290,7 @@ function ScopedComposer({ drafts, identity, targetRef, sessionStatus, availableS
       <input accept="image/*" aria-hidden="true" className="webui2-composer-file-input" disabled={inputDisabled} multiple onChange={handleFileChange} ref={fileInput} tabIndex={-1} type="file" />
       <div className="webui2-composer-controls-left">
       {promptPicker ?? <PromptPicker identity={identity} disabled={inputDisabled} onSelect={(content) => changeText(text.trim() ? `${text.trim()}\n\n${content}` : content)} />}
+      <SkillPicker cwd={cwd} disabled={inputDisabled} identity={identity} onChange={changeSkill} selectedName={skillName} />
       <ComposerMoreMenu attachLabel={t("webui2.attachFiles")} disabled={inputDisabled} language={language} onAttach={() => fileInput.current?.click()} queueSettings={queueSettings} />
       {/* The context selector is intentionally disabled. Native session drag and chips remain available. */}
       {runtimeControls ? <ComposerRuntimeToolbar controls={runtimeControls} disabled={inputDisabled} language={language} side="left" /> : null}
@@ -340,8 +351,17 @@ function isAbortError(error: unknown): boolean {
   return typeof error === "object" && error !== null && "name" in error && error.name === "AbortError";
 }
 
-function draftFingerprint(targetRef: SessionRef, text: string, files: File[], sourceRefs: SessionRef[], runtimeValue?: ComposerRuntimeValue): string {
-  return JSON.stringify({ targetRef, text: text.trim(), files: files.map(fileKey), sourceRefs: uniqueRefs(sourceRefs).sort(), runtimeValue });
+function draftFingerprint(targetRef: SessionRef, text: string, files: File[], sourceRefs: SessionRef[], skillName: string, runtimeValue?: ComposerRuntimeValue): string {
+  return JSON.stringify({ targetRef, text: text.trim(), files: files.map(fileKey), sourceRefs: uniqueRefs(sourceRefs).sort(), skillName, runtimeValue });
+}
+
+export function applySelectedSkill(text: string, skillName: string): string {
+  const trimmedText = text.trim();
+  const trimmedSkill = skillName.trim();
+  if (!trimmedSkill || !trimmedText) return trimmedText;
+  const command = `/${trimmedSkill}`;
+  if (trimmedText === command || trimmedText.startsWith(`${command} `) || trimmedText.startsWith(`${command}\n`)) return trimmedText;
+  return `${command}\n\n${trimmedText}`;
 }
 
 function uniqueRefs(refs: SessionRef[]): SessionRef[] {

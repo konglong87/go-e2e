@@ -23,7 +23,7 @@ async function mockComposerSession(page: Page, includeImage = false) {
     if (url.pathname.endsWith("/v1/providers")) return route.fulfill({ json: { data: [{ name: "openai", model: "gpt-6-astra" }] } });
     if (url.pathname.endsWith("/v1/models")) return route.fulfill({ json: { data: [{ id: "gpt-6-astra" }, { id: "gpt-6-medium" }] } });
     if (url.pathname.endsWith("/health")) return route.fulfill({ json: { model: "gpt-6-astra", workspace: "/workspace/project" } });
-    if (url.pathname.includes("/agent/slash-commands")) return route.fulfill({ json: { data: [{ name: "help", description: "Available commands" }, { name: "history", description: "Conversation history" }] } });
+    if (url.pathname.includes("/agent/slash-commands")) return route.fulfill({ json: { data: [{ name: "help", description: "Available commands", source: "builtin" }, { name: "history", description: "Conversation history", source: "builtin" }, { name: "新会话", description: "Create a focused new session", source: "skill" }] } });
     if (url.pathname.endsWith("/pending-input-settings")) return route.fulfill({ json: { enabled: false } });
     if (url.pathname.endsWith("/pending-inputs")) return route.fulfill({ json: { data: [] } });
     if (url.pathname.endsWith("/tenant/media/assets/preview-image")) {
@@ -97,6 +97,29 @@ test("composer keeps a single focus shell and floats command menus on desktop an
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   expect(overflow).toBe(false);
   await page.screenshot({ path: testInfo.outputPath("composer-menu.png") });
+});
+
+test("skill picker uses the same slash invocation as manual Skill selection", async ({ page }, testInfo) => {
+  const fixture = await mockComposerSession(page);
+  let sent: Record<string, unknown> | undefined;
+  await page.route("**/session-control/sessions/tenant/*/messages", async (route) => {
+    sent = route.request().postDataJSON();
+    await route.fulfill({ json: { data: { operation_id: "skill-operation", session: fixture.session, run_id: 14 } } });
+  });
+  await page.goto(SESSION_PATH);
+
+  await page.getByRole("button", { name: "Select Skill", exact: true }).click();
+  const menu = page.getByRole("listbox", { name: "Available Skills", exact: true });
+  await expect(menu).toBeVisible();
+  await expect(menu).toContainText("新会话");
+  await expect(menu).not.toContainText("help");
+  await page.screenshot({ path: testInfo.outputPath("composer-skill-picker.png") });
+  await menu.getByRole("option", { name: /新会话/ }).click();
+
+  const input = page.getByRole("textbox", { name: "Message", exact: true });
+  await input.fill("请帮我创建一个新的会话");
+  await input.press("Enter");
+  await expect.poll(() => sent).toMatchObject({ content: "/新会话\n\n请帮我创建一个新的会话" });
 });
 
 test("composer refresh restores source drafts while browser files stay transient", async ({ page }) => {
