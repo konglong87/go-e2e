@@ -30,4 +30,6 @@ if [[ -d "${APP_BIN}" ]]; then
     codesign --force --deep --sign - --timestamp=none "${APP_PATH}"
     codesign --verify --deep --strict --verbose=2 "${APP_PATH}"
   fi
+  # Keep Finder's package modification time aligned with the actual build.
+  touch "${APP_PATH}"
 fi
