@@ -377,6 +377,22 @@ describe("SessionSidebar", () => {
     expect(drag).toHaveBeenCalledWith("tenant:alpha");
   });
 
+  it("keeps touch selection working without opening the hover preview", () => {
+    render();
+    const button = host.querySelector<HTMLButtonElement>(".webui2-session-select")!;
+    const pointerDown = new Event("pointerdown", { bubbles: true });
+    Object.defineProperty(pointerDown, "pointerType", { value: "touch" });
+
+    act(() => {
+      button.dispatchEvent(pointerDown);
+      button.focus();
+    });
+
+    expect(document.querySelector('[role="tooltip"]')).toBeNull();
+    act(() => button.click());
+    expect(select).toHaveBeenCalledWith("tenant:alpha");
+  });
+
   it("drags from the session title without selecting it and keeps normal clicks working", () => {
     render();
     const title = host.querySelector<HTMLElement>(".webui2-session-title");

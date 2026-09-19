@@ -21,6 +21,7 @@ type SessionSidebarProps = {
   onOpenSearch: () => void;
   onHideSidebar: () => void;
   onCreateSession: () => void;
+  createDisabled?: boolean;
   onCreateSessionInWorkspace?: (cwd: string) => void;
   onMobileClose?: () => void;
   onStop?: (ref: SessionRef) => void;
@@ -37,7 +38,7 @@ const sidebarDefaultWidth = 288;
 const sidebarKeyboardStep = 8;
 const workspaceCollapseStorageKey = "golang-cc-webui.v2.workspace-collapse.v1";
 
-export function SessionSidebar({ sessions, filters, selectedRef, onFiltersChange, onSelect, onContextDragStart, onOpenSettings, onOpenSearch, onHideSidebar, onCreateSession, onCreateSessionInWorkspace, onMobileClose, onStop, onArchive, onRenameSession, identity }: SessionSidebarProps): JSX.Element {
+export function SessionSidebar({ sessions, filters, selectedRef, onFiltersChange, onSelect, onContextDragStart, onOpenSettings, onOpenSearch, onHideSidebar, onCreateSession, createDisabled = false, onCreateSessionInWorkspace, onMobileClose, onStop, onArchive, onRenameSession, identity }: SessionSidebarProps): JSX.Element {
   const { t } = useI18n();
   const [copyStatus, setCopyStatus] = useState("");
   const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth);
@@ -134,7 +135,7 @@ export function SessionSidebar({ sessions, filters, selectedRef, onFiltersChange
             {onMobileClose ? <button aria-label={t("webui2.closeSessions")} className="webui2-sidebar-mobile-close" onClick={onMobileClose} title={t("webui2.closeSessions")} type="button"><X aria-hidden="true" size={17} /></button> : null}
           </div>
         </div>
-        <button className="webui2-new-session" onClick={() => onCreateSession()} type="button"><Plus aria-hidden="true" size={17} />{t("webui2.newSession")}</button>
+        <button className="webui2-new-session" disabled={createDisabled} onClick={() => onCreateSession()} type="button"><Plus aria-hidden="true" size={17} />{t("webui2.newSession")}</button>
         {/* Temporarily hide status filtering while retaining the existing controls. */}
         <details className="webui2-status-filter-disclosure" hidden>
           <summary aria-label={t("webui2.filterStatus")} onKeyDown={toggleStatusDisclosureWithKeyboard}>
@@ -149,8 +150,8 @@ export function SessionSidebar({ sessions, filters, selectedRef, onFiltersChange
         </details>
       </div>
       <div className="webui2-session-list">
-        <SessionGroup copyRef={copyRef} hideTitle onContextDragStart={dragStart} onCreateSessionInWorkspace={onCreateSessionInWorkspace} onRenameSession={onRenameSession} onSelect={onSelect} onStop={onStop} onArchive={onArchive} selectedRef={selectedRef} sessions={managed} source="tenant" title={t("webui2.managed")} />
-        <SessionGroup copyRef={copyRef} onContextDragStart={dragStart} onCreateSessionInWorkspace={onCreateSessionInWorkspace} onRenameSession={onRenameSession} onSelect={onSelect} selectedRef={selectedRef} sessions={local} source="local" subtitle={t("webui2.localReadOnly")} title={t("webui2.local")} />
+        <SessionGroup copyRef={copyRef} hideTitle onContextDragStart={dragStart} onCreateSessionInWorkspace={onCreateSessionInWorkspace} createDisabled={createDisabled} onRenameSession={onRenameSession} onSelect={onSelect} onStop={onStop} onArchive={onArchive} selectedRef={selectedRef} sessions={managed} source="tenant" title={t("webui2.managed")} />
+        <SessionGroup copyRef={copyRef} onContextDragStart={dragStart} onCreateSessionInWorkspace={onCreateSessionInWorkspace} createDisabled={createDisabled} onRenameSession={onRenameSession} onSelect={onSelect} selectedRef={selectedRef} sessions={local} source="local" subtitle={t("webui2.localReadOnly")} title={t("webui2.local")} />
         {visibleSessions.length === 0 ? <p className="webui2-list-empty">{t("webui2.emptySessions")}</p> : null}
       </div>
       <div className="webui2-sidebar-bottom">
@@ -176,6 +177,7 @@ function loadSidebarWidth(): number {
 }
 
 type SessionGroupProps = {
+  createDisabled?: boolean;
   sessions: SessionSummary[];
   title: string;
   subtitle?: string;
@@ -191,7 +193,7 @@ type SessionGroupProps = {
   copyRef: (ref: SessionRef) => Promise<void>;
 };
 
-function SessionGroup({ sessions, title, subtitle, hideTitle, source, selectedRef, onSelect, onContextDragStart, onCreateSessionInWorkspace, onRenameSession, copyRef, onStop, onArchive }: SessionGroupProps): JSX.Element | null {
+function SessionGroup({ sessions, title, subtitle, hideTitle, source, selectedRef, onSelect, onContextDragStart, onCreateSessionInWorkspace, createDisabled, onRenameSession, copyRef, onStop, onArchive }: SessionGroupProps): JSX.Element | null {
   const { t } = useI18n();
   const previousSelectedRef = useRef<SessionRef | null | undefined>(undefined);
   const [collapsedWorkspaces, setCollapsedWorkspaces] = useState(loadCollapsedWorkspaces);
@@ -244,7 +246,7 @@ function SessionGroup({ sessions, title, subtitle, hideTitle, source, selectedRe
             <Folder aria-hidden="true" size={16} />
             <span className="webui2-workspace-name">{workspaceName}</span>
           </button>
-          {source === "tenant" && onCreateSessionInWorkspace ? <button aria-label={t("webui2.newSessionInWorkspace", { name: workspaceName })} className="webui2-workspace-new" onClick={(event) => { event.stopPropagation(); onCreateSessionInWorkspace(cwd); }} title={t("webui2.newSessionInWorkspace", { name: workspaceName })} type="button"><Plus aria-hidden="true" size={15} /></button> : null}
+          {source === "tenant" && onCreateSessionInWorkspace ? <button aria-label={t("webui2.newSessionInWorkspace", { name: workspaceName })} className="webui2-workspace-new" disabled={createDisabled} onClick={(event) => { event.stopPropagation(); onCreateSessionInWorkspace(cwd); }} title={t("webui2.newSessionInWorkspace", { name: workspaceName })} type="button"><Plus aria-hidden="true" size={15} /></button> : null}
           <span className="webui2-workspace-count">{items.length}</span>
         </div>
         {!collapsed ? <div className="webui2-workspace-sessions" id={workspaceContentID}>

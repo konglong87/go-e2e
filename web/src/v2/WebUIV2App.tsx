@@ -1,4 +1,4 @@
-import { AlertTriangle, MessageSquare, PanelLeftOpen, Plus, Power, RefreshCw, Shield } from "lucide-react";
+import { AlertTriangle, LoaderCircle, MessageSquare, PanelLeftOpen, Plus, RefreshCw, Shield } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type JSX } from "react";
 import { useSessionConversations } from "./api/useSessionConversations";
 import type { StreamState } from "../hooks/useAgentTaskStream";
@@ -31,8 +31,9 @@ import { parseWebUIV2Route, settingsReturnSession, webUIV2SettingsPath, webUIV2S
 import type { OperationResult, SessionListFilters, SessionMessage, SessionStatus, SessionSummary } from "./types";
 import { DesktopPet } from "./components/DesktopPet";
 import { getDesktopServiceBridge } from "./desktopServiceBridge";
+import { useDesktopReadiness } from "./useDesktopReadiness";
 import { UnsavedChangesDialog } from "./components/UnsavedChangesDialog";
-import { useGlobalVisualSettings } from "./settings/useGlobalVisualSettings";
+import { GLOBAL_SETTINGS_QUERY_KEY, useGlobalVisualSettings } from "./settings/useGlobalVisualSettings";
 import { visualSettingsStyle, type GlobalVisualSettings } from "./settings/globalVisualSettings";
 import "./styles.css";
 import "./components/thinkingMessage.css";
@@ -80,11 +81,15 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
   const [visualPreview, setVisualPreview] = useState<GlobalVisualSettings | null>(null);
   const [errorCode, setErrorCode] = useState("");
   const isDesktop = isDesktopV2Host();
-  const [readyToken, setReadyToken] = useState<string | null>(null);
-  const desktopReady = !isDesktop || Boolean(identity.apiToken && readyToken === identity.apiToken);
-  const [desktopError, setDesktopError] = useState(false);
-  const [desktopActionBusy, setDesktopActionBusy] = useState(false);
-  const [desktopActionError, setDesktopActionError] = useState("");
+  const refreshDesktopData = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ["webui2-server-status"] });
+    void queryClient.invalidateQueries({ queryKey: ["webui2-providers"] });
+    void queryClient.invalidateQueries({ queryKey: ["webui2-models"] });
+    void queryClient.invalidateQueries({ queryKey: ["session-control"] });
+    void queryClient.invalidateQueries({ queryKey: [GLOBAL_SETTINGS_QUERY_KEY] });
+  }, [queryClient]);
+  const desktop = useDesktopReadiness({ enabled: isDesktop, apiBase: identity.apiBase, apiToken: identity.apiToken, onReady: refreshDesktopData });
+  const desktopReady = desktop.ready;
   const desktopServiceBridge = isDesktop ? getDesktopServiceBridge() : null;
   const refSearch = completeSessionRef(filters.query);
   const sessionList = useSessionList(identity, refSearch ? { ...filters, query: "" } : filters, desktopReady);
@@ -100,7 +105,6 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
   const stream = useSessionConversations(identity, allSessions.data ?? [], state.selectedRef, desktopReady);
   const runtimeDefaults = useRuntimeDefaults(identity, isDesktop && desktopReady);
   const needsModelSetup = isDesktop && desktopReady && runtimeDefaults.data?.runtime_defaults?.needs_setup === true;
-  const previousReadyRef = useRef(false);
   const directCreateBusyRef = useRef(false);
 
   useEffect(() => {
@@ -112,52 +116,6 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
     window.addEventListener(GLOBAL_SETTINGS_SAVED_EVENT, refreshRuntimeCatalog);
     return () => window.removeEventListener(GLOBAL_SETTINGS_SAVED_EVENT, refreshRuntimeCatalog);
   }, [queryClient]);
-
-  useEffect(() => {
-    if (!isDesktop || !identity.apiToken) return;
-    let active = true;
-    let controller: AbortController | undefined;
-    const check = async (): Promise<void> => {
-      controller?.abort();
-      const requestController = new AbortController();
-      controller = requestController;
-      let timeout: number | undefined;
-      try {
-        const headers = { Authorization: `Bearer ${identity.apiToken}` };
-        timeout = window.setTimeout(() => requestController.abort(), 1500);
-        const health = await fetch(`${identity.apiBase}/health`, { headers, signal: requestController.signal });
-        const ready = await fetch(`${identity.apiBase}/readyz`, { headers, signal: requestController.signal });
-        if (active && controller === requestController) {
-          const isReady = health.ok && ready.ok;
-          const wasReady = previousReadyRef.current;
-          previousReadyRef.current = isReady;
-          setReadyToken(isReady ? identity.apiToken : null);
-          setDesktopError(!isReady);
-          if (isReady && !wasReady) {
-            void queryClient.invalidateQueries({ queryKey: ["webui2-server-status"] });
-            void queryClient.invalidateQueries({ queryKey: ["webui2-providers"] });
-            void queryClient.invalidateQueries({ queryKey: ["webui2-models"] });
-            void queryClient.invalidateQueries({ queryKey: ["session-control"] });
-          }
-        }
-      } catch {
-        if (active && controller === requestController) {
-          setReadyToken(null);
-          setDesktopError(true);
-        }
-      } finally {
-        if (timeout !== undefined) {
-          window.clearTimeout(timeout);
-        }
-        if (controller === requestController) {
-          controller = undefined;
-        }
-      }
-    };
-    void check();
-    const timer = window.setInterval(() => void check(), 2000);
-    return () => { active = false; window.clearInterval(timer); controller?.abort(); };
-  }, [identity.apiBase, identity.apiToken, isDesktop, queryClient]);
 
   const navigateToSession = useCallback((ref: SessionRef): void => {
     window.history.pushState({}, "", webUIV2SessionPath(ref));
@@ -280,28 +238,6 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
     setSidebarHidden(false);
   }
 
-  function retryDesktopConnection(): void {
-    setDesktopError(false);
-    setDesktopActionError("");
-    setReadyToken(null);
-  }
-
-  async function restartDesktopService(): Promise<void> {
-    if (!desktopServiceBridge || desktopActionBusy) return;
-    setDesktopActionBusy(true);
-    setDesktopActionError("");
-    setDesktopError(false);
-    setReadyToken(null);
-    try {
-      await desktopServiceBridge.RestartLocalService();
-    } catch (error) {
-      setDesktopError(true);
-      setDesktopActionError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setDesktopActionBusy(false);
-    }
-  }
-
   function handleCreated(result: OperationResult): void {
     setNewSessionOpen(false);
     selectSession(result.session.ref);
@@ -388,19 +324,17 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
   const searchSessions = allSessions.data ?? sessions;
 
   return <main aria-label={t("webui2.workspace")} className="webui2-page" data-appearance-enabled={visual.appearance.enabled ? "true" : "false"} data-inspector-open={inspectorOpen} data-session-ref={state.selectedRef ?? undefined} data-sidebar-hidden={sidebarHidden} data-sidebar-open={sidebarOpen} data-theme={theme} style={visualSettingsStyle(visual)}>
-    {isDesktop && !desktopReady ? <section className="webui2-desktop-readiness" role="status">
+    {isDesktop && !desktopReady ? <section className="webui2-desktop-readiness" data-state={desktop.state} aria-busy={desktop.state !== "failed"} role="status">
       <div className="webui2-desktop-status-copy">
-        <AlertTriangle aria-hidden="true" size={18} />
+        {desktop.state === "failed" ? <AlertTriangle aria-hidden="true" size={18} /> : <LoaderCircle className="webui2-desktop-status-spinner" aria-hidden="true" size={18} />}
         <div>
-          <strong>{desktopError ? (language === "zh" ? "本地服务连接失败" : "Unable to connect to the local service") : (language === "zh" ? "正在连接本地会话服务…" : "Connecting to the local session service…")}</strong>
-          <span>{desktopError ? (language === "zh" ? "页面仍可使用，恢复服务后会自动重新加载数据。" : "The app remains available and will reload data when the service recovers.") : (language === "zh" ? "桌面端正在准备本地会话能力。" : "The desktop app is preparing local session access.")}</span>
+          <strong>{desktop.state === "failed" ? (language === "zh" ? "暂时无法准备工作区" : "Workspace preparation is unavailable") : desktop.state === "recovering" ? (language === "zh" ? "正在恢复工作区…" : "Restoring your workspace…") : (language === "zh" ? "正在准备工作区…" : "Preparing your workspace…")}</strong>
+          <span>{desktop.state === "failed" ? (language === "zh" ? "可以重新准备，恢复后会自动继续。" : "Try preparing again. The app will continue automatically when ready.") : (language === "zh" ? "准备完成后将自动进入，无需操作。" : "The app will continue automatically when ready.")}</span>
         </div>
       </div>
-      <div className="webui2-desktop-status-actions">
-        <button type="button" className="webui2-desktop-status-button secondary" disabled={desktopActionBusy} onClick={retryDesktopConnection}><RefreshCw aria-hidden="true" size={15} />{language === "zh" ? "重试连接" : "Retry connection"}</button>
-        {desktopServiceBridge ? <button type="button" className="webui2-desktop-status-button" disabled={desktopActionBusy} onClick={() => void restartDesktopService()}><Power aria-hidden="true" size={15} />{desktopActionBusy ? (language === "zh" ? "重启中…" : "Restarting…") : (language === "zh" ? "重启本地服务" : "Restart local service")}</button> : null}
-      </div>
-      {desktopActionError ? <span className="webui2-desktop-status-error" role="alert">{desktopActionError}</span> : null}
+      {desktop.state === "failed" ? <div className="webui2-desktop-status-actions">
+        <button type="button" className="webui2-desktop-status-button" disabled={desktop.busy} onClick={desktop.retry}><RefreshCw aria-hidden="true" size={15} />{language === "zh" ? "重新准备" : "Prepare again"}</button>
+      </div> : null}
     </section> : null}
     <div className="webui2-chat-shell" hidden={settingsOpen} inert={settingsOpen}>
     <SessionSidebar
@@ -412,6 +346,7 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
       onOpenSearch={openSessionSearch}
       onHideSidebar={hideSidebar}
       onCreateSession={openNewSession}
+      createDisabled={!desktopReady}
       onCreateSessionInWorkspace={(cwd) => { void createSessionInWorkspace(cwd); }}
       onOpenSettings={() => openSettings()}
       onArchive={handleArchive}
@@ -427,7 +362,7 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
     <div className="webui2-content">
       <section className="webui2-workspace">
         {state.route.kind === "invalid" ? <div className="webui2-route-error" role="alert"><p>{t("webui2.invalidRoute")}</p><button onClick={recoverToIndex} type="button">{t("webui2.backToSessions")}</button></div> : null}
-        {state.route.kind === "index" && !sessionList.isLoading && !sessionList.isError ? <EmptyState onCreateSession={openNewSession} /> : null}
+        {state.route.kind === "index" && !sessionList.isLoading && !sessionList.isError ? <EmptyState onCreateSession={openNewSession} createDisabled={!desktopReady} /> : null}
         {state.selectedRef ? <SelectedSessionWorkspace key={state.selectedRef} drafts={drafts.current} availableSources={allSessions.data ?? sessions} identity={identity} onSelectSession={selectSession} onCreateSession={openNewSession} onOpenInspector={() => setInspectorOpen(true)} selectedRef={state.selectedRef} streamState={stream.state} ready={desktopReady} /> : null}
         {sessionList.isLoading ? <p className="webui2-workspace-empty">{t("webui2.loading")}</p> : null}
         {sessionList.isError ? <p className="webui2-workspace-empty" role="alert">{t(`webui2.error.${sessionControlErrorCode(sessionList.error)}`)}</p> : null}
@@ -467,8 +402,8 @@ function SelectedSessionWorkspace({ drafts, availableSources, identity, onSelect
   const stop = useStopSession(identity);
   const detail = sessionDetail.data;
   const client = useSessionControlClient();
-  const runtimeDetails = useSessionRuntimeDetails(identity, detail, Boolean(client.subscribe));
-  const catalog = useRuntimeCatalog(identity, Boolean(client.subscribe));
+  const runtimeDetails = useSessionRuntimeDetails(identity, detail, ready && Boolean(client.subscribe));
+  const catalog = useRuntimeCatalog(identity, ready && Boolean(client.subscribe));
   const [runtimeDraft, setRuntimeDraft] = useState<ComposerRuntimeValue | null>(null);
   const [queueBusy, setQueueBusy] = useState(false);
   const retryInFlight = useRef(false);
@@ -498,7 +433,7 @@ function SelectedSessionWorkspace({ drafts, availableSources, identity, onSelect
   if (sessionDetail.isError) return <p role="alert">{t(`webui2.error.${sessionControlErrorCode(sessionDetail.error)}`)}</p>;
   const taskID = detail?.activeRunID || Number(detail?.runs.at(-1)?.id) || undefined;
   const metrics = detail ? conversationRuntimeMetrics(detail, runtimeDetails.data) : {};
-  const locked = send.isPending || runtimeBusy || !detail || detail.source === "local" || ["blocked", "archived"].includes(detail.status);
+  const locked = !ready || send.isPending || runtimeBusy || !detail || detail.source === "local" || ["blocked", "archived"].includes(detail.status);
   const providerOptions = (catalog.providers.data ?? []).map((provider) => ({ value: provider.name, label: `${provider.name} · ${provider.model}`, triggerLabel: provider.name }));
   if (runtimeValue.provider && !providerOptions.some((option) => option.value === runtimeValue.provider)) providerOptions.unshift({ value: runtimeValue.provider, label: runtimeValue.provider, triggerLabel: runtimeValue.provider });
   if (!runtimeValue.provider) providerOptions.unshift({ value: "", label: language === "zh" ? "默认 Provider" : "Default provider", triggerLabel: "Provider" });

@@ -1,5 +1,13 @@
+export type DesktopServiceStatus = {
+  state: "stopped" | "starting" | "ready" | "failed";
+  pid?: number;
+  port: number;
+  error?: string;
+};
+
 export type DesktopServiceBridge = {
   RestartLocalService: () => Promise<void>;
+  GetLocalServiceStatus?: () => Promise<DesktopServiceStatus>;
   SelectWorkspace?: () => Promise<string>;
 };
 

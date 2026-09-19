@@ -11,6 +11,7 @@ import { createMockSessionControlClient } from "./api/mockSessionControlClient";
 import type { SessionDetail } from "./types";
 import { WebUIV2App } from "./WebUIV2App";
 import { GLOBAL_SETTINGS_SAVED_EVENT } from "./settings/globalSettingsDraft";
+import { DESKTOP_READINESS } from "./useDesktopReadiness";
 
 const identity: IdentityConfig = {
   apiBase: "/api",
@@ -50,6 +51,7 @@ describe("WebUIV2App", () => {
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
+    vi.useRealTimers();
     delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
   });
 
@@ -423,6 +425,7 @@ describe("WebUIV2App", () => {
   });
 
   it.each(["wails://wails", "http://wails.localhost"])("keeps the desktop shell visible and can restart the local service on %s", async (origin) => {
+    vi.useFakeTimers();
     vi.stubEnv("VITE_DESKTOP_UI_VERSION", "2");
     storage.set("go-e2e.desktop.onboarding.v1", "done");
     setDesktopOrigin(origin, "/webui/v2");
@@ -447,14 +450,24 @@ describe("WebUIV2App", () => {
     await act(async () => root.render(
       <I18nProvider><QueryClientProvider client={new QueryClient()}><WebUIV2App client={client} identity={{ ...identity, apiBase: "", apiToken: "desktop-process" }} /></QueryClientProvider></I18nProvider>
     ));
-    await vi.waitFor(() => expect(host.querySelector(".webui2-desktop-readiness")).not.toBeNull());
+    expect(host.querySelector(".webui2-desktop-readiness")?.getAttribute("data-state")).toBe("starting");
     expect(host.querySelector(".webui2-chat-shell")).not.toBeNull();
+    expect(host.querySelector(".webui2-desktop-readiness")?.textContent).toContain("Preparing your workspace");
+    expect(host.querySelector(".webui2-desktop-readiness button")).toBeNull();
+    expect(host.querySelector<HTMLButtonElement>(".webui2-new-session")?.disabled).toBe(true);
+    expect(host.querySelector<HTMLButtonElement>(".webui2-empty-state button")?.disabled).toBe(true);
+    expect(client.list).not.toHaveBeenCalled();
 
-    const restartButton = Array.from(host.querySelectorAll("button")).find((button) => button.textContent?.includes("Restart local service"));
+    await act(async () => { await vi.advanceTimersByTimeAsync(DESKTOP_READINESS.graceMs + DESKTOP_READINESS.pollMs); });
+    expect(host.querySelector(".webui2-desktop-readiness")?.getAttribute("data-state")).toBe("failed");
+    expect(host.querySelectorAll(".webui2-desktop-readiness button")).toHaveLength(1);
+    const restartButton = Array.from(host.querySelectorAll("button")).find((button) => button.textContent?.includes("Prepare again"));
     expect(restartButton).toBeDefined();
-    act(() => restartButton?.click());
-    await vi.waitFor(() => expect(restartLocalService).toHaveBeenCalledTimes(1));
-    await vi.waitFor(() => expect(host.querySelector(".webui2-desktop-readiness")).toBeNull(), { timeout: 3500 });
+    await act(async () => restartButton?.click());
+    expect(restartLocalService).toHaveBeenCalledTimes(1);
+    expect(host.querySelector(".webui2-desktop-readiness")).toBeNull();
+    expect(host.querySelector<HTMLButtonElement>(".webui2-new-session")?.disabled).toBe(false);
+    expect(client.list).toHaveBeenCalled();
   });
 
   it.each(["wails://wails", "http://wails.localhost"])("opens the new-session dialog before model verification in desktop-v2 on %s", async (origin) => {

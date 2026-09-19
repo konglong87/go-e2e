@@ -29,6 +29,7 @@ export function SessionRow({ session, selected, onSelect, onContextDragStart, on
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const selectRef = useRef<HTMLButtonElement>(null);
   const dragged = useRef(false);
+  const lastPointerType = useRef<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ left: number; top: number } | null>(null);
@@ -126,12 +127,19 @@ export function SessionRow({ session, selected, onSelect, onContextDragStart, on
     {editing && onRename ? <SessionTitleEditor title={session.title} onSave={onRename} onClose={() => setEditing(false)} /> : <button aria-pressed={selected} aria-describedby={previewOpen ? previewID : undefined}
       ref={selectRef}
       className="webui2-session-select" draggable onDragStart={dragStart}
-      onPointerDown={() => { dragged.current = false; }}
-      onFocus={showPreview} onBlur={scheduleClose}
+      onPointerDown={(event) => {
+        lastPointerType.current = event.pointerType;
+        dragged.current = false;
+        if (event.pointerType === "touch") closePreview();
+      }}
+      onFocus={() => {
+        if (lastPointerType.current !== "touch") showPreview();
+      }} onBlur={scheduleClose}
       onClick={(event) => {
         closePreview();
         if (!dragged.current || event.detail === 0) onSelect(session.ref);
         dragged.current = false;
+        lastPointerType.current = null;
       }} type="button">
       <span className="webui2-session-title">{session.title}</span>
       <SessionStatusIcon status={session.status} />
