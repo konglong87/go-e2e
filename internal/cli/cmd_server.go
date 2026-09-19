@@ -161,6 +161,9 @@ func serverCommand(ctx context.Context, args []string, opts options, stdout io.W
 			},
 		})
 		tenantStorageMode = "sqlite"
+		if err := configureServerImageRuntime(serverOpts.Workspace, opts.settingsInputs, repo, &serverOpts); err != nil {
+			return err
+		}
 	} else if dsn := firstEnv("GOLANG_CC_MYSQL_DSN", "MYSQL_DSN"); dsn != "" {
 		serverOpts.SettingsDatabase = serverSettingsDatabase(dsn)
 		repo, err := mysqlstore.OpenGormRepository(ctx, dsn, nil)
@@ -191,19 +194,9 @@ func serverCommand(ctx context.Context, args []string, opts options, stdout io.W
 				return nil
 			},
 		})
-		imageGenerator, imageBlobStore, imageMediaStore, imageHistoryStore, imageErr := configureImageGenerationWithSettingsInputs(serverOpts.Workspace, opts.settingsInputs, repo)
-		if imageErr != nil {
-			return fmt.Errorf("configure image generation: %w", imageErr)
+		if err := configureServerImageRuntime(serverOpts.Workspace, opts.settingsInputs, repo, &serverOpts); err != nil {
+			return err
 		}
-		serverOpts.ImageGenerator = imageGenerator
-		serverOpts.ImageBlobStore = imageBlobStore
-		serverOpts.MediaAssetStore = imageMediaStore
-		serverOpts.ImageGenerationStore = imageHistoryStore
-		imageCatalog, catalogErr := resolveImageCatalogWithSettingsInputs(serverOpts.Workspace, opts.settingsInputs)
-		if catalogErr != nil {
-			return fmt.Errorf("resolve image capabilities: %w", catalogErr)
-		}
-		serverOpts.ImageCatalog = imageCatalog
 		workerSupervisor := supervisor.ScreenSupervisor{ScriptPath: filepath.Join(serverOpts.Workspace, "scripts", "channel-worker-screen.sh")}
 		serverOpts.ProvisioningService = &provisioning.Service{Repo: repo, Credentials: credentials.FileStore{Dir: filepath.Dir(channelCredentialPath())}, Feishu: feishuprovision.HTTPProvisioner{}, Supervisor: workerSupervisor, Inventory: workerSupervisor}
 		serverOpts.AgentTaskStore = tenantSvc
@@ -580,6 +573,26 @@ func serverCommand(ctx context.Context, args []string, opts options, stdout io.W
 	return server.Run(ctx, serverOpts, func(ctx context.Context, req server.QueryRequest) (query.Result, error) {
 		return runServerQuery(ctx, req, io.Discard)
 	})
+}
+
+func configureServerImageRuntime(cwd string, settingsInputs []string, repo *mysqlstore.GormRepository, serverOpts *server.Options) error {
+	if serverOpts == nil {
+		return fmt.Errorf("server image runtime options are required")
+	}
+	imageGenerator, imageBlobStore, imageMediaStore, imageHistoryStore, err := configureImageGenerationWithSettingsInputs(cwd, settingsInputs, repo)
+	if err != nil {
+		return fmt.Errorf("configure image generation: %w", err)
+	}
+	imageCatalog, err := resolveImageCatalogWithSettingsInputs(cwd, settingsInputs)
+	if err != nil {
+		return fmt.Errorf("resolve image capabilities: %w", err)
+	}
+	serverOpts.ImageGenerator = imageGenerator
+	serverOpts.ImageBlobStore = imageBlobStore
+	serverOpts.MediaAssetStore = imageMediaStore
+	serverOpts.ImageGenerationStore = imageHistoryStore
+	serverOpts.ImageCatalog = imageCatalog
+	return nil
 }
 
 func applyServerUserQuestionPrompt(opts *options, sink any) {

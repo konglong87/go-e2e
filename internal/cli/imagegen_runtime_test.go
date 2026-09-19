@@ -12,6 +12,7 @@ import (
 
 	"github.com/konglong87/go-e2e/internal/config"
 	"github.com/konglong87/go-e2e/internal/imagegen"
+	"github.com/konglong87/go-e2e/internal/server"
 	mysqlstore "github.com/konglong87/go-e2e/internal/storage/mysql"
 	"github.com/konglong87/go-e2e/internal/telemetry"
 )
@@ -197,14 +198,42 @@ func TestConfigureImageGenerationRequiresTenantStorageWhenEnabled(t *testing.T) 
 		t.Fatal(err)
 	}
 	_, _, _, _, err := configureImageGeneration(t.TempDir(), nil)
-	if err == nil || !strings.Contains(err.Error(), "tenant MySQL") {
+	if err == nil || !strings.Contains(err.Error(), "tenant persistence storage") {
 		t.Fatalf("err=%v", err)
 	}
 }
 
 func TestConfigureImageGenerationWithSettingsInputsEnablesRuntime(t *testing.T) {
 	_, _, _, _, err := configureImageGenerationWithSettingsInputs(t.TempDir(), []string{`{"imageGeneration":{"enabled":true,"provider":"jiuan"},"fallback":{"providers":[{"name":"jiuan","baseURL":"https://images.example.test/v1","apiKey":"test-key"}]}}`}, nil)
-	if err == nil || !strings.Contains(err.Error(), "requires tenant MySQL storage") {
+	if err == nil || !strings.Contains(err.Error(), "requires tenant persistence storage") {
 		t.Fatalf("expected enabled image runtime to reach storage validation, got %v", err)
+	}
+}
+
+func TestConfigureServerImageRuntimeWithSQLiteProvidesImageRuntime(t *testing.T) {
+	t.Setenv("GOLANG_CC_CONFIG_DIR", t.TempDir())
+	repo, err := mysqlstore.OpenSQLiteGormRepository(context.Background(), filepath.Join(t.TempDir(), "desktop.sqlite"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Close()
+
+	opts := &server.Options{Workspace: t.TempDir()}
+	settings := `{"imageGeneration":{"enabled":true,"provider":"jiuan","model":"gpt-image-2"},"fallback":{"providers":[{"name":"jiuan","type":"custom","baseURL":"https://images.example.test/v1","apiKey":"test-key"}]}}`
+	if err := configureServerImageRuntime(opts.Workspace, []string{settings}, repo, opts); err != nil {
+		t.Fatal(err)
+	}
+	if opts.ImageGenerator == nil || opts.ImageBlobStore == nil || opts.ImageGenerationStore == nil {
+		t.Fatalf("sqlite image runtime incomplete: generator=%T blob=%T history=%T", opts.ImageGenerator, opts.ImageBlobStore, opts.ImageGenerationStore)
+	}
+	if opts.MediaAssetStore != repo {
+		t.Fatalf("sqlite media store = %T, want repository", opts.MediaAssetStore)
+	}
+	if len(opts.ImageCatalog) != 1 || opts.ImageCatalog[0].Provider != "jiuan" || opts.ImageCatalog[0].Model != "gpt-image-2" {
+		t.Fatalf("image catalog = %+v", opts.ImageCatalog)
+	}
+	registered := coreRuntimeToolsWithImageGenerator(config.Settings{}, nil, "", opts.ImageGenerator)
+	if findRuntimeTool(t, registered, "GenerateImage") == nil || findRuntimeTool(t, registered, "EditImage") == nil {
+		t.Fatal("sqlite server image runtime did not register image tools")
 	}
 }

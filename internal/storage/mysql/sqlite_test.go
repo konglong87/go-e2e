@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/konglong87/go-e2e/internal/agenttasks"
+	"github.com/konglong87/go-e2e/internal/media"
 )
 
 func TestSQLiteDesktopRepositorySupportsSessionControlPersistence(t *testing.T) {
@@ -127,6 +128,101 @@ func TestSQLiteDesktopRepositorySupportsSessionControlPersistence(t *testing.T) 
 	}
 	if len(messages) != 1 || messages[0].Content != "hello" {
 		t.Fatalf("messages = %+v", messages)
+	}
+}
+
+func TestSQLiteDesktopRepositorySupportsImagePersistence(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "desktop.sqlite")
+	repo, err := OpenSQLiteGormRepository(ctx, path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tenantID, err := repo.UpsertTenant(ctx, TenantInput{TenantKey: "webui-local", Name: "Local Desktop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	userID, err := repo.EnsureUser(ctx, tenantID, "webui-local-user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionID, err := repo.UpsertSession(ctx, SessionInput{
+		TenantID: tenantID, UserID: userID, SessionKey: "image-session",
+		Title: "Image test", Status: "idle", MetadataJSON: `{}`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, model := range []any{&gormMediaAsset{}, &gormImageGeneration{}, &gormImageGenerationAttempt{}, &gormImageCompletionOutbox{}} {
+		if !repo.db.Migrator().HasTable(model) {
+			t.Fatalf("sqlite image table for %T is missing", model)
+		}
+	}
+
+	if err := repo.UpsertMediaAsset(ctx, MediaAssetInput{
+		AssetID: "asset-1", TenantID: tenantID, UserID: userID, SessionID: sessionID,
+		Kind: "image", MediaType: "image/png", Name: "result.png", SizeBytes: 12,
+		SHA256: "abc", State: string(media.StateReady),
+		OriginalJSON: `{"path":"tenant/asset-1/original.png"}`,
+		AccessJSON:   `{"tenant_id":1,"user_id":1}`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	asset, err := repo.GetMediaAsset(ctx, tenantID, userID, sessionID, "asset-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if asset.AssetID != "asset-1" || asset.State != string(media.StateReady) || asset.OriginalJSON == "" {
+		t.Fatalf("media asset = %+v", asset)
+	}
+
+	created, err := repo.CreateImageGeneration(ctx, ImageGenerationInput{
+		GenerationID: "gen-1", TenantID: tenantID, UserID: userID, SessionID: sessionID,
+		AssetID: "asset-1", Operation: "generate", Status: "completed",
+		Prompt: "a small blue house", Provider: "jiuan", Model: "gpt-image-2",
+		IdempotencyKey: "desktop-image-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.GenerationID != "gen-1" {
+		t.Fatalf("created image generation = %+v", created)
+	}
+	loaded, err := repo.GetImageGeneration(ctx, tenantID, userID, sessionID, "gen-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.AssetID != "asset-1" || loaded.Model != "gpt-image-2" || loaded.Status != "completed" {
+		t.Fatalf("loaded image generation = %+v", loaded)
+	}
+	list, err := repo.ListImageGenerations(ctx, tenantID, userID, sessionID, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].GenerationID != "gen-1" {
+		t.Fatalf("image generations = %+v", list)
+	}
+
+	if err := repo.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := OpenSQLiteGormRepository(ctx, path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	reopenedAsset, err := reopened.GetMediaAsset(ctx, tenantID, userID, sessionID, "asset-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reopenedGeneration, err := reopened.GetImageGeneration(ctx, tenantID, userID, sessionID, "gen-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reopenedAsset.AssetID != asset.AssetID || reopenedGeneration.GenerationID != created.GenerationID {
+		t.Fatalf("reopened image persistence asset=%+v generation=%+v", reopenedAsset, reopenedGeneration)
 	}
 }
 

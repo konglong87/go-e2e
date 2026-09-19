@@ -423,7 +423,7 @@ func configureImageGenerationWithResolved(cwd string, resolved config.ResolvedIm
 		return nil, nil, nil, nil, nil
 	}
 	if repo == nil {
-		return nil, nil, nil, nil, errors.New("image generation requires tenant MySQL storage")
+		return nil, nil, nil, nil, errors.New("image generation requires tenant persistence storage")
 	}
 	blobs, err := imagegen.NewFilesystemBlobStore(imageGenerationMediaRoot(cwd))
 	if err != nil {

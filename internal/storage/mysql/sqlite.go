@@ -13,9 +13,9 @@ import (
 )
 
 // OpenSQLiteGormRepository opens the desktop persistence database while
-// retaining the existing tenant repository contract. The desktop schema is
-// intentionally limited to the session-control runtime surface; optional
-// MySQL-only channel and image tables remain server concerns.
+// retaining the existing tenant repository contract. The desktop schema
+// includes the session-control and image runtime surfaces used by the local
+// server.
 func OpenSQLiteGormRepository(ctx context.Context, path string, logger *slog.Logger) (*GormRepository, error) {
 	if path == "" {
 		return nil, fmt.Errorf("sqlite database path is required")
@@ -45,6 +45,8 @@ func migrateSQLiteDesktopSchema(db *gorm.DB) error {
 		&gormAgentTeam{}, &gormAgentTeamMember{}, &gormAgentTeamBinding{},
 		&gormAgentTeamRun{}, &gormAgentTeamMailbox{},
 		&gormPromptTemplate{},
+		&gormMediaAsset{}, &gormImageGeneration{},
+		&gormImageGenerationAttempt{}, &gormImageCompletionOutbox{},
 	); err != nil {
 		return err
 	}
@@ -82,6 +84,14 @@ func migrateSQLiteDesktopSchema(db *gorm.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_agent_task_events_task ON tenant_agent_task_events (task_id, created_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_tenant_audit_recent ON tenant_audit_logs (tenant_id, created_at)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS uk_prompt_templates_owner_title ON tenant_prompt_templates (tenant_id, user_id, title)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uk_image_generations_generation_id ON image_generations (generation_id)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uk_image_generations_idempotency ON image_generations (tenant_id, user_id, session_id, idempotency_key)`,
+		`CREATE INDEX IF NOT EXISTS idx_image_generations_session ON image_generations (tenant_id, user_id, session_id, created_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_image_generations_asset ON image_generations (tenant_id, user_id, session_id, asset_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_image_generations_source_asset ON image_generations (tenant_id, user_id, session_id, source_asset_id)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uk_image_generation_attempts_number ON image_generation_attempts (tenant_id, generation_id, attempt_no)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS uk_image_completion_outbox_idempotency ON image_completion_outbox (tenant_id, generation_id, event_type, idempotency_key)`,
+		`CREATE INDEX IF NOT EXISTS idx_image_completion_outbox_claim ON image_completion_outbox (tenant_id, status, next_attempt_at, lease_until, id)`,
 	} {
 		if err := db.Exec(statement).Error; err != nil {
 			return err
