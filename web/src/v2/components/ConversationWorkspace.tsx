@@ -1,7 +1,7 @@
 import { ArrowDown, History, PanelRightOpen } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 import { useI18n } from "../../lib/i18n";
-import type { SessionDetail, SessionMessage, SessionRef, ThinkingMode } from "../types";
+import type { SessionDetail, SessionMessage, SessionRef } from "../types";
 import { ConversationMessage } from "./ConversationMessage";
 import { EmptyState } from "./EmptyState";
 import type { IdentityConfig, WebAgentConversationDetail } from "../../lib/types";
@@ -10,12 +10,12 @@ import { advanceDisplayProgress, type DisplayProgress } from "./conversationDisp
 import { messageExperienceCopy } from "./messageExperienceCopy";
 import { buildConversationRuns, elapsedMilliseconds, isTerminalStatus, messageWithRuntime } from "./conversationViewModel";
 import { useConversationClock } from "./useConversationClock";
-import { readProductStorage } from "../../lib/productStorage";
+import { THINKING_PREFERENCE_KEY, useThinkingMode } from "./thinkingPreference";
 import "./messageExperience.css";
 
 const MESSAGE_PAGE_SIZE = 60;
 const FOLLOW_SCROLL_THRESHOLD = 80;
-export const THINKING_PREFERENCE_KEY = "golang-cc-webui.v2.thinking-mode";
+export { THINKING_PREFERENCE_KEY };
 
 type ConversationWorkspaceProps = {
   identity?: IdentityConfig;
@@ -35,7 +35,7 @@ export function ConversationWorkspace({ identity, detail, selectedRef, onOpenIns
   const stream = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
   const [showJump, setShowJump] = useState(false);
-  const [thinkingMode, setThinkingMode] = useState<ThinkingMode>(loadThinkingMode);
+  const thinkingMode = useThinkingMode();
   const [visibleCount, setVisibleCount] = useState(MESSAGE_PAGE_SIZE);
   const permissionPending = detail?.status === "waiting_permission";
   const questionPending = detail?.status === "waiting_input";
@@ -87,17 +87,12 @@ export function ConversationWorkspace({ identity, detail, selectedRef, onOpenIns
     setVisibleCount((count) => count + MESSAGE_PAGE_SIZE);
     requestAnimationFrame(() => { if (node) node.scrollTop = top + node.scrollHeight - height; });
   }
-  function changeThinkingMode(mode: ThinkingMode) {
-    setThinkingMode(mode);
-    try { window.localStorage.setItem(THINKING_PREFERENCE_KEY, mode); } catch { /* Browser storage may be unavailable. */ }
-  }
   const workspaceClass = `webui2-conversation-workspace${permissionPending ? " webui2-conversation-workspace--permission-pending" : ""}`;
   return <section aria-busy={detail ? undefined : "true"} className={workspaceClass}>
     {permissionPending ? <div className="webui2-permission-strip" role="alert">{t("webui2.inspector.permission")}</div> : null}
     <div className="webui2-conversation-body">
       <button aria-label={t("webui2.openInspector")} className="webui2-conversation-inspector" onClick={onOpenInspector} title={t("webui2.openInspector")} type="button"><PanelRightOpen aria-hidden="true" size={16} /></button>
       {detail ? (detail.messages.length === 0 && !running ? <EmptyState onCreateSession={onCreateSession} /> : <div className="webui2-conversation-stream" key={selectedRef} ref={stream} onScroll={(event) => { const node = event.currentTarget; follow.current = node.scrollHeight - node.scrollTop - node.clientHeight < FOLLOW_SCROLL_THRESHOLD; setShowJump(!follow.current); }}>
-        {detail.messages.some((message) => message.kind === "thinking") ? <label className="webui2-thinking-control"><span>{copy.thinking}</span><select aria-label={copy.thinking} value={thinkingMode} onChange={(event) => changeThinkingMode(event.target.value as ThinkingMode)}><option value="full">{copy.full}</option><option value="summary">{copy.summary}</option><option value="hidden">{copy.hidden}</option></select></label> : null}
         {hiddenCount ? <button type="button" className="webui2-show-earlier" onClick={showEarlier}><History size={14} />{copy.earlier} ({hiddenCount})</button> : null}
         {messages.slice(-visibleCount).map((message) => {
           const run = runsByID.get(String(message.taskID));
@@ -110,12 +105,4 @@ export function ConversationWorkspace({ identity, detail, selectedRef, onOpenIns
     </div>
     <div className="webui2-conversation-composer-slot">{showJump ? <button type="button" className="webui2-jump-latest" title={copy.jump} aria-label={copy.jump} onClick={() => { follow.current = true; setShowJump(false); if (stream.current) stream.current.scrollTop = stream.current.scrollHeight; }}><ArrowDown size={16} /></button> : null}{composer}</div>
   </section>;
-}
-
-function loadThinkingMode(): ThinkingMode {
-  try {
-    const value = readProductStorage(THINKING_PREFERENCE_KEY);
-    if (value === "full" || value === "hidden" || value === "summary") return value;
-  } catch { /* Keep the default when browser storage is unavailable. */ }
-  return "summary";
 }

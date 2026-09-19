@@ -77,15 +77,22 @@ describe("conversation message experience", () => {
     expect(host.textContent).not.toContain("Reasoning detail");
     act(() => host.querySelector<HTMLButtonElement>(".webui2-show-earlier")?.click());
     expect(host.querySelectorAll(".webui2-conversation-message")).toHaveLength(65);
-    const select = host.querySelector<HTMLSelectElement>('select[aria-label="Thinking"]')!;
-    act(() => { select.value = "full"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+    expect(host.querySelector('select[aria-label="Thinking"]')).toBeNull();
+    expect(host.textContent).not.toContain("Reasoning detail");
+    act(() => {
+      window.localStorage.setItem(THINKING_PREFERENCE_KEY, "full");
+      window.dispatchEvent(new StorageEvent("storage", { key: THINKING_PREFERENCE_KEY, newValue: "full" }));
+    });
     expect(host.textContent).toContain("Reasoning detail");
-    act(() => { select.value = "hidden"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+    act(() => {
+      window.localStorage.setItem(THINKING_PREFERENCE_KEY, "hidden");
+      window.dispatchEvent(new StorageEvent("storage", { key: THINKING_PREFERENCE_KEY, newValue: "hidden" }));
+    });
     expect(host.textContent).not.toContain("Reasoning detail");
     expect(host.querySelector(".webui2-thinking-full")).toBeNull();
     expect(storage.get(THINKING_PREFERENCE_KEY)).toBe("hidden");
     act(() => root.render(<I18nProvider><ConversationWorkspace key="remounted" detail={session(entries)} selectedRef="tenant:a" composer={null} onOpenInspector={vi.fn()} /></I18nProvider>));
-    expect(host.querySelector<HTMLSelectElement>('select[aria-label="Thinking"]')?.value).toBe("hidden");
+    expect(host.querySelector('select[aria-label="Thinking"]')).toBeNull();
   });
 
   it("renders timestamps and shares one live clock, then fixes terminal elapsed time", () => {

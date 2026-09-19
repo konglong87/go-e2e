@@ -21,6 +21,8 @@ import { PetSettingsPanel } from "./PetSettingsPanel";
 import { ObservabilityPanel } from "./ObservabilityPanel";
 import { readVisualSettings, type GlobalVisualSettings } from "./globalVisualSettings";
 import { SettingsSelect } from "./SettingsSelect";
+import { messageExperienceCopy } from "../components/messageExperienceCopy";
+import { setThinkingMode, useThinkingMode } from "../components/thinkingPreference";
 import brandLogo from "../assets/go-e2e-mark.svg";
 import "./settingsCenter.css";
 
@@ -148,10 +150,15 @@ function SettingsEnvironmentContent(props: Props & { globalIdentity: IdentityCon
 function GeneralSettings({ identity, theme, onThemeChange, inspectorOpen, onInspectorChange }: Props): JSX.Element {
   const { language, setLanguage, t } = useI18n();
   const zh = language === "zh";
+  const thinkingMode = useThinkingMode();
+  const copy = messageExperienceCopy[language];
   return <div className="settings-general">
     <section className="settings-section"><h2>{zh ? "语言" : "Language"}</h2><div className="settings-form-grid"><label htmlFor="settings-language-select">{t("webui2.language")}<SettingsSelect id="settings-language-select" ariaLabel={t("webui2.language")} value={language} onChange={(value) => setLanguage(value === "zh" ? "zh" : "en")} options={[{ value: "zh", label: "简体中文" }, { value: "en", label: "English" }]} /></label></div></section>
     <section className="settings-section"><h2>{zh ? "外观" : "Appearance"}</h2><fieldset aria-label={t("webui2.theme")} className="settings-theme-options">{(["light", "dark"] as const).map((value) => <button aria-pressed={theme === value} key={value} onClick={() => onThemeChange(value)} type="button"><span aria-hidden="true" className="settings-theme-sample" data-theme={value}><span /></span>{t(`webui2.theme${value === "light" ? "Light" : "Dark"}`)}</button>)}</fieldset></section>
-    <section className="settings-section"><h2>{zh ? "对话界面" : "Conversation"}</h2><div className="settings-preference-row"><div><strong>{zh ? "Inspector 默认展开" : "Open Inspector by default"}</strong><p>{zh ? "查看会话活动、上下文与运行详情。" : "Show activity, context and run details."}</p></div><input aria-label={t("webui2.inspector")} aria-checked={inspectorOpen} checked={inspectorOpen} onChange={(event) => onInspectorChange(event.target.checked)} type="checkbox" role="switch" /></div></section>
+    <section className="settings-section"><h2>{zh ? "对话界面" : "Conversation"}</h2><div className="settings-preference-stack">
+      <div className="settings-preference-row"><div><strong>{zh ? "Inspector 默认展开" : "Open Inspector by default"}</strong><p>{zh ? "查看会话活动、上下文与运行详情。" : "Show activity, context and run details."}</p></div><input aria-label={t("webui2.inspector")} aria-checked={inspectorOpen} checked={inspectorOpen} onChange={(event) => onInspectorChange(event.target.checked)} type="checkbox" role="switch" /></div>
+      <div className="settings-preference-row"><div><strong>{copy.thinking}</strong><p>{zh ? "选择会话中思考过程的展示方式。" : "Choose how thinking details appear in conversations."}</p></div><SettingsSelect ariaLabel={copy.thinking} className="settings-preference-select" id="settings-thinking-mode-select" onChange={(value) => setThinkingMode(value as typeof thinkingMode)} options={[{ value: "full", label: copy.full }, { value: "summary", label: copy.summary }, { value: "hidden", label: copy.hidden }]} value={thinkingMode} /></div>
+    </div></section>
     <section className="settings-section"><h2>{zh ? "连接身份" : "Connection identity"}</h2><dl className="settings-identity-fields"><div><dt>{zh ? "租户" : "Tenant"}</dt><dd>{identity.tenantKey || "—"}</dd></div><div><dt>{zh ? "用户" : "User"}</dt><dd>{identity.userId || "—"}</dd></div></dl><div className="settings-notice"><ShieldCheck size={16} /><span>{identity.apiToken ? t("webui2.authTokenPresent") : t("webui2.authTokenMissing")}</span><span>{identity.mobileJwt ? t("webui2.authMobilePresent") : t("webui2.authMobileMissing")}</span></div></section>
   </div>;
 }
