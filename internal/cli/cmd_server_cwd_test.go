@@ -106,3 +106,24 @@ func TestRequestCWDWithNoRootsIsUnconstrained(t *testing.T) {
 		t.Fatalf("with no roots configured the cwd must pass through: %v", err)
 	}
 }
+
+func TestDesktopLocalRequestCWDAllowsAnyExistingDirectory(t *testing.T) {
+	workspace := t.TempDir()
+	outside := t.TempDir()
+	validate, err := newServerRequestCWDValidator(workspace, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resolved, err := validate(filepath.Join(outside, "."))
+	if err != nil {
+		t.Fatalf("desktop-local validator rejected an existing directory outside the startup workspace: %v", err)
+	}
+	if resolved != outside {
+		t.Fatalf("resolved cwd = %q, want %q", resolved, outside)
+	}
+
+	if _, err := validate(filepath.Join(outside, "missing")); err == nil {
+		t.Fatal("desktop-local validator accepted a missing directory")
+	}
+}

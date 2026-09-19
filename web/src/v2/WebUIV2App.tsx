@@ -373,7 +373,7 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
       </section>
       {state.selectedRef && desktopReady ? <SelectedSessionInspector identity={identity} onClose={() => setInspectorOpen(false)} onTabChange={setInspectorTab} open={inspectorOpen} selectedRef={state.selectedRef} tab={inspectorTab} /> : null}
     </div>
-    <NewSessionDialog identity={identity} defaultCWD={newSessionCWD ?? (allSessions.data ?? sessions).find((session) => session.ref === state.selectedRef)?.cwd} onClose={() => { setNewSessionOpen(false); setNewSessionCWD(undefined); }} onCreated={handleCreated} open={newSessionOpen} />
+    <NewSessionDialog identity={identity} defaultCWD={newSessionCWD ?? (allSessions.data ?? sessions).find((session) => session.ref === state.selectedRef)?.cwd} onSelectWorkspace={desktopServiceBridge?.SelectWorkspace} onClose={() => { setNewSessionOpen(false); setNewSessionCWD(undefined); }} onCreated={handleCreated} open={newSessionOpen} />
     <SessionSearchDialog open={searchOpen} sessions={searchSessions} onClose={() => setSearchOpen(false)} onCreateSession={openNewSession} onSelect={selectSession} />
     <CommandPalette open={commandsOpen} onClose={() => setCommandsOpen(false)} commands={commands} placeholder={language === "zh" ? "搜索会话或操作" : "Search sessions or actions"} emptyLabel={t("webui2.emptySessions")} ariaLabel={language === "zh" ? "命令面板" : "Command palette"} />
     </div>

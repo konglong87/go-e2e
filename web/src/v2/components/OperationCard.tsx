@@ -28,9 +28,13 @@ const operationStatuses: Record<OperationStatus, StatusPresentation> = {
 const operationErrorKeys: Record<SessionControlErrorCode, string> = {
   forbidden: "webui2.error.forbidden",
   idempotency_conflict: "webui2.error.idempotency_conflict",
+  invalid_request: "webui2.error.invalid_request",
   invalid_state: "webui2.error.invalid_state",
   local_read_only: "webui2.error.local_read_only",
   budget_exceeded: "webui2.error.budget_exceeded",
+  provider_route_invalid: "webui2.error.provider_route_invalid",
+  service_unavailable: "webui2.error.service_unavailable",
+  workspace_unavailable: "webui2.error.workspace_unavailable",
   network_unavailable: "webui2.error.network_unavailable",
   stream_disconnected: "webui2.error.stream_disconnected",
   not_found: "webui2.error.not_found"

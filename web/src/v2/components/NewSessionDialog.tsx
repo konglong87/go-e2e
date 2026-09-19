@@ -1,4 +1,4 @@
-import { Code, MessageSquare, X } from "lucide-react";
+import { Code, FolderOpen, MessageSquare, X } from "lucide-react";
 import { useEffect, useId, useRef, useState, type FormEvent, type JSX, type KeyboardEvent } from "react";
 import { useI18n } from "../../lib/i18n";
 import type { IdentityConfig } from "../../lib/types";
@@ -12,6 +12,7 @@ type NewSessionDialogProps = {
   identity: IdentityConfig;
   open: boolean;
   defaultCWD?: string;
+  onSelectWorkspace?: () => Promise<string | null>;
   onClose: () => void;
   onCreated: (result: OperationResult) => void;
 };
@@ -19,7 +20,7 @@ type NewSessionDialogProps = {
 const focusableSelector = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])';
 type CreateSubmission = { fingerprint: string; idempotencyKey: string };
 
-export function NewSessionDialog({ identity, open, defaultCWD, onClose, onCreated }: NewSessionDialogProps): JSX.Element | null {
+export function NewSessionDialog({ identity, open, defaultCWD, onSelectWorkspace, onClose, onCreated }: NewSessionDialogProps): JSX.Element | null {
   const { t, language } = useI18n();
   const create = useCreateSession(identity);
   const [title, setTitle] = useState("");
@@ -31,11 +32,13 @@ export function NewSessionDialog({ identity, open, defaultCWD, onClose, onCreate
   const [cwd, setCWD] = useState<string | null>(null);
   const [promptMode, setPromptMode] = useState("code");
   const [validating, setValidating] = useState(false);
+  const [selectingWorkspace, setSelectingWorkspace] = useState(false);
   const [workspaceError, setWorkspaceError] = useState("");
   const { providers, models, status } = useRuntimeCatalog(identity, open);
   const defaultModel = status.data?.model?.trim() || identity.model;
   const workspace = cwd ?? defaultCWD ?? status.data?.workspace ?? "";
-  const busy = create.isPending || validating;
+  const workspaceName = workspace.split(/[\\/]/).filter(Boolean).at(-1) || workspace || t("webui2.unknownWorkspace");
+  const busy = create.isPending || validating || selectingWorkspace;
   const [errorCode, setErrorCode] = useState("");
   const dialogRef = useRef<HTMLElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -51,6 +54,8 @@ export function NewSessionDialog({ identity, open, defaultCWD, onClose, onCreate
     if (wasOpenRef.current) return;
     wasOpenRef.current = true;
     modelEditedRef.current = false;
+    setCWD(null);
+    setWorkspaceError("");
     setProvider(identity.provider ?? "");
     setModel(identity.model);
   }, [identity.model, identity.provider, open]);
@@ -96,6 +101,20 @@ export function NewSessionDialog({ identity, open, defaultCWD, onClose, onCreate
     }
   }
 
+  async function selectWorkspace(): Promise<void> {
+    if (!onSelectWorkspace || busy) return;
+    setSelectingWorkspace(true);
+    setWorkspaceError("");
+    try {
+      const selected = await onSelectWorkspace();
+      if (selected?.trim()) setCWD(selected.trim());
+    } catch {
+      setWorkspaceError(t("webui2.workspaceSelectFailed"));
+    } finally {
+      setSelectingWorkspace(false);
+    }
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     if (busy) return;
@@ -104,16 +123,20 @@ export function NewSessionDialog({ identity, open, defaultCWD, onClose, onCreate
     setWorkspaceError("");
     try {
       let validatedCWD = workspace.trim();
-      if (validatedCWD) {
-        setValidating(true);
-        try {
-          const result = await validateAgentWorkspace(identity, validatedCWD);
-          if (!result.exists || !result.is_dir) throw new Error("invalid_workspace");
-          validatedCWD = result.cwd;
-        } catch {
-          setWorkspaceError(language === "zh" ? "无法访问该工作目录，请检查路径和权限。" : "Workspace is unavailable. Check its path and permissions.");
-          return;
-        } finally { setValidating(false); }
+      if (!validatedCWD) {
+        setWorkspaceError(t("webui2.workspaceNotSelected"));
+        return;
+      }
+      setValidating(true);
+      try {
+        const result = await validateAgentWorkspace(identity, validatedCWD);
+        if (!result.exists || !result.is_dir) throw new Error("invalid_workspace");
+        validatedCWD = result.cwd;
+      } catch {
+        setWorkspaceError(t("webui2.error.workspace_unavailable"));
+        return;
+      } finally {
+        setValidating(false);
       }
       const trimmedInitialText = initialText.trim();
       const fingerprint = JSON.stringify({ title: trimmedTitle, initialText: trimmedInitialText, provider, model, cwd: validatedCWD, promptMode });
@@ -144,7 +167,19 @@ export function NewSessionDialog({ identity, open, defaultCWD, onClose, onCreate
           <label>Provider<select aria-label="Provider" disabled={busy} value={provider} onChange={(event) => { const nextProvider = event.target.value; setProvider(nextProvider); modelEditedRef.current = false; const selected = providers.data?.find((item) => item.name === nextProvider); if (selected?.model) setModel(selected.model); else if (!nextProvider) setModel(defaultModel); }}><option value="">{t("webui2.provider.default")}</option>{providers.data?.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}</select></label>
           <label>Model<input aria-label="Model" list={`${titleID}-models`} disabled={busy} value={model} onChange={(event) => { modelEditedRef.current = true; setModel(event.target.value); }} /><datalist id={`${titleID}-models`}>{[...new Set([...(models.data ?? []), ...(providers.data ?? []).map((item) => item.model)])].map((item) => <option key={item} value={item} />)}</datalist></label>
         </div>
-        <label>{t("webui2.workspaceSection")}<input aria-label="cwd" disabled={busy} value={workspace} onChange={(event) => { setCWD(event.target.value); setWorkspaceError(""); }} /></label>
+        <div className="webui2-workspace-picker">
+          <div className="webui2-workspace-picker-heading">
+            <span>{t("webui2.workspaceSection")}</span>
+            <button aria-label={workspace ? t("webui2.changeWorkspace") : t("webui2.chooseWorkspace")} className="webui2-workspace-picker-action" disabled={busy || !onSelectWorkspace} onClick={() => void selectWorkspace()} type="button">
+              <FolderOpen aria-hidden="true" size={15} />
+              {workspace ? t("webui2.changeWorkspace") : t("webui2.chooseWorkspace")}
+            </button>
+          </div>
+          <div className="webui2-workspace-picker-copy" title={workspace || undefined}>
+            <strong className="webui2-workspace-picker-name">{workspace ? workspaceName : t("webui2.workspaceNotSelected")}</strong>
+            {workspace ? <span className="webui2-workspace-picker-location">{workspace}</span> : null}
+          </div>
+        </div>
         {workspaceError ? <p role="alert">{workspaceError}</p> : null}
         {providers.isError ? <p role="alert">{t("webui2.error.network_unavailable")}</p> : null}
         <label>{t("webui2.initialInstruction")}<textarea aria-label={t("webui2.initialInstruction")} disabled={busy} onChange={(event) => setInitialText(event.target.value)} rows={3} value={initialText} /></label>

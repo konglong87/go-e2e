@@ -132,6 +132,26 @@ func chooseWorkspace(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if strings.TrimSpace(workspace) == "" {
+		return "", errors.New("workspace selection cancelled")
+	}
+	return normalizeWorkspaceSelection(workspace)
+}
+
+func selectWorkspace(ctx context.Context) (string, error) {
+	workspace, err := wailsruntime.OpenDirectoryDialog(ctx, wailsruntime.OpenDialogOptions{
+		Title: "选择会话工作文件夹",
+	})
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(workspace) == "" {
+		return "", nil
+	}
+	return normalizeWorkspaceSelection(workspace)
+}
+
+func normalizeWorkspaceSelection(workspace string) (string, error) {
 	workspace = strings.TrimSpace(workspace)
 	if workspace == "" {
 		return "", errors.New("workspace selection cancelled")

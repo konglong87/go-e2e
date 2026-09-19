@@ -125,6 +125,7 @@ func (s *localServiceController) startLocked() error {
 		"--host", "127.0.0.1",
 		"--port", strconv.Itoa(config.port),
 		"--auth-token", config.token,
+		"--desktop-local",
 	)
 	cmd.Env = append(os.Environ(), config.env...)
 	cmd.Dir = config.dir

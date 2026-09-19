@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"embed"
+	"errors"
 	"fmt"
 	"net"
 	"net/http/httputil"
@@ -157,6 +158,14 @@ func (a *app) domReady(ctx context.Context) {
 	script := fmt.Sprintf(`window.__GO_E2E_DESKTOP_TOKEN__=%q; window.dispatchEvent(new Event("go-e2e-desktop-token"));`, a.token)
 	wailsruntime.WindowExecJS(ctx, script)
 	a.startWindowStateWatcher(ctx)
+}
+
+func (a *app) SelectWorkspace() (string, error) {
+	ctx := a.windowContext()
+	if ctx == nil {
+		return "", errors.New("desktop window is not ready")
+	}
+	return selectWorkspace(ctx)
 }
 
 func (a *app) beforeClose(ctx context.Context) bool {

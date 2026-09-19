@@ -45,6 +45,7 @@ var newServerSessionControlService = func(opts server.Options) sessioncontroltoo
 
 func serverCommand(ctx context.Context, args []string, opts options, stdout io.Writer) error {
 	serverOpts := server.Options{Host: "127.0.0.1", Port: 0, Workspace: defaultServerWorkspace(opts.cwd)}
+	desktopLocal := false
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--host":
@@ -75,6 +76,8 @@ func serverCommand(ctx context.Context, args []string, opts options, stdout io.W
 				return err
 			}
 			serverOpts.Workspace = v
+		case "--desktop-local":
+			desktopLocal = true
 		default:
 			return fmt.Errorf("unknown server option: %s", args[i])
 		}
@@ -304,12 +307,12 @@ func serverCommand(ctx context.Context, args []string, opts options, stdout io.W
 		headers := telemetryExportHeaders(format)
 		serverOpts.TelemetrySinks = append(serverOpts.TelemetrySinks, telemetry.NewVendorHTTPSink(exportURL, format, service, headers))
 	}
-	allowedCWDRoots, err := resolveAllowedCWDRoots(serverOpts.Workspace)
+	validateRequestCWD, err := newServerRequestCWDValidator(serverOpts.Workspace, desktopLocal)
 	if err != nil {
 		return err
 	}
 	serverOpts.SessionControlCWDValidator = func(cwd string) (string, error) {
-		return resolveRequestCWD(cwd, allowedCWDRoots)
+		return validateRequestCWD(cwd)
 	}
 	serverOpts.SessionControlRouteResolver = func(cwd, provider, model string) (string, string, error) {
 		routeOpts := opts
@@ -355,7 +358,7 @@ func serverCommand(ctx context.Context, args []string, opts options, stdout io.W
 			// 请求体里的 cwd 直接决定服务端工具的执行目录。校验放在这里而不是各个
 			// handler 里，是因为 runServerQuery 是所有入口（/query、
 			// /v1/chat/completions、agent task、mobile）唯一的收敛点（AUDIT-P1-27）。
-			resolved, err := resolveRequestCWD(req.CWD, allowedCWDRoots)
+			resolved, err := validateRequestCWD(req.CWD)
 			if err != nil {
 				return query.Result{}, err
 			}
@@ -771,6 +774,21 @@ func resolveAllowedCWDRoots(workspace string) ([]string, error) {
 		roots = append(roots, canonicalPath(abs))
 	}
 	return roots, nil
+}
+
+func newServerRequestCWDValidator(workspace string, desktopLocal bool) (func(string) (string, error), error) {
+	if desktopLocal {
+		return func(requested string) (string, error) {
+			return server.ValidateWorkspaceCWDPath(requested)
+		}, nil
+	}
+	allowedCWDRoots, err := resolveAllowedCWDRoots(workspace)
+	if err != nil {
+		return nil, err
+	}
+	return func(requested string) (string, error) {
+		return resolveRequestCWD(requested, allowedCWDRoots)
+	}, nil
 }
 
 // resolveRequestCWD 校验请求指定的 cwd 落在允许根目录之内，返回规范化后的路径。

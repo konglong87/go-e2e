@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../App";
 import { I18nProvider } from "../lib/i18n";
+import * as api from "../lib/api";
 import type { IdentityConfig } from "../lib/types";
 import type { SessionControlClient } from "./api/sessionControlClient";
 import { createMockSessionControlClient } from "./api/mockSessionControlClient";
@@ -502,6 +503,8 @@ describe("WebUIV2App", () => {
   });
 
   it("creates one session from a focused dialog, selects its readback, and leaves legacy DOM absent", async () => {
+    vi.spyOn(api, "getStatus").mockResolvedValue({ workspace: "/work/project" });
+    vi.spyOn(api, "validateAgentWorkspace").mockResolvedValue({ cwd: "/work/project", workspace_name: "project", exists: true, is_dir: true, is_git_repo: false });
     const created: SessionDetail = { ref: "tenant:created", source: "tenant", title: "Launch plan", status: "idle", updatedAt: "2026-09-05T01:00:00.000Z", shortID: "created", messages: [{ id: "operation-create", role: "assistant", kind: "operation", content: "", createdAt: "2026-09-05T01:00:00.000Z", operation: { id: "operation-create", kind: "create", status: "completed", title: "", detail: "", createdAt: "2026-09-05T01:00:00.000Z" } }], activity: [], context: [], changes: [], runs: [] };
     const client: SessionControlClient = {
       list: vi.fn(async () => [created]), get: vi.fn(async () => created),
@@ -514,6 +517,7 @@ describe("WebUIV2App", () => {
     expect(newSession).not.toBeNull();
     act(() => newSession?.click());
     expect(host.querySelector('[role="dialog"]')).not.toBeNull();
+    await vi.waitFor(() => expect(host.querySelector(".webui2-workspace-picker-location")?.textContent).toBe("/work/project"));
     const title = host.querySelector<HTMLInputElement>('[role="dialog"] input');
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
     act(() => { setter?.call(title, "Launch plan"); title?.dispatchEvent(new Event("input", { bubbles: true })); });
@@ -532,9 +536,12 @@ describe("WebUIV2App", () => {
   });
 
   it("keeps created v2 state and transient controls isolated from legacy application DOM", async () => {
+    vi.spyOn(api, "getStatus").mockResolvedValue({ workspace: "/work/project" });
+    vi.spyOn(api, "validateAgentWorkspace").mockResolvedValue({ cwd: "/work/project", workspace_name: "project", exists: true, is_dir: true, is_git_repo: false });
     renderAt("/webui/v2", undefined, createMockSessionControlClient());
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
     act(() => host.querySelector<HTMLButtonElement>(".webui2-new-session")?.click());
+    await vi.waitFor(() => expect(host.querySelector(".webui2-workspace-picker-location")?.textContent).toBe("/work/project"));
     const title = host.querySelector<HTMLInputElement>('[role="dialog"] input');
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
     act(() => { setter?.call(title, "Isolated session"); title?.dispatchEvent(new Event("input", { bubbles: true })); });

@@ -51,6 +51,10 @@ func TestWindowStateBridgeContract(t *testing.T) {
 	if !ok || restartService.Type.NumOut() != 1 || restartService.Type.Out(0) != reflect.TypeOf((*error)(nil)).Elem() {
 		t.Fatalf("RestartLocalService has unexpected signature %s", restartService.Type)
 	}
+	selectWorkspace, ok := appType.MethodByName("SelectWorkspace")
+	if !ok || selectWorkspace.Type.NumOut() != 2 || selectWorkspace.Type.Out(0) != reflect.TypeOf("") || selectWorkspace.Type.Out(1) != reflect.TypeOf((*error)(nil)).Elem() {
+		t.Fatalf("SelectWorkspace has unexpected signature %s", selectWorkspace.Type)
+	}
 	getServiceStatus, ok := appType.MethodByName("GetLocalServiceStatus")
 	if !ok || getServiceStatus.Type.NumOut() != 1 || getServiceStatus.Type.Out(0) != reflect.TypeOf(LocalServiceStatus{}) {
 		t.Fatalf("GetLocalServiceStatus has unexpected signature %s", getServiceStatus.Type)

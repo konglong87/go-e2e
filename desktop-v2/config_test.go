@@ -110,3 +110,26 @@ func TestLoadDesktopConfigDropsInvalidWindowGeometry(t *testing.T) {
 		t.Fatalf("window state = %#v, want fullscreen only", got.Window)
 	}
 }
+
+func TestNormalizeWorkspaceSelectionRequiresExistingDirectory(t *testing.T) {
+	root := t.TempDir()
+	got, err := normalizeWorkspaceSelection(filepath.Join(root, ".", "selected"))
+	if err == nil {
+		t.Fatal("normalizeWorkspaceSelection accepted a missing directory")
+	}
+	if got != "" {
+		t.Fatalf("missing directory result = %q, want empty", got)
+	}
+
+	workspace := filepath.Join(root, "selected")
+	if err := os.Mkdir(workspace, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got, err = normalizeWorkspaceSelection(filepath.Join(workspace, "."))
+	if err != nil {
+		t.Fatalf("normalizeWorkspaceSelection() error = %v", err)
+	}
+	if got != workspace {
+		t.Fatalf("normalized workspace = %q, want %q", got, workspace)
+	}
+}

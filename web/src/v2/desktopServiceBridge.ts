@@ -1,5 +1,6 @@
 export type DesktopServiceBridge = {
   RestartLocalService: () => Promise<void>;
+  SelectWorkspace?: () => Promise<string>;
 };
 
 declare global {

@@ -368,6 +368,14 @@
 .webui2-page .webui2-session-routing { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
 .webui2-page .webui2-new-session-dialog label { color: var(--webui2-text-muted); display: grid; font-size: 13px; gap: 6px; }
 .webui2-page .webui2-new-session-dialog input, .webui2-page .webui2-new-session-dialog textarea, .webui2-page .webui2-new-session-dialog select { background: var(--webui2-surface); border: 1px solid var(--webui2-border); border-radius: 4px; color: var(--webui2-text); font: inherit; padding: 8px; resize: vertical; min-width: 0; max-width: 100%; }
+.webui2-page .webui2-workspace-picker { display: grid; gap: 7px; }
+.webui2-page .webui2-workspace-picker-heading { align-items: center; color: var(--webui2-text-muted); display: flex; font-size: 13px; justify-content: space-between; gap: 10px; }
+.webui2-page .webui2-workspace-picker-action { align-items: center; background: transparent; border: 1px solid var(--webui2-border); border-radius: 5px; color: var(--webui2-text); cursor: pointer; display: inline-flex; flex: 0 0 auto; font: inherit; gap: 6px; min-height: 30px; padding: 0 9px; }
+.webui2-page .webui2-workspace-picker-action:hover:not(:disabled) { background: var(--webui2-surface-muted); }
+.webui2-page .webui2-workspace-picker-action:disabled { cursor: default; opacity: .55; }
+.webui2-page .webui2-workspace-picker-copy { background: var(--webui2-surface-muted); border: 1px solid var(--webui2-border); border-radius: 5px; display: grid; gap: 3px; min-width: 0; padding: 9px 10px; }
+.webui2-page .webui2-workspace-picker-name { color: var(--webui2-text); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.webui2-page .webui2-workspace-picker-location { color: var(--webui2-text-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .webui2-page .webui2-new-session-dialog [role="alert"] { color: var(--webui2-danger); font-size: 13px; margin: 0; }
 .webui2-page .webui2-new-session-dialog footer { display: flex; gap: 8px; justify-content: flex-end; }
 .webui2-page .webui2-new-session-dialog footer button { background: var(--webui2-surface-muted); border: 1px solid var(--webui2-border); border-radius: 4px; color: var(--webui2-text); height: var(--webui2-control-height); padding: 0 10px; }

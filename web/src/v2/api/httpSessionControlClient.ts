@@ -244,7 +244,7 @@ function errorFromBody(body: string): SessionControlError {
   const record = objectValue(parsed);
   const nested = record ? objectValue(record.error) : null;
   const code = stringValue(record?.code) || stringValue(record?.error) || stringValue(nested?.code);
-  const known = ["forbidden", "not_found", "invalid_state", "local_read_only", "idempotency_conflict", "budget_exceeded"] as const;
+  const known = ["forbidden", "not_found", "invalid_request", "service_unavailable", "workspace_unavailable", "provider_route_invalid", "invalid_state", "local_read_only", "idempotency_conflict", "budget_exceeded"] as const;
   const safeCode = known.includes(code as typeof known[number]) ? code as typeof known[number] : "network_unavailable";
   const message = safeCode === "budget_exceeded" ? stringValue(nested?.message) || stringValue(record?.message) || safeCode : safeCode;
   return new SessionControlError(safeCode, message);

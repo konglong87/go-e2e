@@ -179,6 +179,14 @@ describe("HTTP session control client", () => {
     expect(error).toMatchObject({ message: "Protected evidence needs 6546 tokens" });
   });
 
+  it("preserves invalid_request instead of degrading it to network_unavailable", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ error: "session cwd is not allowed", code: "invalid_request" }, 400)));
+
+    const error = await createHTTPSessionControlClient().create(identity, { title: "Folder test", cwd: "/Users/konglong/GolandProjects/huyu", idempotencyKey: "create-folder" }).catch((reason: unknown) => reason);
+
+    expect(sessionControlErrorCode(error)).toBe("invalid_request");
+  });
+
   it("accepts waiting_input session summaries without collapsing them to idle", async () => {
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(jsonResponse({ data: [{ ...summary, status: "waiting_input" }] }))

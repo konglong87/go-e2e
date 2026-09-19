@@ -136,7 +136,7 @@ func agentWorkspaceValidateHandler(opts Options) http.HandlerFunc {
 			writeTenantError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		workspace, err := validateWorkspaceCWD(req.CWD)
+		workspace, err := ValidateWorkspaceCWD(req.CWD)
 		if err != nil {
 			writeTenantError(w, http.StatusBadRequest, err.Error())
 			return
@@ -145,34 +145,46 @@ func agentWorkspaceValidateHandler(opts Options) http.HandlerFunc {
 	}
 }
 
-func validateWorkspaceCWD(value string) (map[string]any, error) {
-	cwd := strings.TrimSpace(value)
-	if cwd == "" {
-		return nil, errors.New("cwd is required")
-	}
-	if !filepath.IsAbs(cwd) {
-		return nil, errors.New("cwd must be an absolute path")
-	}
-	cleaned := filepath.Clean(cwd)
-	info, err := os.Stat(cleaned)
+// ValidateWorkspaceCWD checks that value is an absolute, existing directory
+// and returns the canonical workspace metadata used by the WebUI.
+func ValidateWorkspaceCWD(value string) (map[string]any, error) {
+	cwd, err := ValidateWorkspaceCWDPath(value)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, errors.New("cwd does not exist")
-		}
 		return nil, err
 	}
-	if !info.IsDir() {
-		return nil, errors.New("cwd must be a directory")
-	}
-	gitRoot := findGitRoot(cleaned)
+	gitRoot := findGitRoot(cwd)
 	return map[string]any{
-		"cwd":            cleaned,
-		"workspace_name": filepath.Base(cleaned),
+		"cwd":            cwd,
+		"workspace_name": filepath.Base(cwd),
 		"exists":         true,
 		"is_dir":         true,
 		"git_root":       gitRoot,
 		"is_git_repo":    gitRoot != "",
 	}, nil
+}
+
+// ValidateWorkspaceCWDPath is the typed path-only form used by server
+// composition code that does not need the HTTP metadata envelope.
+func ValidateWorkspaceCWDPath(value string) (string, error) {
+	cwd := strings.TrimSpace(value)
+	if cwd == "" {
+		return "", errors.New("cwd is required")
+	}
+	if !filepath.IsAbs(cwd) {
+		return "", errors.New("cwd must be an absolute path")
+	}
+	cleaned := filepath.Clean(cwd)
+	info, err := os.Stat(cleaned)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", errors.New("cwd does not exist")
+		}
+		return "", err
+	}
+	if !info.IsDir() {
+		return "", errors.New("cwd must be a directory")
+	}
+	return cleaned, nil
 }
 
 func findGitRoot(dir string) string {

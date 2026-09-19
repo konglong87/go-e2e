@@ -26,6 +26,7 @@ describe("NewSessionDialog", () => {
 
   beforeEach(() => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.clearAllMocks();
     host = document.createElement("div");
     document.body.replaceChildren(host);
     root = createRoot(host);
@@ -35,6 +36,7 @@ describe("NewSessionDialog", () => {
       create: vi.fn(async (): Promise<OperationResult> => result),
       send: vi.fn(), stop: vi.fn(), archive: vi.fn()
     };
+    vi.mocked(validateAgentWorkspace).mockResolvedValue({ cwd: "/work/project", workspace_name: "project", exists: true, is_dir: true, is_git_repo: false });
   });
 
   afterEach(() => {
@@ -42,9 +44,9 @@ describe("NewSessionDialog", () => {
     delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
   });
 
-  function render(onCreated = vi.fn<(result: OperationResult) => void>(), defaultCWD?: string): ReturnType<typeof vi.fn> {
+  function render(onCreated = vi.fn<(result: OperationResult) => void>(), defaultCWD = "/work/project", onSelectWorkspace?: () => Promise<string | null>): ReturnType<typeof vi.fn> {
     const onClose = vi.fn();
-    act(() => root.render(<I18nProvider><QueryClientProvider client={new QueryClient()}><SessionControlClientProvider client={client}><NewSessionDialog identity={identity} defaultCWD={defaultCWD} onClose={onClose} onCreated={onCreated} open /></SessionControlClientProvider></QueryClientProvider></I18nProvider>));
+    act(() => root.render(<I18nProvider><QueryClientProvider client={new QueryClient()}><SessionControlClientProvider client={client}><NewSessionDialog identity={identity} defaultCWD={defaultCWD} onSelectWorkspace={onSelectWorkspace} onClose={onClose} onCreated={onCreated} open /></SessionControlClientProvider></QueryClientProvider></I18nProvider>));
     return onClose;
   }
 
@@ -94,8 +96,47 @@ describe("NewSessionDialog", () => {
 
   it("keeps the workspace inherited from a workspace shortcut", () => {
     render(vi.fn(), "/work/project");
-    expect(host.querySelector<HTMLInputElement>('input[aria-label="cwd"]')?.value).toBe("/work/project");
+    expect(host.querySelector(".webui2-workspace-picker-name")?.textContent).toBe("project");
+    expect(host.querySelector(".webui2-workspace-picker-location")?.textContent).toBe("/work/project");
     expect(host.querySelector<HTMLInputElement>('input[aria-label="Session title"]')?.placeholder).toBe("New session");
+  });
+
+  it("selects a folder through the desktop bridge and creates with the selected workspace", async () => {
+    const selectWorkspace = vi.fn<() => Promise<string | null>>().mockResolvedValue("/Users/konglong/GolandProjects/huyu");
+    vi.mocked(validateAgentWorkspace).mockResolvedValueOnce({ cwd: "/Users/konglong/GolandProjects/huyu", workspace_name: "huyu", exists: true, is_dir: true, is_git_repo: false });
+    render(vi.fn(), "", selectWorkspace);
+
+    await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Choose folder"]')?.click());
+    expect(selectWorkspace).toHaveBeenCalledTimes(1);
+    expect(host.querySelector(".webui2-workspace-picker-name")?.textContent).toBe("huyu");
+
+    await act(async () => host.querySelector<HTMLButtonElement>('button[type="submit"]')?.click());
+    expect(client.create).toHaveBeenCalledWith(identity, expect.objectContaining({ cwd: "/Users/konglong/GolandProjects/huyu" }));
+  });
+
+  it("keeps the current workspace when the native picker is cancelled", async () => {
+    const selectWorkspace = vi.fn<() => Promise<string | null>>().mockResolvedValue(null);
+    render(vi.fn(), "/work/project", selectWorkspace);
+
+    await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Change folder"]')?.click());
+    expect(host.querySelector(".webui2-workspace-picker-location")?.textContent).toBe("/work/project");
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it("shows a picker error without creating a session", async () => {
+    const selectWorkspace = vi.fn<() => Promise<string | null>>().mockRejectedValue(new Error("picker failed"));
+    render(vi.fn(), "", selectWorkspace);
+
+    await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Choose folder"]')?.click());
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain("Unable to open the folder picker");
+    expect(client.create).not.toHaveBeenCalled();
+  });
+
+  it("prevents creation when no workspace has been selected", async () => {
+    render(vi.fn(), "");
+    await act(async () => host.querySelector<HTMLButtonElement>('button[type="submit"]')?.click());
+    expect(client.create).not.toHaveBeenCalled();
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain("Choose a folder before creating the session");
   });
 
   it("reuses the idempotency key for an unchanged draft after an ambiguous failure", async () => {
@@ -150,7 +191,7 @@ describe("NewSessionDialog", () => {
     setValue('input[aria-label="Session title"]', "Keep this draft");
     await act(async () => host.querySelector<HTMLButtonElement>('button[type="submit"]')?.click());
     expect(client.create).not.toHaveBeenCalled();
-    expect(host.querySelector('[role="alert"]')?.textContent).toContain("Workspace is unavailable");
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain("selected folder is unavailable");
     expect(host.querySelector<HTMLInputElement>('input[aria-label="Session title"]')?.value).toBe("Keep this draft");
   });
 });
