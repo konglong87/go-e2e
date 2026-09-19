@@ -25,7 +25,9 @@ open desktop-v2/build/bin/go-e2e.app
 
 脚本以 `VITE_DESKTOP_UI_VERSION=2` 构建前端并复制到 `desktop-v2/frontend/dist`，
 编译本地 server，再用 Wails 打包，并将 `go-e2e` 放入 app 的
-`Contents/MacOS/`。不能只复制桌面可执行文件而遗漏 server。
+`Contents/MacOS/`。不能只复制桌面可执行文件而遗漏 server。macOS 在复制
+server 后会按“先签名嵌套 server，再签名外层 app”的顺序重新签名，并严格校验
+整个 app；不要在构建完成后手工替换 `Contents/MacOS/go-e2e`。
 脚本会重建 `web/dist`；若随后运行独立 Web server，应重新执行
 `npm --prefix web run build` 生成 `/webui/` 前缀的 Web 产物。
 

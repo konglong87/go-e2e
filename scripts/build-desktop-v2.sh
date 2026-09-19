@@ -18,7 +18,16 @@ LDFLAGS="-s -w" OUTPUT="${DESKTOP_DIR}/go-e2e" \
 )
 
 APP_BIN="${DESKTOP_DIR}/build/bin/go-e2e.app/Contents/MacOS"
+APP_PATH="${DESKTOP_DIR}/build/bin/go-e2e.app"
 if [[ -d "${APP_BIN}" ]]; then
   cp "${DESKTOP_DIR}/go-e2e" "${APP_BIN}/go-e2e"
   rm -f "${APP_BIN}/golang-cc"
+
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    # The service binary is embedded after Wails creates its app signature.
+    # Sign the nested binary first, then seal the outer app bundle again.
+    codesign --force --sign - --timestamp=none "${APP_BIN}/go-e2e"
+    codesign --force --deep --sign - --timestamp=none "${APP_PATH}"
+    codesign --verify --deep --strict --verbose=2 "${APP_PATH}"
+  fi
 fi

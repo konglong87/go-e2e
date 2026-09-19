@@ -13,8 +13,10 @@ import (
 )
 
 const (
-	localServiceReadinessTimeout = 15 * time.Second
-	localServicePollInterval     = 100 * time.Millisecond
+	localServiceReadinessTimeout   = 15 * time.Second
+	localServicePollInterval       = 100 * time.Millisecond
+	localServiceStartupMaxAttempts = 3
+	localServiceStartupRetryDelay  = 500 * time.Millisecond
 )
 
 type localServiceState string
@@ -44,19 +46,21 @@ type localServiceConfig struct {
 }
 
 type localServiceProcess struct {
-	cmd          *exec.Cmd
-	done         chan struct{}
-	log          *os.File
-	expectedExit bool
+	cmd            *exec.Cmd
+	done           chan struct{}
+	log            *os.File
+	expectedExit   bool
+	startupAttempt int
 }
 
 type localServiceController struct {
-	mu          sync.Mutex
-	operationMu sync.Mutex
-	config      localServiceConfig
-	process     *localServiceProcess
-	state       localServiceState
-	lastError   string
+	mu              sync.Mutex
+	operationMu     sync.Mutex
+	config          localServiceConfig
+	process         *localServiceProcess
+	state           localServiceState
+	lastError       string
+	startupAttempts int
 }
 
 func (a *app) RestartLocalService() error {
@@ -96,6 +100,12 @@ func newLocalServiceController(config localServiceConfig) *localServiceControlle
 func (s *localServiceController) start() error {
 	s.operationMu.Lock()
 	defer s.operationMu.Unlock()
+
+	s.mu.Lock()
+	if s.process == nil {
+		s.startupAttempts = 0
+	}
+	s.mu.Unlock()
 	return s.startLocked()
 }
 
@@ -107,6 +117,8 @@ func (s *localServiceController) startLocked() error {
 	}
 	s.state = localServiceStarting
 	s.lastError = ""
+	s.startupAttempts++
+	startupAttempt := s.startupAttempts
 	config := s.config
 	s.mu.Unlock()
 
@@ -137,16 +149,17 @@ func (s *localServiceController) startLocked() error {
 	}
 
 	process := &localServiceProcess{
-		cmd:  cmd,
-		done: make(chan struct{}),
-		log:  serverLog,
+		cmd:            cmd,
+		done:           make(chan struct{}),
+		log:            serverLog,
+		startupAttempt: startupAttempt,
 	}
 	s.mu.Lock()
 	s.process = process
 	s.state = localServiceStarting
 	s.mu.Unlock()
 
-	startupLog(fmt.Sprintf("server started pid=%d port=%d", cmd.Process.Pid, config.port))
+	startupLog(fmt.Sprintf("server started pid=%d port=%d attempt=%d", cmd.Process.Pid, config.port, startupAttempt))
 	go s.waitForExit(process)
 	go s.observeReadiness(process)
 	return nil
@@ -191,6 +204,9 @@ func (s *localServiceController) restart(ctx context.Context) error {
 	if err := s.stopLocked(ctx); err != nil {
 		return err
 	}
+	s.mu.Lock()
+	s.startupAttempts = 0
+	s.mu.Unlock()
 	if err := s.startLocked(); err != nil {
 		return err
 	}
@@ -225,6 +241,7 @@ func (s *localServiceController) waitForExit(process *localServiceProcess) {
 	err := process.cmd.Wait()
 	_ = process.log.Close()
 
+	retry := false
 	s.mu.Lock()
 	if s.process == process {
 		s.process = nil
@@ -234,11 +251,36 @@ func (s *localServiceController) waitForExit(process *localServiceProcess) {
 		} else {
 			s.state = localServiceFailed
 			s.lastError = processExitMessage(err)
+			retry = process.startupAttempt < localServiceStartupMaxAttempts
 		}
 	}
 	s.mu.Unlock()
 	close(process.done)
-	startupLog(fmt.Sprintf("server exited pid=%d err=%v", process.cmd.Process.Pid, err))
+	startupLog(fmt.Sprintf("server exited pid=%d err=%v attempt=%d", process.cmd.Process.Pid, err, process.startupAttempt))
+	if retry {
+		startupLog(fmt.Sprintf("server startup retry scheduled attempt=%d", process.startupAttempt+1))
+		go s.retryStart()
+	}
+}
+
+func (s *localServiceController) retryStart() {
+	timer := time.NewTimer(localServiceStartupRetryDelay)
+	defer timer.Stop()
+	<-timer.C
+
+	s.operationMu.Lock()
+	defer s.operationMu.Unlock()
+
+	s.mu.Lock()
+	shouldRetry := s.process == nil && s.state == localServiceFailed && s.startupAttempts < localServiceStartupMaxAttempts
+	s.mu.Unlock()
+	if !shouldRetry {
+		return
+	}
+
+	if err := s.startLocked(); err != nil {
+		startupLog("server startup retry failed: " + err.Error())
+	}
 }
 
 func (s *localServiceController) observeReadiness(process *localServiceProcess) {
