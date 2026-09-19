@@ -10,6 +10,7 @@ import type { SessionControlClient } from "./api/sessionControlClient";
 import { createMockSessionControlClient } from "./api/mockSessionControlClient";
 import type { SessionDetail } from "./types";
 import { WebUIV2App } from "./WebUIV2App";
+import { GLOBAL_SETTINGS_SAVED_EVENT } from "./settings/globalSettingsDraft";
 
 const identity: IdentityConfig = {
   apiBase: "/api",
@@ -500,6 +501,17 @@ describe("WebUIV2App", () => {
     expect(host.querySelector('input[aria-label="搜索会话"]')).toBeNull();
     expect(host.textContent).toContain("新建会话");
     expect(host.textContent).not.toContain("webui2.");
+  });
+
+  it("refreshes runtime defaults and catalogs after model settings are saved", () => {
+    const invalidateQueries = vi.spyOn(QueryClient.prototype, "invalidateQueries");
+    renderAt("/webui/v2");
+
+    act(() => window.dispatchEvent(new Event(GLOBAL_SETTINGS_SAVED_EVENT)));
+
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["webui2-server-status"] });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["webui2-providers"] });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["webui2-models"] });
   });
 
   it("creates one session from a focused dialog, selects its readback, and leaves legacy DOM absent", async () => {

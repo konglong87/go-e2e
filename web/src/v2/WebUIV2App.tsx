@@ -25,6 +25,7 @@ import { Inspector, type InspectorTab } from "./components/Inspector";
 import { NewSessionDialog } from "./components/NewSessionDialog";
 import { loadWebUIV2Theme, saveWebUIV2Theme, type WebUIV2Theme } from "./components/SettingsDrawer";
 import { SettingsCenter } from "./settings/SettingsCenter";
+import { GLOBAL_SETTINGS_SAVED_EVENT } from "./settings/globalSettingsDraft";
 import { loadInspectorPreference, saveInspectorPreference } from "./settings/preferences";
 import { parseWebUIV2Route, settingsReturnSession, webUIV2SettingsPath, webUIV2SessionPath, type SettingsSection, type SessionRef, type WebUIV2Route } from "./routes";
 import type { OperationResult, SessionListFilters, SessionMessage, SessionStatus, SessionSummary } from "./types";
@@ -100,6 +101,16 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
   const needsModelSetup = isDesktop && desktopReady && runtimeDefaults.data?.runtime_defaults?.needs_setup === true;
   const previousReadyRef = useRef(false);
   const directCreateBusyRef = useRef(false);
+
+  useEffect(() => {
+    const refreshRuntimeCatalog = (): void => {
+      void queryClient.invalidateQueries({ queryKey: ["webui2-server-status"] });
+      void queryClient.invalidateQueries({ queryKey: ["webui2-providers"] });
+      void queryClient.invalidateQueries({ queryKey: ["webui2-models"] });
+    };
+    window.addEventListener(GLOBAL_SETTINGS_SAVED_EVENT, refreshRuntimeCatalog);
+    return () => window.removeEventListener(GLOBAL_SETTINGS_SAVED_EVENT, refreshRuntimeCatalog);
+  }, [queryClient]);
 
   useEffect(() => {
     if (!isDesktop || !identity.apiToken) return;
