@@ -15,11 +15,13 @@ import { validateAgentWorkspace } from "../lib/api";
 import type { IdentityConfig, PendingInputSideChatResponse } from "../lib/types";
 import { createHTTPSessionControlClient } from "./api/httpSessionControlClient";
 import { SessionControlClientProvider, sessionControlErrorCode, useSessionControlClient, type SessionControlClient } from "./api/sessionControlClient";
-import { useArchiveSession, useCreateSession, useRenameSession, useSendSession, useSessionDetail, useSessionList, useStopSession } from "./api/sessionControlQueries";
+import { useArchiveSession, useCompactSession, useCreateSession, useRenameSession, useSendSession, useSessionDetail, useSessionList, useStopSession } from "./api/sessionControlQueries";
 import { Composer, type ComposerDraft } from "./components/Composer";
-import { EmptyState } from "./components/EmptyState";
+import { HOME_EXPERIENCE } from "./components/homeExperience";
+import { SimpleHomePage } from "./components/SimpleHomePage";
 import { SessionSidebar } from "./components/SessionSidebar";
 import { SessionSearchDialog } from "./components/SessionSearchDialog";
+import { TaskFirstHomePage } from "./components/TaskFirstHomePage";
 import { ConversationWorkspace } from "./components/ConversationWorkspace";
 import { Inspector, type InspectorTab } from "./components/Inspector";
 import { NewSessionDialog } from "./components/NewSessionDialog";
@@ -104,7 +106,9 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
   const visual = visualPreview ?? savedVisual.visual;
   const stream = useSessionConversations(identity, allSessions.data ?? [], state.selectedRef, desktopReady);
   const runtimeDefaults = useRuntimeDefaults(identity, isDesktop && desktopReady);
+  const defaultWorkspace = runtimeDefaults.data?.workspace || runtimeDefaults.data?.cwd || "";
   const needsModelSetup = isDesktop && desktopReady && runtimeDefaults.data?.runtime_defaults?.needs_setup === true;
+  const showTaskFirstHome = isDesktop && desktopReady && HOME_EXPERIENCE === "task-first";
   const directCreateBusyRef = useRef(false);
 
   useEffect(() => {
@@ -362,7 +366,16 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
     <div className="webui2-content">
       <section className="webui2-workspace">
         {state.route.kind === "invalid" ? <div className="webui2-route-error" role="alert"><p>{t("webui2.invalidRoute")}</p><button onClick={recoverToIndex} type="button">{t("webui2.backToSessions")}</button></div> : null}
-        {state.route.kind === "index" && !sessionList.isLoading && !sessionList.isError ? <EmptyState onCreateSession={openNewSession} createDisabled={!desktopReady} /> : null}
+        {state.route.kind === "index" && !sessionList.isLoading && !sessionList.isError ? !showTaskFirstHome
+          ? <SimpleHomePage onCreateSession={openNewSession} createDisabled={!desktopReady} />
+          : <TaskFirstHomePage
+            availableSources={allSessions.data ?? sessions}
+            defaultWorkspace={defaultWorkspace}
+            identity={identity}
+            onCreated={handleCreated}
+            onSelectWorkspace={desktopServiceBridge?.SelectWorkspace}
+            ready={desktopReady}
+          /> : null}
         {state.selectedRef ? <SelectedSessionWorkspace key={state.selectedRef} drafts={drafts.current} availableSources={allSessions.data ?? sessions} identity={identity} onSelectSession={selectSession} onCreateSession={openNewSession} onOpenInspector={() => setInspectorOpen(true)} selectedRef={state.selectedRef} streamState={stream.state} ready={desktopReady} /> : null}
         {sessionList.isLoading ? <p className="webui2-workspace-empty">{t("webui2.loading")}</p> : null}
         {sessionList.isError ? <p className="webui2-workspace-empty" role="alert">{t(`webui2.error.${sessionControlErrorCode(sessionList.error)}`)}</p> : null}
@@ -399,6 +412,7 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
 function SelectedSessionWorkspace({ drafts, availableSources, identity, onSelectSession, onCreateSession, onOpenInspector, selectedRef, streamState, ready }: { drafts: Map<SessionRef, ComposerDraft>; availableSources: SessionSummary[]; identity: IdentityConfig; onSelectSession: (ref: SessionRef) => void; onCreateSession: () => void; onOpenInspector: () => void; selectedRef: SessionRef; streamState: StreamState; ready: boolean }): JSX.Element {
   const sessionDetail = useSessionDetail(identity, selectedRef, ready);
   const send = useSendSession(identity);
+  const compact = useCompactSession(identity);
   const stop = useStopSession(identity);
   const detail = sessionDetail.data;
   const client = useSessionControlClient();
@@ -447,12 +461,12 @@ function SelectedSessionWorkspace({ drafts, availableSources, identity, onSelect
   const queueScope = { identity, sessionRef: selectedRef, taskID, revision: detail?.cursor };
   return <>
     {retryError ? <p role="alert">{t(`webui2.error.${retryError}`)}</p> : null}
-    <ConversationWorkspace identity={identity} runtimeDetails={runtimeDetails.data} streamState={streamState} onRetry={send.isPending ? undefined : (message) => void retry(message)} composer={detail ? <Composer key={selectedRef} drafts={drafts} availableSources={availableSources} identity={identity} cwd={detail.cwd} disabled={send.isPending}
+    <ConversationWorkspace identity={identity} runtimeDetails={runtimeDetails.data} streamState={streamState} onRetry={send.isPending || compact.isPending ? undefined : (message) => void retry(message)} composer={detail ? <Composer key={selectedRef} drafts={drafts} availableSources={availableSources} identity={identity} cwd={detail.cwd} disabled={send.isPending || compact.isPending}
       runtimeControls={{ value: runtimeValue, providerOptions, modelOptions, locked, onChange: (next) => { if (locked) return; const provider = catalog.providers.data?.find((item) => item.name === next.provider); setRuntimeDraft(next.provider !== runtimeValue.provider && provider?.model ? { ...next, model: provider.model } : next); }, contextPercent: metrics.contextPercent ?? null, cacheHitPercent: metrics.cacheHitPercent ?? null }}
       nextStepSuggestions={collectConversationNextSteps(detail.events ?? [])}
       queuePanel={client.subscribe && detail.source === "tenant" ? <SessionPendingQueue {...queueScope} onBusyChange={setQueueBusy} onOpenSession={openSideChat} /> : null}
       queueSettings={client.subscribe && detail.source === "tenant" ? <PendingQueueSettingsButton {...queueScope} /> : null}
-      onSend={(input) => send.mutateAsync(input)} onSent={() => setRuntimeDraft(null)} onStopRequested={() => stop.mutateAsync({ ref: selectedRef }).then(() => undefined)} sessionStatus={detail.status} targetRef={selectedRef} /> : null} detail={detail} onCreateSession={onCreateSession} onOpenInspector={onOpenInspector} selectedRef={selectedRef} />
+      onSend={(input) => send.mutateAsync(input)} onCompact={() => compact.mutateAsync({ ref: selectedRef })} onSent={() => setRuntimeDraft(null)} onStopRequested={() => stop.mutateAsync({ ref: selectedRef }).then(() => undefined)} sessionStatus={detail.status} targetRef={selectedRef} /> : null} detail={detail} onCreateSession={onCreateSession} onOpenInspector={onOpenInspector} selectedRef={selectedRef} />
   </>;
 }
 
