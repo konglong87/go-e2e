@@ -98,6 +98,7 @@ type Options struct {
 	// server keeps the field transport-neutral so storage implementations can be
 	// swapped without changing the WebUI session-control contract.
 	SessionBackend        sessioncontrol.SessionBackend
+	SessionEvents         SessionEventStore
 	SessionControlEvents  SessionControlEventService
 	SessionMonitor        sessioncontrol.MonitorPort
 	AgentTaskStore        agenttasks.Store
