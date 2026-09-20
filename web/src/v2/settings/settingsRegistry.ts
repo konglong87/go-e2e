@@ -28,7 +28,7 @@ export const SETTINGS_NAV_GROUPS: readonly SettingsNavGroup[] = [
     en: "Workspace",
     items: [
       item("general", Settings2, "通用设置", "General", ["管理语言、主题和会话界面偏好。", "Manage language, theme and conversation preferences."]),
-      item("appearance", WandSparkles, "外观", "Appearance", ["调整背景、遮罩和内容层的视觉效果。", "Tune backgrounds, overlays and content surfaces."]),
+      item("appearance", WandSparkles, "外观 · 皮肤", "Appearance · Skin", ["调整背景、遮罩和内容层的视觉效果。", "Tune backgrounds, overlays and content surfaces."]),
       item("pet", Bot, "桌面宠物", "Pet", ["配置陪伴角色的显示、位置和动画。", "Configure the companion's visibility, placement and animation."])
     ]
   },
