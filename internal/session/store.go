@@ -24,6 +24,19 @@ import (
 type Entry struct {
 	ID     string `json:"id,omitempty"`
 	Schema string `json:"schema,omitempty"`
+	// Sequence is a stable append order for cross-surface session events. It is
+	// independent from the message-graph parent chain and is only populated for
+	// entries written through AppendEvent.
+	Sequence  uint64 `json:"sequence,omitempty"`
+	TaskID    uint64 `json:"task_id,omitempty"`
+	EventType string `json:"event_type,omitempty"`
+	TraceID   string `json:"trace_id,omitempty"`
+	Source    string `json:"source,omitempty"`
+	Surface   string `json:"surface,omitempty"`
+	Channel   string `json:"channel,omitempty"`
+	Scope     string `json:"scope,omitempty"`
+	TenantKey string `json:"tenant_key,omitempty"`
+	UserKey   string `json:"user_key,omitempty"`
 	// ParentID links a v2 message-graph entry to its predecessor on the chain.
 	// Empty on the root and on every v1 entry. See internal/session/graph.go.
 	ParentID string `json:"parent_id,omitempty"`

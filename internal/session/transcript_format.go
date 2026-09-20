@@ -125,6 +125,7 @@ func isGolangCCV1EntryType(entryType string) bool {
 		// image 承载 MCP 图片的侧车引用（TODO-080）。漏登记它的后果不是「少认一种
 		// 行」而是整个文件被判成 Mixed，ValidateResumeFormat 会直接拒绝 resume。
 		"image",
+		EntryTypeSessionEvent,
 		"tool_call", "tool_result", "usage", "permission", "file_change",
 		"checkpoint", "rewind", "fork", "compact_summary", "recap_summary",
 		"content_replacement",

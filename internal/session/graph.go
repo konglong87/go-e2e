@@ -16,6 +16,12 @@ const SchemaV2 = product.TranscriptSchemaV2
 // header, not a conversation node, so it never joins the parent_id chain.
 const EntryTypeSessionMeta = "session_meta"
 
+// EntryTypeSessionEvent stores a canonical cross-surface runtime event. The
+// event payload stays in Metadata so the transcript remains compatible with
+// the existing JSONL envelope while readers can project it into their native
+// transport DTOs.
+const EntryTypeSessionEvent = "session_event"
+
 // EntryTypeBranchHead records a move of the active leaf (the tip of the current
 // conversation). It is append-only: rewind/redo/new-turn each append one, and the
 // active leaf is derived by replaying them in file order. A branch_head is a
