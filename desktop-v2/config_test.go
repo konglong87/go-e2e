@@ -24,6 +24,13 @@ func TestDesktopSessionBackendUsesConfigAndEnvironmentOverride(t *testing.T) {
 	}
 }
 
+func TestDesktopSessionBackendUsesNamedConstantDefault(t *testing.T) {
+	t.Setenv(desktopSessionBackendEnv, "")
+	if got := desktopSessionBackend(desktopConfig{}); got != defaultSessionBackend {
+		t.Fatalf("desktopSessionBackend(empty) = %q, want %q", got, defaultSessionBackend)
+	}
+}
+
 func TestDesktopConfigRoundTrip(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("GOLANG_CC_DESKTOP_CONFIG_DIR", root)
@@ -92,7 +99,7 @@ func TestDesktopConfigRoundTripPreservesWindowState(t *testing.T) {
 			Geometry:  DesktopWindowGeometry{X: 120, Y: 80, Width: 1280, Height: 760},
 			Maximized: true,
 		},
-	}
+	}.normalized()
 	if err := saveDesktopConfig(want); err != nil {
 		t.Fatal(err)
 	}

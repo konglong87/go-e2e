@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/konglong87/go-e2e/internal/sessioncontrol"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -138,7 +139,7 @@ func (a *app) startup(ctx context.Context) {
 			"GOLANG_CC_TENANT_KEY=webui-local",
 			"GOLANG_CC_USER_ID=webui-local-user",
 			"GOLANG_CC_DESKTOP_MODE=1",
-			"GOLANG_CC_DESKTOP_SESSION_BACKEND=" + desktopSessionBackend(config),
+			desktopSessionBackendEnv + "=" + desktopSessionBackend(config),
 			// Desktop MVP does not expose scheduled jobs. Disabling the scheduler
 			// keeps startup independent from stale daemon locks left by a crashed
 			// desktop/server process.
@@ -157,13 +158,48 @@ func (a *app) startup(ctx context.Context) {
 }
 
 func desktopSessionBackend(config desktopConfig) string {
-	if value := strings.TrimSpace(os.Getenv("GOLANG_CC_DESKTOP_SESSION_BACKEND")); value != "" {
+	if value := strings.TrimSpace(os.Getenv(desktopSessionBackendEnv)); value != "" {
 		return value
 	}
 	if value := strings.TrimSpace(config.SessionBackend); value != "" {
 		return value
 	}
-	return "jsonl"
+	return defaultSessionBackend
+}
+
+func (a *app) GetSessionBackend() string {
+	a.mu.Lock()
+	config := a.config
+	a.mu.Unlock()
+	return desktopSessionBackend(config)
+}
+
+func (a *app) SetSessionBackend(value string) error {
+	backend, err := sessioncontrol.ParseSessionBackend(value)
+	if err != nil {
+		return err
+	}
+	config, err := loadDesktopConfig()
+	if err != nil {
+		return fmt.Errorf("load desktop config: %w", err)
+	}
+	config.SessionBackend = backend.String()
+	if err := saveDesktopConfig(config); err != nil {
+		return fmt.Errorf("save desktop session backend: %w", err)
+	}
+
+	a.mu.Lock()
+	a.config = config
+	service := a.service
+	a.mu.Unlock()
+	if service == nil {
+		return nil
+	}
+	service.setSessionBackend(backend.String())
+	if err := a.RestartLocalService(); err != nil {
+		return fmt.Errorf("restart local service after session backend change: %w", err)
+	}
+	return nil
 }
 
 func (a *app) domReady(ctx context.Context) {

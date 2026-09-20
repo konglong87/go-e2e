@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Activity, Bot, Brain, Cpu, FileJson2, Layers, ListChecks, Monitor, Settings2, Sparkles, Star, Users, WandSparkles } from "lucide-react";
+import { Activity, Bot, Brain, Cpu, Database, FileJson2, Layers, ListChecks, Monitor, Settings2, Sparkles, Star, Users, WandSparkles } from "lucide-react";
 import type { SettingsSection } from "../routes";
 
 export type SettingsNavItem = {
@@ -9,6 +9,7 @@ export type SettingsNavItem = {
   en: string;
   description: readonly [string, string];
   advanced?: boolean;
+  desktopOnly?: boolean;
 };
 
 export type SettingsNavGroup = {
@@ -18,7 +19,7 @@ export type SettingsNavGroup = {
   items: readonly SettingsNavItem[];
 };
 
-const item = (key: SettingsSection, icon: LucideIcon, zh: string, en: string, description: readonly [string, string], advanced = false): SettingsNavItem => ({ key, icon, zh, en, description, advanced });
+const item = (key: SettingsSection, icon: LucideIcon, zh: string, en: string, description: readonly [string, string], advanced = false, desktopOnly = false): SettingsNavItem => ({ key, icon, zh, en, description, advanced, desktopOnly });
 
 export const SETTINGS_NAV_GROUPS: readonly SettingsNavGroup[] = [
   {
@@ -60,6 +61,7 @@ export const SETTINGS_NAV_GROUPS: readonly SettingsNavGroup[] = [
     items: [
       item("agent", Bot, "智能体设置", "Agents", ["为不同入口选择已发布的智能体配置。", "Assign published agent profiles to your surfaces."], true),
       item("provisioning", Monitor, "渠道 Worker", "Channel workers", ["查看渠道账号和 Worker 运行状态。", "Inspect channel accounts and worker runtime status."], true),
+      item("session-backend", Database, "会话存储", "Session storage", ["选择桌面端聊天事件的权威存储，并在切换后重启本地服务。", "Choose the desktop chat event store; the local service restarts after switching."], true, true),
       item("json", FileJson2, "全局 Settings JSON", "Settings JSON", ["编辑全局配置文档，与模型表单保持同步。", "Edit the global settings document, synchronized with the model form."], true),
       item("effective", ListChecks, "生效配置", "Effective configuration", ["核对文件解析结果、服务启动快照及会话运行配置。", "Compare resolved files, server startup defaults and session configuration."], true)
     ]

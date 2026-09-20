@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import type { SettingsDoc } from "../../lib/types";
+import type { DesktopBackgroundImage } from "../desktopServiceBridge";
 import { settingsValue, type SettingsPath } from "./globalSettingsDraft";
 
 export const APPEARANCE_ROOT = ["appearance"] as const satisfies SettingsPath;
@@ -94,14 +95,15 @@ function backgroundImageValue(value: unknown): string {
   return /^(?:https?:\/\/|\/|\.\/)/i.test(trimmed) ? trimmed : "";
 }
 
-export function readVisualSettings(doc: SettingsDoc | null | undefined): GlobalVisualSettings {
+export function readVisualSettings(doc: SettingsDoc | null | undefined, desktopBackground?: DesktopBackgroundImage | null): GlobalVisualSettings {
   const appearance = (settingsValue(doc, APPEARANCE_ROOT) || {}) as Record<string, unknown>;
   const pet = (settingsValue(doc, PET_ROOT) || {}) as Record<string, unknown>;
+  const localBackground = desktopBackground?.mode === "local" && desktopBackground.data_url ? desktopBackground.data_url : "";
   return {
     appearance: {
       enabled: booleanValue(appearance.enabled, DEFAULT_APPEARANCE.enabled),
       backgroundColor: colorValue(appearance.backgroundColor, DEFAULT_APPEARANCE.backgroundColor),
-      backgroundImage: backgroundImageValue(appearance.backgroundImage),
+      backgroundImage: localBackground || backgroundImageValue(appearance.backgroundImage),
       overlayOpacity: numberValue(appearance.overlayOpacity, DEFAULT_APPEARANCE.overlayOpacity, NUMBER_LIMITS.overlayOpacity),
       emptyBlur: numberValue(appearance.emptyBlur, DEFAULT_APPEARANCE.emptyBlur, NUMBER_LIMITS.emptyBlur),
       conversationBlur: numberValue(appearance.conversationBlur, DEFAULT_APPEARANCE.conversationBlur, NUMBER_LIMITS.conversationBlur),

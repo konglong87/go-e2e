@@ -13,11 +13,13 @@ import (
 )
 
 const (
-	desktopConfigFileName = "config-v2.json"
-	desktopDataDirName    = ".golang-cc"
-	desktopConfigDirEnv   = "GOLANG_CC_DESKTOP_CONFIG_DIR"
-	defaultWorkspaceRoot  = "go-e2e-workspace"
-	defaultWorkspaceName  = "go-e2e"
+	desktopConfigFileName    = "config-v2.json"
+	desktopDataDirName       = ".golang-cc"
+	desktopConfigDirEnv      = "GOLANG_CC_DESKTOP_CONFIG_DIR"
+	desktopSessionBackendEnv = "GOLANG_CC_DESKTOP_SESSION_BACKEND"
+	defaultSessionBackend    = "jsonl"
+	defaultWorkspaceRoot     = "go-e2e-workspace"
+	defaultWorkspaceName     = "go-e2e"
 )
 
 const (
@@ -55,12 +57,14 @@ func (s windowState) normalized() windowState {
 }
 
 type desktopConfig struct {
-	Workspace      string      `json:"workspace,omitempty"`
-	SessionBackend string      `json:"session_backend,omitempty"`
-	Window         windowState `json:"window,omitempty"`
+	Workspace      string                  `json:"workspace,omitempty"`
+	SessionBackend string                  `json:"session_backend,omitempty"`
+	Appearance     desktopAppearanceConfig `json:"appearance,omitempty"`
+	Window         windowState             `json:"window,omitempty"`
 }
 
 func (c desktopConfig) normalized() desktopConfig {
+	c.Appearance = c.Appearance.normalized()
 	c.Window = c.Window.normalized()
 	return c
 }

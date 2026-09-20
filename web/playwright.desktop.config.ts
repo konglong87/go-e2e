@@ -5,7 +5,7 @@ const baseURL = `http://127.0.0.1:${port}`;
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: /desktop-(?:entry|startup)\.spec\.ts/,
+  testMatch: /desktop-(?:background|entry|startup)\.spec\.ts/,
   fullyParallel: true,
   reporter: "list",
   use: { baseURL, trace: "retain-on-failure" },

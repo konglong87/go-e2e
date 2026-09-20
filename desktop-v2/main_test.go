@@ -59,6 +59,14 @@ func TestWindowStateBridgeContract(t *testing.T) {
 	if !ok || getServiceStatus.Type.NumOut() != 1 || getServiceStatus.Type.Out(0) != reflect.TypeOf(LocalServiceStatus{}) {
 		t.Fatalf("GetLocalServiceStatus has unexpected signature %s", getServiceStatus.Type)
 	}
+	getSessionBackend, ok := appType.MethodByName("GetSessionBackend")
+	if !ok || getSessionBackend.Type.NumOut() != 1 || getSessionBackend.Type.Out(0) != reflect.TypeOf("") {
+		t.Fatalf("GetSessionBackend has unexpected signature %s", getSessionBackend.Type)
+	}
+	setSessionBackend, ok := appType.MethodByName("SetSessionBackend")
+	if !ok || setSessionBackend.Type.NumOut() != 1 || setSessionBackend.Type.Out(0) != reflect.TypeOf((*error)(nil)).Elem() {
+		t.Fatalf("SetSessionBackend has unexpected signature %s", setSessionBackend.Type)
+	}
 	if windowStateChangedEvent != "go-e2e:window-state-changed" {
 		t.Fatalf("window state event = %q", windowStateChangedEvent)
 	}

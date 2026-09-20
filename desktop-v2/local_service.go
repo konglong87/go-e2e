@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -88,6 +89,19 @@ func (a *app) GetLocalServiceStatus() LocalServiceStatus {
 		return LocalServiceStatus{State: string(localServiceFailed), Port: a.port, Error: "local service is not configured"}
 	}
 	return service.status()
+}
+
+func (s *localServiceController) setSessionBackend(backend string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	value := desktopSessionBackendEnv + "=" + backend
+	for index, env := range s.config.env {
+		if strings.HasPrefix(env, desktopSessionBackendEnv+"=") {
+			s.config.env[index] = value
+			return
+		}
+	}
+	s.config.env = append(s.config.env, value)
 }
 
 func newLocalServiceController(config localServiceConfig) *localServiceController {

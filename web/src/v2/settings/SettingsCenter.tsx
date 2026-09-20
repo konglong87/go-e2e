@@ -21,10 +21,13 @@ import { PetSettingsPanel } from "./PetSettingsPanel";
 import { ObservabilityPanel } from "./ObservabilityPanel";
 import { readVisualSettings, type GlobalVisualSettings } from "./globalVisualSettings";
 import { SettingsSelect } from "./SettingsSelect";
+import { SessionBackendSettingsPanel } from "./SessionBackendSettingsPanel";
+import { getDesktopServiceBridge } from "../desktopServiceBridge";
 import { messageExperienceCopy } from "../components/messageExperienceCopy";
 import { setThinkingMode, useThinkingMode } from "../components/thinkingPreference";
 import brandLogo from "../assets/go-e2e-mark.svg";
 import "./settingsCenter.css";
+import { useDesktopBackground } from "./desktopBackground";
 
 const currentEnvironmentSections = new Set<SettingsSection>(["prompts", "memory", "skills", "teams", "feishu", "provisioning"]);
 
@@ -83,7 +86,9 @@ function SettingsEnvironmentContent(props: Props & { globalIdentity: IdentityCon
   const [agentBusy, setAgentBusy] = useState(false);
   const [profileRevision, setProfileRevision] = useState(0);
   const [navigationError, setNavigationError] = useState("");
+  const desktopBridge = getDesktopServiceBridge();
   const draft = useGlobalSettingsDraft(props.globalIdentity, visited.has("models") || visited.has("json") || visited.has("appearance") || visited.has("pet"));
+  const desktopBackground = useDesktopBackground();
   const sessionClient = useSessionControlClient();
   const isolated = props.environment.id !== CURRENT_SETTINGS_ENVIRONMENT;
   const sectionAvailable = !isolated || !currentEnvironmentSections.has(section);
@@ -95,9 +100,9 @@ function SettingsEnvironmentContent(props: Props & { globalIdentity: IdentityCon
   useEffect(() => { setVisited((previous) => previous.has(section) ? previous : new Set([...previous, section])); setNavOpen(false); }, [section]);
   useEffect(() => { onDirtyChange(dirty); props.onBusyChange(busy); }, [dirty, busy, onDirtyChange, props.onBusyChange]);
   useEffect(() => {
-    props.onVisualPreview(draft.doc ? readVisualSettings(draft.doc) : null);
+    props.onVisualPreview(draft.doc ? readVisualSettings(draft.doc, desktopBackground.background) : null);
     return () => props.onVisualPreview(null);
-  }, [draft.doc, props.onVisualPreview]);
+  }, [desktopBackground.background, draft.doc, props.onVisualPreview]);
   useEffect(() => {
     if (!dirty) return;
     const warn = (event: BeforeUnloadEvent): void => { event.preventDefault(); event.returnValue = ""; };
@@ -119,7 +124,7 @@ function SettingsEnvironmentContent(props: Props & { globalIdentity: IdentityCon
       <div className="settings-brand"><img alt="" src={brandLogo} /><span>go-e2e</span><button className="settings-mobile-nav-close settings-icon-button" aria-label={zh ? "关闭设置导航" : "Close settings navigation"} onClick={() => setNavOpen(false)} type="button"><X size={18} /></button></div>
       <button className="settings-back" onClick={onBack} type="button"><ArrowLeft size={16} />{zh ? "返回会话" : "Back to chat"}</button>
       {props.selector}
-      <nav aria-label={zh ? "设置分类" : "Settings categories"}>{SETTINGS_NAV_GROUPS.map((group) => <div className="settings-nav-group" key={group.key}><div className="settings-nav-label">{zh ? group.zh : group.en}</div>{group.items.filter(({ key }) => !(isolated && key === "feishu")).map(({ key, icon: Icon, zh: chinese, en, advanced }) => <button aria-current={section === key ? "page" : undefined} disabled={isolated && currentEnvironmentSections.has(key)} title={isolated && currentEnvironmentSections.has(key) ? (zh ? "此环境不支持该设置" : "Unavailable in this environment") : undefined} className={advanced ? "settings-nav-advanced" : undefined} key={key} onClick={() => onSectionChange(key)} type="button"><Icon aria-hidden="true" size={17} /><span>{zh ? chinese : en}</span>{((key === "models" || key === "json" || key === "appearance" || key === "pet") && draft.dirty) || (key === "profiles" && profileDirty) || (key === "agent" && agentDirty) ? <span role="img" aria-label={zh ? "未保存" : "Unsaved"} className="settings-dirty-dot" /> : null}</button>)}</div>)}</nav>
+      <nav aria-label={zh ? "设置分类" : "Settings categories"}>{SETTINGS_NAV_GROUPS.map((group) => <div className="settings-nav-group" key={group.key}><div className="settings-nav-label">{zh ? group.zh : group.en}</div>{group.items.filter(({ key, desktopOnly }) => !(isolated && key === "feishu") && !(desktopOnly && !desktopBridge)).map(({ key, icon: Icon, zh: chinese, en, advanced }) => <button aria-current={section === key ? "page" : undefined} disabled={isolated && currentEnvironmentSections.has(key)} title={isolated && currentEnvironmentSections.has(key) ? (zh ? "此环境不支持该设置" : "Unavailable in this environment") : undefined} className={advanced ? "settings-nav-advanced" : undefined} key={key} onClick={() => onSectionChange(key)} type="button"><Icon aria-hidden="true" size={17} /><span>{zh ? chinese : en}</span>{((key === "models" || key === "json" || key === "appearance" || key === "pet") && draft.dirty) || (key === "profiles" && profileDirty) || (key === "agent" && agentDirty) ? <span role="img" aria-label={zh ? "未保存" : "Unsaved"} className="settings-dirty-dot" /> : null}</button>)}</div>)}</nav>
       <div className="settings-identity"><span className="settings-avatar">{(props.environment.user_id || "U").slice(0, 1).toUpperCase()}</span><div><strong>{props.environment.tenant_key}</strong><small>{props.environment.user_id}</small></div></div>
     </aside>
     <div className="settings-main">
@@ -131,7 +136,7 @@ function SettingsEnvironmentContent(props: Props & { globalIdentity: IdentityCon
         {navigationError ? <p role="alert" className="settings-error">{navigationError}</p> : null}
         {!sectionAvailable ? <p role="alert" className="settings-environment-notice">{zh ? "此环境不支持该设置，请选择 Web 对话环境。" : "This section is unavailable in this environment. Select the Web chat environment."}</p> : null}
         {visited.has("general") ? <div hidden={section !== "general"}><GeneralSettings {...props} identity={{ ...identity, tenantKey: props.environment.tenant_key, userId: props.environment.user_id }} /></div> : null}
-        {visited.has("appearance") ? <div hidden={section !== "appearance"}><AppearanceSettingsPanel draft={draft} /></div> : null}
+        {visited.has("appearance") ? <div hidden={section !== "appearance"}><AppearanceSettingsPanel draft={draft} desktopBackground={desktopBackground} /></div> : null}
         {visited.has("pet") ? <div hidden={section !== "pet"}><PetSettingsPanel draft={draft} /></div> : null}
         {visited.has("agent") ? <div hidden={section !== "agent"}><AgentSettingsPanel identity={identity} onDirtyChange={setAgentDirty} onBusyChange={setAgentBusy} refreshVersion={profileRevision} /></div> : null}
         {visited.has("profiles") ? <div hidden={section !== "profiles"}><ProfileSettingsPanel identity={identity} onDirtyChange={setProfileDirty} onBusyChange={setProfileBusy} isolatedEnvironment={isolated} onOpenSession={isolated ? undefined : openProfileSession} onDataChanged={profilesChanged} /></div> : null}
@@ -140,6 +145,7 @@ function SettingsEnvironmentContent(props: Props & { globalIdentity: IdentityCon
         {sectionAvailable && section === "teams" ? <AgentTeamsPanel identity={identity} onStatus={setNavigationError} onDataChanged={profilesChanged} /> : null}
         {sectionAvailable && (section === "feishu" || section === "provisioning") ? <ProvisioningWizard identity={identity} onStatus={setNavigationError} /> : null}
         {sectionAvailable && section === "observability" ? <ObservabilityPanel identity={identity} /> : null}
+        {section === "session-backend" ? <SessionBackendSettingsPanel bridge={desktopBridge} onDirtyChange={props.onDirtyChange} onBusyChange={props.onBusyChange} /> : null}
         {section === "models" || section === "json" ? <SettingsDocumentPanel draft={draft} view={section} /> : null}
         {section === "effective" ? <EffectiveSettingsPanel identity={props.globalIdentity} selectedRef={isolated ? null : selectedRef} /> : null}
       </div>
