@@ -5,10 +5,18 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DESKTOP_DIR="${ROOT}/desktop-v2"
 
 VITE_DESKTOP_UI_VERSION=2 npm --prefix "${ROOT}/web" run build -- --mode desktop-v2
-rm -rf "${DESKTOP_DIR}/frontend/dist"
+FRONTEND_DIST="${DESKTOP_DIR}/frontend/dist"
+mkdir -p "${FRONTEND_DIST}"
+# Refresh generated assets without deleting the Git-tracked embed placeholder.
+find "${FRONTEND_DIST}" -mindepth 1 -maxdepth 1 ! -name ".gitkeep" -exec rm -rf -- {} +
+if [[ ! -f "${FRONTEND_DIST}/.gitkeep" ]]; then
+  printf '%s\n' \
+    'Go embed placeholder for fresh-clone checks only; not a frontend.' \
+    'Build the real desktop UI with scripts/build-desktop-v2.sh before running Wails.' \
+    > "${FRONTEND_DIST}/.gitkeep"
+fi
 rm -f "${DESKTOP_DIR}/golang-cc"
-mkdir -p "${DESKTOP_DIR}/frontend/dist"
-cp -R "${ROOT}/web/dist/." "${DESKTOP_DIR}/frontend/dist/"
+cp -R "${ROOT}/web/dist/." "${FRONTEND_DIST}/"
 
 LDFLAGS="-s -w" OUTPUT="${DESKTOP_DIR}/go-e2e" \
   "${ROOT}/scripts/build.sh" >/dev/null
