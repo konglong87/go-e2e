@@ -6,6 +6,24 @@ import (
 	"testing"
 )
 
+func TestDesktopSessionBackendDefaultsToJSONL(t *testing.T) {
+	t.Setenv("GOLANG_CC_DESKTOP_SESSION_BACKEND", "")
+	if got := desktopSessionBackend(desktopConfig{}); got != "jsonl" {
+		t.Fatalf("desktopSessionBackend(empty) = %q, want jsonl", got)
+	}
+}
+
+func TestDesktopSessionBackendUsesConfigAndEnvironmentOverride(t *testing.T) {
+	t.Setenv("GOLANG_CC_DESKTOP_SESSION_BACKEND", "")
+	if got := desktopSessionBackend(desktopConfig{SessionBackend: "sqlite"}); got != "sqlite" {
+		t.Fatalf("desktopSessionBackend(config) = %q, want sqlite", got)
+	}
+	t.Setenv("GOLANG_CC_DESKTOP_SESSION_BACKEND", "jsonl")
+	if got := desktopSessionBackend(desktopConfig{SessionBackend: "sqlite"}); got != "jsonl" {
+		t.Fatalf("desktopSessionBackend(env) = %q, want jsonl", got)
+	}
+}
+
 func TestDesktopConfigRoundTrip(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("GOLANG_CC_DESKTOP_CONFIG_DIR", root)
