@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/konglong87/go-e2e/internal/agenttasks"
 	"github.com/konglong87/go-e2e/internal/session"
+	"github.com/konglong87/go-e2e/internal/sessioncontrol"
 	mysqlstore "github.com/konglong87/go-e2e/internal/storage/mysql"
 )
 
@@ -232,6 +234,42 @@ func listAgentTaskEventsByID(ctx context.Context, opts Options, taskID, after ui
 
 type routedAgentTaskEventStreamer struct {
 	opts Options
+}
+
+type sessionControlManagedEventStore struct {
+	opts Options
+}
+
+func (s sessionControlManagedEventStore) ListAgentTaskEventsForTasksComplete(ctx context.Context, _ sessioncontrol.RequestContext, taskIDs []uint64) ([]mysqlstore.AgentTaskEvent, error) {
+	if s.opts.TenantService == nil || s.opts.SessionEvents == nil {
+		return nil, fmt.Errorf("session event projection is unavailable")
+	}
+	out := make([]mysqlstore.AgentTaskEvent, 0)
+	for _, taskID := range taskIDs {
+		if taskID == 0 {
+			continue
+		}
+		task, err := s.opts.TenantService.GetAgentTask(ctx, taskID)
+		if err != nil {
+			return nil, err
+		}
+		events, err := s.opts.SessionEvents.ListTaskEvents(ctx, task, 0, 10000)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, events...)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].ID == out[j].ID {
+			return out[i].CreatedAt.Before(out[j].CreatedAt)
+		}
+		return out[i].ID < out[j].ID
+	})
+	return out, nil
+}
+
+func newSessionControlManagedEventStore(opts Options) sessioncontrol.ManagedEventStore {
+	return sessionControlManagedEventStore{opts: opts}
 }
 
 func NewSessionControlEventReader(opts Options) SessionControlEventService {

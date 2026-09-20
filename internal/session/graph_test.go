@@ -62,12 +62,12 @@ func TestV2RecorderWritesGraph(t *testing.T) {
 		}
 	}
 
-	// session_meta and branch_head are not chain nodes: no parent_id.
+	// session_meta, session_event, and branch_head are not chain nodes: no parent_id.
 	// Every other entry has a parent_id except the root chain node.
 	rootCount := 0
 	for _, e := range entries {
 		switch e.Type {
-		case EntryTypeSessionMeta, EntryTypeBranchHead:
+		case EntryTypeSessionMeta, EntryTypeSessionEvent, EntryTypeBranchHead:
 			if e.ParentID != "" {
 				t.Fatalf("%s must not have parent_id, got %q", e.Type, e.ParentID)
 			}
@@ -123,6 +123,37 @@ func TestV2RecorderWritesGraph(t *testing.T) {
 		if chain[i].ParentID != chain[i-1].ID {
 			t.Fatalf("chain break at %d: parent=%q prev.id=%q", i, chain[i].ParentID, chain[i-1].ID)
 		}
+	}
+}
+
+func TestSessionEventIsSideBandInV2Graph(t *testing.T) {
+	store := v2Store(t)
+	rec, err := store.NewRecorderWithID("/tmp/example", "11111111-1111-4111-8111-111111111111")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rec.Append(Entry{ID: "message-1", Type: "message", Role: "user", Content: "hello"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rec.AppendEvent(TranscriptEvent{TaskID: 41, EventType: "text_delta", PayloadJSON: `{"content":"hi"}`}); err != nil {
+		t.Fatal(err)
+	}
+	if err := rec.Append(Entry{ID: "message-2", Type: "message", Role: "assistant", Content: "hi"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := rec.Close(); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := Load(rec.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := ActiveLeaf(entries); got != "message-2" {
+		t.Fatalf("ActiveLeaf = %q, want message-2", got)
+	}
+	chain := CurrentChain(entries)
+	if len(chain) != 2 || chain[0].ID != "message-1" || chain[1].ID != "message-2" {
+		t.Fatalf("CurrentChain = %+v", chain)
 	}
 }
 

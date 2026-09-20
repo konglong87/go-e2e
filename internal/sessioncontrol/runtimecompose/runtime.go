@@ -20,6 +20,7 @@ type TenantService interface {
 
 type Dependencies struct {
 	Tenant            TenantService
+	EventStore        sessioncontrol.ManagedEventStore
 	Dispatcher        sessioncontrol.ManagedRunDispatcher
 	PendingInputs     pendinginput.Queue
 	LocalStore        sessioncontrol.LocalSessionStore
@@ -60,6 +61,7 @@ func NewService(deps Dependencies) (*sessioncontrol.Service, error) {
 	managedStore := sessioncontrol.NewTenantManagedStore(deps.Tenant)
 	managed := sessioncontrol.NewManagedAdapter(managedStore, deps.Dispatcher)
 	managed.SetPendingInputs(deps.PendingInputs)
+	managed.SetEventStore(deps.EventStore)
 	var local sessioncontrol.LocalSessionPort = disabledLocalSessionPort{}
 	runtime := sessioncontrol.NewRuntime(sessioncontrol.RuntimeDependencies{Store: deps.Tenant, PendingInputs: deps.PendingInputs})
 	operationLock, operationKeyGuard := deps.OperationLock, deps.OperationKeyGuard

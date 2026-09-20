@@ -48,6 +48,12 @@ type ManagedStore interface {
 	ListSessionLinks(context.Context, RequestContext, uint64, int) ([]mysqlstore.SessionLink, error)
 }
 
+// ManagedEventStore is an optional read projection for high-frequency session
+// events. The control-plane ManagedStore remains the fallback for SQLite mode.
+type ManagedEventStore interface {
+	ListAgentTaskEventsForTasksComplete(context.Context, RequestContext, []uint64) ([]mysqlstore.AgentTaskEvent, error)
+}
+
 // ManagedRunDispatcher owns runtime actions. It deliberately does not expose
 // HTTP handlers or command execution to the persistence adapter.
 type ManagedRunDispatcher interface {
@@ -68,6 +74,7 @@ type ManagedPendingTriggerDispatcher interface {
 
 type ManagedAdapter struct {
 	store      ManagedStore
+	eventStore ManagedEventStore
 	dispatcher ManagedRunDispatcher
 	handoff    HandoffPort
 	pending    pendinginput.Queue
@@ -75,6 +82,7 @@ type ManagedAdapter struct {
 
 func (a *ManagedAdapter) SetHandoff(handoff HandoffPort)            { a.handoff = handoff }
 func (a *ManagedAdapter) SetPendingInputs(queue pendinginput.Queue) { a.pending = queue }
+func (a *ManagedAdapter) SetEventStore(store ManagedEventStore)     { a.eventStore = store }
 
 func NewManagedAdapter(store ManagedStore, dispatcher ManagedRunDispatcher) *ManagedAdapter {
 	return &ManagedAdapter{store: store, dispatcher: dispatcher}
@@ -559,7 +567,11 @@ func (a *ManagedAdapter) listEvents(ctx context.Context, requestContext RequestC
 	for _, task := range tasks {
 		taskIDs = append(taskIDs, task.ID)
 	}
-	events, err := a.store.ListAgentTaskEventsForTasksComplete(ctx, requestContext, taskIDs)
+	eventStore := a.eventStore
+	if eventStore == nil {
+		eventStore = a.store
+	}
+	events, err := eventStore.ListAgentTaskEventsForTasksComplete(ctx, requestContext, taskIDs)
 	return events, normalizeManagedError(err)
 }
 

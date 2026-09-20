@@ -36,7 +36,12 @@ func NewSessionControlService(opts Options, queryFn QueryFunc) (SessionControlSe
 		dispatcher.pendingTrigger = opts.pendingInputCoordinator.trigger
 	}
 	service, err := runtimecompose.NewService(runtimecompose.Dependencies{
-		Tenant: tenantRuntime, Dispatcher: dispatcher, PendingInputs: opts.PendingInputQueue,
+		Tenant: tenantRuntime, EventStore: func() sessioncontrol.ManagedEventStore {
+			if opts.SessionEvents == nil {
+				return nil
+			}
+			return newSessionControlManagedEventStore(opts)
+		}(), Dispatcher: dispatcher, PendingInputs: opts.PendingInputQueue,
 		Monitor: opts.SessionMonitor, EnableLocalRead: opts.SessionControlEnableLocalRead,
 	})
 	if err != nil {

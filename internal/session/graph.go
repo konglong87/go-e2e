@@ -63,7 +63,7 @@ func ActiveLeaf(entries []Entry) string {
 			if entry.LeafID != "" {
 				tip = entry.LeafID
 			}
-		case EntryTypeSessionMeta, EntryTypeRuntimeSpan:
+		case EntryTypeSessionMeta, EntryTypeSessionEvent, EntryTypeRuntimeSpan:
 			// Side-band metadata, not a conversation node.
 		default:
 			if entry.ID == "" {
@@ -195,7 +195,7 @@ func Leaves(entries []Entry) []string {
 
 func isGraphMetadataEntry(entryType string) bool {
 	switch entryType {
-	case EntryTypeBranchHead, EntryTypeSessionMeta, EntryTypeRuntimeSpan:
+	case EntryTypeBranchHead, EntryTypeSessionMeta, EntryTypeSessionEvent, EntryTypeRuntimeSpan:
 		return true
 	default:
 		return false

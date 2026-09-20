@@ -101,7 +101,7 @@ func handlePendingInputCollection(w http.ResponseWriter, r *http.Request, opts O
 			writePendingInputError(w, err)
 			return
 		}
-		appendPendingInputEvent(r, opts.TenantService, scope.BaseTaskID, agenttasks.EventInputQueued, item)
+		appendPendingInputEventWithOptions(r, opts, scope.BaseTaskID, agenttasks.EventInputQueued, item)
 		if task.Status != agenttasks.StatusRunning && opts.pendingInputCoordinator != nil {
 			opts.pendingInputCoordinator.trigger(r.Context(), scope)
 		}
@@ -147,7 +147,7 @@ func handlePendingInputItem(w http.ResponseWriter, r *http.Request, opts Options
 			writePendingInputError(w, err)
 			return
 		}
-		appendPendingInputEvent(r, opts.TenantService, scope.BaseTaskID, agenttasks.EventInputReordered, item)
+		appendPendingInputEventWithOptions(r, opts, scope.BaseTaskID, agenttasks.EventInputReordered, item)
 		writeJSON(w, map[string]any{"data": item})
 	case "direction":
 		if r.Method != http.MethodPatch {
@@ -168,7 +168,7 @@ func handlePendingInputItem(w http.ResponseWriter, r *http.Request, opts Options
 			writePendingInputError(w, err)
 			return
 		}
-		appendPendingInputEvent(r, opts.TenantService, scope.BaseTaskID, agenttasks.EventInputUpdated, item)
+		appendPendingInputEventWithOptions(r, opts, scope.BaseTaskID, agenttasks.EventInputUpdated, item)
 		writeJSON(w, map[string]any{"data": item})
 	case "retry":
 		if r.Method != http.MethodPost {
@@ -180,7 +180,7 @@ func handlePendingInputItem(w http.ResponseWriter, r *http.Request, opts Options
 			writePendingInputError(w, err)
 			return
 		}
-		appendPendingInputEvent(r, opts.TenantService, scope.BaseTaskID, agenttasks.EventInputRetried, item)
+		appendPendingInputEventWithOptions(r, opts, scope.BaseTaskID, agenttasks.EventInputRetried, item)
 		if task.Status != agenttasks.StatusRunning && opts.pendingInputCoordinator != nil {
 			opts.pendingInputCoordinator.trigger(r.Context(), scope)
 		}
@@ -224,14 +224,14 @@ func handlePendingInputMutation(w http.ResponseWriter, r *http.Request, opts Opt
 			writePendingInputError(w, err)
 			return
 		}
-		appendPendingInputEvent(r, opts.TenantService, scope.BaseTaskID, agenttasks.EventInputUpdated, item)
+		appendPendingInputEventWithOptions(r, opts, scope.BaseTaskID, agenttasks.EventInputUpdated, item)
 		writeJSON(w, map[string]any{"data": item})
 	case http.MethodDelete:
 		if err := opts.PendingInputQueue.Cancel(r.Context(), inputID); err != nil {
 			writePendingInputError(w, err)
 			return
 		}
-		appendPendingInputEvent(r, opts.TenantService, scope.BaseTaskID, agenttasks.EventInputCancelled, map[string]any{"input_id": inputID})
+		appendPendingInputEventWithOptions(r, opts, scope.BaseTaskID, agenttasks.EventInputCancelled, map[string]any{"input_id": inputID})
 		writeJSON(w, map[string]any{"id": inputID, "status": pendinginput.StatusCancelled})
 	default:
 		w.Header().Set("Allow", "PATCH, DELETE")
@@ -341,7 +341,7 @@ func handlePendingInputSideChat(w http.ResponseWriter, r *http.Request, opts Opt
 		writeTenantError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if _, err := opts.TenantService.AppendAgentTaskEvent(r.Context(), agenttasks.EventInput{TaskID: taskID, EventType: agenttasks.EventMessage, PayloadJSON: string(messagePayload), TraceID: traceID}); err != nil {
+	if _, err := appendAgentTaskEventByID(r.Context(), opts, taskID, agenttasks.EventInput{TaskID: taskID, EventType: agenttasks.EventMessage, PayloadJSON: string(messagePayload), TraceID: traceID}); err != nil {
 		_ = opts.TenantService.FinishAgentTask(context.WithoutCancel(r.Context()), taskID, agenttasks.StatusFailed, agentTaskEventPayload(map[string]any{"source": "pending-input-side-chat", "error_code": "side_chat_message_failed"}))
 		writeTenantServiceError(w, err)
 		return
@@ -420,15 +420,23 @@ func appendPendingInputEvent(r *http.Request, svc TenantService, taskID uint64, 
 	appendPendingInputEventContext(r.Context(), svc, taskID, eventType, payload)
 }
 
+func appendPendingInputEventWithOptions(r *http.Request, opts Options, taskID uint64, eventType string, payload any) {
+	appendPendingInputEventContextWithOptions(r.Context(), opts, taskID, eventType, payload)
+}
+
 func appendPendingInputEventContext(ctx context.Context, svc TenantService, taskID uint64, eventType string, payload any) {
-	if svc == nil || taskID == 0 {
+	appendPendingInputEventContextWithOptions(ctx, Options{TenantService: svc}, taskID, eventType, payload)
+}
+
+func appendPendingInputEventContextWithOptions(ctx context.Context, opts Options, taskID uint64, eventType string, payload any) {
+	if opts.TenantService == nil || taskID == 0 {
 		return
 	}
 	data, err := json.Marshal(sanitizePendingInputEventPayload(payload))
 	if err != nil {
 		return
 	}
-	_, _ = svc.AppendAgentTaskEvent(ctx, agenttasks.EventInput{TaskID: taskID, EventType: eventType, PayloadJSON: string(data)})
+	_, _ = appendAgentTaskEventByID(ctx, opts, taskID, agenttasks.EventInput{TaskID: taskID, EventType: eventType, PayloadJSON: string(data)})
 }
 
 func sanitizePendingInputEventPayload(payload any) map[string]any {

@@ -101,7 +101,7 @@ func (c *pendingInputCoordinator) drain(ctx context.Context, scope pendinginput.
 		parent, err := c.opts.TenantService.GetAgentTask(ctx, scope.BaseTaskID)
 		if err != nil {
 			_ = c.opts.PendingInputQueue.MarkFailed(ctx, item.ID, "parent_task_not_found")
-			appendPendingInputEventContext(ctx, c.opts.TenantService, scope.BaseTaskID, agenttasks.EventInputFailed, pendingInputEventValues(item, pendinginput.StatusFailed, 0, "parent_task_not_found"))
+			appendPendingInputEventContextWithOptions(ctx, c.opts, scope.BaseTaskID, agenttasks.EventInputFailed, pendingInputEventValues(item, pendinginput.StatusFailed, 0, "parent_task_not_found"))
 			return
 		}
 		metadata := parseAgentTaskJSONMap(parent.MetadataJSON)
@@ -123,13 +123,14 @@ func (c *pendingInputCoordinator) drain(ctx context.Context, scope pendinginput.
 		})
 		if err != nil {
 			_ = c.opts.PendingInputQueue.MarkFailed(ctx, item.ID, "continuation_create_failed")
-			appendPendingInputEventContext(ctx, c.opts.TenantService, scope.BaseTaskID, agenttasks.EventInputFailed, pendingInputEventValues(item, pendinginput.StatusFailed, 0, "continuation_create_failed"))
+			appendPendingInputEventContextWithOptions(ctx, c.opts, scope.BaseTaskID, agenttasks.EventInputFailed, pendingInputEventValues(item, pendinginput.StatusFailed, 0, "continuation_create_failed"))
 			return
 		}
-		if _, err := c.opts.TenantService.AppendAgentTaskEvent(ctx, agenttasks.EventInput{TaskID: childID, EventType: agenttasks.EventStarted, PayloadJSON: agentTaskEventPayload(map[string]any{"source": "pending-input-queue", "pending_input_id": item.ID}), TraceID: traceID}); err != nil {
+		child := mysqlstore.AgentTask{ID: childID, TenantID: parent.TenantID, UserID: parent.UserID, ParentSessionID: parent.ParentSessionID, AgentName: parent.AgentName, Description: parent.Description, Status: agenttasks.StatusRunning, Model: parent.Model, MetadataJSON: string(metadataJSON), TraceID: traceID}
+		if _, err := appendAgentTaskEvent(ctx, c.opts, child, agenttasks.EventInput{TaskID: childID, EventType: agenttasks.EventStarted, PayloadJSON: agentTaskEventPayload(map[string]any{"source": "pending-input-queue", "pending_input_id": item.ID}), TraceID: traceID}); err != nil {
 			_ = c.opts.TenantService.FinishAgentTask(context.WithoutCancel(ctx), childID, agenttasks.StatusFailed, agentTaskEventPayload(map[string]any{"source": "pending-input-queue", "error_code": "continuation_event_failed"}))
 			_ = c.opts.PendingInputQueue.MarkFailed(ctx, item.ID, "continuation_event_failed")
-			appendPendingInputEventContext(ctx, c.opts.TenantService, scope.BaseTaskID, agenttasks.EventInputFailed, pendingInputEventValues(item, pendinginput.StatusFailed, childID, "continuation_event_failed"))
+			appendPendingInputEventContextWithOptions(ctx, c.opts, scope.BaseTaskID, agenttasks.EventInputFailed, pendingInputEventValues(item, pendinginput.StatusFailed, childID, "continuation_event_failed"))
 			return
 		}
 		message := agenttasks.MessageInput{TaskID: childID, FromAgent: "webui", Content: composePendingInputContent(item), TraceID: traceID, Attachments: item.Attachments}
@@ -137,17 +138,16 @@ func (c *pendingInputCoordinator) drain(ctx context.Context, scope pendinginput.
 		if err != nil {
 			_ = c.opts.TenantService.FinishAgentTask(context.WithoutCancel(ctx), childID, agenttasks.StatusFailed, agentTaskEventPayload(map[string]any{"source": "pending-input-queue", "error_code": "continuation_message_failed"}))
 			_ = c.opts.PendingInputQueue.MarkFailed(ctx, item.ID, "continuation_message_failed")
-			appendPendingInputEventContext(ctx, c.opts.TenantService, scope.BaseTaskID, agenttasks.EventInputFailed, pendingInputEventValues(item, pendinginput.StatusFailed, childID, "continuation_message_failed"))
+			appendPendingInputEventContextWithOptions(ctx, c.opts, scope.BaseTaskID, agenttasks.EventInputFailed, pendingInputEventValues(item, pendinginput.StatusFailed, childID, "continuation_message_failed"))
 			return
 		}
-		if _, err := c.opts.TenantService.AppendAgentTaskEvent(ctx, agenttasks.EventInput{TaskID: childID, EventType: agenttasks.EventMessage, PayloadJSON: string(messagePayload), TraceID: traceID}); err != nil {
+		if _, err := appendAgentTaskEvent(ctx, c.opts, child, agenttasks.EventInput{TaskID: childID, EventType: agenttasks.EventMessage, PayloadJSON: string(messagePayload), TraceID: traceID}); err != nil {
 			_ = c.opts.TenantService.FinishAgentTask(context.WithoutCancel(ctx), childID, agenttasks.StatusFailed, agentTaskEventPayload(map[string]any{"source": "pending-input-queue", "error_code": "continuation_message_failed"}))
 			_ = c.opts.PendingInputQueue.MarkFailed(ctx, item.ID, "continuation_message_failed")
-			appendPendingInputEventContext(ctx, c.opts.TenantService, scope.BaseTaskID, agenttasks.EventInputFailed, pendingInputEventValues(item, pendinginput.StatusFailed, childID, "continuation_message_failed"))
+			appendPendingInputEventContextWithOptions(ctx, c.opts, scope.BaseTaskID, agenttasks.EventInputFailed, pendingInputEventValues(item, pendinginput.StatusFailed, childID, "continuation_message_failed"))
 			return
 		}
-		appendPendingInputEventContext(ctx, c.opts.TenantService, scope.BaseTaskID, agenttasks.EventInputRunning, pendingInputEventValues(item, pendinginput.StatusRunning, childID, ""))
-		child := mysqlstore.AgentTask{ID: childID, TenantID: parent.TenantID, UserID: parent.UserID, ParentSessionID: parent.ParentSessionID, AgentName: parent.AgentName, Description: parent.Description, Status: agenttasks.StatusRunning, Model: parent.Model, MetadataJSON: string(metadataJSON), TraceID: traceID}
+		appendPendingInputEventContextWithOptions(ctx, c.opts, scope.BaseTaskID, agenttasks.EventInputRunning, pendingInputEventValues(item, pendinginput.StatusRunning, childID, ""))
 		taskCtx, cancel := context.WithTimeout(ctx, agentTaskRunTimeout(c.opts))
 		result, err := c.runTask(taskCtx, child, message)
 		cancel()
@@ -157,13 +157,13 @@ func (c *pendingInputCoordinator) drain(ctx context.Context, scope pendinginput.
 				code = "continuation_run_failed"
 			}
 			_ = c.opts.PendingInputQueue.MarkFailed(context.WithoutCancel(ctx), item.ID, code)
-			appendPendingInputEventContext(context.WithoutCancel(ctx), c.opts.TenantService, scope.BaseTaskID, agenttasks.EventInputFailed, pendingInputEventValues(item, pendinginput.StatusFailed, childID, code))
+			appendPendingInputEventContextWithOptions(context.WithoutCancel(ctx), c.opts, scope.BaseTaskID, agenttasks.EventInputFailed, pendingInputEventValues(item, pendinginput.StatusFailed, childID, code))
 			return
 		}
 		if err := c.opts.PendingInputQueue.MarkSent(context.WithoutCancel(ctx), item.ID, childID); err != nil {
 			return
 		}
-		appendPendingInputEventContext(context.WithoutCancel(ctx), c.opts.TenantService, scope.BaseTaskID, agenttasks.EventInputSent, pendingInputEventValues(item, pendinginput.StatusSent, childID, ""))
+		appendPendingInputEventContextWithOptions(context.WithoutCancel(ctx), c.opts, scope.BaseTaskID, agenttasks.EventInputSent, pendingInputEventValues(item, pendinginput.StatusSent, childID, ""))
 	}
 }
 
@@ -175,7 +175,7 @@ func (c *pendingInputCoordinator) runTask(ctx context.Context, task mysqlstore.A
 			emitBackgroundPanic(ctx, "server.pendingInputCoordinator.runTask", reason, stack, map[string]any{"agent_task_id": task.ID, "trace_id": message.TraceID})
 			persistCtx := context.WithoutCancel(ctx)
 			payload := agentTaskEventPayload(map[string]any{"source": "pending-input-queue", "trace_id": message.TraceID, "error": reason, "panic": true})
-			_, _ = c.opts.TenantService.AppendAgentTaskEvent(persistCtx, agenttasks.EventInput{TaskID: task.ID, EventType: agenttasks.EventFailed, PayloadJSON: payload, TraceID: message.TraceID})
+			_, _ = appendAgentTaskEvent(persistCtx, c.opts, task, agenttasks.EventInput{TaskID: task.ID, EventType: agenttasks.EventFailed, PayloadJSON: payload, TraceID: message.TraceID})
 			_ = c.opts.TenantService.FinishAgentTask(persistCtx, task.ID, agenttasks.StatusFailed, payload)
 			result = agentTaskRunResult{Status: "continuation_run_panic"}
 			err = fmt.Errorf("pending input runner panic: %s", reason)

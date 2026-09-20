@@ -609,13 +609,13 @@ func runAgentTaskMessage(ctx context.Context, opts Options, queryFn QueryFunc, t
 	}
 	attachments, attachmentErr := agentTaskQueryAttachments(ctx, opts, task, input.Attachments)
 	queryReq.Attachments = attachments
-	queryReq.InitialMessages = webAgentConversationInitialMessages(ctx, opts.TenantService, task)
+	queryReq.InitialMessages = webAgentConversationInitialMessagesWithOptions(ctx, opts, task)
 	handoffMessage, handoffErr := agentTaskHandoffContextMessage(ctx, opts.TenantService, task, cwd, model)
 	if handoffErr == nil && handoffMessage != nil {
 		queryReq.InitialMessages = append(queryReq.InitialMessages, *handoffMessage)
 	}
 	if handoffErr == nil && source == agenttasks.SourcePendingInputSideChat {
-		candidate, candidateErr := webAgentTaskMessageFromEvents(ctx, opts.TenantService, task.ID)
+		candidate, candidateErr := webAgentTaskMessageFromEventsWithReader(ctx, opts.TenantService, routedAgentTaskHistoryReader{opts: opts}, task.ID)
 		attachmentErr = errors.Join(attachmentErr, candidateErr)
 		if candidate.Content != strings.TrimSpace(prompt) || len(input.Attachments) == 0 {
 			if candidate.Content != "" && candidate.Content != strings.TrimSpace(prompt) {
@@ -978,7 +978,27 @@ func appendAgentTaskToolEventsWithOptions(ctx context.Context, opts Options, tas
 
 const webAgentConversationHistoryLimit = 12
 
+type agentTaskHistoryEventReader interface {
+	ListAgentTaskEvents(context.Context, uint64, int) ([]mysqlstore.AgentTaskEvent, error)
+}
+
+type routedAgentTaskHistoryReader struct {
+	opts Options
+}
+
+func (r routedAgentTaskHistoryReader) ListAgentTaskEvents(ctx context.Context, taskID uint64, limit int) ([]mysqlstore.AgentTaskEvent, error) {
+	return listAgentTaskEventsByID(ctx, r.opts, taskID, 0, limit)
+}
+
 func webAgentConversationInitialMessages(ctx context.Context, svc TenantService, current mysqlstore.AgentTask) []anthropic.MessageParam {
+	return webAgentConversationInitialMessagesWithReader(ctx, svc, svc, current)
+}
+
+func webAgentConversationInitialMessagesWithOptions(ctx context.Context, opts Options, current mysqlstore.AgentTask) []anthropic.MessageParam {
+	return webAgentConversationInitialMessagesWithReader(ctx, opts.TenantService, routedAgentTaskHistoryReader{opts: opts}, current)
+}
+
+func webAgentConversationInitialMessagesWithReader(ctx context.Context, svc TenantService, events agentTaskHistoryEventReader, current mysqlstore.AgentTask) []anthropic.MessageParam {
 	if svc == nil || current.ParentSessionID == 0 {
 		return nil
 	}
@@ -1006,8 +1026,8 @@ func webAgentConversationInitialMessages(ctx context.Context, svc TenantService,
 		if task.ID == current.ID || task.ParentSessionID != current.ParentSessionID || !isTerminalAgentTaskStatus(task.Status) {
 			continue
 		}
-		prompt := webAgentTaskHistoryPromptFromEvents(ctx, svc, task)
-		compactSummary := webAgentTaskLatestCompactSummary(ctx, svc, task.ID)
+		prompt := webAgentTaskHistoryPromptFromReader(ctx, svc, events, task)
+		compactSummary := webAgentTaskLatestCompactSummaryFromReader(ctx, events, task.ID)
 		response := webAgentTaskHistoryResponse(task)
 		if prompt == "" || response == "" {
 			continue
@@ -1048,7 +1068,11 @@ func webAgentConversationInitialMessages(ctx context.Context, svc TenantService,
 }
 
 func webAgentTaskHistoryPromptFromEvents(ctx context.Context, svc TenantService, task mysqlstore.AgentTask) string {
-	inputs, err := webAgentTaskMessagesFromEvents(ctx, svc, task.ID)
+	return webAgentTaskHistoryPromptFromReader(ctx, svc, svc, task)
+}
+
+func webAgentTaskHistoryPromptFromReader(ctx context.Context, svc TenantService, events agentTaskHistoryEventReader, task mysqlstore.AgentTask) string {
+	inputs, err := webAgentTaskMessagesFromEventsWithReader(ctx, events, task.ID)
 	if err != nil {
 		observability.Error(ctx, nil, "agent.conversation_context.events_error", "server.webAgentTaskHistoryPromptFromEvents", "list web agent task events failed", "task_id", task.ID, "error", err)
 		return ""
@@ -1068,7 +1092,11 @@ func webAgentTaskHistoryPromptFromEvents(ctx context.Context, svc TenantService,
 }
 
 func webAgentTaskMessageFromEvents(ctx context.Context, svc TenantService, taskID uint64) (agenttasks.MessageInput, error) {
-	inputs, err := webAgentTaskMessagesFromEvents(ctx, svc, taskID)
+	return webAgentTaskMessageFromEventsWithReader(ctx, svc, svc, taskID)
+}
+
+func webAgentTaskMessageFromEventsWithReader(ctx context.Context, _ TenantService, events agentTaskHistoryEventReader, taskID uint64) (agenttasks.MessageInput, error) {
+	inputs, err := webAgentTaskMessagesFromEventsWithReader(ctx, events, taskID)
 	if err != nil || len(inputs) == 0 {
 		return agenttasks.MessageInput{}, err
 	}
@@ -1076,12 +1104,16 @@ func webAgentTaskMessageFromEvents(ctx context.Context, svc TenantService, taskI
 }
 
 func webAgentTaskMessagesFromEvents(ctx context.Context, svc TenantService, taskID uint64) ([]agenttasks.MessageInput, error) {
-	events, err := svc.ListAgentTaskEvents(ctx, taskID, 50)
+	return webAgentTaskMessagesFromEventsWithReader(ctx, svc, taskID)
+}
+
+func webAgentTaskMessagesFromEventsWithReader(ctx context.Context, events agentTaskHistoryEventReader, taskID uint64) ([]agenttasks.MessageInput, error) {
+	items, err := events.ListAgentTaskEvents(ctx, taskID, 50)
 	if err != nil {
 		return nil, err
 	}
 	var inputs []agenttasks.MessageInput
-	for _, event := range events {
+	for _, event := range items {
 		if event.EventType != agenttasks.EventMessage {
 			continue
 		}
@@ -1183,7 +1215,11 @@ func firstAgentTaskCapabilityLoopValue(value any) string {
 }
 
 func webAgentTaskLatestCompactSummary(ctx context.Context, svc TenantService, taskID uint64) string {
-	events, err := svc.ListAgentTaskEvents(ctx, taskID, 200)
+	return webAgentTaskLatestCompactSummaryFromReader(ctx, svc, taskID)
+}
+
+func webAgentTaskLatestCompactSummaryFromReader(ctx context.Context, eventsReader agentTaskHistoryEventReader, taskID uint64) string {
+	events, err := eventsReader.ListAgentTaskEvents(ctx, taskID, 200)
 	if err != nil {
 		observability.Error(ctx, nil, "agent.conversation_context.compact_events_error", "server.webAgentTaskLatestCompactSummary", "list web agent compact events failed", "task_id", taskID, "error", err)
 		return ""
