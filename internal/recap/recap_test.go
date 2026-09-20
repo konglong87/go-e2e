@@ -172,6 +172,15 @@ func TestGenerateCreatesRecapSummaryEntry(t *testing.T) {
 	if !strings.Contains(result.Text, "正在完善 TUI recap 体验") {
 		t.Fatalf("text = %q", result.Text)
 	}
+	if result.Metadata.Provenance.SourceEntryCount != 1 ||
+		result.Metadata.Provenance.SourceStartID != "msg-1" ||
+		result.Metadata.Provenance.SourceEndID != "msg-1" ||
+		result.Metadata.Provenance.SourceDigest == "" {
+		t.Fatalf("recap provenance = %+v", result.Metadata.Provenance)
+	}
+	if len(result.Metadata.Provenance.SourceEntryIDs) != 1 || result.Metadata.Provenance.SourceEntryIDs[0] != "msg-1" {
+		t.Fatalf("recap source entry IDs = %#v", result.Metadata.Provenance.SourceEntryIDs)
+	}
 }
 
 func TestGenerateFallsBackWhenModelReturnsEmptyRecap(t *testing.T) {

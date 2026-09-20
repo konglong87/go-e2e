@@ -2853,7 +2853,15 @@ func (s *Session) recordCompact(result compact.Result) {
 	if s.options.Recorder == nil || !result.Compacted {
 		return
 	}
-	metadata := compact.MetadataJSON(result.Metadata)
+	metadataValue := result.Metadata
+	if entries, err := session.LoadConversation(s.options.Recorder.Path); err == nil {
+		provenance := session.NewSummaryProvenance(entries, nil)
+		metadataValue.SourceEntryStartID = provenance.SourceStartID
+		metadataValue.SourceEntryEndID = provenance.SourceEndID
+		metadataValue.SourceEntryCount = provenance.SourceEntryCount
+		metadataValue.SourceEntryDigest = provenance.SourceDigest
+	}
+	metadata := compact.MetadataJSON(metadataValue)
 	_ = s.options.Recorder.Append(session.Entry{
 		Type:            "compact_summary",
 		Content:         result.PersistedSummary,

@@ -2404,6 +2404,11 @@ func Compact(path string, maxBytes int) (Entry, error) {
 // live-recorder callers can build the summary and append it through the recorder
 // (which tags/chains/advances the leaf) rather than via a side-channel write.
 func BuildCompactSummary(entries []Entry, maxBytes int) string {
+	summary, _ := buildCompactSummary(entries, maxBytes)
+	return summary
+}
+
+func buildCompactSummary(entries []Entry, maxBytes int) (string, SummaryProvenance) {
 	if maxBytes <= 0 {
 		maxBytes = 12 * 1024
 	}
@@ -2419,7 +2424,17 @@ func BuildCompactSummary(entries []Entry, maxBytes int) string {
 func CompactEntries(path string, entries []Entry, maxBytes int) (Entry, error) {
 	var entry Entry
 	err := withTranscriptLock(path, func() error {
-		entry = Entry{Type: "compact_summary", Content: BuildCompactSummary(entries, maxBytes), Timestamp: time.Now().UTC()}
+		summary, provenance := buildCompactSummary(entries, maxBytes)
+		metadata, marshalErr := json.Marshal(provenance)
+		if marshalErr != nil {
+			return marshalErr
+		}
+		entry = Entry{
+			Type:            "compact_summary",
+			Content:         summary,
+			CompactMetadata: metadata,
+			Timestamp:       time.Now().UTC(),
+		}
 		if fileEntries, err := Load(path); err == nil && IsV2Entries(fileEntries) {
 			entry.Schema = SchemaV2
 			entry.ID = NewEntryID()
@@ -2438,24 +2453,27 @@ const summaryOmissionNotice = "[older turns omitted to fit the summary budget]\n
 // continue, so the tail is the part still needed. (This replaces a forward scan
 // that kept the oldest maxBytes and discarded everything the user had just said
 // — the exact opposite of what "compact" means to a user.)
-func buildSummary(entries []Entry, maxBytes int) string {
+func buildSummary(entries []Entry, maxBytes int) (string, SummaryProvenance) {
 	// Everything up to and including the last previous summary is already
 	// condensed. That summary becomes the header and the entries it covers are
 	// dropped rather than rendered again.
 	header := "Conversation summary:\n"
-	start := 0
+	sourceStart := 0
+	renderStart := 0
 	for i, entry := range entries {
 		if entry.Type == "compact_summary" {
 			header = entry.Content + "\n\nRecent conversation after previous summary:\n"
-			start = i + 1
+			sourceStart = i
+			renderStart = i + 1
 		}
 	}
 	// Reserve the omission notice up front so the result stays within maxBytes
 	// whether or not anything ends up being dropped.
 	budget := maxBytes - len(header) - len(summaryOmissionNotice)
 	var kept []string
+	var referenced []Entry
 	dropped := false
-	for i := len(entries) - 1; i >= start; i-- {
+	for i := len(entries) - 1; i >= renderStart; i-- {
 		line := summaryLine(entries[i])
 		if line == "" {
 			continue
@@ -2466,12 +2484,17 @@ func buildSummary(entries []Entry, maxBytes int) string {
 			// recent context at all. ToValidUTF8 drops a rune cut in half.
 			if len(kept) == 0 && budget > 0 {
 				kept = append(kept, strings.ToValidUTF8(line[:budget], ""))
+				referenced = append(referenced, entries[i])
 			}
 			dropped = true
 			break
 		}
 		budget -= len(line)
 		kept = append(kept, line)
+		referenced = append(referenced, entries[i])
+	}
+	if sourceStart < len(entries) && entries[sourceStart].Type == "compact_summary" {
+		referenced = append(referenced, entries[sourceStart])
 	}
 	var out bytes.Buffer
 	out.WriteString(header)
@@ -2482,7 +2505,7 @@ func buildSummary(entries []Entry, maxBytes int) string {
 	for i := len(kept) - 1; i >= 0; i-- {
 		out.WriteString(kept[i])
 	}
-	return strings.TrimSpace(out.String())
+	return strings.TrimSpace(out.String()), NewSummaryProvenance(entries[sourceStart:], referenced)
 }
 
 // summaryLine renders one transcript entry as a single summary line, or "" for

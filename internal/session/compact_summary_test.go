@@ -1,7 +1,9 @@
 package session
 
 import (
+	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -109,5 +111,37 @@ func TestBuildCompactSummaryRendersEverythingThatFits(t *testing.T) {
 	want := "Conversation summary:\nUSER: please inspect README\nTOOL CALL Read: {\"file_path\":\"README.md\"}\nTOOL RESULT Read: # Project\nASSISTANT: README starts with a project heading."
 	if summary != want {
 		t.Fatalf("summary =\n%q\nwant\n%q", summary, want)
+	}
+}
+
+func TestCompactEntriesPersistsSummaryProvenanceWithoutSourceContent(t *testing.T) {
+	path := t.TempDir() + "/session.jsonl"
+	entries := []Entry{
+		{ID: "user-1", Type: "message", Role: "user", Content: "inspect the project"},
+		{ID: "tool-1", Type: "tool_result", ToolName: "Read", Content: "large evidence body"},
+		{ID: "assistant-1", Type: "message", Role: "assistant", Content: "the project is healthy"},
+	}
+	if err := writeEntries(path, entries); err != nil {
+		t.Fatal(err)
+	}
+	entry, err := CompactEntries(path, entries, 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var provenance SummaryProvenance
+	if err := json.Unmarshal(entry.CompactMetadata, &provenance); err != nil {
+		t.Fatal(err)
+	}
+	if provenance.Version != 1 || provenance.SourceStartID != "user-1" || provenance.SourceEndID != "assistant-1" {
+		t.Fatalf("provenance boundaries = %+v", provenance)
+	}
+	if provenance.SourceEntryCount != len(entries) || provenance.SourceDigest == "" {
+		t.Fatalf("provenance coverage = %+v", provenance)
+	}
+	if !reflect.DeepEqual(provenance.SourceEntryIDs, []string{"assistant-1", "tool-1", "user-1"}) {
+		t.Fatalf("referenced entry IDs = %#v", provenance.SourceEntryIDs)
+	}
+	if strings.Contains(string(entry.CompactMetadata), "large evidence body") {
+		t.Fatal("compact metadata copied source content")
 	}
 }

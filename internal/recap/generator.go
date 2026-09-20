@@ -22,13 +22,14 @@ type Result struct {
 }
 
 type Metadata struct {
-	Version             int       `json:"version"`
-	Source              string    `json:"source"`
-	SummarizesEntryID   string    `json:"summarizes_entry_id,omitempty"`
-	RecentMessageWindow int       `json:"recent_message_window"`
-	DurationMS          int64     `json:"duration_ms"`
-	Status              string    `json:"status"`
-	CreatedAt           time.Time `json:"created_at"`
+	Version             int                       `json:"version"`
+	Source              string                    `json:"source"`
+	SummarizesEntryID   string                    `json:"summarizes_entry_id,omitempty"`
+	RecentMessageWindow int                       `json:"recent_message_window"`
+	DurationMS          int64                     `json:"duration_ms"`
+	Status              string                    `json:"status"`
+	CreatedAt           time.Time                 `json:"created_at"`
+	Provenance          session.SummaryProvenance `json:"provenance"`
 }
 
 func Generate(ctx context.Context, streamer Streamer, entries []session.Entry, cfg Config, source, defaultModel string) (Result, error) {
@@ -84,6 +85,7 @@ func Generate(ctx context.Context, streamer Streamer, entries []session.Entry, c
 	if fallbackUsed {
 		status = "fallback_empty_response"
 	}
+	contextEntries := ContextEntries(entries, cfg)
 	metadata := Metadata{
 		Version:             1,
 		Source:              source,
@@ -92,6 +94,7 @@ func Generate(ctx context.Context, streamer Streamer, entries []session.Entry, c
 		DurationMS:          time.Since(start).Milliseconds(),
 		Status:              status,
 		CreatedAt:           time.Now().UTC(),
+		Provenance:          session.NewSummaryProvenance(contextEntries, contextEntries),
 	}
 	raw, err := json.Marshal(metadata)
 	if err != nil {

@@ -188,24 +188,6 @@ transcript_dir="$CONFIG_DIR/projects/$slug"
 transcript_path="$transcript_dir/$SESSION_ID.jsonl"
 output_file="$transcript_dir/long-agent.output"
 mkdir -p "$transcript_dir"
-if [[ "$AUTO_COMPACT" == "true" ]]; then
-  mkdir -p "$HOME_DIR/.golang-cc"
-  cat >"$HOME_DIR/.golang-cc/settings.json" <<JSON
-{
-  "contextLength": 100,
-  "autoCompact": {
-    "enabled": true,
-    "defaultThresholdRatio": 0.01,
-    "preserveRecentRounds": 1,
-    "maxSummaryTokens": 800,
-    "cooldownTurns": 2,
-    "modelContext": {
-      "$MODEL": 700
-    }
-  }
-}
-JSON
-fi
 
 node - "$transcript_path" "$output_file" "$AUTO_COMPACT" <<'NODE'
 const fs = require("fs");
@@ -380,6 +362,37 @@ fi
 BASE_URL="$(node -e 'const fs=require("fs"); process.stdout.write(JSON.parse(fs.readFileSync(process.argv[1], "utf8")).base_url)' "$READY_FILE")"
 
 export GO_E2E_CONFIG_DIR="$CONFIG_DIR"
+# Resolve the canonical provider route from the isolated settings file. Keep
+# the legacy environment variables below for compatibility, but do not depend
+# on ambient user configuration.
+node - "$CONFIG_DIR/settings.json" "$BASE_URL" "$MODEL" "$AUTO_COMPACT" <<'NODE'
+const fs = require("fs");
+const settingsPath = process.argv[2];
+const baseURL = process.argv[3];
+const model = process.argv[4];
+const autoCompact = process.argv[5] === "true";
+const settings = {
+  provider: "custom",
+  providerProtocol: "openai-chat-completions",
+  baseURL: `${baseURL}/v1`,
+  apiKey: "agent-long-output-test-key",
+  model,
+};
+if (autoCompact) {
+  settings.contextLength = 100;
+  settings.autoCompact = {
+    enabled: true,
+    defaultThresholdRatio: 0.01,
+    preserveRecentRounds: 1,
+    maxSummaryTokens: 800,
+    cooldownTurns: 2,
+    modelContext: {
+      [model]: 700,
+    },
+  };
+}
+fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n", { mode: 0o600 });
+NODE
 export GO_E2E_PROVIDER="custom"
 export ANTHROPIC_BASE_URL="$BASE_URL/v1"
 export ANTHROPIC_API_KEY="agent-long-output-test-key"

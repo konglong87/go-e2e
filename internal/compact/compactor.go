@@ -46,17 +46,21 @@ type Result struct {
 }
 
 type Metadata struct {
-	Model             string    `json:"model"`
-	SummaryModel      string    `json:"summary_model,omitempty"`
-	ContextTokens     int       `json:"context_tokens"`
-	ThresholdRatio    float64   `json:"threshold_ratio"`
-	ThresholdTokens   int       `json:"threshold_tokens"`
-	TriggerTokens     int       `json:"trigger_tokens"`
-	TokenAfter        int       `json:"token_after"`
-	CompactedMessages int       `json:"compacted_messages"`
-	PreservedMessages int       `json:"preserved_messages"`
-	PreservedRounds   int       `json:"preserved_rounds"`
-	CreatedAt         time.Time `json:"created_at"`
+	Model              string    `json:"model"`
+	SummaryModel       string    `json:"summary_model,omitempty"`
+	ContextTokens      int       `json:"context_tokens"`
+	ThresholdRatio     float64   `json:"threshold_ratio"`
+	ThresholdTokens    int       `json:"threshold_tokens"`
+	TriggerTokens      int       `json:"trigger_tokens"`
+	TokenAfter         int       `json:"token_after"`
+	CompactedMessages  int       `json:"compacted_messages"`
+	PreservedMessages  int       `json:"preserved_messages"`
+	PreservedRounds    int       `json:"preserved_rounds"`
+	CreatedAt          time.Time `json:"created_at"`
+	SourceEntryStartID string    `json:"source_entry_start_id,omitempty"`
+	SourceEntryEndID   string    `json:"source_entry_end_id,omitempty"`
+	SourceEntryCount   int       `json:"source_entry_count,omitempty"`
+	SourceEntryDigest  string    `json:"source_entry_digest,omitempty"`
 }
 
 func New(cfg Config, streamer Streamer, counter TokenCounter) *Compactor {

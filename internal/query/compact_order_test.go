@@ -142,6 +142,12 @@ func TestSessionCompactsExternalizedToolResultsNotRawBlobs(t *testing.T) {
 	if len(metadata) != 1 {
 		t.Fatalf("compact_summary entries = %d, want 1", len(metadata))
 	}
+	if metadata[0].SourceEntryCount == 0 ||
+		metadata[0].SourceEntryStartID == "" ||
+		metadata[0].SourceEntryEndID == "" ||
+		metadata[0].SourceEntryDigest == "" {
+		t.Fatalf("compact source provenance = %+v", metadata[0])
+	}
 	var compactSpan telemetry.Event
 	for _, event := range loadRuntimeSpanEvents(t, recorder.Path) {
 		if event.Name == telemetry.EventCompact+telemetry.SpanFinishedSuffix && event.Properties["compacted"] == true {
