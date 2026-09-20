@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	stdruntime "runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -107,6 +108,8 @@ func (a *app) startup(ctx context.Context) {
 		"GOLANG_CC_SQLITE_PATH="+sqlitePath,
 		"GOLANG_CC_TENANT_KEY=webui-local",
 		"GOLANG_CC_USER_ID=webui-local-user",
+		"GOLANG_CC_DESKTOP_MODE=1",
+		"GOLANG_CC_DESKTOP_SESSION_BACKEND="+desktopSessionBackend(config),
 	)
 	cmd.Dir, _ = os.Getwd()
 	if err := cmd.Start(); err != nil {
@@ -120,6 +123,16 @@ func (a *app) startup(ctx context.Context) {
 	if !waitForServer(ctx, a.port) {
 		wailsruntime.LogErrorf(ctx, "local golang-cc server did not become ready on port %d", a.port)
 	}
+}
+
+func desktopSessionBackend(config desktopConfig) string {
+	if value := strings.TrimSpace(os.Getenv("GOLANG_CC_DESKTOP_SESSION_BACKEND")); value != "" {
+		return value
+	}
+	if value := strings.TrimSpace(config.SessionBackend); value != "" {
+		return value
+	}
+	return "jsonl"
 }
 
 func desktopSQLitePath() (string, error) {

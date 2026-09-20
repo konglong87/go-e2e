@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	stdruntime "runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -136,6 +137,8 @@ func (a *app) startup(ctx context.Context) {
 			"GOLANG_CC_SQLITE_PATH=" + sqlitePath,
 			"GOLANG_CC_TENANT_KEY=webui-local",
 			"GOLANG_CC_USER_ID=webui-local-user",
+			"GOLANG_CC_DESKTOP_MODE=1",
+			"GOLANG_CC_DESKTOP_SESSION_BACKEND=" + desktopSessionBackend(config),
 			// Desktop MVP does not expose scheduled jobs. Disabling the scheduler
 			// keeps startup independent from stale daemon locks left by a crashed
 			// desktop/server process.
@@ -151,6 +154,16 @@ func (a *app) startup(ctx context.Context) {
 		startupLog("start local service: " + err.Error())
 		wailsruntime.LogErrorf(ctx, "start local go-e2e server: %v", err)
 	}
+}
+
+func desktopSessionBackend(config desktopConfig) string {
+	if value := strings.TrimSpace(os.Getenv("GOLANG_CC_DESKTOP_SESSION_BACKEND")); value != "" {
+		return value
+	}
+	if value := strings.TrimSpace(config.SessionBackend); value != "" {
+		return value
+	}
+	return "jsonl"
 }
 
 func (a *app) domReady(ctx context.Context) {

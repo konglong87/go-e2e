@@ -14,7 +14,8 @@ import (
 const desktopConfigFileName = "config.json"
 
 type desktopConfig struct {
-	Workspace string `json:"workspace,omitempty"`
+	Workspace      string `json:"workspace,omitempty"`
+	SessionBackend string `json:"session_backend,omitempty"`
 }
 
 func desktopConfigPath() (string, error) {
@@ -45,6 +46,10 @@ func loadDesktopConfig() (desktopConfig, error) {
 		return desktopConfig{}, err
 	}
 	config.Workspace = strings.TrimSpace(config.Workspace)
+	config.SessionBackend = strings.ToLower(strings.TrimSpace(config.SessionBackend))
+	if config.SessionBackend != "" && config.SessionBackend != "jsonl" && config.SessionBackend != "sqlite" {
+		config.SessionBackend = ""
+	}
 	if config.Workspace != "" {
 		info, statErr := os.Stat(config.Workspace)
 		if statErr != nil || !info.IsDir() {

@@ -119,6 +119,15 @@ func serverCommand(ctx context.Context, args []string, opts options, stdout io.W
 		defer cleanup()
 		return querySession.ToolDefinitions(), nil
 	}
+	sessionBackend := sessioncontrol.SessionBackend("")
+	if os.Getenv("GOLANG_CC_DESKTOP_MODE") == "1" || desktopLocal {
+		var err error
+		sessionBackend, err = sessioncontrol.ParseSessionBackend(os.Getenv("GOLANG_CC_DESKTOP_SESSION_BACKEND"))
+		if err != nil {
+			return err
+		}
+		serverOpts.SessionBackend = sessionBackend
+	}
 	tenantStorageMode := "disabled"
 	if sqlitePath := strings.TrimSpace(os.Getenv("GOLANG_CC_SQLITE_PATH")); sqlitePath != "" {
 		repo, err := mysqlstore.OpenSQLiteGormRepository(ctx, sqlitePath, nil)
@@ -569,6 +578,9 @@ func serverCommand(ctx context.Context, args []string, opts options, stdout io.W
 	}
 	fmt.Fprintf(stdout, "Starting server on %s:%d\n", serverOpts.Host, serverOpts.Port)
 	fmt.Fprintf(stdout, "Tenant storage: %s\n", tenantStorageMode)
+	if serverOpts.SessionBackend.Valid() {
+		fmt.Fprintf(stdout, "Session backend: %s\n", serverOpts.SessionBackend)
+	}
 	fmt.Fprintf(stdout, "Mobile auth: %s\n", serverMobileAuthMode(serverOpts))
 	return server.Run(ctx, serverOpts, func(ctx context.Context, req server.QueryRequest) (query.Result, error) {
 		return runServerQuery(ctx, req, io.Discard)

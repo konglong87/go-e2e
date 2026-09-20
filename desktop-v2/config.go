@@ -55,8 +55,9 @@ func (s windowState) normalized() windowState {
 }
 
 type desktopConfig struct {
-	Workspace string      `json:"workspace,omitempty"`
-	Window    windowState `json:"window,omitempty"`
+	Workspace      string      `json:"workspace,omitempty"`
+	SessionBackend string      `json:"session_backend,omitempty"`
+	Window         windowState `json:"window,omitempty"`
 }
 
 func (c desktopConfig) normalized() desktopConfig {
@@ -100,6 +101,10 @@ func loadDesktopConfig() (desktopConfig, error) {
 		return desktopConfig{}, err
 	}
 	config.Workspace = strings.TrimSpace(config.Workspace)
+	config.SessionBackend = strings.ToLower(strings.TrimSpace(config.SessionBackend))
+	if config.SessionBackend != "" && config.SessionBackend != "jsonl" && config.SessionBackend != "sqlite" {
+		config.SessionBackend = ""
+	}
 	if config.Workspace != "" {
 		info, statErr := os.Stat(config.Workspace)
 		if statErr != nil || !info.IsDir() {

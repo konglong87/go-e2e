@@ -93,7 +93,11 @@ type Options struct {
 	SettingsEnvironments  []SettingsEnvironment
 	// SessionControl is the transport-neutral session control boundary. The
 	// runtime composition is owned by the server caller, not the HTTP package.
-	SessionControl        SessionControlService
+	SessionControl SessionControlService
+	// SessionBackend is selected once when the desktop process starts. The
+	// server keeps the field transport-neutral so storage implementations can be
+	// swapped without changing the WebUI session-control contract.
+	SessionBackend        sessioncontrol.SessionBackend
 	SessionControlEvents  SessionControlEventService
 	SessionMonitor        sessioncontrol.MonitorPort
 	AgentTaskStore        agenttasks.Store
