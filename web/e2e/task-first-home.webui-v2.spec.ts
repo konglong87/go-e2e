@@ -32,6 +32,10 @@ test("desktop-v2 task-first home shows the default workspace and starts from the
   });
 
   await page.goto(`${desktopOrigin}/`);
+  const brandAnimation = page.getByRole("img", { name: "go-e2e" });
+  await expect(brandAnimation).toBeVisible();
+  await expect(brandAnimation).toHaveAttribute("width", "240");
+  await expect(brandAnimation).toHaveAttribute("height", "96");
   await expect(page.getByRole("heading", { name: "今天想让我帮你做什么？", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "选择工作区" })).toContainText("默认工作区 · project");
   await expect(page.getByRole("button", { name: "写代码" })).toHaveAttribute("aria-pressed", "true");

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type JSX } from "react";
 import { useI18n } from "../../lib/i18n";
 import type { IdentityConfig } from "../../lib/types";
 import { useCreateSession, useSendSession } from "../api/sessionControlQueries";
+import goE2E from "../assets/go-e2e-animation.svg";
 import { Composer } from "./Composer";
 import { HOME_PRESETS, WELCOME_DRAFT_REF, type HomePresetID } from "./homeExperience";
 import type { OperationResult, SendSessionInput, SessionRef, SessionSummary } from "../types";
@@ -114,6 +115,14 @@ export function TaskFirstHomePage({
 
   return <section className="webui2-task-first-home">
     <div className="webui2-task-first-heading">
+      <img
+        alt="go-e2e"
+        className="webui2-task-first-brand-animation"
+        decoding="async"
+        height="96"
+        src={goE2E}
+        width="240"
+      />
       <span className="webui2-task-first-eyebrow">{zh ? "go-e2e 工作台" : "go-e2e workbench"}</span>
       <h1>{zh ? "今天想让我帮你做什么？" : "What would you like to work on today?"}</h1>
       <p>{zh ? "从一个任务开始，我会在默认工作区里帮你完成。" : "Start with a task and I will help you finish it in the default workspace."}</p>
