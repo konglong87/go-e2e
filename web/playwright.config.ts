@@ -31,7 +31,7 @@ export default defineConfig({
     },
     {
       name: "chromium-webui-v2-desktop",
-      testMatch: /(?:webui-v2|settings-v2)\.spec\.ts/,
+      testMatch: /(?:webui-v2|settings-v2|desktop-background)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 960 } }
     },
     {

@@ -13,8 +13,8 @@ test("imports a local background image, previews it, and restores it after reloa
       }
     };
     const write = (value: unknown) => localStorage.setItem(key, JSON.stringify(value));
-    const app = window.go?.main?.app;
-    if (!app) return;
+    const app = window.go?.main?.app ?? { RestartLocalService: async () => undefined };
+    window.go = { main: { app } };
     app.GetBackgroundImage = async () => read();
     app.SaveBackgroundImage = async (dataURL, name) => {
       const next = { mode: "local" as const, enabled: true, name, mime_type: "image/png", data_url: dataURL };
@@ -45,8 +45,9 @@ test("imports a local background image, previews it, and restores it after reloa
   await page.route("**/runtime/settings", (route) => route.fulfill({ json: { doc: settingsDoc, revision: "fixture", path: "/settings.json", exists: true, masked: [] } }));
   await page.goto(`${desktopOrigin}/webui/v2/settings/appearance`);
   await expect(page.getByRole("heading", { name: "Appearance", exact: true })).toBeVisible();
+  const fileChooser = page.waitForEvent("filechooser");
   await page.getByRole("button", { name: "Local image", exact: true }).click();
-  await page.locator('input[type="file"][accept*="image/png"]').setInputFiles("../logo.png");
+  await (await fileChooser).setFiles("../logo.png");
   await expect(page.getByAltText("logo.png")).toBeVisible();
   await expect.poll(() => page.locator(".webui2-page").evaluate((node) => getComputedStyle(node).getPropertyValue("--webui2-visual-background-image").trim())).toContain("data:image/png");
   await page.screenshot({ path: testInfo.outputPath("desktop-background-imported.png"), fullPage: false });

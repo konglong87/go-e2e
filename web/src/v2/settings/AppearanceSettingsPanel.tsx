@@ -74,8 +74,16 @@ export function AppearanceSettingsPanel({ draft, desktopBackground }: Props): JS
     const dataURL = await readFileAsDataURL(file);
     await desktopBackground.save(dataURL, file.name);
   };
+  const selectLocalBackground = (): void => {
+    if (desktopBackground.background.data_url) {
+      void desktopBackground.setMode("local");
+      return;
+    }
+    fileInput.current?.click();
+  };
   return <div className="visual-settings-panel">
     <section className="visual-settings-section">
+      <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={(event) => void onFileChange(event)} />
       <div className="visual-settings-section-heading"><div><h2>{zh ? "页面氛围" : "Page atmosphere"}</h2><p>{zh ? "这些值通过共享全局 settings 文档保存，编辑时会在当前页面预览。" : "These values are saved in the shared global settings document and previewed on this page while editing."}</p></div><Toggle draft={draft} path={paths.enabled} name={APPEARANCE_FIELD_LABELS.enabled} /></div>
       <fieldset className="visual-settings-grid" disabled={disabled}>
         <Field draft={draft} path={paths.backgroundColor} name={APPEARANCE_FIELD_LABELS.backgroundColor} type="color" />
@@ -83,7 +91,7 @@ export function AppearanceSettingsPanel({ draft, desktopBackground }: Props): JS
           <span>{zh ? "背景图片来源" : "Background source"}</span>
           <div className="visual-settings-source-options" role="group" aria-label={zh ? "背景图片来源" : "Background source"}>
             <button type="button" aria-pressed={backgroundMode === "external"} disabled={disabled || desktopBackground.busy} onClick={() => void desktopBackground.setMode("external")}><Link size={15} />{zh ? "外部链接" : "External URL"}</button>
-            <button type="button" aria-pressed={backgroundMode === "local"} disabled={disabled || desktopBackground.busy} onClick={() => void desktopBackground.setMode("local")}><ImagePlus size={15} />{zh ? "本地图片" : "Local image"}</button>
+            <button type="button" aria-pressed={backgroundMode === "local"} disabled={disabled || desktopBackground.busy} onClick={selectLocalBackground}><ImagePlus size={15} />{zh ? "本地图片" : "Local image"}</button>
           </div>
         </div> : <Field draft={draft} path={paths.backgroundImage} name={APPEARANCE_FIELD_LABELS.backgroundImage} placeholder="https://..." />}
         {desktopBackground.available && backgroundMode === "external" ? <Field draft={draft} path={paths.backgroundImage} name={APPEARANCE_FIELD_LABELS.backgroundImage} placeholder="https://..." /> : null}
@@ -94,7 +102,6 @@ export function AppearanceSettingsPanel({ draft, desktopBackground }: Props): JS
             <div><strong>{desktopBackground.background.name || (zh ? "本地图片" : "Local image")}</strong><small>{zh ? "图片已保存到桌面端本地目录" : "Stored in the desktop app data directory"}</small></div>
           </div> : <div className="visual-settings-local-background-empty">{zh ? "尚未选择本地图片" : "No local image selected"}</div>}
           <div className="visual-settings-local-background-actions">
-            <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={(event) => void onFileChange(event)} />
             <button type="button" disabled={disabled || desktopBackground.busy} onClick={() => fileInput.current?.click()}><Upload size={15} />{desktopBackground.background.data_url ? (zh ? "替换图片" : "Replace image") : (zh ? "选择图片" : "Choose image")}</button>
             {desktopBackground.background.data_url ? <button type="button" disabled={disabled || desktopBackground.busy} onClick={() => void desktopBackground.clear()}><Trash2 size={15} />{zh ? "移除" : "Remove"}</button> : null}
           </div>
