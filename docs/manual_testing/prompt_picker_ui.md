@@ -6,18 +6,17 @@
 
 - Topology impact: updated
 - Blast radius: B1_SCENARIO
-- Topology reason: 既有 RT-OUTPUT 中 WebUI 2.0 / desktop-v2 与原版 Web Agent /
-  desktop 共用 PromptPicker 展示和模态交互；同步登记新增的旧版 UI 消费者，
-  RT-ENTRY 的原版 Wails 页面导航增加包内 index fallback；
+- Topology reason: 既有 RT-OUTPUT 中 WebUI 2.0 / desktop-v2 与 legacy Web Agent
+  共用 PromptPicker 展示和模态交互；同步登记 legacy WebUI 消费者；
   既有 RT-BOUNDARY -> RT-PERSIST 数据链保持不变，
   不新增 API、持久化、授权 gate、模型调用或跨模块节点/因果边。
 - producer 为原 prompt-template API，consumer 为 Picker；选择仍通过
   `onSelect(content)` 回调交给 Composer 写入草稿，非空草稿继续追加，不自动发送。
 - 不修改 Settings 管理页、Wails bridge、数据库及 tenant/user 隔离规则。
-- 用户追加要求原版 `golang-cc` 也支持后，旧 `/webui/agent` Composer 显式接入
+- 用户追加要求 legacy WebUI 也支持后，`/webui/agent` Composer 显式接入
   相同 API 和 Picker，不读取、迁移或覆盖任何旧提示词存储。相同后端、tenant/user
-  在两套 Web 页面看到同一模板目录；两个桌面壳仍分别使用 `desktop.sqlite` 与
-  `desktop-v2.sqlite`，不跨库同步。
+  在两套 Web 页面看到同一模板目录；desktop-v2 使用独立的本地 SQLite，
+  不与 WebUI 或 legacy WebUI 跨库同步。
 
 ## 实施
 
@@ -38,9 +37,9 @@
    否则空草稿会错误禁用入口。旧版主题语义 token 在 Picker 作用域映射到 v2。
 9. 独立 div 承担编辑区滚动，fieldset 只承担批量禁用，避免短窗口中原生 fieldset
    滚动未能露出最后一行置顶选项；保存栏不参与滚动。
-10. 原版 Wails 的 GET/HEAD `/webui`、`/webui/`、`/webui/agent` 和尾斜杠路径
-    直接返回包内 index，解决 Main WebUI -> Web Agent 全页面导航落到后端
-    “前端未构建”页的问题。API、POST、未知路径及 Trace 仍原样转发，不吞掉鉴权错误。
+10. legacy WebUI 的 GET/HEAD `/webui`、`/webui/`、`/webui/agent` 和尾斜杠路径
+    继续由现有 WebUI 路由处理；API、POST、未知路径及 Trace 仍原样转发，
+    不吞掉鉴权错误。
 
 ## 收益与回归边界
 
@@ -95,36 +94,22 @@ desktop-v2 构建以 `--outDir dist-desktop-check` 隔离验证，避免根路�
   本次未重构页面导航。375x480 可正常滚动到置顶选项并保存。
 - 本轮不把 API fixture 浏览器验证等同于 Wails 原生真实模型发送或重启落库验收。
 
-## Wails 原生验收
+## Desktop-v2 原生验收
 
-- 两个 macOS arm64 包均通过 Wails production build。原版增加的页面 fallback
-  通过 GET/HEAD、API 原请求转发和非 GET 排除测试；全量 Go 测试再次通过。
+- desktop-v2 macOS arm64 包通过 Wails production build；全量 Go 测试再次通过。
 - 原生操作使用既有 `GOLANG_CC_DESKTOP_CONFIG_DIR` 指向
-  `desktop/build/prompt-picker-acceptance`，只指定项目 workspace，不修改默认配置文件；
-  runtime 仍使用各自默认 SQLite。验收端口为 18189 / 18190。
+  `desktop-v2/build/prompt-picker-acceptance`，只指定项目 workspace，不修改默认配置文件；
+  runtime 使用 desktop-v2 默认 SQLite。验收端口为 18190。
 - go-e2e：新建验收会话，在星标弹窗新增 `UI acceptance v2 2026-09-16`，
   选中后观察草稿 `Reply only: {{value}}`，改为 `Reply only: PROMPT_PICKER_OK`
   并点击发送；收到 `PROMPT_PICKER_OK`（gpt-5.5，界面显示 3s）。
   退出并重启应用，进入同一会话，历史消息和模板均存在。
-- 原版 golang-cc：Main WebUI -> Web Agent 真实导航通过；新增
-  `UI acceptance legacy 2026-09-16` 并观察模板进入 Composer。
-  新建独立 Chat 会话后再次选用，修改为 `Reply only: LEGACY_PROMPT_PICKER_OK`，
-  点击发送后界面出现该 USER 消息，输入框清空，任务进入 running。
-  该模板消息约 52s 后收到上游 `Our servers are currently overloaded` 错误，
-  因此模型回复未作为通过项；前一条初始化请求等待未返回后已主动取消。
-  再次关闭并重启原版桌面，进入 Web Agent，验收模板仍存在。
-- 真实 SQLite readback：两个模板均带 tenant_id=1、user_id=1；分别在对方数据库
-  按精确标题查询计数为 0。保留这两条明确标注 Acceptance 的模板供用户手工验收。
-  普通 WebUI 本地 18087 服务以 manual profile 的 tenant/user 搜索
-  `UI acceptance` 返回空列表，未发现两条桌面验收数据。
-- 本机反复构建后曾出现原版包内 server 启动前停顿，包外相同二进制能返回版本；
-  将包内生成文件移出并重新复制为新文件后恢复，随后 `/health` 和模板 API 均正常。
-  没有据此更改 runtime 调度、系统权限或数据库逻辑，操作系统停顿原因未定论。
-  两个旧文件启动诊断进程（46895、47547）处于系统 `UEs` 状态，已请求
-  SIGTERM/SIGKILL 但尚未退出；无端口监听，不再用于服务验收。未操作系统服务或重启电脑。
+- legacy WebUI 的浏览器/API fixture 验收仍保留在上文；旧 native host 已删除，
+  因此不再把 legacy WebUI 的原生启动、重启或独立 SQLite 作为当前发布验收项。
 - go-e2e 原生启动落到 `/` 时仍显示已有的“此会话链接无效”状态，
   点击侧栏会话或“返回会话列表”可以进入；此既有首页路由问题不在本次修复范围。
-  后续已由 [2026-09-16 首次入口修复](desktop_v2_entry.md) 处理并完成原生重启验收；
+  后续已由 [2026-09-16 首次入口修复](desktop_v2_entry.md) 处理并完成
+  desktop-v2 原生重启验收；
   本段保留作为修复前的事实记录。
 
 ## Review 修复：未选会话时的模板填入
@@ -141,7 +126,8 @@ desktop-v2 构建以 `--outDir dist-desktop-check` 隔离验证，避免根路�
 - Topology reason: 仅改变既有 RT-OUTPUT 消费者的填入前置条件，
   RT-BOUNDARY / RT-PERSIST 接口、数据结构和因果边不变。
 - 保护的不变量：模板不能进入一个即将在会话初始化时被覆盖的无归属草稿。
-  代价是原版需先创建/选择会话才能填入；模板管理不受限制，恢复路径就是选择会话。
+  代价是 legacy WebUI 需先创建/选择会话才能填入；模板管理不受限制，
+  恢复路径就是选择会话。
   无新增请求、模型 token、turn、tool call 或持久化成本。
 - 回归矩阵：无会话时回调不执行且管理可用，选中会话后恢复填入，
   弹窗打开期间会话失效时同步禁用，正常空/非空草稿与失败重试维持原行为；
@@ -151,7 +137,7 @@ desktop-v2 构建以 `--outDir dist-desktop-check` 隔离验证，避免根路�
   回滚仅需撤销本次 UI 修复并重建前端，无数据库迁移。
 - 执行结果：新增 2 条单元回归先在修复前失败，修复后通过；Go 1.25 全量测试、
   typecheck、全量 Vitest（58 文件 / 547 用例）、Playwright（9/9）、
-  desktop / desktop-v2 前端隔离构建、WebUI 生产构建、diff check 与 topology check
+  desktop-v2 前端隔离构建、WebUI 生产构建、diff check 与 topology check
   均通过。初次浏览器执行因桌面页有两个同名 New Session 按钮产生选择器歧义，
   定位到会话区入口后全量场景通过；没有修改产品导航行为。
 - 本轮浏览器使用隔离 API fixture，验证前端完整会话流程和草稿 readback；

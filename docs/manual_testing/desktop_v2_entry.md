@@ -13,7 +13,7 @@
   将 `/` 判为 invalid。入口壳与路由解析器的预期不一致。
 - 方案：路由解析显式接收 desktop-v2 标识，仅在该入口将 `/` 解析为 index；
   不重定向、不自动选择或创建会话，不把真正无效的 session/settings URL 吞掉。
-  浏览器 WebUI 与原版桌面继续使用既有行为。
+  浏览器 WebUI 与 legacy WebUI 继续使用既有行为。
 - 收益：首次进入与返回根路径不再显示错误。潜在影响是导航状态恢复，
   以解析器、组件、浏览器历史和原生安装包覆盖。
 - 无新增 gate、持久化、HTTP 请求、模型 token/turn/tool call 或 prompt/cache 成本。
@@ -55,7 +55,7 @@
   系统工作目录选择器已出现，但 CUA Go-to 输入不稳定，未将目录选择
   交互记为通过；终止该测试进程后在隔离目录预置 `config-v2.json` 重试。
   WebKit UI 偏好不保证随 HOME 隔离，首次 onboarding 由独立浏览器上下文验证。
-- 独立 HOME 下实际生成 `desktop-v2.sqlite`，readback 的 tenant_sessions
+- 独立 HOME 下实际生成 `go-e2e.sqlite`，readback 的 tenant_sessions
   数量为 0。正常退出后无 18193 监听；再次启动仍落到有效首页，
   再正常退出。未修改默认 SQLite、模型配置或用户会话。
 - 本次未调用真实模型、不重新声称模型发送/模板持久化验收；

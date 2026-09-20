@@ -18,13 +18,12 @@ failure.
 prompt-template catalog，链路为 `RT-BOUNDARY -> RT-PERSIST -> RT-OUTPUT`。
 模板只进入 Composer 草稿，不进入 `RT-PROMPT` system prompt；当前爆炸半径为
 `B4_PROTOCOL`，租户/用户隔离按 `B5_SHARED_STATE` 负向路径验证。SQLite 与
-MySQL 复用同一 repository contract。2026-09-16 按用户追加要求，原版
-`golang-cc` / `/webui/agent` 在既有 RT-OUTPUT 中复用同一 Picker/API 作为显式
-消费者（B1_SCENARIO），只写 Composer 草稿，不自动发送。两个桌面壳仍分别
-使用 desktop.sqlite / desktop-v2.sqlite；没有旧提示词数据迁移或跨库读取。
-原版 Wails 的 RT-ENTRY 对显式 `/webui/agent` 与 `/webui/` 页面 GET/HEAD
-使用包内 index fallback，API 与非页面请求仍走原 runtime proxy；不依赖后端 cwd
-查找前端产物。与 RT-OUTPUT 的 Picker 接入一起按 B1 场景回归验证。
+MySQL 复用同一 repository contract。2026-09-16 按用户追加要求，legacy WebUI 的
+`/webui/agent` 在既有 RT-OUTPUT 中复用同一 Picker/API 作为显式
+消费者（B1_SCENARIO），只写 Composer 草稿，不自动发送。desktop-v2 使用自己的
+本地 SQLite；没有从已删除的旧桌面壳迁移或跨库读取提示词数据。legacy WebUI 的
+页面 GET/HEAD 仍使用既有 WebUI 路由，API 与非页面请求仍走原 runtime proxy；
+不依赖后端 cwd 查找前端产物。与 RT-OUTPUT 的 Picker 接入一起按 B1 场景回归验证。
 
 它解决的不是“代码在哪里”，而是下面三个问题：
 

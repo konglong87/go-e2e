@@ -31,26 +31,20 @@ capabilities belong behind a small Wails service boundary; business requests
 continue to use the existing HTTP/SSE API so Web, CLI, Desktop, and future
 clients keep the same protocol.
 
-## Desktop variants
+## Desktop Implementation
 
-The repository now keeps two installable Wails applications:
+`desktop-v2/` is the repository's only desktop implementation. It provides the
+Wails shell, the `/` desktop entry, and the `/webui/v2` session workbench.
+The legacy WebUI remains available as a browser/server surface, but it is not a
+second native desktop package.
 
-| Application | Directory | UI entry | Output |
-| --- | --- | --- | --- |
-| Legacy desktop | `desktop/` | Existing WebUI 1/default dashboard | `golang-cc-desktop` |
-| WebUI 2 desktop | `desktop-v2/` | `/` desktop entry and `/webui/v2` session workbench | `go-e2e.app` / `go-e2e-setup.exe` |
+The desktop build shares the existing `web` source tree, Go server binary, and
+API/SSE contract. It sets the build-only `VITE_DESKTOP_UI_VERSION=2` flag while
+leaving the legacy WebUI routes available for compatibility.
 
-The two variants share the same `web` source tree, Go server binary, API/SSE
-contract, and workspace selection behavior. The v2 build sets a build-only
-`VITE_DESKTOP_UI_VERSION=2` flag, so the legacy desktop and browser routes keep
-their existing default entry behavior. Variant configuration files are
-separate (`config.json` and `config-v2.json`) so installing both does not
-overwrite desktop preferences.
-
-Build the variants independently:
+Build the desktop application with:
 
 ```bash
-scripts/build-desktop.sh
 scripts/build-desktop-v2.sh
 ```
 
@@ -116,8 +110,8 @@ MySQL become symmetric implementations.
 
 - Phase 1 complete: Wails shell, embedded WebUI, localhost server process, and
   macOS production build.
-- WebUI 2 desktop variant complete: independent Wails shell, v2 build flag,
-  separate output name/configuration, and macOS production build.
+- Desktop-v2 complete: Wails shell, v2 build flag, durable configuration,
+  and macOS production build. It is the only native desktop package.
 - Desktop server ports now default to an available localhost port; the
   `GOLANG_CC_DESKTOP_SERVER_PORT` override remains available for diagnostics.
 - Local runtime: first-run workspace selection, durable desktop config,
@@ -125,7 +119,8 @@ MySQL become symmetric implementations.
   child-process shutdown are implemented. In-process composition and automatic
   crash recovery remain pending.
 - SQLite with startup migrations, model settings/connection validation and
-  onboarding are implemented. Legacy and v2 use separate SQLite files.
+  onboarding are implemented for desktop-v2. The legacy WebUI remains a
+  browser/server surface and does not define a second desktop data store.
 - macOS app build and Windows NSIS build workflow exist. The latest Windows
   workflow did not start because of GitHub billing limits; installer execution
   is not claimed as verified.

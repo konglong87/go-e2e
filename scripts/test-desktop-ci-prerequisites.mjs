@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const desktops = ["desktop", "desktop-v2"];
+const desktops = ["desktop-v2"];
 const go = process.env.GO ?? "go";
 const run = (command, args, cwd = root, env = {}) => {
   const result = spawnSync(command, args, {
@@ -54,7 +54,8 @@ test("fresh source embeds only placeholders and passes desktop build, vet and un
     const embedded = packages.map((pkg) =>
       JSON.parse(checked(go, ["list", "-json=EmbedFiles", pkg], fixture, env)).EmbedFiles);
     assert.deepEqual(embedded, desktops.map(() => ["frontend/dist/.gitkeep"]));
-    checked(go, ["build", ...packages], fixture, env);
+    const buildOutput = path.join(fixture, "desktop-v2-test-bin");
+    checked(go, ["build", "-o", buildOutput, ...packages], fixture, env);
     checked(go, ["vet", ...packages], fixture, env);
     checked(go, ["test", ...packages, "-count=1"], fixture, env);
 
@@ -85,7 +86,7 @@ test("CI separates source-only checks from real native builds and follows main",
   const native = ci.slice(ci.indexOf("  desktop-linux:"), ci.indexOf("\n  scripts:"));
   assert.match(native, /runs-on: ubuntu-24\.04/);
   assert.match(native, /CGO_ENABLED: '1'/);
-  assert.match(native, /script: \[build-desktop\.sh, build-desktop-v2\.sh\]/);
+  assert.match(native, /script: \[build-desktop-v2\.sh\]/);
   assert.match(native, /libgtk-3-dev libwebkit2gtk-4\.1-dev/);
   assert.match(native, /-tags webkit2_41/);
   assert.match(native, /npm ci --legacy-peer-deps/);

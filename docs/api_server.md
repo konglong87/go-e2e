@@ -614,7 +614,7 @@ export GOLANG_CC_LOG_LEVEL=debug
 ```
 # 常用提示词
 
-WebUI 2.0、桌面 v2 (`go-e2e`) 及原版 Web Agent / `golang-cc` 桌面使用 `/tenant/prompt-templates` 管理当前租户/用户的提示词模板。支持 `GET`（可选 `search`、`category`、`limit`）、`POST` 保存、`PATCH` 按 `id` 更新，以及 `/tenant/prompt-templates/:id` 的 `DELETE`。模板只进入 Composer 草稿，不会自动发送，也不会注入 runtime system prompt。
+WebUI 2.0、桌面 v2 (`go-e2e`) 及 legacy Web Agent 使用 `/tenant/prompt-templates` 管理当前租户/用户的提示词模板。支持 `GET`（可选 `search`、`category`、`limit`）、`POST` 保存、`PATCH` 按 `id` 更新，以及 `/tenant/prompt-templates/:id` 的 `DELETE`。模板只进入 Composer 草稿，不会自动发送，也不会注入 runtime system prompt。
 
 - `POST` 不带 `id` 时按当前 tenant/user/title 原子 upsert；重复或并发保存同名模板保留同一 ID。带 `id` 时仅更新已有且属于当前用户的记录。
 - `PATCH` 必须提供非零 `id`、非空 `title/content`，否则返回 `400`；`pinned=false`、`sort_order=0` 和空 `category` 会实际落库。它是完整编辑表单保存，不是任意字段的局部 merge。
@@ -622,4 +622,6 @@ WebUI 2.0、桌面 v2 (`go-e2e`) 及原版 Web Agent / `golang-cc` 桌面使用 
 - 删除不存在或其他 tenant/user 的 ID 返回 `404`；成功返回 `204`。所有操作仍需服务鉴权及可信 tenant/user context。
 - 查询和保存成功返回 JSON；错误返回 `text/plain`，不是 JSON 字符串。删除成功无响应体。
 
-两个 Web UI 使用同一后端和 tenant/user 时共享目录；两个桌面版本沿用各自 SQLite 文件，不跨库复制或迁移旧提示词数据。旧版接入仅新增 API 消费入口，不改变请求/响应或鉴权契约。
+两个 Web UI 使用同一后端和 tenant/user 时共享目录；desktop-v2 使用自己的本地 SQLite
+文件，不与 WebUI 或 legacy WebUI 跨库复制或迁移提示词数据。legacy WebUI 接入仅新增
+API 消费入口，不改变请求/响应或鉴权契约。

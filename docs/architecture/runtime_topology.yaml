@@ -31,14 +31,13 @@ nodes:
       - internal/supervisor/
       - internal/slashcommands/
       - internal/updater/
-      - desktop/
       - desktop-v2/
       - scripts/channel-worker-screen.sh
       - scripts/channel-worker-screen_test.sh
     downstream: [RT-BOUNDARY, RT-WIRING]
     tests:
       - go test ./internal/buildinfo -count=1
-      - go test ./desktop ./desktop-v2 -count=1
+      - go test ./desktop-v2 -count=1
       - go test ./internal/cli ./internal/supervisor ./internal/slashcommands ./internal/updater -count=1
       - bash scripts/channel-worker-screen_test.sh
 

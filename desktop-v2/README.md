@@ -1,8 +1,8 @@
 # go-e2e Desktop
 
-go-e2e 是基于 Wails v2 的桌面 AI 工作台，复用本仓库的 WebUI 2.0、
-HTTP/SSE API 和 runtime。不是独立 Go module，必须从仓库根目录构建；
-旧版桌面在 `desktop/`，不要混用两个构建脚本。
+go-e2e 是基于 Wails v2 的唯一桌面 AI 工作台，复用本仓库的 WebUI 2.0、
+HTTP/SSE API 和 runtime。不是独立 Go module，必须从仓库根目录构建。
+legacy WebUI 仍可通过浏览器/server 入口使用，但不再提供第二个原生桌面包。
 
 ## 从源码构建
 
@@ -78,8 +78,7 @@ Windows 安装/卸载实际运行、WebView2 与 GUI 首次启动仍须在 Windo
 | `go-e2e-startup.log` | 桌面启动诊断 |
 
 desktop-v2 固定使用用户 home 下的 `.golang-cc` 目录，和平台默认的应用支持目录
-无关。旧版桌面使用独立的 `config.json` 与 `desktop.sqlite`，两版不会自动迁移
-或同步数据。
+无关。删除旧桌面实现后，不提供旧桌面配置或 SQLite 数据的自动迁移。
 
 模型配置仍复用 runtime 的 `~/.golang-cc/settings.json`，可用
 `GOLANG_CC_CONFIG_DIR` 重定位；它与桌面工作目录配置不是同一文件。
