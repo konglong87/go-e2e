@@ -103,31 +103,33 @@ type Request struct {
 }
 
 type Result struct {
-	Content           string          `json:"content"`
-	CapabilityLoop    *CapabilityLoop `json:"capability_loop,omitempty"`
-	AgentName         string          `json:"agent_name,omitempty"`
-	Model             string          `json:"model,omitempty"`
-	Provider          string          `json:"provider,omitempty"`
-	Status            string          `json:"status,omitempty"`
-	Background        bool            `json:"background,omitempty"`
-	AgentMode         string          `json:"agent_mode,omitempty"`
-	Effort            string          `json:"effort,omitempty"`
-	MaxOutputTokens   int             `json:"max_output_tokens,omitempty"`
-	MaxTurns          int             `json:"max_turns,omitempty"`
-	TimeoutMS         int             `json:"timeout_ms,omitempty"`
-	OverrideReasons   []string        `json:"override_reason_codes,omitempty"`
-	PermissionMode    string          `json:"permission_mode,omitempty"`
-	SessionID         string          `json:"session_id,omitempty"`
-	TranscriptPath    string          `json:"transcript_path,omitempty"`
-	OutputFile        string          `json:"output_file,omitempty"`
-	WorktreePath      string          `json:"worktree_path,omitempty"`
-	WorktreeBranch    string          `json:"worktree_branch,omitempty"`
-	WorktreeHookBased bool            `json:"worktree_hook_based,omitempty"`
-	Turns             int             `json:"turns,omitempty"`
-	ToolCalls         []ToolTrace     `json:"tool_calls,omitempty"`
-	TaskID            uint64          `json:"task_id,omitempty"`
-	Usage             Usage           `json:"usage,omitempty"`
-	CostUSD           float64         `json:"cost_usd,omitempty"`
+	Content             string          `json:"content"`
+	PersistenceDegraded bool            `json:"persistence_degraded,omitempty"`
+	PersistenceError    string          `json:"persistence_error,omitempty"`
+	CapabilityLoop      *CapabilityLoop `json:"capability_loop,omitempty"`
+	AgentName           string          `json:"agent_name,omitempty"`
+	Model               string          `json:"model,omitempty"`
+	Provider            string          `json:"provider,omitempty"`
+	Status              string          `json:"status,omitempty"`
+	Background          bool            `json:"background,omitempty"`
+	AgentMode           string          `json:"agent_mode,omitempty"`
+	Effort              string          `json:"effort,omitempty"`
+	MaxOutputTokens     int             `json:"max_output_tokens,omitempty"`
+	MaxTurns            int             `json:"max_turns,omitempty"`
+	TimeoutMS           int             `json:"timeout_ms,omitempty"`
+	OverrideReasons     []string        `json:"override_reason_codes,omitempty"`
+	PermissionMode      string          `json:"permission_mode,omitempty"`
+	SessionID           string          `json:"session_id,omitempty"`
+	TranscriptPath      string          `json:"transcript_path,omitempty"`
+	OutputFile          string          `json:"output_file,omitempty"`
+	WorktreePath        string          `json:"worktree_path,omitempty"`
+	WorktreeBranch      string          `json:"worktree_branch,omitempty"`
+	WorktreeHookBased   bool            `json:"worktree_hook_based,omitempty"`
+	Turns               int             `json:"turns,omitempty"`
+	ToolCalls           []ToolTrace     `json:"tool_calls,omitempty"`
+	TaskID              uint64          `json:"task_id,omitempty"`
+	Usage               Usage           `json:"usage,omitempty"`
+	CostUSD             float64         `json:"cost_usd,omitempty"`
 	// CostKnown is false when no price is known for the model, so CostUSD is 0
 	// because it is unknown rather than because the run was free (AUDIT-P0-15).
 	CostKnown bool `json:"cost_known,omitempty"`
@@ -152,6 +154,25 @@ type ToolTrace struct {
 	Output          string `json:"output"`
 	IsError         bool   `json:"is_error,omitempty"`
 	contextMessages []anthropic.MessageParam
+}
+
+type persistenceState struct {
+	firstErr error
+}
+
+func (s *persistenceState) record(operation string, err error) {
+	if s == nil || err == nil || s.firstErr != nil {
+		return
+	}
+	s.firstErr = fmt.Errorf("%s: %w", operation, err)
+}
+
+func (s *persistenceState) apply(result *Result) {
+	if s == nil || result == nil || s.firstErr == nil {
+		return
+	}
+	result.PersistenceDegraded = true
+	result.PersistenceError = s.firstErr.Error()
 }
 
 type Usage struct {
@@ -246,10 +267,61 @@ func AgentBackground(cwd, name string) (bool, error) {
 	return agent.Background, nil
 }
 
-func (r Runtime) Run(ctx context.Context, req Request, toolContext tools.Context) (Result, error) {
+func (r Runtime) Run(ctx context.Context, req Request, toolContext tools.Context) (returned Result, returnedErr error) {
 	runStarted := time.Now()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	var result Result
+	var taskID uint64
+	var recorder *session.Recorder
+	var persistence persistenceState
+	var finalStatus = agenttasks.StatusFailed
+	var finalErr error
+	taskCreated := false
+	taskFinished := false
+	recorderClosed := false
+	closeRecorder := func() {
+		if recorder == nil || recorderClosed {
+			return
+		}
+		recorderClosed = true
+		persistence.record("close transcript", recorder.Close())
+	}
+	finishRunTask := func(status string, current Result) Result {
+		if taskFinished {
+			return current
+		}
+		taskFinished = true
+		closeRecorder()
+		persistence.apply(&current)
+		return r.finishTask(ctx, req, taskID, status, current)
+	}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			panicErr := fmt.Errorf("sub-agent runtime panicked: %v", recovered)
+			observability.Error(ctx, nil, "agent.run.panic", "agentruntime.Runtime.Run", "sub-agent runtime panicked",
+				"task_id", taskID,
+				"agent", result.AgentName,
+				"panic", fmt.Sprint(recovered),
+				"stack", string(debug.Stack()),
+			)
+			if taskCreated && taskID != 0 && !taskFinished {
+				recordFailureContent(&result, panicErr)
+				result = finishRunTask(agenttasks.StatusFailed, result)
+				r.emitEvent(context.WithoutCancel(ctx), req, taskID, agenttasks.EventFailed, agentTerminalEventPayload(result, time.Since(runStarted), map[string]any{"error": panicErr.Error(), "reason": "runtime_panic"}), toolContext.TaskProgress)
+			}
+			finalStatus = agenttasks.StatusFailed
+			finalErr = panicErr
+			closeRecorder()
+			persistence.apply(&result)
+			returned = result
+			returnedErr = panicErr
+		}
+		if taskCreated {
+			r.runSubagentStopHook(ctx, req, result, finalStatus, finalErr, runStarted)
+			r.emitAgentRunFinishedTelemetry(context.WithoutCancel(ctx), req, result, taskID, finalStatus, finalErr, runStarted)
+		}
+	}()
 	prompt := strings.TrimSpace(req.Prompt)
 	if prompt == "" {
 		return Result{}, fmt.Errorf("prompt is required")
@@ -333,12 +405,12 @@ func (r Runtime) Run(ctx context.Context, req Request, toolContext tools.Context
 	if r.RecorderStore.IsZero() {
 		r.RecorderStore = session.DefaultStore()
 	}
-	var recorder *session.Recorder
 	if strings.TrimSpace(req.CWD) != "" {
-		recorder, _ = r.RecorderStore.NewRecorder(req.CWD)
-	}
-	if recorder != nil {
-		defer recorder.Close()
+		var recorderErr error
+		recorder, recorderErr = r.RecorderStore.NewRecorder(req.CWD)
+		if recorderErr != nil {
+			return Result{}, fmt.Errorf("create transcript recorder: %w", recorderErr)
+		}
 	}
 	maxTurns := r.MaxTurns
 	if override.MaxTurns > 0 {
@@ -406,7 +478,7 @@ func (r Runtime) Run(ctx context.Context, req Request, toolContext tools.Context
 	messages := initialSubagentMessages(req.InitialMessages, prompt)
 	toolResultReplacements := toolResultReplacementMap(req.InitialToolResultReplacements)
 	toolResultSeenIDs := toolresult.ToolResultIDs(req.InitialMessages)
-	result := Result{
+	result = Result{
 		AgentName:         strings.TrimSpace(firstNonEmpty(agent.Name, req.SubagentType)),
 		Model:             model,
 		Provider:          effectiveProvider,
@@ -425,9 +497,13 @@ func (r Runtime) Run(ctx context.Context, req Request, toolContext tools.Context
 		result.SessionID = recorder.SessionID
 		result.TranscriptPath = recorder.Path
 		result.OutputFile = agentOutputFilePath(recorder.Path, recorder.SessionID)
-		_ = recorder.Append(session.Entry{Type: "message", Role: "user", Content: prompt})
+		if err := recorder.Append(session.Entry{Type: "message", Role: "user", Content: prompt}); err != nil {
+			closeRecorder()
+			return Result{}, fmt.Errorf("persist initial prompt: %w", err)
+		}
 	}
-	taskID := r.createTask(ctx, req, result, recorder)
+	taskID = r.createTask(ctx, req, result, recorder)
+	taskCreated = true
 	progressTaskID := taskID
 	if progressTaskID == 0 && r.TaskStore == nil && toolContext.TaskProgress != nil {
 		progressTaskID = localProgressTaskSeq.Add(1)
@@ -460,18 +536,14 @@ func (r Runtime) Run(ctx context.Context, req Request, toolContext tools.Context
 	subagentStartContext, err := r.runSubagentStartHook(ctx, req, result, runStarted)
 	if err != nil {
 		recordFailureContent(&result, err)
-		result = r.finishTask(ctx, req, taskID, agenttasks.StatusFailed, result)
+		result = finishRunTask(agenttasks.StatusFailed, result)
+		finalStatus = agenttasks.StatusFailed
+		finalErr = err
 		return result, err
 	}
 	if subagentStartContext != "" {
 		messages = append(messages, subagentStartHookContextMessage(subagentStartContext))
 	}
-	finalStatus := agenttasks.StatusFailed
-	var finalErr error
-	defer func() {
-		r.runSubagentStopHook(ctx, req, result, finalStatus, finalErr, runStarted)
-		r.emitAgentRunFinishedTelemetry(context.WithoutCancel(ctx), req, result, taskID, finalStatus, finalErr, runStarted)
-	}()
 	emitEvent := func(eventType string, payload map[string]any) {
 		r.emitEvent(ctx, req, progressTaskID, eventType, payload, toolContext.TaskProgress)
 	}
@@ -507,7 +579,7 @@ func (r Runtime) Run(ctx context.Context, req Request, toolContext tools.Context
 		if r.isCancelled(ctx, taskID) {
 			err := fmt.Errorf("sub-agent task cancelled")
 			recordCancellationContent(&result, err)
-			result = r.finishTask(ctx, req, taskID, agenttasks.StatusCancelled, result)
+			result = finishRunTask(agenttasks.StatusCancelled, result)
 			emitEvent(agenttasks.EventCancelled, agentTerminalEventPayload(result, time.Since(runStarted), map[string]any{"turn": turn, "source": "store"}))
 			finalStatus = agenttasks.StatusCancelled
 			finalErr = err
@@ -518,7 +590,7 @@ func (r Runtime) Run(ctx context.Context, req Request, toolContext tools.Context
 		// as cancelled rather than as a budget failure.
 		if err := budget.Check(); err != nil {
 			recordFailureContent(&result, err)
-			result = r.finishTask(ctx, req, taskID, agenttasks.StatusFailed, result)
+			result = finishRunTask(agenttasks.StatusFailed, result)
 			emitEvent(agenttasks.EventFailed, agentTerminalEventPayload(result, time.Since(runStarted), map[string]any{"error": err.Error(), "turn": turn, "reason": "budget_exhausted"}))
 			finalStatus = agenttasks.StatusFailed
 			finalErr = err
@@ -540,7 +612,7 @@ func (r Runtime) Run(ctx context.Context, req Request, toolContext tools.Context
 			SkipToolNames:  registry.ToolResultBudgetSkipNames(),
 			Replacements:   toolResultReplacements,
 			SeenToolUseIDs: toolResultSeenIDs,
-			OnReplacement:  recordContentReplacement(recorder, toolResultReplacements),
+			OnReplacement:  recordContentReplacement(recorder, toolResultReplacements, &persistence),
 		})
 		messages = toolresult.ApplyHistoryBudget(messages, toolresult.BudgetOptions{
 			Limit:          toolResultHistoryBudget,
@@ -548,7 +620,7 @@ func (r Runtime) Run(ctx context.Context, req Request, toolContext tools.Context
 			SkipToolNames:  registry.ToolResultBudgetSkipNames(),
 			Replacements:   toolResultReplacements,
 			SeenToolUseIDs: toolResultSeenIDs,
-			OnReplacement:  recordContentReplacement(recorder, toolResultReplacements),
+			OnReplacement:  recordContentReplacement(recorder, toolResultReplacements, &persistence),
 		})
 		// Compaction runs after tool-result externalization for the same reason
 		// as in the main loop: externalization is free, compaction costs an LLM
@@ -582,7 +654,7 @@ func (r Runtime) Run(ctx context.Context, req Request, toolContext tools.Context
 		}
 		if err := r.dumpPromptRequest(req, result, taskID, turn, request, toolResultLimit, toolResultMessageBudget, toolResultHistoryBudget); err != nil {
 			recordFailureContent(&result, err)
-			result = r.finishTask(ctx, req, taskID, agenttasks.StatusFailed, result)
+			result = finishRunTask(agenttasks.StatusFailed, result)
 			emitEvent(agenttasks.EventFailed, agentTerminalEventPayload(result, time.Since(runStarted), map[string]any{"error": err.Error(), "turn": turn}))
 			finalStatus = agenttasks.StatusFailed
 			finalErr = err
@@ -650,7 +722,7 @@ func (r Runtime) Run(ctx context.Context, req Request, toolContext tools.Context
 				Error:        err.Error(),
 				Properties:   map[string]any{"agent_name": result.AgentName, "turn": turn},
 			})
-			result = r.finishTask(ctx, req, taskID, status, result)
+			result = finishRunTask(status, result)
 			eventType := agenttasks.EventFailed
 			switch status {
 			case agenttasks.StatusCancelled:
@@ -725,7 +797,7 @@ func (r Runtime) Run(ctx context.Context, req Request, toolContext tools.Context
 			})
 		}
 		messages = append(messages, stream.Message)
-		recordAssistant(recorder, stream.Message.Content)
+		persistence.record("append assistant transcript", recordAssistant(recorder, stream.Message.Content))
 		for _, block := range stream.Message.Content {
 			if block.Type == "text" && result.Content == "" {
 				result.Content += block.Text
@@ -738,7 +810,7 @@ func (r Runtime) Run(ctx context.Context, req Request, toolContext tools.Context
 				"turns", result.Turns,
 				"tool_calls", len(result.ToolCalls),
 			)
-			result = r.finishTask(ctx, req, taskID, agenttasks.StatusCompleted, result)
+			result = finishRunTask(agenttasks.StatusCompleted, result)
 			emitEvent(agenttasks.EventCompleted, agentTerminalEventPayload(result, time.Since(runStarted), nil))
 			finalStatus = agenttasks.StatusCompleted
 			return result, nil
@@ -746,7 +818,7 @@ func (r Runtime) Run(ctx context.Context, req Request, toolContext tools.Context
 		if registry == nil {
 			err := fmt.Errorf("sub-agent requested tools but no registry is configured")
 			recordFailureContent(&result, err)
-			result = r.finishTask(ctx, req, taskID, agenttasks.StatusFailed, result)
+			result = finishRunTask(agenttasks.StatusFailed, result)
 			emitEvent(agenttasks.EventFailed, agentTerminalEventPayload(result, time.Since(runStarted), map[string]any{"error": err.Error(), "turn": turn}))
 			finalStatus = agenttasks.StatusFailed
 			finalErr = err
@@ -758,7 +830,7 @@ func (r Runtime) Run(ctx context.Context, req Request, toolContext tools.Context
 			if r.isCancelled(ctx, taskID) {
 				err := fmt.Errorf("sub-agent task cancelled")
 				recordCancellationContent(&result, err)
-				result = r.finishTask(ctx, req, taskID, agenttasks.StatusCancelled, result)
+				result = finishRunTask(agenttasks.StatusCancelled, result)
 				emitEvent(agenttasks.EventCancelled, agentTerminalEventPayload(result, time.Since(runStarted), map[string]any{"turn": turn, "source": "store"}))
 				finalStatus = agenttasks.StatusCancelled
 				finalErr = err
@@ -782,7 +854,7 @@ func (r Runtime) Run(ctx context.Context, req Request, toolContext tools.Context
 				Session:   toolResultSessionRef(recorder),
 			})
 			result.ToolCalls = append(result.ToolCalls, trace)
-			recordTool(recorder, trace)
+			persistence.record("append tool transcript", recordTool(recorder, trace))
 			emitEvent(agenttasks.EventToolResult, map[string]any{
 				"turn":      turn,
 				"tool_id":   trace.ID,
@@ -803,7 +875,7 @@ func (r Runtime) Run(ctx context.Context, req Request, toolContext tools.Context
 		messages = append(messages, anthropic.MessageParam{Role: "user", Content: toolResults})
 		for _, message := range toolContextMessages {
 			messages = append(messages, message)
-			recordMessage(recorder, message)
+			persistence.record("append context transcript", recordMessage(recorder, message))
 		}
 		// Loop guard, evaluated after execution once results are known. Including
 		// the results is what keeps a legitimate poll (same input, changing output)
@@ -818,7 +890,7 @@ func (r Runtime) Run(ctx context.Context, req Request, toolContext tools.Context
 				"error", err,
 			)
 			recordFailureContent(&result, err)
-			result = r.finishTask(ctx, req, taskID, agenttasks.StatusFailed, result)
+			result = finishRunTask(agenttasks.StatusFailed, result)
 			emitEvent(agenttasks.EventFailed, agentTerminalEventPayload(result, time.Since(runStarted), map[string]any{"error": err.Error(), "turn": turn, "reason": "loop_guard"}))
 			finalStatus = agenttasks.StatusFailed
 			finalErr = err
@@ -835,7 +907,7 @@ func (r Runtime) Run(ctx context.Context, req Request, toolContext tools.Context
 	}
 	err = fmt.Errorf("sub-agent max turns reached (%d)", maxTurns)
 	recordFailureContent(&result, err)
-	result = r.finishTask(ctx, req, taskID, agenttasks.StatusFailed, result)
+	result = finishRunTask(agenttasks.StatusFailed, result)
 	emitEvent(agenttasks.EventFailed, agentTerminalEventPayload(result, time.Since(runStarted), map[string]any{"error": err.Error()}))
 	finalStatus = agenttasks.StatusFailed
 	finalErr = err
@@ -1409,7 +1481,7 @@ func toolResultReplacementMap(records []toolresult.ReplacementRecord) map[string
 	return out
 }
 
-func recordContentReplacement(recorder *session.Recorder, replacements map[string]string) func(toolresult.ReplacementRecord) {
+func recordContentReplacement(recorder *session.Recorder, replacements map[string]string, persistence *persistenceState) func(toolresult.ReplacementRecord) {
 	return func(record toolresult.ReplacementRecord) {
 		if strings.TrimSpace(record.Kind) != "tool-result" || strings.TrimSpace(record.ToolUseID) == "" || record.Replacement == "" {
 			return
@@ -1423,14 +1495,14 @@ func recordContentReplacement(recorder *session.Recorder, replacements map[strin
 		if recorder == nil {
 			return
 		}
-		_ = recorder.Append(session.Entry{
+		persistence.record("append content replacement transcript", recorder.Append(session.Entry{
 			Type: "content_replacement",
 			Replacements: []session.ReplacementRecord{{
 				Kind:        record.Kind,
 				ToolUseID:   record.ToolUseID,
 				Replacement: record.Replacement,
 			}},
-		})
+		}))
 	}
 }
 
@@ -1940,10 +2012,7 @@ func writeAgentOutputFile(path, content string) error {
 	if path == "" {
 		return nil
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return err
-	}
-	return os.WriteFile(path, []byte(content), 0600)
+	return atomicWriteFile(path, []byte(content), 0600)
 }
 
 func writeAgentOutputStateFile(outputFile, status string, resultJSON []byte) error {
@@ -1961,7 +2030,44 @@ func writeAgentOutputStateFile(outputFile, status string, resultJSON []byte) err
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(outputFile+".state.json", data, 0600)
+	return atomicWriteFile(outputFile+".state.json", data, 0600)
+}
+
+func atomicWriteFile(path string, data []byte, mode os.FileMode) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+	if err := tmp.Chmod(mode); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return err
+	}
+	cleanup = false
+	return nil
 }
 
 func loadAgent(cwd, name string) (agents.Agent, bool, error) {
@@ -2402,46 +2508,58 @@ func runHookWithRecovery(ctx context.Context, event string, run func() (hooks.Re
 	return run()
 }
 
-func recordAssistant(recorder *session.Recorder, blocks []anthropic.ContentBlock) {
+func recordAssistant(recorder *session.Recorder, blocks []anthropic.ContentBlock) error {
 	if recorder == nil {
-		return
+		return nil
 	}
+	var firstErr error
 	for _, block := range blocks {
+		var err error
 		switch block.Type {
 		case "text":
 			if block.Text != "" {
-				_ = recorder.Append(session.Entry{Type: "message", Role: "assistant", Content: block.Text})
+				err = recorder.Append(session.Entry{Type: "message", Role: "assistant", Content: block.Text})
 			}
 		case "tool_use":
-			_ = recorder.Append(session.Entry{Type: "tool_call", ToolID: block.ID, ToolName: block.Name, Content: string(block.Input)})
+			err = recorder.Append(session.Entry{Type: "tool_call", ToolID: block.ID, ToolName: block.Name, Content: string(block.Input)})
+		}
+		if firstErr == nil && err != nil {
+			firstErr = err
 		}
 	}
+	return firstErr
 }
 
-func recordTool(recorder *session.Recorder, trace ToolTrace) {
+func recordTool(recorder *session.Recorder, trace ToolTrace) error {
 	if recorder == nil {
-		return
+		return nil
 	}
-	_ = recorder.Append(session.Entry{Type: "tool_result", ToolID: trace.ID, ToolName: trace.Name, Content: trace.Output, IsError: trace.IsError})
+	return recorder.Append(session.Entry{Type: "tool_result", ToolID: trace.ID, ToolName: trace.Name, Content: trace.Output, IsError: trace.IsError})
 }
 
-func recordMessage(recorder *session.Recorder, message anthropic.MessageParam) {
+func recordMessage(recorder *session.Recorder, message anthropic.MessageParam) error {
 	if recorder == nil {
-		return
+		return nil
 	}
 	if message.Role != "user" {
-		return
+		return nil
 	}
+	var firstErr error
 	for _, block := range message.Content {
+		var err error
 		switch block.Type {
 		case "text":
 			if block.Text != "" {
-				_ = recorder.Append(session.Entry{Type: "message", Role: "user", Content: block.Text})
+				err = recorder.Append(session.Entry{Type: "message", Role: "user", Content: block.Text})
 			}
 		case "tool_result":
-			_ = recorder.Append(session.Entry{Type: "tool_result", ToolID: block.ToolUseID, Content: block.Content, IsError: block.IsError})
+			err = recorder.Append(session.Entry{Type: "tool_result", ToolID: block.ToolUseID, Content: block.Content, IsError: block.IsError})
+		}
+		if firstErr == nil && err != nil {
+			firstErr = err
 		}
 	}
+	return firstErr
 }
 
 func toolResultSessionRef(recorder *session.Recorder) toolresult.SessionRef {

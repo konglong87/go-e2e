@@ -100,6 +100,22 @@ func LoadConversation(path string) ([]Entry, error) {
 	return CurrentChain(entries), nil
 }
 
+// LatestConversationEntryID returns the id of the newest entry that belongs to
+// the conversation view. Side-band metadata such as usage, runtime spans, and
+// recaps do not advance this head.
+func LatestConversationEntryID(entries []Entry) string {
+	for i := len(entries) - 1; i >= 0; i-- {
+		entry := entries[i]
+		switch entry.Type {
+		case "message", "tool_call", "tool_result", "compact_summary":
+			if strings.TrimSpace(entry.ID) != "" {
+				return entry.ID
+			}
+		}
+	}
+	return ""
+}
+
 // ChainToLeaf returns the chain of entries from the root down to leaf (inclusive)
 // in root→leaf order, following parent_id. branch_head and session_meta lines are
 // not chain nodes and are excluded. An unknown or empty leaf yields an empty chain.

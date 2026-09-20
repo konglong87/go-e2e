@@ -517,6 +517,58 @@ func (r *Recorder) Append(entry Entry) error {
 	})
 }
 
+// AppendEntryToPath appends one transcript entry through the same process and
+// cross-process lock used by Recorder.Append. This is for side-channel writers
+// such as recap that do not own a live Recorder.
+func AppendEntryToPath(path string, entry Entry) error {
+	return withTranscriptLock(path, func() error {
+		return appendEntryToPathLocked(path, entry)
+	})
+}
+
+// AppendEntryToPathIfCurrent appends only when the active conversation head is
+// still expectedHead. The check and append are deliberately performed under
+// one transcript lock so an asynchronous recap cannot become stale between
+// validation and publication.
+func AppendEntryToPathIfCurrent(path, expectedHead string, entry Entry) (bool, error) {
+	return withTranscriptLockValue(path, func() (bool, error) {
+		entries, err := LoadConversation(path)
+		if err != nil {
+			return false, err
+		}
+		if LatestConversationEntryID(entries) != strings.TrimSpace(expectedHead) {
+			return false, nil
+		}
+		return true, appendEntryToPathLocked(path, entry)
+	})
+}
+
+func appendEntryToPathLocked(path string, entry Entry) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return fmt.Errorf("transcript path is empty")
+	}
+	if entry.ID == "" {
+		entry.ID = NewEntryID()
+	}
+	if entry.Timestamp.IsZero() {
+		entry.Timestamp = time.Now().UTC()
+	}
+	if existing, err := Load(path); err == nil && IsV2Entries(existing) {
+		entry.Schema = SchemaV2
+	}
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0600)
+	if err != nil {
+		return err
+	}
+	encoderErr := json.NewEncoder(file).Encode(entry)
+	if encoderErr != nil {
+		_ = file.Close()
+		return encoderErr
+	}
+	return file.Close()
+}
+
 func (r *Recorder) withLock(fn func() error) error {
 	if r == nil || strings.TrimSpace(r.lockPath) == "" {
 		return fn()
@@ -2373,12 +2425,7 @@ func CompactEntries(path string, entries []Entry, maxBytes int) (Entry, error) {
 			entry.ID = NewEntryID()
 			entry.ParentID = ActiveLeaf(fileEntries)
 		}
-		file, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0600)
-		if err != nil {
-			return err
-		}
-		defer file.Close()
-		return json.NewEncoder(file).Encode(entry)
+		return appendEntryToPathLocked(path, entry)
 	})
 	return entry, err
 }

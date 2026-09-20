@@ -67,6 +67,110 @@ func TestRuntimeRecoversHookPanicAsHookError(t *testing.T) {
 	}
 }
 
+type panicStreamer struct{}
+
+func (panicStreamer) StreamMessages(context.Context, anthropic.MessagesRequest, anthropic.StreamCallbacks) (*anthropic.StreamResult, error) {
+	panic("panic-runtime-marker")
+}
+
+func TestRuntimeConvergesTaskAfterRuntimePanic(t *testing.T) {
+	project := t.TempDir()
+	store := &fakeTaskStore{}
+	runtime := Runtime{
+		Client:    panicStreamer{},
+		Registry:  tools.NewRegistry(echoTool{}),
+		Model:     "base-model",
+		TaskStore: store,
+		MaxTurns:  1,
+	}
+
+	result, err := runtime.Run(context.Background(), Request{Prompt: "panic", CWD: project}, tools.Context{CWD: project})
+	if err == nil || !strings.Contains(err.Error(), "panic-runtime-marker") {
+		t.Fatalf("Run() error = %v, want runtime panic marker", err)
+	}
+	if result.Status != agenttasks.StatusFailed {
+		t.Fatalf("result status = %q, want failed", result.Status)
+	}
+	if store.finished() != agenttasks.StatusFailed {
+		t.Fatalf("task status = %q, want failed", store.finished())
+	}
+	if store.finishCalls != 1 {
+		t.Fatalf("finish calls = %d, want exactly one", store.finishCalls)
+	}
+}
+
+func TestRuntimeFailsBeforeTaskCreationWhenRecorderCannotInitialize(t *testing.T) {
+	rootFile := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(rootFile, []byte("file"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	store := &fakeTaskStore{}
+	runtime := Runtime{
+		Client:        &finalTextStreamer{text: "should not run"},
+		Registry:      tools.NewRegistry(echoTool{}),
+		Model:         "base-model",
+		TaskStore:     store,
+		RecorderStore: session.Store{TranscriptProjectsRoot: rootFile},
+	}
+
+	_, err := runtime.Run(context.Background(), Request{Prompt: "persist", CWD: t.TempDir()}, tools.Context{})
+	if err == nil || !strings.Contains(err.Error(), "create transcript recorder") {
+		t.Fatalf("Run() error = %v, want recorder initialization error", err)
+	}
+	if len(store.createdTasks()) != 0 {
+		t.Fatalf("created tasks = %+v, want none", store.createdTasks())
+	}
+}
+
+func TestRuntimeSurfacesTranscriptAppendFailure(t *testing.T) {
+	recorder, err := (session.Store{TranscriptProjectsRoot: t.TempDir()}).NewRecorder(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := recorder.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	appendErr := recordAssistant(recorder, []anthropic.ContentBlock{{Type: "text", Text: "after close"}})
+	if appendErr == nil {
+		t.Fatal("recordAssistant() returned nil after recorder close")
+	}
+	var persistence persistenceState
+	persistence.record("append assistant transcript", appendErr)
+	var result Result
+	persistence.apply(&result)
+	if !result.PersistenceDegraded || !strings.Contains(result.PersistenceError, "append assistant transcript") {
+		t.Fatalf("result persistence state = %+v", result)
+	}
+}
+
+func TestAtomicWriteFilesReplaceCompleteContents(t *testing.T) {
+	output := filepath.Join(t.TempDir(), "agent.output")
+	if err := writeAgentOutputFile(output, "complete output"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(output); err != nil || string(got) != "complete output" {
+		t.Fatalf("output = %q err=%v", string(got), err)
+	}
+	if err := writeAgentOutputStateFile(output, agenttasks.StatusCompleted, []byte(`{"content":"complete output"}`)); err != nil {
+		t.Fatal(err)
+	}
+	state, err := os.ReadFile(output + ".state.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !json.Valid(state) || !strings.Contains(string(state), `"status":"completed"`) {
+		t.Fatalf("state = %q", string(state))
+	}
+	matches, err := filepath.Glob(filepath.Join(filepath.Dir(output), ".*.tmp-*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("temporary files remain: %v", matches)
+	}
+}
+
 func (s *sharedStateAuthorizationSpy) Name() string        { return "Bash" }
 func (s *sharedStateAuthorizationSpy) Description() string { return "spy" }
 func (s *sharedStateAuthorizationSpy) InputSchema() json.RawMessage {
@@ -2697,6 +2801,7 @@ type fakeTaskStore struct {
 	events         []agenttasks.EventInput
 	finishedStatus string
 	resultJSON     string
+	finishCalls    int
 	finishCtxErr   error
 	appendCtxErr   error
 	cancelled      bool
@@ -2715,6 +2820,7 @@ func (f *fakeTaskStore) FinishAgentTask(ctx context.Context, taskID uint64, stat
 	if taskID != 101 {
 		panic("unexpected task id")
 	}
+	f.finishCalls++
 	f.finishCtxErr = ctx.Err()
 	f.finishedStatus = status
 	f.resultJSON = resultJSON

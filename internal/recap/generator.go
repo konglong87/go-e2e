@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -165,15 +164,7 @@ func AppendToPath(path string, result Result) error {
 	// schema-mixed. Recap is a session-wide UI artifact, not a conversation node,
 	// so it is intentionally NOT chained (no parent_id) and its consumers locate it
 	// across the whole file rather than on the current chain.
-	if existing, loadErr := session.Load(path); loadErr == nil && session.IsV2Entries(existing) {
-		entry.Schema = session.SchemaV2
-	}
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0600)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	return json.NewEncoder(file).Encode(entry)
+	return session.AppendEntryToPath(path, entry)
 }
 
 // AppendToPathIfCurrent persists an asynchronously generated recap only while
@@ -184,33 +175,25 @@ func AppendToPathIfCurrent(ctx context.Context, path string, result Result) (boo
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
-	entries, err := session.LoadConversation(path)
-	if err != nil {
-		return false, err
-	}
-	if latestConversationEntryID(entries) != result.Metadata.SummarizesEntryID {
-		return false, nil
-	}
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
-	if err := AppendToPath(path, result); err != nil {
+	entry := result.Entry
+	if entry.ID == "" {
+		entry.ID = session.NewEntryID()
+	}
+	if entry.Timestamp.IsZero() {
+		entry.Timestamp = time.Now().UTC()
+	}
+	appended, err := session.AppendEntryToPathIfCurrent(path, result.Metadata.SummarizesEntryID, entry)
+	if err != nil {
 		return false, err
 	}
-	return true, nil
+	return appended, nil
 }
 
 func latestConversationEntryID(entries []session.Entry) string {
-	for i := len(entries) - 1; i >= 0; i-- {
-		entry := entries[i]
-		switch entry.Type {
-		case "message", "tool_call", "tool_result", "compact_summary":
-			if strings.TrimSpace(entry.ID) != "" {
-				return entry.ID
-			}
-		}
-	}
-	return ""
+	return session.LatestConversationEntryID(entries)
 }
 
 func sanitizeRecapText(text string) string {
