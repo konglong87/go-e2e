@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -1536,7 +1537,9 @@ func (r Runtime) runSubagentStartHook(ctx context.Context, req Request, result R
 		Status:              agenttasks.StatusRunning,
 		DurationMS:          time.Since(started).Milliseconds(),
 	}
-	hookResult, err := r.Hooks.RunWithPayload(ctx, hooks.SubagentStart, req.CWD, payload)
+	hookResult, err := runHookWithRecovery(ctx, hooks.SubagentStart, func() (hooks.Result, error) {
+		return r.Hooks.RunWithPayload(ctx, hooks.SubagentStart, req.CWD, payload)
+	})
 	if err != nil {
 		observability.Error(ctx, nil, "hook.subagent_start.error", "agentruntime.Runtime.runSubagentStartHook", "sub-agent start hook failed",
 			"task_id", result.TaskID,
@@ -1565,7 +1568,9 @@ func (r Runtime) runSubagentStopHook(ctx context.Context, req Request, result Re
 	if runErr != nil {
 		payload.Error = runErr.Error()
 	}
-	if _, err := r.Hooks.RunWithPayload(context.WithoutCancel(ctx), hooks.SubagentStop, req.CWD, payload); err != nil {
+	if _, err := runHookWithRecovery(context.WithoutCancel(ctx), hooks.SubagentStop, func() (hooks.Result, error) {
+		return r.Hooks.RunWithPayload(context.WithoutCancel(ctx), hooks.SubagentStop, req.CWD, payload)
+	}); err != nil {
 		observability.Error(ctx, nil, "hook.subagent_stop.error", "agentruntime.Runtime.runSubagentStopHook", "sub-agent stop hook failed",
 			"task_id", result.TaskID,
 			"agent", result.AgentName,
@@ -2280,8 +2285,8 @@ func collectToolUses(blocks []anthropic.ContentBlock) []anthropic.ContentBlock {
 	return out
 }
 
-func (r Runtime) runTool(ctx context.Context, registry *tools.Registry, block anthropic.ContentBlock, parent tools.Context, activeAgent *tools.SkillRuntime, agentPolicy *tools.AgentPolicy, req Request, taskID uint64, agentName string) ToolTrace {
-	trace := ToolTrace{ID: block.ID, Name: block.Name, Input: string(block.Input)}
+func (r Runtime) runTool(ctx context.Context, registry *tools.Registry, block anthropic.ContentBlock, parent tools.Context, activeAgent *tools.SkillRuntime, agentPolicy *tools.AgentPolicy, req Request, taskID uint64, agentName string) (trace ToolTrace) {
+	trace = ToolTrace{ID: block.ID, Name: block.Name, Input: string(block.Input)}
 	start := time.Now()
 	telemetry.Emit(ctx, telemetry.Event{
 		Name:         "agent.tool.execution.started",
@@ -2298,6 +2303,19 @@ func (r Runtime) runTool(ctx context.Context, registry *tools.Registry, block an
 		Properties:   map[string]any{"agent_name": agentName, "tool_id": block.ID},
 	})
 	defer func() {
+		if recovered := recover(); recovered != nil {
+			trace.Output = fmt.Sprintf("tool %q panicked: %v", block.Name, recovered)
+			trace.IsError = true
+			trace.contextMessages = nil
+			observability.Error(ctx, nil, "agent.tool.panic", "agentruntime.Runtime.runTool", "tool execution panicked",
+				"tool", block.Name,
+				"tool_id", block.ID,
+				"task_id", taskID,
+				"agent", agentName,
+				"panic", fmt.Sprint(recovered),
+				"stack", string(debug.Stack()),
+			)
+		}
 		status := telemetry.StatusOK
 		if trace.IsError {
 			status = telemetry.StatusError
@@ -2326,7 +2344,9 @@ func (r Runtime) runTool(ctx context.Context, registry *tools.Registry, block an
 		return trace
 	}
 	input := block.Input
-	hookResult, err := r.Hooks.RunWithPayload(ctx, hooks.PreToolUse, req.CWD, hooks.Payload{ToolName: block.Name, Input: block.Input})
+	hookResult, err := runHookWithRecovery(ctx, hooks.PreToolUse, func() (hooks.Result, error) {
+		return r.Hooks.RunWithPayload(ctx, hooks.PreToolUse, req.CWD, hooks.Payload{ToolName: block.Name, Input: block.Input})
+	})
 	if err != nil {
 		trace.Output = err.Error()
 		trace.IsError = true
@@ -2357,13 +2377,29 @@ func (r Runtime) runTool(ctx context.Context, registry *tools.Registry, block an
 	if res.IsError {
 		event = hooks.PostToolUseFailure
 	}
-	if _, err := r.Hooks.RunWithPayload(ctx, event, req.CWD, hooks.Payload{ToolName: block.Name, Input: input, Result: res.Content, IsError: res.IsError}); err != nil && !res.IsError {
+	if _, err := runHookWithRecovery(ctx, event, func() (hooks.Result, error) {
+		return r.Hooks.RunWithPayload(ctx, event, req.CWD, hooks.Payload{ToolName: block.Name, Input: input, Result: res.Content, IsError: res.IsError})
+	}); err != nil && !res.IsError {
 		res = tools.Result{Content: err.Error(), IsError: true}
 	}
 	trace.Output = res.Content
 	trace.IsError = res.IsError
 	trace.contextMessages = append([]anthropic.MessageParam(nil), res.ContextMessages...)
 	return trace
+}
+
+func runHookWithRecovery(ctx context.Context, event string, run func() (hooks.Result, error)) (result hooks.Result, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("%s hook panicked: %v", event, recovered)
+			observability.Error(ctx, nil, "hook.panic", "agentruntime.runHookWithRecovery", "hook execution panicked",
+				"event", event,
+				"panic", fmt.Sprint(recovered),
+				"stack", string(debug.Stack()),
+			)
+		}
+	}()
+	return run()
 }
 
 func recordAssistant(recorder *session.Recorder, blocks []anthropic.ContentBlock) {

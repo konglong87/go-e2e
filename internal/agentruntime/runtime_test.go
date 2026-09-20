@@ -32,6 +32,41 @@ type sharedStateAuthorizationSpy struct {
 	runs int
 }
 
+type panicTool struct {
+	name string
+}
+
+func (t panicTool) Name() string        { return t.name }
+func (t panicTool) Description() string { return "panic test tool" }
+func (t panicTool) InputSchema() json.RawMessage {
+	return json.RawMessage(`{"type":"object"}`)
+}
+func (t panicTool) Run(context.Context, json.RawMessage, tools.Context) tools.Result {
+	panic("panic-tool-marker")
+}
+
+func TestRuntimeRecoversToolPanicAsToolError(t *testing.T) {
+	runtime := Runtime{}
+	trace := runtime.runTool(context.Background(), tools.NewRegistry(panicTool{name: "PanicTool"}),
+		anthropic.ContentBlock{ID: "toolu_panic", Name: "PanicTool"},
+		tools.Context{}, nil, nil, Request{CWD: t.TempDir()}, 42, "worker")
+	if !trace.IsError {
+		t.Fatalf("trace = %+v, want tool error", trace)
+	}
+	if !strings.Contains(trace.Output, "panic-tool-marker") {
+		t.Fatalf("trace output = %q, want panic marker", trace.Output)
+	}
+}
+
+func TestRuntimeRecoversHookPanicAsHookError(t *testing.T) {
+	_, err := runHookWithRecovery(context.Background(), hooks.PreToolUse, func() (hooks.Result, error) {
+		panic("panic-hook-marker")
+	})
+	if err == nil || !strings.Contains(err.Error(), "panic-hook-marker") {
+		t.Fatalf("error = %v, want hook panic marker", err)
+	}
+}
+
 func (s *sharedStateAuthorizationSpy) Name() string        { return "Bash" }
 func (s *sharedStateAuthorizationSpy) Description() string { return "spy" }
 func (s *sharedStateAuthorizationSpy) InputSchema() json.RawMessage {
