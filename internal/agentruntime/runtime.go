@@ -1968,11 +1968,27 @@ func (r Runtime) finishTask(ctx context.Context, req Request, taskID uint64, sta
 		observability.Error(ctx, nil, "agent.task.result_marshal_error", "agentruntime.Runtime.finishTask", "marshal sub-agent result failed", "error", err)
 		return result
 	}
+	var outputPersistenceErrors []string
+	stateWritten := false
 	if err := writeAgentOutputStateFile(result.OutputFile, status, data); err != nil {
 		observability.Error(ctx, nil, "agent.task.output_state_file_error", "agentruntime.Runtime.finishTask", "write sub-agent output state file failed", "path", result.OutputFile, "error", err)
+		outputPersistenceErrors = append(outputPersistenceErrors, "write output state: "+err.Error())
+	} else {
+		stateWritten = true
 	}
 	if err := writeAgentOutputFile(result.OutputFile, result.Content); err != nil {
 		observability.Error(ctx, nil, "agent.task.output_file_error", "agentruntime.Runtime.finishTask", "write sub-agent output file failed", "path", result.OutputFile, "error", err)
+		outputPersistenceErrors = append(outputPersistenceErrors, "write output: "+err.Error())
+	}
+	if len(outputPersistenceErrors) > 0 {
+		result.PersistenceDegraded = true
+		result.PersistenceError = strings.Join(outputPersistenceErrors, "; ")
+		if degradedData, marshalErr := json.Marshal(result); marshalErr == nil {
+			data = degradedData
+			if stateWritten {
+				_ = writeAgentOutputStateFile(result.OutputFile, status, data)
+			}
+		}
 	}
 	storeCtx := context.WithoutCancel(ctx)
 	if err := r.TaskStore.FinishAgentTask(storeCtx, taskID, status, string(data)); err != nil {

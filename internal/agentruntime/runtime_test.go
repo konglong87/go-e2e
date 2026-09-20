@@ -171,6 +171,30 @@ func TestAtomicWriteFilesReplaceCompleteContents(t *testing.T) {
 	}
 }
 
+func TestFinishTaskSurfacesOutputPersistenceFailure(t *testing.T) {
+	rootFile := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(rootFile, []byte("file"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	store := &fakeTaskStore{}
+	runtime := Runtime{TaskStore: store}
+
+	result := runtime.finishTask(context.Background(), Request{}, 101, agenttasks.StatusCompleted, Result{
+		OutputFile: filepath.Join(rootFile, "agent.output"),
+		Content:    "done",
+	})
+	if !result.PersistenceDegraded || !strings.Contains(result.PersistenceError, "write output state") {
+		t.Fatalf("result persistence state = %+v", result)
+	}
+	var stored Result
+	if err := json.Unmarshal([]byte(store.resultJSON), &stored); err != nil {
+		t.Fatalf("stored result = %q: %v", store.resultJSON, err)
+	}
+	if !stored.PersistenceDegraded {
+		t.Fatalf("stored result persistence state = %+v", stored)
+	}
+}
+
 func (s *sharedStateAuthorizationSpy) Name() string        { return "Bash" }
 func (s *sharedStateAuthorizationSpy) Description() string { return "spy" }
 func (s *sharedStateAuthorizationSpy) InputSchema() json.RawMessage {
