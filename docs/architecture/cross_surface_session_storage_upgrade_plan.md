@@ -2,13 +2,33 @@
 
 ## 1. 文档状态
 
-- 状态：架构方案，待评审
+- 状态：短期实现已落地，跨端只读与飞书完整链路仍按阶段推进
 - 适用范围：TUI、CLI、桌面端 WebUI、普通 WebUI、飞书渠道
 - 当前阶段：未正式发布，不承担历史会话迁移
 - 核心目标：聊天事实统一进入 JSONL，SQLite 降级为可重建索引与低频控制数据
 - 关键原则：先统一底层协议，再逐步开放跨端可见和跨端写入
 - 发布默认：桌面端默认使用 JSONL；SQLite 仅作为显式配置的回退和验证模式
 - 一致性策略：不实现 SQLite 与 JSONL 聊天正文的双写
+
+### 1.1 当前实现快照（2026-09-20）
+
+已落地并推送：
+
+- `GOLANG_CC_DESKTOP_SESSION_BACKEND` 启动级开关，默认 `jsonl`，显式 `sqlite` 可快速回滚。
+- `SessionEventStore` 接口和 JSONL transcript event store。
+- 桌面端消息、流式文本、thinking、tool、file change、permission/question、完成/失败/取消/超时、pending input、handoff 事件路由。
+- JSONL transcript 使用稳定的租户/用户/session 映射和文件锁，多个 session 不共享写锁。
+- JSONL 事件投影保留 `source/surface/channel`，会话快照和 WebUI conversation DTO 暴露来源。
+- SQLite 模式保持原有行为；没有启用 SQLite/JSONL 聊天正文双写。
+
+当前明确未完成：
+
+- TUI/CLI transcript 自动合并到桌面 tenant 列表并展示完整消息。
+- 独立部署 WebUI2 tenant 模式迁移。
+- 飞书生产 worker 全链路写入同一 JSONL transcript。
+- 跨端继续对话、跨端 rename/compact、跨端实时 SSE。
+
+因此，本次提交完成的是“桌面端 JSONL 主链路 + SQLite 快速回滚 + 事件来源可追踪”，不是一次性完成所有跨端互通能力。
 
 ## 2. 背景与问题
 
@@ -946,16 +966,16 @@ internal/sessionindex/
 
 ### 阶段 A：短期契约和桌面 JSONL
 
-- 明确短期范围：只迁移桌面端本地聊天事实，不迁移全部 tenant 存储。
-- 复用现有 `internal/session.Store` 和 TUI transcript schema。
-- 增加必要的 `surface/channel/scope/tenant/user` 元数据。
-- 定义 `SessionRepository`、`TranscriptStore` 和 `SessionIndex` 边界。
-- 实现 SQLite index 的异步更新和 JSONL 扫描重建。
-- 完成桌面端三会话并发写入测试。
+- [x] 明确短期范围：只迁移桌面端本地聊天事实，不迁移全部 tenant 存储。
+- [x] 复用现有 `internal/session.Store` 和 TUI transcript schema。
+- [x] 增加必要的 `surface/channel/scope/tenant/user` 元数据。
+- [x] 定义事件仓库边界，SQLite/JSONL 通过 `SessionEventStore` 解耦。
+- [ ] SQLite index 的异步更新和 JSONL 扫描重建。
+- [x] 完成桌面端三会话并发写入隔离测试。
 
 ### 阶段 B：只读跨端解析
 
-- 完善 `local` 会话详情读取。
+- [ ] 完善 `local` 会话详情读取。
 - 桌面端读取 TUI/CLI transcript。
 - WebUI2 local 使用同一解析器展示完整聊天。
 - 保持现有前端 DTO、拖拽和 Composer 行为。
@@ -963,7 +983,7 @@ internal/sessionindex/
 
 ### 阶段 C：飞书桌面可见
 
-- 飞书 session resolver 返回稳定 session_id。
+- [ ] 飞书 session resolver 返回稳定 session_id。
 - 飞书消息和 AI 回复写入统一 transcript 读取链路。
 - 保留 channel control plane 数据库。
 - 桌面端显示飞书来源。

@@ -49,6 +49,9 @@ func TestJSONLSessionEventStoreAppendsAndReadsScopedEvents(t *testing.T) {
 	if got[0].PayloadJSON != `{"content":"hello"}` || got[1].EventType != agenttasks.EventTextDelta {
 		t.Fatalf("projected events = %+v", got)
 	}
+	if got[0].Source != "feishu" || got[0].Surface != "wails" || got[0].Channel != "feishu" {
+		t.Fatalf("projected provenance = %+v", got[0])
+	}
 
 	sessionEvents, err := events.ListSessionEvents(context.Background(), task.TenantID, task.UserID, task.ParentSessionID, taskCWD(task), 1, 20)
 	if err != nil {
@@ -56,6 +59,57 @@ func TestJSONLSessionEventStoreAppendsAndReadsScopedEvents(t *testing.T) {
 	}
 	if len(sessionEvents) != 1 || sessionEvents[0].ID != 2 {
 		t.Fatalf("session events after cursor = %+v", sessionEvents)
+	}
+}
+
+func TestJSONLSessionEventStoreConcurrentSessionsStayIsolated(t *testing.T) {
+	store := session.Store{TranscriptProjectsRoot: t.TempDir()}
+	events := NewJSONLSessionEventStore(store)
+	tasks := []mysqlstore.AgentTask{
+		{ID: 101, TenantID: 7, UserID: 11, ParentSessionID: 201, MetadataJSON: fmt.Sprintf(`{"cwd":%q}`, t.TempDir())},
+		{ID: 102, TenantID: 7, UserID: 11, ParentSessionID: 202, MetadataJSON: fmt.Sprintf(`{"cwd":%q}`, t.TempDir())},
+		{ID: 103, TenantID: 7, UserID: 11, ParentSessionID: 203, MetadataJSON: fmt.Sprintf(`{"cwd":%q}`, t.TempDir())},
+	}
+
+	const eventsPerSession = 16
+	var wg sync.WaitGroup
+	errs := make(chan error, len(tasks)*eventsPerSession)
+	for _, task := range tasks {
+		task := task
+		for index := 0; index < eventsPerSession; index++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_, err := events.AppendTaskEvent(context.Background(), task, agenttasks.EventInput{
+					TaskID:      task.ID,
+					EventType:   agenttasks.EventTextDelta,
+					PayloadJSON: fmt.Sprintf(`{"session":%d}`, task.ParentSessionID),
+				})
+				errs <- err
+			}()
+		}
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, task := range tasks {
+		got, err := events.ListTaskEvents(context.Background(), task, 0, eventsPerSession+1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != eventsPerSession {
+			t.Fatalf("session %d event count = %d, want %d", task.ParentSessionID, len(got), eventsPerSession)
+		}
+		for index, event := range got {
+			if event.ID != uint64(index+1) || event.TaskID != task.ID {
+				t.Fatalf("session %d event[%d] = %+v", task.ParentSessionID, index, event)
+			}
+		}
 	}
 }
 
