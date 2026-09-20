@@ -21,6 +21,7 @@ const settingsDoc = {
     backgroundColor: "#f7f8fa",
     backgroundImage: "",
     overlayOpacity: 0,
+    sidebarSurfaceOpacity: 0.46,
     emptyBlur: 0,
     conversationBlur: 0,
     composerBlur: 0,
@@ -89,6 +90,11 @@ test("renders the compact settings registry and previews appearance changes with
   await page.getByLabel("Background color").fill("#123456");
   await expect(page.locator(".webui2-page")).toHaveAttribute("data-appearance-enabled", "true");
   await expect.poll(() => page.locator(".webui2-page").evaluate((node) => getComputedStyle(node).getPropertyValue("--webui2-visual-background-color").trim())).toBe("#123456");
+  const sidebarSurfaceOpacity = page.getByLabel("Sidebar surface opacity");
+  await expect(sidebarSurfaceOpacity).toHaveValue("0.46");
+  await sidebarSurfaceOpacity.fill("0.76");
+  await expect(page.locator("output").filter({ hasText: "76%" })).toBeVisible();
+  await expect.poll(() => page.locator(".webui2-page").evaluate((node) => getComputedStyle(node).getPropertyValue("--webui2-sidebar-surface-opacity").trim())).toBe("76%");
 
   page.once("dialog", (dialog) => void dialog.accept());
   await page.getByRole("button", { name: "Reset", exact: true }).click();
@@ -96,6 +102,20 @@ test("renders the compact settings registry and previews appearance changes with
   await expect.poll(() => page.locator(".webui2-page").evaluate((node) => getComputedStyle(node).getPropertyValue("--webui2-visual-background-color").trim())).toBe("#f7f8fa");
   await expectNoHorizontalOverflow(page);
   await page.screenshot({ path: testInfo.outputPath("settings-v2-appearance.png"), fullPage: false });
+});
+
+test("persists a custom sidebar surface opacity and restores it after reload", async ({ page }) => {
+  await page.getByLabel("Enable appearance").check();
+  const sidebarSurfaceOpacity = page.getByLabel("Sidebar surface opacity");
+  await sidebarSurfaceOpacity.fill("0.76");
+  await expect.poll(() => page.locator(".webui2-page").evaluate((node) => getComputedStyle(node).getPropertyValue("--webui2-sidebar-surface-opacity").trim())).toBe("76%");
+
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Saved and confirmed by readback." })).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByLabel("Sidebar surface opacity")).toHaveValue("0.76");
+  await expect.poll(() => page.locator(".webui2-page").evaluate((node) => getComputedStyle(node).getPropertyValue("--webui2-sidebar-surface-opacity").trim())).toBe("76%");
 });
 
 test("renders pet preview and reads actual observability records", async ({ page }, testInfo) => {

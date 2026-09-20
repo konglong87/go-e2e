@@ -36,6 +36,7 @@ test("imports a local background image, previews it, and restores it after reloa
       backgroundColor: "#f7f8fa",
       backgroundImage: "",
       overlayOpacity: 0,
+      sidebarSurfaceOpacity: 0.46,
       emptyBlur: 0,
       conversationBlur: 0,
       composerBlur: 0,

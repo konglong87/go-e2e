@@ -9,6 +9,7 @@ describe("global visual settings", () => {
         backgroundColor: "#123456",
         backgroundImage: "/assets/backgrounds/quiet.jpg",
         overlayOpacity: 0.35,
+        sidebarSurfaceOpacity: 0.76,
         emptyBlur: 4,
         conversationBlur: 7,
         composerBlur: 3,
@@ -32,6 +33,7 @@ describe("global visual settings", () => {
       backgroundColor: "#123456",
       backgroundImage: "/assets/backgrounds/quiet.jpg",
       overlayOpacity: 0.35,
+      sidebarSurfaceOpacity: 0.76,
       emptyBlur: 4,
       conversationBlur: 7,
       composerBlur: 3,
@@ -53,7 +55,7 @@ describe("global visual settings", () => {
   it("rejects unsafe visual values and clamps numeric values without changing unrelated settings", () => {
     const settings = readVisualSettings({
       provider: "custom",
-      appearance: { backgroundColor: "red", backgroundImage: "javascript:alert(1)", overlayOpacity: 2, emptyBlur: -4, bubbleOpacity: 0 },
+      appearance: { backgroundColor: "red", backgroundImage: "javascript:alert(1)", overlayOpacity: 2, sidebarSurfaceOpacity: 2, emptyBlur: -4, bubbleOpacity: 0 },
       pet: { scale: 9, right: -10, bottom: 1000, fontScale: 0.1 }
     });
 
@@ -61,6 +63,7 @@ describe("global visual settings", () => {
       ...DEFAULT_APPEARANCE,
       backgroundImage: "",
       overlayOpacity: 1,
+      sidebarSurfaceOpacity: 1,
       bubbleOpacity: 0.2
     });
     expect(settings.pet).toMatchObject({
@@ -73,10 +76,11 @@ describe("global visual settings", () => {
   });
 
   it("maps saved values to page CSS variables", () => {
-    const style = visualSettingsStyle(readVisualSettings({ appearance: { backgroundColor: "#123456", overlayOpacity: 0.2, emptyBlur: 5 } }));
+    const style = visualSettingsStyle(readVisualSettings({ appearance: { backgroundColor: "#123456", overlayOpacity: 0.2, sidebarSurfaceOpacity: 0.76, emptyBlur: 5 } }));
     const variables = style as Record<string, unknown>;
     expect(variables["--webui2-visual-background-color"]).toBe("#123456");
     expect(variables["--webui2-visual-overlay-opacity"]).toBe("0.2");
+    expect(variables["--webui2-sidebar-surface-opacity"]).toBe("76%");
     expect(variables["--webui2-visual-empty-blur"]).toBe("5px");
   });
 });

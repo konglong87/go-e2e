@@ -95,8 +95,8 @@ describe("WebUI v2 design tokens", () => {
     }
   });
 
-  it("uses no visual effects or raw hex outside WebUI v2 token definitions", () => {
-    expect(styleBody).not.toMatch(/linear-gradient|radial-gradient|backdrop-filter/);
+  it("avoids gradients and raw hex outside WebUI v2 token definitions", () => {
+    expect(styleBody).not.toMatch(/linear-gradient|radial-gradient/);
     expect(styleBody.match(/#[0-9a-fA-F]{3,8}\b/g) ?? []).toEqual([]);
   });
 

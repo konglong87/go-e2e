@@ -22,6 +22,7 @@ const paths = {
   backgroundColor: [...APPEARANCE_ROOT, "backgroundColor"] as const,
   backgroundImage: [...APPEARANCE_ROOT, "backgroundImage"] as const,
   overlayOpacity: [...APPEARANCE_ROOT, "overlayOpacity"] as const,
+  sidebarSurfaceOpacity: [...APPEARANCE_ROOT, "sidebarSurfaceOpacity"] as const,
   emptyBlur: [...APPEARANCE_ROOT, "emptyBlur"] as const,
   conversationBlur: [...APPEARANCE_ROOT, "conversationBlur"] as const,
   composerBlur: [...APPEARANCE_ROOT, "composerBlur"] as const,
@@ -40,7 +41,7 @@ function numberValue(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
-function Field({ draft, path, name, type = "text", min, max, step, fallback, placeholder }: { draft: GlobalSettingsDraft; path: SettingsPath; name: readonly [string, string]; type?: "text" | "color" | "range" | "number"; min?: number; max?: number; step?: number; fallback?: number; placeholder?: string }): JSX.Element {
+function Field({ draft, path, name, type = "text", min, max, step, fallback, placeholder, percentage = false }: { draft: GlobalSettingsDraft; path: SettingsPath; name: readonly [string, string]; type?: "text" | "color" | "range" | "number"; min?: number; max?: number; step?: number; fallback?: number; placeholder?: string; percentage?: boolean }): JSX.Element {
   const { language } = useI18n();
   const current = settingsValue(draft.doc, path);
   const text = typeof current === "string" ? current : "";
@@ -48,7 +49,7 @@ function Field({ draft, path, name, type = "text", min, max, step, fallback, pla
   return <label className={`visual-settings-field${type === "range" ? " visual-settings-range" : ""}`}>
     <span>{label(language, name)}</span>
     <input aria-label={label(language, name)} type={type} value={value} min={min} max={max} step={step} placeholder={placeholder} onChange={(event) => draft.setField(path, type === "range" || type === "number" ? Number(event.target.value) : event.target.value)} />
-    {type === "range" ? <output>{typeof value === "number" ? (name === APPEARANCE_FIELD_LABELS.overlayOpacity || name === APPEARANCE_FIELD_LABELS.bubbleOpacity ? Math.round(value * 100) : value) : 0}{name === APPEARANCE_FIELD_LABELS.overlayOpacity || name === APPEARANCE_FIELD_LABELS.bubbleOpacity ? "%" : " px"}</output> : null}
+    {type === "range" ? <output>{typeof value === "number" ? (percentage ? Math.round(value * 100) : value) : 0}{percentage ? "%" : " px"}</output> : null}
   </label>;
 }
 
@@ -106,8 +107,9 @@ export function AppearanceSettingsPanel({ draft, desktopBackground }: Props): JS
             {desktopBackground.background.data_url ? <button type="button" disabled={disabled || desktopBackground.busy} onClick={() => void desktopBackground.clear()}><Trash2 size={15} />{zh ? "移除" : "Remove"}</button> : null}
           </div>
         </div> : null}
-        <Field draft={draft} path={paths.overlayOpacity} name={APPEARANCE_FIELD_LABELS.overlayOpacity} type="range" min={0} max={1} step={0.05} fallback={DEFAULT_APPEARANCE.overlayOpacity} />
-        <Field draft={draft} path={paths.bubbleOpacity} name={APPEARANCE_FIELD_LABELS.bubbleOpacity} type="range" min={0.2} max={1} step={0.05} fallback={DEFAULT_APPEARANCE.bubbleOpacity} />
+        <Field draft={draft} path={paths.overlayOpacity} name={APPEARANCE_FIELD_LABELS.overlayOpacity} type="range" min={0} max={1} step={0.05} fallback={DEFAULT_APPEARANCE.overlayOpacity} percentage />
+        <Field draft={draft} path={paths.sidebarSurfaceOpacity} name={APPEARANCE_FIELD_LABELS.sidebarSurfaceOpacity} type="range" min={0} max={1} step={0.01} fallback={DEFAULT_APPEARANCE.sidebarSurfaceOpacity} percentage />
+        <Field draft={draft} path={paths.bubbleOpacity} name={APPEARANCE_FIELD_LABELS.bubbleOpacity} type="range" min={0.2} max={1} step={0.05} fallback={DEFAULT_APPEARANCE.bubbleOpacity} percentage />
       </fieldset>
     </section>
     <section className="visual-settings-section">

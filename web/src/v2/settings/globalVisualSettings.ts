@@ -11,6 +11,7 @@ export type AppearanceSettings = {
   backgroundColor: string;
   backgroundImage: string;
   overlayOpacity: number;
+  sidebarSurfaceOpacity: number;
   emptyBlur: number;
   conversationBlur: number;
   composerBlur: number;
@@ -39,6 +40,7 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
   backgroundColor: "#f7f8fa",
   backgroundImage: "",
   overlayOpacity: 0,
+  sidebarSurfaceOpacity: 0.46,
   emptyBlur: 0,
   conversationBlur: 0,
   composerBlur: 0,
@@ -59,6 +61,7 @@ export const DEFAULT_PET: PetSettings = {
 
 const NUMBER_LIMITS = {
   overlayOpacity: [0, 1],
+  sidebarSurfaceOpacity: [0, 1],
   emptyBlur: [0, 24],
   conversationBlur: [0, 24],
   composerBlur: [0, 24],
@@ -105,6 +108,7 @@ export function readVisualSettings(doc: SettingsDoc | null | undefined, desktopB
       backgroundColor: colorValue(appearance.backgroundColor, DEFAULT_APPEARANCE.backgroundColor),
       backgroundImage: localBackground || backgroundImageValue(appearance.backgroundImage),
       overlayOpacity: numberValue(appearance.overlayOpacity, DEFAULT_APPEARANCE.overlayOpacity, NUMBER_LIMITS.overlayOpacity),
+      sidebarSurfaceOpacity: numberValue(appearance.sidebarSurfaceOpacity, DEFAULT_APPEARANCE.sidebarSurfaceOpacity, NUMBER_LIMITS.sidebarSurfaceOpacity),
       emptyBlur: numberValue(appearance.emptyBlur, DEFAULT_APPEARANCE.emptyBlur, NUMBER_LIMITS.emptyBlur),
       conversationBlur: numberValue(appearance.conversationBlur, DEFAULT_APPEARANCE.conversationBlur, NUMBER_LIMITS.conversationBlur),
       composerBlur: numberValue(appearance.composerBlur, DEFAULT_APPEARANCE.composerBlur, NUMBER_LIMITS.composerBlur),
@@ -130,6 +134,7 @@ export function visualSettingsStyle(settings: GlobalVisualSettings): CSSProperti
     "--webui2-visual-background-color": appearance.backgroundColor,
     "--webui2-visual-background-image": appearance.backgroundImage ? `url("${appearance.backgroundImage.replaceAll('"', "")}")` : "none",
     "--webui2-visual-overlay-opacity": String(appearance.overlayOpacity),
+    "--webui2-sidebar-surface-opacity": `${Math.round(appearance.sidebarSurfaceOpacity * 100)}%`,
     "--webui2-visual-empty-blur": `${appearance.emptyBlur}px`,
     "--webui2-visual-conversation-blur": `${appearance.conversationBlur}px`,
     "--webui2-visual-composer-blur": `${appearance.composerBlur}px`,
@@ -146,6 +151,7 @@ export const APPEARANCE_FIELD_LABELS = {
   backgroundColor: ["背景颜色", "Background color"],
   backgroundImage: ["背景图片 URL", "Background image URL"],
   overlayOpacity: ["遮罩透明度", "Overlay opacity"],
+  sidebarSurfaceOpacity: ["侧栏表面色透明度", "Sidebar surface opacity"],
   emptyBlur: ["空状态模糊", "Empty-state blur"],
   conversationBlur: ["对话模糊", "Conversation blur"],
   composerBlur: ["编辑区模糊", "Composer blur"],
