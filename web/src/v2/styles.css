@@ -30,6 +30,7 @@
   --webui2-visual-conversation-blur: 0px;
   --webui2-visual-composer-blur: 0px;
   --webui2-visual-bubble-opacity: 1;
+  --webui2-sidebar-surface-opacity: 46%;
   --webui2-sidebar-width: 288px;
   --webui2-control-height: 34px;
   --webui2-sidebar-control-height: 40px;
@@ -58,7 +59,7 @@
 .webui2-page[data-appearance-enabled="true"] .webui2-workspace,
 .webui2-page[data-appearance-enabled="true"] .webui2-conversation-composer-slot { background: transparent; }
 .webui2-page[data-appearance-enabled="true"] .webui2-sidebar {
-  background: color-mix(in srgb, var(--webui2-surface) 76%, transparent);
+  background: color-mix(in srgb, var(--webui2-surface) var(--webui2-sidebar-surface-opacity), transparent);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
 }
