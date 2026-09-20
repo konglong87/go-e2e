@@ -229,6 +229,7 @@ func serverCommand(ctx context.Context, args []string, opts options, stdout io.W
 	}
 	if serverOpts.SessionBackend == sessioncontrol.SessionBackendJSONL && serverOpts.TenantService != nil {
 		serverOpts.SessionEvents = server.NewJSONLSessionEventStore(session.DefaultStore())
+		serverOpts.SessionControlEvents = server.NewSessionControlEventReader(serverOpts)
 	}
 	serverOpts.AgentTaskController = agenttasks.NewController()
 	if raw := firstEnv("GOLANG_CC_STRUCTURED_SKILL_ROUTES", "STRUCTURED_SKILL_ROUTES"); raw != "" {

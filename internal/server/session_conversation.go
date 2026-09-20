@@ -36,11 +36,16 @@ func readSessionConversation(ctx context.Context, opts Options, scope sessioncon
 	if err != nil {
 		return sessionConversationPage{}, err
 	}
-	reader, ok := opts.TenantService.(sessionConversationReader)
-	if !ok {
-		return sessionConversationPage{}, fmt.Errorf("conversation event reader unavailable")
+	var events []mysqlstore.AgentTaskEvent
+	if opts.SessionEvents != nil {
+		events, err = opts.SessionEvents.ListSessionEvents(ctx, scope.TenantID, scope.UserID, snapshot.ID, snapshot.CWD, cursor, conversationPageLimit)
+	} else {
+		reader, ok := opts.TenantService.(sessionConversationReader)
+		if !ok {
+			return sessionConversationPage{}, fmt.Errorf("conversation event reader unavailable")
+		}
+		events, err = reader.ListSessionConversationEvents(ctx, snapshot.ID, cursor, conversationPageLimit)
 	}
-	events, err := reader.ListSessionConversationEvents(ctx, snapshot.ID, cursor, conversationPageLimit)
 	if err != nil {
 		return sessionConversationPage{}, err
 	}

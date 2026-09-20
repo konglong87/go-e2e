@@ -82,7 +82,7 @@ func (r *GormRepository) CreateSessionControlRun(ctx context.Context, input Sess
 				if !sessionControlJSONEqual(active.MetadataJSON, task.MetadataJSON) {
 					return ErrIdempotencyConflict
 				}
-				return recoverSessionControlMessageEvent(tx, active, message, &result)
+				return recoverSessionControlMessageEvent(tx, active, message, input.SkipMessageEvent, &result)
 			}
 			if input.AdoptTaskID == active.ID && active.Status == agenttasks.StatusReady && active.IdempotencyKey == "" && sessionControlSideChatMetadata(active.MetadataJSON) && sessionControlSideChatMetadata(task.MetadataJSON) {
 				if err := validateSessionControlExpectedConfig(tx, input); err != nil {
@@ -99,7 +99,7 @@ func (r *GormRepository) CreateSessionControlRun(ctx context.Context, input Sess
 					return ErrInvalidState
 				}
 				active.IdempotencyKey, active.MetadataJSON, active.Model = task.IdempotencyKey, task.MetadataJSON, task.Model
-				return appendSessionControlRunMessage(tx, active, message, &result)
+				return appendSessionControlRunMessage(tx, active, message, input.SkipMessageEvent, &result)
 			}
 			result = SessionControlRunResult{Task: active, Busy: true}
 			return nil
@@ -112,7 +112,7 @@ func (r *GormRepository) CreateSessionControlRun(ctx context.Context, input Sess
 			if existing.ParentSessionID != task.ParentSessionID || !sessionControlJSONEqual(existing.MetadataJSON, task.MetadataJSON) {
 				return ErrIdempotencyConflict
 			}
-			return recoverSessionControlMessageEvent(tx, existing, message, &result)
+			return recoverSessionControlMessageEvent(tx, existing, message, input.SkipMessageEvent, &result)
 		}
 		if !errors.Is(err, ErrNotFound) {
 			return err
@@ -127,7 +127,7 @@ func (r *GormRepository) CreateSessionControlRun(ctx context.Context, input Sess
 		if err := tx.Create(&row).Error; err != nil {
 			return err
 		}
-		return appendSessionControlRunMessage(tx, agentTaskFromGORM(row), message, &result)
+		return appendSessionControlRunMessage(tx, agentTaskFromGORM(row), message, input.SkipMessageEvent, &result)
 	})
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		err = ErrNotFound
@@ -150,7 +150,11 @@ func validateSessionControlExpectedConfig(tx *gorm.DB, input SessionControlRunIn
 	return nil
 }
 
-func appendSessionControlRunMessage(tx *gorm.DB, task AgentTask, message agenttasks.MessageInput, result *SessionControlRunResult) error {
+func appendSessionControlRunMessage(tx *gorm.DB, task AgentTask, message agenttasks.MessageInput, skipMessageEvent bool, result *SessionControlRunResult) error {
+	if skipMessageEvent {
+		*result = SessionControlRunResult{Task: task, Created: true}
+		return nil
+	}
 	message.TaskID = task.ID
 	payload, err := json.Marshal(message)
 	if err != nil {
@@ -188,7 +192,11 @@ func sessionControlTaskByQuery(query *gorm.DB) (AgentTask, error) {
 	return agentTaskFromGORM(row), err
 }
 
-func recoverSessionControlMessageEvent(tx *gorm.DB, task AgentTask, message agenttasks.MessageInput, result *SessionControlRunResult) error {
+func recoverSessionControlMessageEvent(tx *gorm.DB, task AgentTask, message agenttasks.MessageInput, skipMessageEvent bool, result *SessionControlRunResult) error {
+	if skipMessageEvent {
+		*result = SessionControlRunResult{Task: task}
+		return nil
+	}
 	var row gormAgentTaskEvent
 	order := "id ASC"
 	if sessionControlSideChatMetadata(task.MetadataJSON) {

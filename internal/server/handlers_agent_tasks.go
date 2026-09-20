@@ -63,7 +63,7 @@ func tenantAgentTasksHandler(opts Options) http.HandlerFunc {
 				return
 			}
 			if input.Status == agenttasks.StatusRunning {
-				if _, err := opts.TenantService.AppendAgentTaskEvent(r.Context(), agenttasks.EventInput{
+				if _, err := appendAgentTaskEventByID(r.Context(), opts, id, agenttasks.EventInput{
 					TaskID:      id,
 					EventType:   agenttasks.EventStarted,
 					PayloadJSON: agentTaskEventPayload(map[string]any{"source": "api", "agent_name": input.AgentName, "status": input.Status}),
@@ -233,7 +233,7 @@ func tenantAgentTaskHandler(opts Options) http.HandlerFunc {
 				return
 			}
 			if eventType != "" {
-				if _, err := opts.TenantService.AppendAgentTaskEvent(r.Context(), agenttasks.EventInput{
+				if _, err := appendAgentTaskEventByID(r.Context(), opts, taskID, agenttasks.EventInput{
 					TaskID:      taskID,
 					EventType:   eventType,
 					PayloadJSON: agentTaskEventPayload(map[string]any{"source": "api", "status": update.Status, "result_json": update.ResultJSON, "metadata_json": update.MetadataJSON}),
@@ -261,7 +261,7 @@ func tenantAgentTaskEventsHandler(opts Options) http.HandlerFunc {
 		switch r.Method {
 		case http.MethodGet:
 			query := r.URL.Query()
-			items, err := opts.TenantService.ListAgentTaskEventsAfter(r.Context(), taskID, parseUintQuery(query.Get("after_id")), parseLimit(query.Get(paramLimit)))
+			items, err := listAgentTaskEventsByID(r.Context(), opts, taskID, parseUintQuery(query.Get("after_id")), parseLimit(query.Get(paramLimit)))
 			if err != nil {
 				writeTenantServiceError(w, err)
 				return
@@ -301,8 +301,12 @@ func tenantAgentTaskEventsStreamHandler(opts Options) http.HandlerFunc {
 		if limit == 0 {
 			limit = 200
 		}
+		var streamSvc agentTaskEventStreamer = opts.TenantService
+		if opts.SessionEvents != nil {
+			streamSvc = routedAgentTaskEventStreamer{opts: opts}
+		}
 		stream := &agentTaskStream{
-			svc:    opts.TenantService,
+			svc:    streamSvc,
 			write:  func(event string, value any) { writeAgentTaskSSE(w, event, value) },
 			flush:  flusher.Flush,
 			taskID: taskID,
@@ -513,7 +517,7 @@ func tenantAgentTaskMessageHandler(opts Options, queryFn QueryFunc) http.Handler
 			writeTenantError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		eventID, err := opts.TenantService.AppendAgentTaskEvent(r.Context(), agenttasks.EventInput{
+		eventID, err := appendAgentTaskEvent(r.Context(), opts, task, agenttasks.EventInput{
 			TaskID:      taskID,
 			EventType:   agenttasks.EventMessage,
 			PayloadJSON: string(payload),
@@ -524,7 +528,7 @@ func tenantAgentTaskMessageHandler(opts Options, queryFn QueryFunc) http.Handler
 			return
 		}
 		if opts.StreamQueryFunc == nil && queryFn == nil {
-			_, _ = opts.TenantService.AppendAgentTaskEvent(r.Context(), agenttasks.EventInput{
+			_, _ = appendAgentTaskEvent(r.Context(), opts, task, agenttasks.EventInput{
 				TaskID:      taskID,
 				EventType:   agenttasks.EventFailed,
 				PayloadJSON: agentTaskEventPayload(map[string]any{"source": "webui-agent", "error": errMsgAgentRunnerNotConfig}),
@@ -637,7 +641,8 @@ func runAgentTaskMessage(ctx context.Context, opts Options, queryFn QueryFunc, t
 		defer idleCancel(nil)
 		eventSink = &agentTaskTextSink{
 			ctx:         idleCtx,
-			svc:         opts.TenantService,
+			opts:        opts,
+			task:        task,
 			permissions: opts.AgentTaskPermissions,
 			questions:   opts.AgentTaskQuestions,
 			taskID:      task.ID,
@@ -657,7 +662,7 @@ func runAgentTaskMessage(ctx context.Context, opts Options, queryFn QueryFunc, t
 	case queryFn != nil:
 		result, err = queryFn(ctx, queryReq)
 		if result.Response != "" {
-			_, appendErr := opts.TenantService.AppendAgentTaskEvent(ctx, agenttasks.EventInput{
+			_, appendErr := appendAgentTaskEvent(ctx, opts, task, agenttasks.EventInput{
 				TaskID:      task.ID,
 				EventType:   agenttasks.EventTextDelta,
 				PayloadJSON: agentTaskEventPayload(map[string]any{"source": "runner", "content": result.Response}),
@@ -697,7 +702,7 @@ func runAgentTaskMessage(ctx context.Context, opts Options, queryFn QueryFunc, t
 				"stop_reason": agentTaskTimeoutStopReason(ctx, err),
 				"duration_ms": durationMS,
 			})
-			if _, appendErr := opts.TenantService.AppendAgentTaskEvent(persistCtx, agenttasks.EventInput{TaskID: task.ID, EventType: agenttasks.EventTimeout, PayloadJSON: payload, TraceID: input.TraceID}); appendErr != nil {
+			if _, appendErr := appendAgentTaskEvent(persistCtx, opts, task, agenttasks.EventInput{TaskID: task.ID, EventType: agenttasks.EventTimeout, PayloadJSON: payload, TraceID: input.TraceID}); appendErr != nil {
 				return agentTaskRunResult{}, appendErr
 			}
 			if finishErr := opts.TenantService.FinishAgentTask(persistCtx, task.ID, agenttasks.StatusTimeout, payload); finishErr != nil {
@@ -708,7 +713,7 @@ func runAgentTaskMessage(ctx context.Context, opts Options, queryFn QueryFunc, t
 			return agentTaskRunResult{Status: agenttasks.StatusTimeout}, nil
 		}
 		if errors.Is(err, context.Canceled) {
-			runResult, cancelErr := finishAgentTaskCancelled(persistCtx, opts.TenantService, task.ID, input.TraceID, startedAt, result.Response)
+			runResult, cancelErr := finishAgentTaskCancelled(persistCtx, opts, task, input.TraceID, startedAt, result.Response)
 			if cancelErr == nil {
 				triggerPendingInputCoordinator(persistCtx, opts, task)
 			}
@@ -726,7 +731,7 @@ func runAgentTaskMessage(ctx context.Context, opts Options, queryFn QueryFunc, t
 			failureValues["error_code"] = errorCode
 		}
 		payload := agentTaskEventPayload(failureValues)
-		if _, appendErr := opts.TenantService.AppendAgentTaskEvent(persistCtx, agenttasks.EventInput{TaskID: task.ID, EventType: agenttasks.EventFailed, PayloadJSON: payload, TraceID: input.TraceID}); appendErr != nil {
+		if _, appendErr := appendAgentTaskEvent(persistCtx, opts, task, agenttasks.EventInput{TaskID: task.ID, EventType: agenttasks.EventFailed, PayloadJSON: payload, TraceID: input.TraceID}); appendErr != nil {
 			return agentTaskRunResult{}, appendErr
 		}
 		if finishErr := opts.TenantService.FinishAgentTask(persistCtx, task.ID, agenttasks.StatusFailed, payload); finishErr != nil {
@@ -741,7 +746,7 @@ func runAgentTaskMessage(ctx context.Context, opts Options, queryFn QueryFunc, t
 	if eventSink != nil {
 		emittedToolIDs = eventSink.toolIDs()
 	}
-	if appendErr := appendAgentTaskToolEvents(persistCtx, opts.TenantService, task.ID, input.TraceID, result.ToolCalls, emittedToolIDs); appendErr != nil {
+	if appendErr := appendAgentTaskToolEventsWithOptions(persistCtx, opts, task, input.TraceID, result.ToolCalls, emittedToolIDs); appendErr != nil {
 		return agentTaskRunResult{}, appendErr
 	}
 	toolNames := agentTaskNextStepsToolNames(result.ToolCalls)
@@ -791,7 +796,7 @@ func runAgentTaskMessage(ctx context.Context, opts Options, queryFn QueryFunc, t
 		resultValues["next_steps_status"] = "pending"
 	}
 	resultJSON := agentTaskEventPayload(resultValues)
-	if _, appendErr := opts.TenantService.AppendAgentTaskEvent(persistCtx, agenttasks.EventInput{
+	if _, appendErr := appendAgentTaskEvent(persistCtx, opts, task, agenttasks.EventInput{
 		TaskID:      task.ID,
 		EventType:   agenttasks.EventCompleted,
 		PayloadJSON: resultJSON,
@@ -866,7 +871,7 @@ func postFinishAgentTaskNextSteps(ctx context.Context, opts Options, task mysqls
 		reservationHeld = false
 		if !accepted {
 			observability.Info(ctx, nil, "agent.next_steps.rejected", "server.runAgentTaskMessage", "next-step job enqueue rejected after completion", "task_id", task.ID)
-			appendAgentTaskNextStepsDropped(ctx, opts.TenantService, task.ID, traceID)
+			appendAgentTaskNextStepsDropped(ctx, opts, task, traceID)
 		}
 		emitAgentTaskNextStepsQueued(ctx, task, traceID, accepted)
 		return
@@ -920,6 +925,10 @@ func agentTaskTimeoutStopReason(ctx context.Context, err error) string {
 }
 
 func appendAgentTaskToolEvents(ctx context.Context, svc TenantService, taskID uint64, traceID string, calls []query.ToolTrace, skip map[string]bool) error {
+	return appendAgentTaskToolEventsWithOptions(ctx, Options{TenantService: svc}, mysqlstore.AgentTask{ID: taskID}, traceID, calls, skip)
+}
+
+func appendAgentTaskToolEventsWithOptions(ctx context.Context, opts Options, task mysqlstore.AgentTask, traceID string, calls []query.ToolTrace, skip map[string]bool) error {
 	for _, call := range calls {
 		if strings.TrimSpace(call.ID) == "" && strings.TrimSpace(call.Name) == "" {
 			continue
@@ -932,8 +941,8 @@ func appendAgentTaskToolEvents(ctx context.Context, svc TenantService, taskID ui
 			"tool_id":   call.ID,
 			"tool_name": call.Name,
 		}
-		if _, err := svc.AppendAgentTaskEvent(ctx, agenttasks.EventInput{
-			TaskID:      taskID,
+		if _, err := appendAgentTaskEvent(ctx, opts, task, agenttasks.EventInput{
+			TaskID:      task.ID,
 			EventType:   agenttasks.EventToolCall,
 			PayloadJSON: agentTaskEventPayload(payload),
 			TraceID:     traceID,
@@ -949,8 +958,8 @@ func appendAgentTaskToolEvents(ctx context.Context, svc TenantService, taskID ui
 			"preview":   truncateAgentTaskEventText(call.Output, 160),
 			"output":    truncateAgentTaskEventText(call.Output, 2000),
 		}
-		if _, err := svc.AppendAgentTaskEvent(ctx, agenttasks.EventInput{
-			TaskID:      taskID,
+		if _, err := appendAgentTaskEvent(ctx, opts, task, agenttasks.EventInput{
+			TaskID:      task.ID,
 			EventType:   agenttasks.EventToolResult,
 			PayloadJSON: agentTaskEventPayload(resultPayload),
 			TraceID:     traceID,
@@ -960,7 +969,7 @@ func appendAgentTaskToolEvents(ctx context.Context, svc TenantService, taskID ui
 		// Non-streaming runs rebuild their event log from result.ToolCalls, so the
 		// file_change rows have to be derived here too or the Files tab is empty
 		// for exactly the runs that did not stream.
-		if err := appendAgentTaskFileChangeEvents(ctx, svc, taskID, traceID, "runner", call); err != nil {
+		if err := appendAgentTaskFileChangeEventsWithOptions(ctx, opts, task, traceID, "runner", call); err != nil {
 			return err
 		}
 	}
@@ -1235,7 +1244,7 @@ func recoverAgentTaskRun(ctx context.Context, opts Options, task mysqlstore.Agen
 		"error":    reason,
 		"panic":    true,
 	})
-	if _, err := opts.TenantService.AppendAgentTaskEvent(persistCtx, agenttasks.EventInput{
+	if _, err := appendAgentTaskEvent(persistCtx, opts, task, agenttasks.EventInput{
 		TaskID:      task.ID,
 		EventType:   agenttasks.EventFailed,
 		PayloadJSON: payload,
@@ -1400,6 +1409,8 @@ var _ query.EventSink = (*agentTaskTextSink)(nil)
 type agentTaskTextSink struct {
 	ctx                    context.Context
 	svc                    TenantService
+	opts                   Options
+	task                   mysqlstore.AgentTask
 	permissions            *AgentTaskPermissionRegistry
 	questions              *AgentTaskQuestionRegistry
 	taskID                 uint64
@@ -1431,7 +1442,8 @@ func (s *agentTaskTextSink) Write(p []byte) (int, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if _, err := s.svc.AppendAgentTaskEvent(ctx, agenttasks.EventInput{
+	opts, task := s.eventOptions()
+	if _, err := appendAgentTaskEvent(ctx, opts, task, agenttasks.EventInput{
 		TaskID:      s.taskID,
 		EventType:   agenttasks.EventTextDelta,
 		PayloadJSON: agentTaskEventPayload(map[string]any{"source": "runner", "content": text}),
@@ -1484,7 +1496,8 @@ func (s *agentTaskTextSink) OnToolResult(ctx context.Context, trace query.ToolTr
 	}
 	// trace.FileChanges is already populated by the tools that touched files, so
 	// the Files tab reads structured rows instead of guessing at payload keys.
-	return appendAgentTaskFileChangeEvents(ctx, s.svc, s.taskID, s.traceID, "runner", trace)
+	opts, task := s.eventOptions()
+	return appendAgentTaskFileChangeEventsWithOptions(ctx, opts, task, s.traceID, "runner", trace)
 }
 
 func (s *agentTaskTextSink) OnUsage(ctx context.Context, turn int, usage query.Usage) error {
@@ -1605,13 +1618,26 @@ func (s *agentTaskTextSink) appendEvent(ctx context.Context, eventType string, p
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	_, err := s.svc.AppendAgentTaskEvent(ctx, agenttasks.EventInput{
+	opts, task := s.eventOptions()
+	_, err := appendAgentTaskEvent(ctx, opts, task, agenttasks.EventInput{
 		TaskID:      s.taskID,
 		EventType:   eventType,
 		PayloadJSON: agentTaskEventPayload(payload),
 		TraceID:     s.traceID,
 	})
 	return err
+}
+
+func (s *agentTaskTextSink) eventOptions() (Options, mysqlstore.AgentTask) {
+	opts := s.opts
+	if opts.TenantService == nil {
+		opts.TenantService = s.svc
+	}
+	task := s.task
+	if task.ID == 0 {
+		task.ID = s.taskID
+	}
+	return opts, task
 }
 
 func (s *agentTaskTextSink) markTool(toolID string) {
@@ -1746,17 +1772,17 @@ func (s *agentTaskTextSink) endLongRunningTool(toolID, toolName string) {
 	s.watchdogMu.Unlock()
 }
 
-func finishAgentTaskCancelled(ctx context.Context, svc TenantService, taskID uint64, traceID string, startedAt time.Time, content string) (agentTaskRunResult, error) {
+func finishAgentTaskCancelled(ctx context.Context, opts Options, task mysqlstore.AgentTask, traceID string, startedAt time.Time, content string) (agentTaskRunResult, error) {
 	payload := agenttasks.CancelledResultJSON(agenttasks.CancelledResultOptions{
 		Source:     "runner",
 		TraceID:    traceID,
 		DurationMS: time.Since(startedAt).Milliseconds(),
 		Content:    content,
 	})
-	if _, appendErr := svc.AppendAgentTaskEvent(ctx, agenttasks.EventInput{TaskID: taskID, EventType: agenttasks.EventCancelled, PayloadJSON: payload, TraceID: traceID}); appendErr != nil {
+	if _, appendErr := appendAgentTaskEvent(ctx, opts, task, agenttasks.EventInput{TaskID: task.ID, EventType: agenttasks.EventCancelled, PayloadJSON: payload, TraceID: traceID}); appendErr != nil {
 		return agentTaskRunResult{}, appendErr
 	}
-	if finishErr := svc.FinishAgentTask(ctx, taskID, agenttasks.StatusCancelled, payload); finishErr != nil {
+	if finishErr := opts.TenantService.FinishAgentTask(ctx, task.ID, agenttasks.StatusCancelled, payload); finishErr != nil {
 		return agentTaskRunResult{}, finishErr
 	}
 	return agentTaskRunResult{Status: agenttasks.StatusCancelled}, nil
@@ -1915,7 +1941,7 @@ func tenantAgentTaskPermissionHandler(opts Options) http.HandlerFunc {
 			"reason":      response.Reason,
 			"destination": response.Destination,
 		})
-		if _, err := opts.TenantService.AppendAgentTaskEvent(r.Context(), agenttasks.EventInput{
+		if _, err := appendAgentTaskEvent(r.Context(), opts, task, agenttasks.EventInput{
 			TaskID:      task.ID,
 			EventType:   agenttasks.EventPermissionResolved,
 			PayloadJSON: payload,
@@ -2275,7 +2301,7 @@ func appendAgentTaskNextStepsWithConfig(ctx context.Context, opts Options, task 
 		outcome = "empty"
 		return
 	}
-	if _, err := opts.TenantService.AppendAgentTaskEvent(ctx, agenttasks.EventInput{
+	if _, err := appendAgentTaskEvent(ctx, opts, task, agenttasks.EventInput{
 		TaskID:      task.ID,
 		EventType:   agenttasks.EventNextSteps,
 		PayloadJSON: agentTaskEventPayload(map[string]any{"source": "runner", "suggestions": suggestions}),
@@ -2330,17 +2356,17 @@ func emitAgentTaskNextStepsFinished(ctx context.Context, task mysqlstore.AgentTa
 	})
 }
 
-func appendAgentTaskNextStepsDropped(ctx context.Context, svc TenantService, taskID uint64, traceID string) {
-	if svc == nil {
+func appendAgentTaskNextStepsDropped(ctx context.Context, opts Options, task mysqlstore.AgentTask, traceID string) {
+	if opts.TenantService == nil {
 		return
 	}
-	if _, err := svc.AppendAgentTaskEvent(ctx, agenttasks.EventInput{
-		TaskID:      taskID,
+	if _, err := appendAgentTaskEvent(ctx, opts, task, agenttasks.EventInput{
+		TaskID:      task.ID,
 		EventType:   agenttasks.EventNextSteps,
 		PayloadJSON: agentTaskEventPayload(map[string]any{"source": "runner", "suggestions": []string{}, "status": "dropped"}),
 		TraceID:     traceID,
 	}); err != nil {
-		observability.Error(ctx, nil, "agent.next_steps.drop_append_failed", "server.runAgentTaskMessage", "append dropped next_steps event failed", "task_id", taskID, "error_class", "storage_error")
+		observability.Error(ctx, nil, "agent.next_steps.drop_append_failed", "server.runAgentTaskMessage", "append dropped next_steps event failed", "task_id", task.ID, "error_class", "storage_error")
 	}
 }
 

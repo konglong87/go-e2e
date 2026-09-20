@@ -195,3 +195,53 @@ func listAgentTaskEvents(ctx context.Context, opts Options, task mysqlstore.Agen
 	}
 	return opts.TenantService.ListAgentTaskEventsAfter(ctx, task.ID, after, limit)
 }
+
+func appendAgentTaskEventByID(ctx context.Context, opts Options, taskID uint64, input agenttasks.EventInput) (uint64, error) {
+	if opts.SessionEvents == nil {
+		if opts.TenantService == nil {
+			return 0, fmt.Errorf("tenant event store is unavailable")
+		}
+		return opts.TenantService.AppendAgentTaskEvent(ctx, input)
+	}
+	if opts.TenantService == nil {
+		return 0, fmt.Errorf("tenant task store is unavailable")
+	}
+	task, err := opts.TenantService.GetAgentTask(ctx, taskID)
+	if err != nil {
+		return 0, err
+	}
+	return appendAgentTaskEvent(ctx, opts, task, input)
+}
+
+func listAgentTaskEventsByID(ctx context.Context, opts Options, taskID, after uint64, limit int) ([]mysqlstore.AgentTaskEvent, error) {
+	if opts.SessionEvents == nil {
+		if opts.TenantService == nil {
+			return nil, fmt.Errorf("tenant event store is unavailable")
+		}
+		return opts.TenantService.ListAgentTaskEventsAfter(ctx, taskID, after, limit)
+	}
+	if opts.TenantService == nil {
+		return nil, fmt.Errorf("tenant task store is unavailable")
+	}
+	task, err := opts.TenantService.GetAgentTask(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	return listAgentTaskEvents(ctx, opts, task, after, limit)
+}
+
+type routedAgentTaskEventStreamer struct {
+	opts Options
+}
+
+func NewSessionControlEventReader(opts Options) SessionControlEventService {
+	return routedAgentTaskEventStreamer{opts: opts}
+}
+
+func (s routedAgentTaskEventStreamer) ListAgentTaskEventsAfter(ctx context.Context, taskID, afterID uint64, limit int) ([]mysqlstore.AgentTaskEvent, error) {
+	return listAgentTaskEventsByID(ctx, s.opts, taskID, afterID, limit)
+}
+
+func (s routedAgentTaskEventStreamer) GetAgentTask(ctx context.Context, taskID uint64) (mysqlstore.AgentTask, error) {
+	return s.opts.TenantService.GetAgentTask(ctx, taskID)
+}

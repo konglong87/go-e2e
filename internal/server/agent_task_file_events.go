@@ -8,6 +8,7 @@ import (
 	"github.com/konglong87/go-e2e/internal/agenttasks"
 	"github.com/konglong87/go-e2e/internal/files"
 	"github.com/konglong87/go-e2e/internal/query"
+	mysqlstore "github.com/konglong87/go-e2e/internal/storage/mysql"
 	"github.com/konglong87/go-e2e/internal/tools"
 )
 
@@ -190,9 +191,13 @@ func fileReadTargetPath(input string) string {
 // appendAgentTaskFileChangeEvents writes the derived file_change rows. A failure
 // here is returned so the caller treats it like any other event-append failure.
 func appendAgentTaskFileChangeEvents(ctx context.Context, svc TenantService, taskID uint64, traceID, source string, trace query.ToolTrace) error {
+	return appendAgentTaskFileChangeEventsWithOptions(ctx, Options{TenantService: svc}, mysqlstore.AgentTask{ID: taskID}, traceID, source, trace)
+}
+
+func appendAgentTaskFileChangeEventsWithOptions(ctx context.Context, opts Options, task mysqlstore.AgentTask, traceID, source string, trace query.ToolTrace) error {
 	for _, payload := range agentTaskFileChangeEvents(source, trace) {
-		if _, err := svc.AppendAgentTaskEvent(ctx, agenttasks.EventInput{
-			TaskID:      taskID,
+		if _, err := appendAgentTaskEvent(ctx, opts, task, agenttasks.EventInput{
+			TaskID:      task.ID,
 			EventType:   agenttasks.EventFileChange,
 			PayloadJSON: agentTaskEventPayload(payload),
 			TraceID:     traceID,

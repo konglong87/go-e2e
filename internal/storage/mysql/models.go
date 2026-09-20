@@ -500,6 +500,9 @@ type SessionControlRunInput struct {
 	Message                   agenttasks.MessageInput
 	ExpectedRuntimeConfigJSON string
 	RuntimeConfigChanged      bool
+	// SkipMessageEvent keeps the task/control-plane transaction free of chat
+	// content when the selected session event backend owns the transcript.
+	SkipMessageEvent bool
 }
 
 type SessionControlRunResult struct {

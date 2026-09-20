@@ -258,15 +258,31 @@ func (d *sessionControlRunDispatcher) PrepareRun(ctx context.Context, _ uint64, 
 	result, err := runtime.CreateSessionControlRun(ctx, mysqlstore.SessionControlRunInput{
 		Task: input, Message: message, AdoptTaskID: request.AdoptTaskID,
 		ExpectedRuntimeConfigJSON: expectedJSON, RuntimeConfigChanged: configChanged,
+		SkipMessageEvent: d.opts.SessionEvents != nil,
 	})
 	if err != nil {
 		return 0, err
 	}
-	if result.Task.ID == 0 || result.EventID == 0 {
+	if result.Task.ID == 0 || d.opts.SessionEvents == nil && result.EventID == 0 {
 		if result.Busy && result.Task.ID != 0 {
 			return result.Task.ID, errSessionControlRunBusy
 		}
 		return 0, fmt.Errorf("session control prepared run readback is incomplete")
+	}
+	if d.opts.SessionEvents != nil && result.Created {
+		message.TaskID = result.Task.ID
+		payload, err := json.Marshal(message)
+		if err != nil {
+			return 0, err
+		}
+		if _, err := appendAgentTaskEvent(ctx, d.opts, result.Task, agenttasks.EventInput{
+			TaskID:      result.Task.ID,
+			EventType:   agenttasks.EventMessage,
+			PayloadJSON: string(payload),
+			TraceID:     message.TraceID,
+		}); err != nil {
+			return 0, err
+		}
 	}
 	return result.Task.ID, nil
 }

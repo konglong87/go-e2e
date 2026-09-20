@@ -74,9 +74,16 @@ func (s *agentTaskTextSink) OnUserQuestion(ctx context.Context, req tools.UserQu
 	if s.questions == nil {
 		return tools.UserQuestionResponse{}, errors.New("user question registry is not configured")
 	}
-	task, err := s.svc.GetAgentTask(ctx, s.taskID)
-	if err != nil {
-		return tools.UserQuestionResponse{}, err
+	task := s.task
+	if task.ID == 0 {
+		task.ID = s.taskID
+	}
+	if task.TenantID == 0 && task.UserID == 0 && s.svc != nil {
+		loaded, loadErr := s.svc.GetAgentTask(ctx, s.taskID)
+		if loadErr != nil {
+			return tools.UserQuestionResponse{}, loadErr
+		}
+		task = loaded
 	}
 	waitCtx, cancel := context.WithTimeout(ctx, agentTaskQuestionTimeout)
 	defer cancel()
