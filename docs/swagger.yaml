@@ -1374,6 +1374,8 @@ definitions:
     type: object
   github_com_konglong87_go-e2e_internal_storage_mysql.AgentTaskEvent:
     properties:
+      channel:
+        type: string
       created_at:
         type: string
       event_type:
@@ -1381,6 +1383,10 @@ definitions:
       id:
         type: integer
       payload_json:
+        type: string
+      source:
+        type: string
+      surface:
         type: string
       task_id:
         type: integer
@@ -10425,6 +10431,81 @@ paths:
       security:
       - ApiKeyAuth: []
       summary: Attach bounded session handoff sources
+      tags:
+      - Session Control
+  /tenant/session-control/sessions/{source}/{id}/compact:
+    post:
+      consumes:
+      - application/json
+      description: 将当前 managed session 的可读对话压缩为一个持久化 compact_summary 事件。Local session
+        写入始终返回 forbidden；事件写入遵循当前会话事件后端，不执行双写。
+      parameters:
+      - description: Tenant key
+        in: header
+        name: X-Tenant-Key
+        required: true
+        type: string
+      - description: User key
+        in: header
+        name: X-User-Id
+        required: true
+        type: string
+      - description: Mutation idempotency key, at most 128 bytes
+        in: header
+        name: Idempotency-Key
+        required: true
+        type: string
+      - description: Must be tenant
+        enum:
+        - tenant
+        in: path
+        name: source
+        required: true
+        type: string
+      - description: Managed session key
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Optional empty JSON object
+        in: body
+        name: request
+        schema:
+          $ref: '#/definitions/internal_server.SwaggerSessionControlStopRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_server.SwaggerSessionControlOperationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_server.SwaggerSessionControlError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal_server.SwaggerSessionControlError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/internal_server.SwaggerSessionControlError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_server.SwaggerSessionControlError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/internal_server.SwaggerSessionControlError'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/internal_server.SwaggerSessionControlError'
+      security:
+      - ApiKeyAuth: []
+      summary: Compact a managed session transcript
       tags:
       - Session Control
   /tenant/session-control/sessions/{source}/{id}/conversation:

@@ -7464,6 +7464,111 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenant/session-control/sessions/{source}/{id}/compact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Compact a managed session transcript
+         * @description 将当前 managed session 的可读对话压缩为一个持久化 compact_summary 事件。Local session 写入始终返回 forbidden；事件写入遵循当前会话事件后端，不执行双写。
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    /** @description Mutation idempotency key, at most 128 bytes */
+                    "Idempotency-Key": string;
+                    /** @description Tenant key */
+                    "X-Tenant-Key": string;
+                    /** @description User key */
+                    "X-User-Id": string;
+                };
+                path: {
+                    /** @description Managed session key */
+                    id: string;
+                    /** @description Must be tenant */
+                    source: "tenant";
+                };
+                cookie?: never;
+            };
+            requestBody?: components["requestBodies"]["internal_server.SwaggerSessionControlStopRequest"];
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["internal_server.SwaggerSessionControlOperationResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["internal_server.SwaggerSessionControlError"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["internal_server.SwaggerSessionControlError"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["internal_server.SwaggerSessionControlError"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["internal_server.SwaggerSessionControlError"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["internal_server.SwaggerSessionControlError"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["internal_server.SwaggerSessionControlError"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenant/session-control/sessions/{source}/{id}/conversation": {
         parameters: {
             query?: never;
@@ -7882,12 +7987,7 @@ export interface paths {
                 };
                 cookie?: never;
             };
-            /** @description Optional empty JSON object */
-            requestBody?: {
-                content: {
-                    "application/json": components["schemas"]["internal_server.SwaggerSessionControlStopRequest"];
-                };
-            };
+            requestBody?: components["requestBodies"]["internal_server.SwaggerSessionControlStopRequest"];
             responses: {
                 /** @description OK */
                 200: {
@@ -10971,10 +11071,13 @@ export interface components {
             user_id?: number;
         };
         "github_com_konglong87_go-e2e_internal_storage_mysql.AgentTaskEvent": {
+            channel?: string;
             created_at?: string;
             event_type?: string;
             id?: number;
             payload_json?: string;
+            source?: string;
+            surface?: string;
             task_id?: number;
             trace_id?: string;
         };
@@ -13092,6 +13195,12 @@ export interface components {
         "internal_server.SwaggerRuntimeLoopRequest": {
             content: {
                 "application/json": components["schemas"]["internal_server.SwaggerRuntimeLoopRequest"];
+            };
+        };
+        /** @description Optional empty JSON object */
+        "internal_server.SwaggerSessionControlStopRequest": {
+            content: {
+                "application/json": components["schemas"]["internal_server.SwaggerSessionControlStopRequest"];
             };
         };
         /** @description Tenant request */

@@ -179,6 +179,19 @@ func (s *TenantManagedStore) ListLatestAgentTasksForSessions(ctx context.Context
 	return s.service.ListLatestAgentTasksForSessions(ctx, sessionIDs)
 }
 
+func (s *TenantManagedStore) ListSessionConversationTasks(ctx context.Context, scope RequestContext, sessionID uint64, limit int) ([]mysql.AgentTask, error) {
+	if _, err := s.resolveScope(ctx, scope); err != nil {
+		return nil, err
+	}
+	reader, ok := s.service.(interface {
+		ListSessionConversationTasks(context.Context, uint64, int) ([]mysql.AgentTask, error)
+	})
+	if !ok {
+		return nil, unavailable("tenant conversation store")
+	}
+	return reader.ListSessionConversationTasks(ctx, sessionID, limit)
+}
+
 func (s *TenantManagedStore) CreateAgentTask(ctx context.Context, scope RequestContext, input agenttasks.TaskInput) (uint64, error) {
 	resolved, err := s.resolveScope(ctx, scope)
 	if err != nil {
@@ -204,6 +217,22 @@ func (s *TenantManagedStore) CancelAgentTaskForSessionControl(ctx context.Contex
 		TaskID: input.TaskID, ResultJSON: input.ResultJSON,
 		EventPayloadJSON: input.EventPayloadJSON, TraceID: input.TraceID,
 	})
+}
+
+func (s *TenantManagedStore) AppendAgentTaskEvent(ctx context.Context, scope RequestContext, input agenttasks.EventInput) (uint64, error) {
+	resolved, err := s.resolveScope(ctx, scope)
+	if err != nil {
+		return 0, err
+	}
+	input.TenantID = resolved.TenantID
+	input.UserID = resolved.UserID
+	appender, ok := s.service.(interface {
+		AppendAgentTaskEvent(context.Context, agenttasks.EventInput) (uint64, error)
+	})
+	if !ok {
+		return 0, unavailable("tenant task event appender")
+	}
+	return appender.AppendAgentTaskEvent(ctx, input)
 }
 
 func (s *TenantManagedStore) ListAgentTaskEventsForTasksComplete(ctx context.Context, scope RequestContext, taskIDs []uint64) ([]mysql.AgentTaskEvent, error) {

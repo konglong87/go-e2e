@@ -72,6 +72,18 @@ export function useSendSession(identity: IdentityConfig) {
   });
 }
 
+export function useCompactSession(identity: IdentityConfig) {
+  const client = useSessionControlClient();
+  const applyReadback = useReadback(identity);
+  return useMutation({
+    mutationFn: (input: { ref: SessionRef; idempotencyKey?: string }) => {
+      if (!client.compact) throw new SessionControlError("invalid_state");
+      return client.compact(identity, { ...input, idempotencyKey: input.idempotencyKey ?? crypto.randomUUID() });
+    },
+    onSuccess: applyReadback
+  });
+}
+
 export function useStopSession(identity: IdentityConfig) {
   const client = useSessionControlClient();
   const applyReadback = useReadback(identity);

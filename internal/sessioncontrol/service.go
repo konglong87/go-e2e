@@ -145,6 +145,45 @@ func (s *Service) Send(ctx context.Context, request SendRequest) (OperationResul
 	})
 }
 
+func (s *Service) Compact(ctx context.Context, request CompactRequest) (OperationResult, error) {
+	if err := validateRequestContext(request.Context); err != nil {
+		return errorResult(err), err
+	}
+	if err := rejectLocalTarget(request.Ref); err != nil {
+		return errorResult(err), err
+	}
+	if strings.TrimSpace(request.IdempotencyKey) == "" {
+		err := invalidState("idempotency key is required")
+		return errorResult(err), err
+	}
+	if s.deps.Authorizer == nil {
+		err := unavailable("session control authorization")
+		return errorResult(err), err
+	}
+	if err := s.deps.Authorizer.Authorize(ctx, request.Context, OperationCompact); err != nil {
+		return errorResult(err), err
+	}
+	compactor, ok := s.deps.Managed.(ManagedCompactionPort)
+	if !ok {
+		err := unavailable("managed compaction port")
+		return errorResult(err), err
+	}
+	identity, err := newOperationIdentity(OperationCompact, request.Context, request.IdempotencyKey, operationFingerprint(OperationCompact, request.Context, struct {
+		Ref SessionRef `json:"ref"`
+	}{request.Ref}))
+	if err != nil {
+		return errorResult(err), err
+	}
+	request.ReplayIdentity = identity
+	result, err := compactor.Compact(ctx, request)
+	if err != nil {
+		return resultWithError(identity.OperationID, result, err), err
+	}
+	result.OperationID = identity.OperationID
+	result.Session.Ref = request.Ref
+	return result, nil
+}
+
 func (s *Service) Stop(ctx context.Context, request StopRequest) (OperationResult, error) {
 	if err := validateRequestContext(request.Context); err != nil {
 		return errorResult(err), err

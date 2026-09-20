@@ -40,7 +40,7 @@ export function SettingsSelect({ value, options, onChange, ariaLabel, id, disabl
   useEffect(() => {
     if (!open) return;
     setActiveIndex(selectedIndex >= 0 && !options[selectedIndex]?.disabled ? selectedIndex : firstEnabledIndex);
-  }, [firstEnabledIndex, open, options, selectedIndex]);
+  }, [firstEnabledIndex, open, selectedIndex]);
 
   function select(index: number): void {
     const option = options[index];

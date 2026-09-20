@@ -2,7 +2,6 @@ import { CheckCircle2, Database, FileJson2, LoaderCircle, RotateCw } from "lucid
 import { useEffect, useState, type JSX } from "react";
 import { useI18n } from "../../lib/i18n";
 import type { DesktopServiceBridge } from "../desktopServiceBridge";
-import { SettingsSelect } from "./SettingsSelect";
 
 type SessionBackend = "jsonl" | "sqlite";
 
@@ -75,7 +74,20 @@ export function SessionBackendSettingsPanel({ bridge, onDirtyChange, onBusyChang
   return <div className="session-backend-panel">
     <section className="settings-section">
       <div className="session-backend-heading"><div><h2>{zh ? "聊天事件存储" : "Chat event storage"}</h2><p>{zh ? "桌面端会话列表和控制状态仍由 SQLite 管理；这里选择聊天事件正文的权威存储。" : "SQLite continues to manage the desktop session index and control state; this selects the authoritative store for chat event content."}</p></div><span className="session-backend-current"><Database size={16} />{saved.toUpperCase()}</span></div>
-      <label className="session-backend-field" htmlFor="session-backend-select">{zh ? "会话存储模式" : "Session storage mode"}<SettingsSelect id="session-backend-select" ariaLabel={zh ? "会话存储模式" : "Session storage mode"} disabled={loading || saving} value={draft} onChange={(value) => { setDraft(value === "sqlite" ? "sqlite" : "jsonl"); setStatus(""); }} options={[{ value: "jsonl", label: <span className="session-backend-option"><FileJson2 size={16} />JSONL <small>{zh ? "默认，低频 SQLite 写入" : "Default, low SQLite write frequency"}</small></span> }, { value: "sqlite", label: <span className="session-backend-option"><Database size={16} />SQLite <small>{zh ? "回滚和兼容验证模式" : "Rollback and compatibility mode"}</small></span> }]} /></label>
+      <label className="session-backend-field" htmlFor="session-backend-select">
+        {zh ? "会话存储模式" : "Session storage mode"}
+        <select
+          aria-label={zh ? "会话存储模式" : "Session storage mode"}
+          className="session-backend-native-select"
+          disabled={loading || saving}
+          id="session-backend-select"
+          onChange={(event) => { setDraft(event.target.value === "sqlite" ? "sqlite" : "jsonl"); setStatus(""); }}
+          value={draft}
+        >
+          <option value="jsonl">{zh ? "JSONL（默认，低频 SQLite 写入）" : "JSONL (default, low SQLite write frequency)"}</option>
+          <option value="sqlite">{zh ? "SQLite（回滚和兼容验证模式）" : "SQLite (rollback and compatibility mode)"}</option>
+        </select>
+      </label>
       <div className="settings-notice session-backend-notice"><RotateCw size={16} /><span>{zh ? "切换只对新启动的服务生效。保存时会自动重启本地服务；不会双写，也不会自动迁移已有聊天事件。" : "The choice applies at service startup. Saving restarts the local service; events are not dual-written or migrated automatically."}</span></div>
       {loading ? <p className="session-backend-status" role="status"><LoaderCircle className="session-backend-spinner" size={15} />{zh ? "正在读取…" : "Reading…"}</p> : null}
       {status ? <p className="session-backend-status session-backend-success" role="status"><CheckCircle2 size={15} />{status}</p> : null}

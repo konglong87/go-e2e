@@ -274,6 +274,23 @@ type sessionControlManagedEventStore struct {
 	opts Options
 }
 
+func (s sessionControlManagedEventStore) AppendAgentTaskEvent(ctx context.Context, scope sessioncontrol.RequestContext, input agenttasks.EventInput) (uint64, error) {
+	if s.opts.TenantService == nil || s.opts.SessionEvents == nil {
+		return 0, fmt.Errorf("session event projection is unavailable")
+	}
+	if input.TaskID == 0 {
+		return 0, fmt.Errorf("session task id is required")
+	}
+	task, err := s.opts.TenantService.GetAgentTask(ctx, input.TaskID)
+	if err != nil {
+		return 0, err
+	}
+	if task.TenantID != scope.TenantID || task.UserID != scope.UserID {
+		return 0, mysqlstore.ErrNotFound
+	}
+	return s.opts.SessionEvents.AppendTaskEvent(ctx, task, input)
+}
+
 func (s sessionControlManagedEventStore) ListAgentTaskEventsForTasksComplete(ctx context.Context, _ sessioncontrol.RequestContext, taskIDs []uint64) ([]mysqlstore.AgentTaskEvent, error) {
 	if s.opts.TenantService == nil || s.opts.SessionEvents == nil {
 		return nil, fmt.Errorf("session event projection is unavailable")

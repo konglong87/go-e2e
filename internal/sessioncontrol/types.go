@@ -87,6 +87,13 @@ type SendRequest struct {
 	ReplayIdentity        OperationIdentity       `json:"-"`
 }
 
+type CompactRequest struct {
+	Context        RequestContext    `json:"context"`
+	Ref            SessionRef        `json:"ref"`
+	IdempotencyKey string            `json:"idempotency_key"`
+	ReplayIdentity OperationIdentity `json:"-"`
+}
+
 const PreparedRunFailureSource = "session_control_prelaunch"
 
 // PreparedRunFailure is the stable, content-free failure record written when

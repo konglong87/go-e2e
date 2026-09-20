@@ -158,6 +158,10 @@ type SessionControlService interface {
 	Monitor(context.Context, sessioncontrol.MonitorRequest) (sessioncontrol.OperationResult, error)
 }
 
+type SessionControlCompactService interface {
+	Compact(context.Context, sessioncontrol.CompactRequest) (sessioncontrol.OperationResult, error)
+}
+
 type SessionControlEventService interface {
 	ListAgentTaskEventsAfter(context.Context, uint64, uint64, int) ([]mysqlstore.AgentTaskEvent, error)
 }
@@ -465,6 +469,7 @@ func newRouter(opts Options, queryFn QueryFunc) *gin.Engine {
 	router.POST("/tenant/session-control/sessions", gin.WrapF(tenantSessionControlSessionsHandler(opts)))
 	router.GET("/tenant/session-control/sessions/:source/:id", gin.WrapF(tenantSessionControlSessionHandler(opts)))
 	router.POST("/tenant/session-control/sessions/:source/:id/messages", gin.WrapF(tenantSessionControlMessageHandler(opts)))
+	router.POST("/tenant/session-control/sessions/:source/:id/compact", gin.WrapF(tenantSessionControlCompactHandler(opts)))
 	router.POST("/tenant/session-control/sessions/:source/:id/stop", gin.WrapF(tenantSessionControlStopHandler(opts)))
 	router.POST("/tenant/session-control/sessions/:source/:id/attachments", gin.WrapF(tenantSessionControlAttachHandler(opts)))
 	router.POST("/tenant/session-control/sessions/:source/:id/monitors", gin.WrapF(tenantSessionControlMonitorHandler(opts)))

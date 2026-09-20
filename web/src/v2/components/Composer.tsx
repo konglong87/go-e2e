@@ -36,6 +36,7 @@ type ComposerProps = {
   nextStepSuggestions?: string[];
   disabled?: boolean;
   onSend: (input: SendSessionInput) => Promise<OperationResult>;
+  onCompact?: () => Promise<OperationResult>;
   onStopRequested: () => Promise<void> | void;
   onSent: (session: SessionDetail) => void;
   promptPicker?: ReactNode;
@@ -80,7 +81,7 @@ export function Composer(props: ComposerProps): JSX.Element {
   return <ScopedComposer key={scope} {...props} />;
 }
 
-function ScopedComposer({ drafts, identity, targetRef, sessionStatus, availableSources, attachmentPreparer, cwd = "", queuePanel, queueSettings, runtimeControls, nextStepSuggestions = [], disabled = false, onSend, onStopRequested, onSent, promptPicker }: ComposerProps): JSX.Element {
+function ScopedComposer({ drafts, identity, targetRef, sessionStatus, availableSources, attachmentPreparer, cwd = "", queuePanel, queueSettings, runtimeControls, nextStepSuggestions = [], disabled = false, onSend, onCompact, onStopRequested, onSent, promptPicker }: ComposerProps): JSX.Element {
   const { t, language } = useI18n();
   const fileInput = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -213,6 +214,24 @@ function ScopedComposer({ drafts, identity, targetRef, sessionStatus, availableS
 
   async function send(): Promise<void> {
     if (inputDisabled || contextBlocked || !hasContent || sendAbortRef.current) return;
+    if (onCompact && text.trim().toLowerCase() === "/compact" && files.length === 0 && chips.length === 0) {
+      setErrorCode("");
+      setIsSending(true);
+      try {
+        const result = await onCompact();
+        drafts?.delete(targetRef);
+        clearComposerDraft({ identity, targetRef, cwd });
+        submissionRef.current = null;
+        setText("");
+        setSkillName("");
+        onSent(result.session);
+      } catch (error) {
+        if (mountedRef.current) setErrorCode(sessionControlErrorCode(error));
+      } finally {
+        if (mountedRef.current) setIsSending(false);
+      }
+      return;
+    }
     setErrorCode("");
     setUploadStatus(files.length > 0 ? t("webui2.attachmentsPreparing", { count: files.length }) : "");
     setIsSending(true);

@@ -11,6 +11,7 @@ import (
 
 	"github.com/konglong87/go-e2e/internal/agenttasks"
 	"github.com/konglong87/go-e2e/internal/pendinginput"
+	"github.com/konglong87/go-e2e/internal/session"
 	mysqlstore "github.com/konglong87/go-e2e/internal/storage/mysql"
 )
 
@@ -52,6 +53,13 @@ type ManagedStore interface {
 // events. The control-plane ManagedStore remains the fallback for SQLite mode.
 type ManagedEventStore interface {
 	ListAgentTaskEventsForTasksComplete(context.Context, RequestContext, []uint64) ([]mysqlstore.AgentTaskEvent, error)
+}
+
+// ManagedEventAppender is the write side of the optional high-frequency event
+// projection. JSONL mode implements it by appending to the session transcript;
+// SQLite mode intentionally leaves it unset and uses ManagedStore instead.
+type ManagedEventAppender interface {
+	AppendAgentTaskEvent(context.Context, RequestContext, agenttasks.EventInput) (uint64, error)
 }
 
 // ManagedRunDispatcher owns runtime actions. It deliberately does not expose
@@ -391,6 +399,145 @@ func (a *ManagedAdapter) Send(ctx context.Context, request SendRequest) (Operati
 		return errorResult(err), err
 	}
 	return OperationResult{Session: detail.snapshot, RunID: runID}, nil
+}
+
+func (a *ManagedAdapter) Compact(ctx context.Context, request CompactRequest) (OperationResult, error) {
+	if err := validateRequestContext(request.Context); err != nil {
+		return errorResult(err), err
+	}
+	if err := validateManagedRef(request.Ref); err != nil {
+		return errorResult(err), err
+	}
+	detail, err := a.loadManagedDetail(ctx, request.Context, request.Ref.Key, false)
+	if err != nil {
+		return errorResult(err), err
+	}
+	if detail.latest == nil {
+		err := invalidState("session has no completed conversation to compact")
+		return errorResult(err), err
+	}
+	if detail.latest.Status == agenttasks.StatusRunning || detail.latest.Status == agenttasks.StatusReady {
+		err := invalidState("session must be idle before compacting")
+		return errorResult(err), err
+	}
+	conversationStore, ok := a.store.(interface {
+		ListSessionConversationTasks(context.Context, RequestContext, uint64, int) ([]mysqlstore.AgentTask, error)
+	})
+	if !ok {
+		err := unavailable("managed conversation store")
+		return errorResult(err), err
+	}
+	tasks, err := conversationStore.ListSessionConversationTasks(ctx, request.Context, detail.session.ID, 200)
+	if err != nil {
+		return errorResult(err), normalizeManagedError(err)
+	}
+	taskIDs := make([]uint64, 0, len(tasks))
+	for _, task := range tasks {
+		taskIDs = append(taskIDs, task.ID)
+	}
+	var eventReader ManagedEventStore = a.store
+	if a.eventStore != nil {
+		eventReader = a.eventStore
+	}
+	events, err := eventReader.ListAgentTaskEventsForTasksComplete(ctx, request.Context, taskIDs)
+	if err != nil {
+		return errorResult(err), normalizeManagedError(err)
+	}
+	for _, event := range events {
+		if event.EventType != agenttasks.EventCompactSummary {
+			continue
+		}
+		var payload struct {
+			OperationID string `json:"operation_id"`
+		}
+		if json.Unmarshal([]byte(event.PayloadJSON), &payload) == nil && payload.OperationID == request.ReplayIdentity.OperationID {
+			return OperationResult{Session: detail.snapshot, Replayed: true}, nil
+		}
+	}
+	entries := compactEntriesFromManagedConversation(tasks, events)
+	if len(entries) == 0 {
+		err := invalidState("session has no readable conversation to compact")
+		return errorResult(err), err
+	}
+	summary := session.BuildCompactSummary(entries, 0)
+	if strings.TrimSpace(summary) == "" {
+		err := invalidState("compact summary is empty")
+		return errorResult(err), err
+	}
+	payload, err := json.Marshal(map[string]any{
+		"source": "session_control", "operation_id": request.ReplayIdentity.OperationID,
+		"summary": summary, "manual": true,
+	})
+	if err != nil {
+		return errorResult(err), err
+	}
+	eventInput := agenttasks.EventInput{
+		TaskID: detail.latest.ID, EventType: agenttasks.EventCompactSummary,
+		PayloadJSON: string(payload), TraceID: request.Context.TraceID,
+	}
+	if a.eventStore != nil {
+		appender, ok := a.eventStore.(ManagedEventAppender)
+		if !ok {
+			err := unavailable("managed projected event appender")
+			return errorResult(err), err
+		}
+		_, err = appender.AppendAgentTaskEvent(ctx, request.Context, eventInput)
+	} else {
+		appender, ok := a.store.(ManagedEventAppender)
+		if !ok {
+			err := unavailable("managed task event appender")
+			return errorResult(err), err
+		}
+		_, err = appender.AppendAgentTaskEvent(ctx, request.Context, eventInput)
+	}
+	if err != nil {
+		return errorResult(err), normalizeManagedError(err)
+	}
+	return OperationResult{Session: detail.snapshot}, nil
+}
+
+func compactEntriesFromManagedConversation(tasks []mysqlstore.AgentTask, events []mysqlstore.AgentTaskEvent) []session.Entry {
+	eventsByTask := make(map[uint64][]mysqlstore.AgentTaskEvent, len(tasks))
+	for _, event := range events {
+		eventsByTask[event.TaskID] = append(eventsByTask[event.TaskID], event)
+	}
+	sort.SliceStable(tasks, func(i, j int) bool {
+		if tasks[i].StartedAt.Equal(tasks[j].StartedAt) {
+			return tasks[i].ID < tasks[j].ID
+		}
+		return tasks[i].StartedAt.Before(tasks[j].StartedAt)
+	})
+	entries := make([]session.Entry, 0, len(tasks)*3)
+	for _, task := range tasks {
+		taskEvents := eventsByTask[task.ID]
+		sort.SliceStable(taskEvents, func(i, j int) bool { return taskEvents[i].ID < taskEvents[j].ID })
+		for _, event := range taskEvents {
+			if event.EventType != agenttasks.EventMessage {
+				continue
+			}
+			var message agenttasks.MessageInput
+			if json.Unmarshal([]byte(event.PayloadJSON), &message) == nil && strings.TrimSpace(message.Content) != "" {
+				entries = append(entries, session.Entry{Type: "message", Role: "user", Content: strings.TrimSpace(message.Content), Timestamp: event.CreatedAt})
+			}
+		}
+		if response := managedTaskResponse(task); response != "" {
+			entries = append(entries, session.Entry{Type: "message", Role: "assistant", Content: response, Timestamp: task.FinishedAt})
+		}
+	}
+	return entries
+}
+
+func managedTaskResponse(task mysqlstore.AgentTask) string {
+	var result map[string]any
+	if json.Unmarshal([]byte(task.ResultJSON), &result) != nil {
+		return ""
+	}
+	for _, key := range []string{"response", "content"} {
+		if value, ok := result[key].(string); ok && strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func (a *ManagedAdapter) failPreparedRun(ctx context.Context, dispatcher ManagedPreparedRunDispatcher, taskID uint64, request SendRequest, operationErr error) error {

@@ -81,6 +81,7 @@ func TestSwaggerSessionControlEndpoints(t *testing.T) {
 		"/tenant/session-control/sessions":                             {http.MethodGet, http.MethodPost},
 		"/tenant/session-control/sessions/{source}/{id}":               {http.MethodGet},
 		"/tenant/session-control/sessions/{source}/{id}/messages":      {http.MethodPost},
+		"/tenant/session-control/sessions/{source}/{id}/compact":       {http.MethodPost},
 		"/tenant/session-control/sessions/{source}/{id}/stop":          {http.MethodPost},
 		"/tenant/session-control/sessions/{source}/{id}/attachments":   {http.MethodPost},
 		"/tenant/session-control/sessions/{source}/{id}/monitors":      {http.MethodPost},

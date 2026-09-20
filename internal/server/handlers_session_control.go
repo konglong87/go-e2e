@@ -230,6 +230,20 @@ func tenantSessionControlMessageHandler(opts Options) http.HandlerFunc {
 	})
 }
 
+func tenantSessionControlCompactHandler(opts Options) http.HandlerFunc {
+	return sessionControlMutationEndpoint(opts, func(w http.ResponseWriter, r *http.Request, requestContext sessioncontrol.RequestContext, ref sessioncontrol.SessionRef, key string) {
+		service, ok := opts.SessionControl.(SessionControlCompactService)
+		if !ok {
+			writeSessionControlError(w, http.StatusServiceUnavailable, sessionControlCodeServiceUnavailable, "session control compact is not configured")
+			return
+		}
+		result, err := service.Compact(r.Context(), sessioncontrol.CompactRequest{
+			Context: requestContext, Ref: ref, IdempotencyKey: key,
+		})
+		writeSessionControlOperation(w, result, err)
+	})
+}
+
 func tenantSessionControlStopHandler(opts Options) http.HandlerFunc {
 	return sessionControlMutationEndpoint(opts, func(w http.ResponseWriter, r *http.Request, requestContext sessioncontrol.RequestContext, ref sessioncontrol.SessionRef, key string) {
 		var body sessionControlStopDTO

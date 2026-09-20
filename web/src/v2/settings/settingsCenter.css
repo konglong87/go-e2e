@@ -105,6 +105,8 @@
 .webui2-settings-center .session-backend-heading p { color: var(--webui2-text-muted); font-size: 12px; line-height: 1.7; margin: 7px 0 0; max-width: 680px; }
 .webui2-settings-center .session-backend-current { align-items: center; color: var(--webui2-accent); display: inline-flex; flex: 0 0 auto; font-size: 12px; gap: 7px; }
 .webui2-settings-center .session-backend-field { color: var(--webui2-text-muted); display: grid; gap: 8px; margin-top: 25px; max-width: 520px; }
+.webui2-settings-center .session-backend-native-select { background: var(--webui2-surface); border: 1px solid var(--webui2-border); border-radius: 6px; color: var(--webui2-text); font: inherit; min-height: 42px; padding: 0 12px; width: 100%; }
+.webui2-settings-center .session-backend-native-select:focus { border-color: var(--webui2-accent); outline: 2px solid color-mix(in srgb, var(--webui2-accent) 24%, transparent); outline-offset: 1px; }
 .webui2-settings-center .session-backend-option { align-items: center; display: flex; gap: 8px; }
 .webui2-settings-center .session-backend-option small { color: var(--webui2-text-muted); font-size: 11px; margin-left: auto; }
 .webui2-settings-center .session-backend-notice { align-items: flex-start; margin-top: 24px; max-width: 760px; }

@@ -29,6 +29,7 @@ type Operation string
 const (
 	OperationCreate         Operation = "create"
 	OperationSend           Operation = "send"
+	OperationCompact        Operation = "compact"
 	OperationStop           Operation = "stop"
 	OperationAttach         Operation = "attach"
 	OperationHandoffRefresh Operation = "handoff_refresh"
@@ -36,6 +37,10 @@ const (
 	OperationList           Operation = "list"
 	OperationGet            Operation = "get"
 )
+
+type ManagedCompactionPort interface {
+	Compact(context.Context, CompactRequest) (OperationResult, error)
+}
 
 // AuthorizationPort owns tenant/user/actor checks. The service invokes it
 // before operation recovery or adapter mutations.

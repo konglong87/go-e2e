@@ -105,6 +105,15 @@ export function createHTTPSessionControlClient(): SessionControlClient {
       return operationResult(data, "send");
     },
 
+    async compact(identity, input) {
+      const data = await request<unknown>(identity, `${sessionPath(input.ref)}/compact`, {
+        method: "POST",
+        body: {},
+        idempotencyKey: input.idempotencyKey
+      });
+      return operationResult(data, "compact");
+    },
+
     async stop(identity, input) {
       const data = await request<unknown>(identity, `${sessionPath(input.ref)}/stop`, {
         method: "POST",

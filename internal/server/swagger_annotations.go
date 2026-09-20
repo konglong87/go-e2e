@@ -1749,6 +1749,29 @@ func swaggerSessionConversationsStream() {}
 // @Router /tenant/session-control/sessions/{source}/{id}/messages [post]
 func swaggerSessionControlMessage() {}
 
+// swaggerSessionControlCompact godoc
+// @Summary Compact a managed session transcript
+// @Description 将当前 managed session 的可读对话压缩为一个持久化 compact_summary 事件。Local session 写入始终返回 forbidden；事件写入遵循当前会话事件后端，不执行双写。
+// @Tags Session Control
+// @Security ApiKeyAuth
+// @Accept json
+// @Produce json
+// @Param X-Tenant-Key header string true "Tenant key"
+// @Param X-User-Id header string true "User key"
+// @Param Idempotency-Key header string true "Mutation idempotency key, at most 128 bytes"
+// @Param source path string true "Must be tenant" Enums(tenant)
+// @Param id path string true "Managed session key"
+// @Param request body SwaggerSessionControlStopRequest false "Optional empty JSON object"
+// @Success 200 {object} SwaggerSessionControlOperationResponse
+// @Failure 400 {object} SwaggerSessionControlError
+// @Failure 401 {object} SwaggerSessionControlError
+// @Failure 403 {object} SwaggerSessionControlError
+// @Failure 404 {object} SwaggerSessionControlError
+// @Failure 409 {object} SwaggerSessionControlError
+// @Failure 503 {object} SwaggerSessionControlError
+// @Router /tenant/session-control/sessions/{source}/{id}/compact [post]
+func swaggerSessionControlCompact() {}
+
 // swaggerSessionControlStop godoc
 // @Summary Stop a managed session run
 // @Description 停止 tenant session 的活动 Run。断开 SSE 不会调用此操作；Local session 写入始终返回 forbidden。

@@ -518,7 +518,7 @@
   .webui2-page .webui2-sidebar-restore { left: 12px; top: 12px; }
   .webui2-page .webui2-workspace { padding: 64px 16px 16px; }
   .webui2-page .webui2-task-first-home { justify-content: flex-start; padding: 42px 0 24px; }
-.webui2-page .webui2-task-first-brand-animation { margin-bottom: 12px; width: min(200px, 66vw); }
+  .webui2-page .webui2-task-first-brand-animation { margin-bottom: 12px; width: min(200px, 66vw); }
   .webui2-page .webui2-task-first-heading h1 { font-size: 28px; }
   .webui2-page .webui2-task-first-heading p { font-size: 13px; }
   .webui2-page .webui2-home-presets { grid-template-columns: 1fr; margin-top: 24px; }

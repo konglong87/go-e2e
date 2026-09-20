@@ -10,6 +10,7 @@ export type SessionControlClient = {
   get(identity: IdentityConfig, ref: SessionRef, signal?: AbortSignal): Promise<SessionDetail>;
   create(identity: IdentityConfig, input: CreateSessionInput): Promise<OperationResult>;
   send(identity: IdentityConfig, input: SendSessionInput): Promise<OperationResult>;
+  compact?(identity: IdentityConfig, input: { ref: SessionRef; idempotencyKey: string }): Promise<OperationResult>;
   stop(identity: IdentityConfig, input: { ref: SessionRef; idempotencyKey: string }): Promise<OperationResult>;
   archive(identity: IdentityConfig, input: { ref: SessionRef; idempotencyKey: string }): Promise<OperationResult>;
   rename?(identity: IdentityConfig, input: RenameSessionInput): Promise<void>;

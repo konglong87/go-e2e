@@ -11,9 +11,10 @@ type OperationStatus = OperationCardModel["status"];
 type StatusPresentation = { icon: ComponentType<SVGProps<SVGSVGElement>>; labelKey: string };
 
 const operationKindKeys: Record<OperationKind, string> = {
-  archive: "webui2.operation.kind.archive",
-  attach: "webui2.operation.kind.attach",
-  create: "webui2.operation.kind.create",
+	archive: "webui2.operation.kind.archive",
+	attach: "webui2.operation.kind.attach",
+	compact: "webui2.operation.kind.compact",
+	create: "webui2.operation.kind.create",
   profile_draft: "webui2.operation.kind.profile_draft",
   send: "webui2.operation.kind.send",
   stop: "webui2.operation.kind.stop"
