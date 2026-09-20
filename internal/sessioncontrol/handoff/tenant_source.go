@@ -39,12 +39,26 @@ type TenantSourceStore interface {
 	GetToolTraceRecord(context.Context, sessioncontrol.RequestContext, uint64, uint64, int) (mysql.AgentTaskEvent, error)
 }
 
-type TenantSourceReader struct{ store TenantSourceStore }
+type EventStore interface {
+	ListAgentTaskEventsForTasksComplete(context.Context, sessioncontrol.RequestContext, []uint64) ([]mysql.AgentTaskEvent, error)
+	GetTaskEvent(context.Context, sessioncontrol.RequestContext, uint64, uint64) (mysql.AgentTaskEvent, error)
+}
+
+type TenantSourceReader struct {
+	store      TenantSourceStore
+	eventStore EventStore
+}
 
 var _ TenantSourceStore = (*sessioncontrol.TenantManagedStore)(nil)
 
 func NewTenantSourceReader(store TenantSourceStore) *TenantSourceReader {
 	return &TenantSourceReader{store: store}
+}
+
+func (r *TenantSourceReader) SetEventStore(store EventStore) {
+	if r != nil {
+		r.eventStore = store
+	}
 }
 
 // ResolvedEvidence is bounded, structured evidence suitable for a later
@@ -102,7 +116,11 @@ func (r *TenantSourceReader) Resolve(ctx context.Context, request sessioncontrol
 		}
 		evidence = evidenceForTenantMessage(locator, message)
 	case CursorPrefixTaskEvent:
-		event, readErr := r.store.GetTaskEvent(bound, request, storedSession.ID, recordID)
+		var eventReader EventStore = r.store
+		if r.eventStore != nil {
+			eventReader = r.eventStore
+		}
+		event, readErr := eventReader.GetTaskEvent(bound, request, storedSession.ID, recordID)
 		if readErr != nil || event.ID != recordID {
 			return ResolvedEvidence{}, normalizeExactTenantError(readErr)
 		}
@@ -162,7 +180,11 @@ func (r *TenantSourceReader) captureAuthorized(ctx context.Context, request sess
 	for _, task := range tasks {
 		taskIDs = append(taskIDs, task.ID)
 	}
-	events, err := r.store.ListAgentTaskEventsForTasksComplete(ctx, request, taskIDs)
+	var eventReader EventStore = r.store
+	if r.eventStore != nil {
+		eventReader = r.eventStore
+	}
+	events, err := eventReader.ListAgentTaskEventsForTasksComplete(ctx, request, taskIDs)
 	if err != nil {
 		return SourceSnapshot{}, normalizeTenantSourceError(err)
 	}

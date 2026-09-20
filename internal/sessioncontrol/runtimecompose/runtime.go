@@ -21,6 +21,7 @@ type TenantService interface {
 type Dependencies struct {
 	Tenant            TenantService
 	EventStore        sessioncontrol.ManagedEventStore
+	HandoffEventStore handoff.EventStore
 	Dispatcher        sessioncontrol.ManagedRunDispatcher
 	PendingInputs     pendinginput.Queue
 	LocalStore        sessioncontrol.LocalSessionStore
@@ -78,7 +79,11 @@ func NewService(deps Dependencies) (*sessioncontrol.Service, error) {
 	}
 
 	sources := map[sessioncontrol.Source]handoff.SourceReader{
-		sessioncontrol.SourceTenant: handoff.NewTenantSourceReader(managedStore),
+		sessioncontrol.SourceTenant: func() handoff.SourceReader {
+			reader := handoff.NewTenantSourceReader(managedStore)
+			reader.SetEventStore(deps.HandoffEventStore)
+			return reader
+		}(),
 	}
 	if deps.EnableLocalRead {
 		local = localSessionPort{adapter: sessioncontrol.NewLocalAdapter(deps.LocalStore)}

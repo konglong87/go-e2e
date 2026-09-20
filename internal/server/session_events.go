@@ -268,8 +268,32 @@ func (s sessionControlManagedEventStore) ListAgentTaskEventsForTasksComplete(ctx
 	return out, nil
 }
 
-func newSessionControlManagedEventStore(opts Options) sessioncontrol.ManagedEventStore {
-	return sessionControlManagedEventStore{opts: opts}
+func (s sessionControlManagedEventStore) GetTaskEvent(ctx context.Context, _ sessioncontrol.RequestContext, sessionID, eventID uint64) (mysqlstore.AgentTaskEvent, error) {
+	if s.opts.TenantService == nil || s.opts.SessionEvents == nil {
+		return mysqlstore.AgentTaskEvent{}, fmt.Errorf("session event projection is unavailable")
+	}
+	if sessionID == 0 || eventID == 0 {
+		return mysqlstore.AgentTaskEvent{}, mysqlstore.ErrNotFound
+	}
+	tasks, err := s.opts.TenantService.ListAgentTasks(ctx, 10000)
+	if err != nil {
+		return mysqlstore.AgentTaskEvent{}, err
+	}
+	for _, task := range tasks {
+		if task.ParentSessionID != sessionID {
+			continue
+		}
+		events, err := s.opts.SessionEvents.ListTaskEvents(ctx, task, eventID-1, 1)
+		if err != nil {
+			return mysqlstore.AgentTaskEvent{}, err
+		}
+		for _, event := range events {
+			if event.ID == eventID {
+				return event, nil
+			}
+		}
+	}
+	return mysqlstore.AgentTaskEvent{}, mysqlstore.ErrNotFound
 }
 
 func NewSessionControlEventReader(opts Options) SessionControlEventService {

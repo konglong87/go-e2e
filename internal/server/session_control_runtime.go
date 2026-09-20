@@ -13,6 +13,7 @@ import (
 	"github.com/konglong87/go-e2e/internal/observability"
 	"github.com/konglong87/go-e2e/internal/pendinginput"
 	"github.com/konglong87/go-e2e/internal/sessioncontrol"
+	"github.com/konglong87/go-e2e/internal/sessioncontrol/handoff"
 	"github.com/konglong87/go-e2e/internal/sessioncontrol/runtimecompose"
 	mysqlstore "github.com/konglong87/go-e2e/internal/storage/mysql"
 )
@@ -35,13 +36,16 @@ func NewSessionControlService(opts Options, queryFn QueryFunc) (SessionControlSe
 	if opts.pendingInputCoordinator != nil {
 		dispatcher.pendingTrigger = opts.pendingInputCoordinator.trigger
 	}
+	var eventStore sessioncontrol.ManagedEventStore
+	var handoffEventStore handoff.EventStore
+	if opts.SessionEvents != nil {
+		projection := sessionControlManagedEventStore{opts: opts}
+		eventStore = projection
+		handoffEventStore = projection
+	}
 	service, err := runtimecompose.NewService(runtimecompose.Dependencies{
-		Tenant: tenantRuntime, EventStore: func() sessioncontrol.ManagedEventStore {
-			if opts.SessionEvents == nil {
-				return nil
-			}
-			return newSessionControlManagedEventStore(opts)
-		}(), Dispatcher: dispatcher, PendingInputs: opts.PendingInputQueue,
+		Tenant: tenantRuntime, EventStore: eventStore, HandoffEventStore: handoffEventStore,
+		Dispatcher: dispatcher, PendingInputs: opts.PendingInputQueue,
 		Monitor: opts.SessionMonitor, EnableLocalRead: opts.SessionControlEnableLocalRead,
 	})
 	if err != nil {
