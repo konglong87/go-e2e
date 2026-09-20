@@ -55,6 +55,13 @@
 .webui2-page > * { position: relative; z-index: 1; }
 .webui2-page[data-appearance-enabled="true"] .webui2-chat-shell,
 .webui2-page[data-appearance-enabled="true"] .webui2-settings-center { background: transparent; }
+.webui2-page[data-appearance-enabled="true"] .webui2-workspace,
+.webui2-page[data-appearance-enabled="true"] .webui2-conversation-composer-slot { background: transparent; }
+.webui2-page[data-appearance-enabled="true"] .webui2-sidebar {
+  background: color-mix(in srgb, var(--webui2-surface) 76%, transparent);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
 .webui2-page[data-appearance-enabled="true"] :is(.webui2-user-surface, .webui2-folded-record, .webui2-operation-card) { opacity: var(--webui2-visual-bubble-opacity); }
 
 .webui2-page[data-theme="dark"],

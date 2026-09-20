@@ -56,4 +56,10 @@ test("imports a local background image, previews it, and restores it after reloa
   await expect(page.getByAltText("logo.png")).toBeVisible();
   await expect.poll(() => page.locator(".webui2-page").evaluate((node) => getComputedStyle(node).getPropertyValue("--webui2-visual-background-image").trim())).toContain("data:image/png");
   await page.screenshot({ path: testInfo.outputPath("desktop-background-restored.png"), fullPage: false });
+
+  await page.getByRole("button", { name: "Back to chat", exact: true }).click();
+  await expect(page).toHaveURL(/\/webui\/v2(?:\/|$)/);
+  await expect.poll(() => page.locator(".webui2-page").evaluate((node) => getComputedStyle(node).getPropertyValue("--webui2-visual-background-image").trim())).toContain("data:image/png");
+  await expect.poll(() => page.locator(".webui2-workspace").evaluate((node) => getComputedStyle(node).backgroundColor)).toBe("rgba(0, 0, 0, 0)");
+  await expect.poll(() => page.locator(".webui2-sidebar").evaluate((node) => getComputedStyle(node).backdropFilter)).toBe("blur(12px)");
 });

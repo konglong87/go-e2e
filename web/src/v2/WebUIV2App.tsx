@@ -102,7 +102,7 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
   const sessions = sessionList.data ?? [];
   const allSessions = useSessionList(identity, { query: "", statuses: [] }, desktopReady);
   const selectedSession = sessions.find((session) => session.ref === state.selectedRef) ?? (allSessions.data ?? []).find((session) => session.ref === state.selectedRef);
-  const savedVisual = useGlobalVisualSettings(identity, desktopReady && !settingsOpen);
+  const savedVisual = useGlobalVisualSettings(identity, desktopReady);
   const visual = visualPreview ?? savedVisual.visual;
   const stream = useSessionConversations(identity, allSessions.data ?? [], state.selectedRef, desktopReady);
   const runtimeDefaults = useRuntimeDefaults(identity, isDesktop && desktopReady);
