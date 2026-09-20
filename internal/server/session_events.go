@@ -59,8 +59,8 @@ func (s *JSONLSessionEventStore) AppendTaskEvent(_ context.Context, task mysqlst
 		Surface:     "wails",
 		Channel:     sessionEventChannel(task),
 		Scope:       "tenant",
-		TenantKey:   fmt.Sprintf("tenant-id:%d", task.TenantID),
-		UserKey:     fmt.Sprintf("user-id:%d", task.UserID),
+		TenantKey:   taskTenantKey(task),
+		UserKey:     taskUserKey(task),
 	})
 	if err != nil {
 		return 0, err
@@ -94,7 +94,7 @@ func (s *JSONLSessionEventStore) ListSessionEvents(_ context.Context, tenantID, 
 
 func (s *JSONLSessionEventStore) openRecorder(task mysqlstore.AgentTask) (*session.Recorder, error) {
 	cwd := taskCWD(task)
-	recorder, _, err := s.store.OpenOrCreateRecorder(cwd, transcriptIDForSession(task.TenantID, task.UserID, task.ParentSessionID))
+	recorder, _, err := s.store.OpenOrCreateRecorder(cwd, transcriptIDForSession(task.TenantID, task.UserID, taskSessionID(task)))
 	return recorder, err
 }
 
@@ -102,7 +102,7 @@ func (s *JSONLSessionEventStore) loadTaskEvents(task mysqlstore.AgentTask, after
 	if s == nil {
 		return nil, fmt.Errorf("JSONL session event store is nil")
 	}
-	summary, ok, err := s.store.Find(transcriptIDForSession(task.TenantID, task.UserID, task.ParentSessionID))
+	summary, ok, err := s.store.Find(transcriptIDForSession(task.TenantID, task.UserID, taskSessionID(task)))
 	if err != nil || !ok {
 		return nil, err
 	}
@@ -147,6 +147,37 @@ func taskCWD(task mysqlstore.AgentTask) string {
 		}
 	}
 	return "."
+}
+
+func taskSessionID(task mysqlstore.AgentTask) uint64 {
+	if task.ParentSessionID != 0 {
+		return task.ParentSessionID
+	}
+	return task.ID
+}
+
+func taskTenantKey(task mysqlstore.AgentTask) string {
+	metadata := parseTaskMetadata(task.MetadataJSON)
+	if key, ok := metadata["tenant_key"].(string); ok && strings.TrimSpace(key) != "" {
+		return strings.TrimSpace(key)
+	}
+	return fmt.Sprintf("tenant-id:%d", task.TenantID)
+}
+
+func taskUserKey(task mysqlstore.AgentTask) string {
+	metadata := parseTaskMetadata(task.MetadataJSON)
+	if key, ok := metadata["user_key"].(string); ok && strings.TrimSpace(key) != "" {
+		return strings.TrimSpace(key)
+	}
+	return fmt.Sprintf("user-id:%d", task.UserID)
+}
+
+func parseTaskMetadata(raw string) map[string]any {
+	var metadata map[string]any
+	if json.Unmarshal([]byte(raw), &metadata) != nil || metadata == nil {
+		return map[string]any{}
+	}
+	return metadata
 }
 
 func sessionEventSource(task mysqlstore.AgentTask) string {
