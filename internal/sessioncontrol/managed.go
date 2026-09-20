@@ -658,6 +658,7 @@ func managedSnapshot(item mysqlstore.Session, latest *mysqlstore.AgentTask, even
 	snapshot := SessionSnapshot{
 		ID:        item.ID,
 		Ref:       SessionRef{Source: SourceTenant, Key: item.SessionKey},
+		Source:    sessionSource("", latest),
 		Title:     item.Title,
 		Model:     item.Model,
 		CWD:       item.CWD,
@@ -679,6 +680,26 @@ func managedSnapshot(item mysqlstore.Session, latest *mysqlstore.AgentTask, even
 		snapshot.UpdatedAt = item.StartedAt
 	}
 	return snapshot
+}
+
+func sessionSource(sessionMetadata string, latest *mysqlstore.AgentTask) string {
+	for _, raw := range []string{sessionMetadata, agentTaskMetadata(latest)} {
+		var metadata map[string]any
+		if json.Unmarshal([]byte(raw), &metadata) != nil || metadata == nil {
+			continue
+		}
+		if value, ok := metadata["source"].(string); ok && strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return "desktop"
+}
+
+func agentTaskMetadata(task *mysqlstore.AgentTask) string {
+	if task == nil {
+		return ""
+	}
+	return task.MetadataJSON
 }
 
 func userInputIsOutstanding(events []mysqlstore.AgentTaskEvent) bool {

@@ -128,6 +128,9 @@ func projectTranscriptEvents(events []session.TranscriptEvent) []mysqlstore.Agen
 			EventType:   event.EventType,
 			PayloadJSON: event.PayloadJSON,
 			TraceID:     event.TraceID,
+			Source:      event.Source,
+			Surface:     event.Surface,
+			Channel:     event.Channel,
 			CreatedAt:   event.CreatedAt,
 		})
 	}

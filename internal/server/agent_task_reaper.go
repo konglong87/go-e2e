@@ -26,6 +26,10 @@ type StaleAgentTaskStore interface {
 	AppendAgentTaskEvent(ctx context.Context, input agenttasks.EventInput) (uint64, error)
 }
 
+type staleAgentTaskEventStore interface {
+	AppendAgentTaskEventForTask(context.Context, mysqlstore.AgentTask, agenttasks.EventInput) (uint64, error)
+}
+
 const (
 	// agentTaskReaperBatch 单轮最多回收多少条，避免一次扫描打满 DB。
 	agentTaskReaperBatch = 200
@@ -46,9 +50,13 @@ func newAgentTaskReaper(opts Options) *agentTaskReaper {
 	if opts.AgentTaskReaperStore == nil {
 		return nil
 	}
+	store := opts.AgentTaskReaperStore
+	if opts.SessionEvents != nil {
+		store = routedStaleAgentTaskStore{base: store, events: opts.SessionEvents}
+	}
 	timeout := agentTaskRunTimeout(opts)
 	return &agentTaskReaper{
-		store:    opts.AgentTaskReaperStore,
+		store:    store,
 		timeout:  timeout,
 		interval: agentTaskReaperInterval(timeout),
 		batch:    agentTaskReaperBatch,
@@ -147,16 +155,23 @@ func (rp *agentTaskReaper) reap(ctx context.Context, task mysqlstore.AgentTask) 
 			"agent_task_id", task.ID, "error", err)
 		return false
 	}
-	if _, err := rp.store.AppendAgentTaskEvent(ctx, agenttasks.EventInput{
+	input := agenttasks.EventInput{
 		TenantID:    task.TenantID,
 		UserID:      task.UserID,
 		TaskID:      task.ID,
 		EventType:   agenttasks.EventFailed,
 		PayloadJSON: payload,
 		TraceID:     task.TraceID,
-	}); err != nil {
+	}
+	var appendErr error
+	if routed, ok := rp.store.(staleAgentTaskEventStore); ok {
+		_, appendErr = routed.AppendAgentTaskEventForTask(ctx, task, input)
+	} else {
+		_, appendErr = rp.store.AppendAgentTaskEvent(ctx, input)
+	}
+	if appendErr != nil {
 		observability.Error(ctx, nil, "agent_task.reaper_error", "server.agentTaskReaper.reap", "append stale agent task event failed",
-			"agent_task_id", task.ID, "error", err)
+			"agent_task_id", task.ID, "error", appendErr)
 	}
 	telemetry.Emit(ctx, telemetry.Event{
 		Name:         "agent.run.reaped",

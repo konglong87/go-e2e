@@ -429,6 +429,9 @@ type AgentTaskEvent struct {
 	EventType   string    `json:"event_type"`
 	PayloadJSON string    `json:"payload_json,omitempty"`
 	TraceID     string    `json:"trace_id,omitempty"`
+	Source      string    `json:"source,omitempty"`
+	Surface     string    `json:"surface,omitempty"`
+	Channel     string    `json:"channel,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
 }
 

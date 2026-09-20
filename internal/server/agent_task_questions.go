@@ -157,9 +157,9 @@ func tenantAgentTaskQuestionHandler(opts Options) http.HandlerFunc {
 		}
 		entry := opts.AgentTaskQuestions.get(requestID)
 		if entry == nil {
-			err = replayQuestionAnswer(r.Context(), opts.TenantService, taskID, requestID, answer)
+			err = replayQuestionAnswerWithOptions(r.Context(), opts, taskID, requestID, answer)
 		} else {
-			err = resolveQuestionAnswer(r.Context(), opts.TenantService, entry, task, requestID, answer)
+			err = resolveQuestionAnswerWithOptions(r.Context(), opts, entry, task, requestID, answer)
 		}
 		if err != nil {
 			if errors.Is(err, errQuestionNotPending) {
@@ -191,6 +191,10 @@ func decodeQuestionAnswer(w http.ResponseWriter, r *http.Request) (string, error
 }
 
 func resolveQuestionAnswer(ctx context.Context, svc TenantService, entry *agentTaskQuestion, task mysqlstore.AgentTask, id, answer string) error {
+	return resolveQuestionAnswerWithOptions(ctx, Options{TenantService: svc}, entry, task, id, answer)
+}
+
+func resolveQuestionAnswerWithOptions(ctx context.Context, opts Options, entry *agentTaskQuestion, task mysqlstore.AgentTask, id, answer string) error {
 	entry.mu.Lock()
 	defer entry.mu.Unlock()
 	if entry.taskID != task.ID || entry.tenantID != task.TenantID || entry.userID != task.UserID {
@@ -207,20 +211,24 @@ func resolveQuestionAnswer(ctx context.Context, svc TenantService, entry *agentT
 	}
 	// Persist before waking the original tool. A write failure leaves the answer
 	// retryable, and the per-question lock prevents two tabs from answering twice.
-	if _, err := svc.AppendAgentTaskEvent(ctx, agenttasks.EventInput{TaskID: task.ID, EventType: agenttasks.EventUserQuestionResolved,
+	if _, err := appendAgentTaskEvent(ctx, opts, task, agenttasks.EventInput{TaskID: task.ID, EventType: agenttasks.EventUserQuestionResolved,
 		PayloadJSON: agentTaskEventPayload(map[string]any{"request_id": id, "status": questionStatusAnswered, "answer": answer}), TraceID: task.TraceID}); err != nil {
 		return err
 	}
 	entry.status, entry.answer = questionStatusAnswered, answer
-	recordTenantAudit(ctx, svc, "tenant.agent_task.question.answer", "agent_task", task.ID)
+	recordTenantAudit(ctx, opts.TenantService, "tenant.agent_task.question.answer", "agent_task", task.ID)
 	entry.response <- tools.UserQuestionResponse{Answered: true, Answer: answer}
 	return nil
 }
 
 func replayQuestionAnswer(ctx context.Context, svc TenantService, taskID uint64, id, answer string) error {
+	return replayQuestionAnswerWithOptions(ctx, Options{TenantService: svc}, taskID, id, answer)
+}
+
+func replayQuestionAnswerWithOptions(ctx context.Context, opts Options, taskID uint64, id, answer string) error {
 	// Only retries after the live waiter is removed need a history read. Normal
 	// answers use the scoped registry; this adds no background polling or query.
-	events, err := listCompleteAgentTaskEvents(ctx, svc, taskID)
+	events, err := listCompleteAgentTaskEventsWithOptions(ctx, opts, taskID)
 	if err != nil {
 		return err
 	}

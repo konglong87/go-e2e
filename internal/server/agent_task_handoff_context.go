@@ -175,6 +175,10 @@ func agentTaskHandoffContextMessage(ctx context.Context, svc TenantService, task
 // listCompleteAgentTaskEvents pages until exhaustion. The extra one-row probe
 // at the safety bound distinguishes an exact bounded result from truncation.
 func listCompleteAgentTaskEvents(ctx context.Context, svc TenantService, taskID uint64) ([]mysqlstore.AgentTaskEvent, error) {
+	return listCompleteAgentTaskEventsWithOptions(ctx, Options{TenantService: svc}, taskID)
+}
+
+func listCompleteAgentTaskEventsWithOptions(ctx context.Context, opts Options, taskID uint64) ([]mysqlstore.AgentTaskEvent, error) {
 	events := make([]mysqlstore.AgentTaskEvent, 0, agentTaskHandoffEventPageSize)
 	var afterID uint64
 	for {
@@ -183,7 +187,7 @@ func listCompleteAgentTaskEvents(ctx context.Context, svc TenantService, taskID 
 		if remaining < limit {
 			limit = remaining + 1
 		}
-		page, err := svc.ListAgentTaskEventsAfter(ctx, taskID, afterID, limit)
+		page, err := listAgentTaskEventsByID(ctx, opts, taskID, afterID, limit)
 		if err != nil {
 			return nil, &agentTaskHandoffContextError{code: agentTaskHandoffCodeListFailed, cause: err}
 		}

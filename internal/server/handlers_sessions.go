@@ -98,6 +98,7 @@ type webAgentConversation struct {
 	ID            string                 `json:"id"`
 	SessionID     uint64                 `json:"session_id,omitempty"`
 	SessionKey    string                 `json:"session_key,omitempty"`
+	Source        string                 `json:"source,omitempty"`
 	Title         string                 `json:"title"`
 	CWD           string                 `json:"cwd,omitempty"`
 	WorkspaceName string                 `json:"workspace_name,omitempty"`
@@ -282,6 +283,7 @@ func buildWebAgentConversations(sessions []mysqlstore.Session, tasks []mysqlstor
 			ID:            webAgentConversationID(key, parentSessionID),
 			SessionID:     parentSessionID,
 			SessionKey:    webAgentSessionKey(sessionPtr, latest),
+			Source:        sessionEventSource(latest),
 			Title:         webAgentConversationTitle(sessionPtr, latest),
 			CWD:           webAgentConversationCWD(sessionPtr, latest),
 			WorkspaceName: webAgentWorkspaceName(sessionPtr, latest),

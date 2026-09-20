@@ -31,6 +31,7 @@ func (defaultLocalSessionStore) LoadWithFormat(path string) ([]session.Entry, se
 type LocalSnapshot struct {
 	ID             uint64
 	Ref            SessionRef
+	Source         string
 	Title          string
 	Status         SessionStatus
 	Format         session.TranscriptFormat
