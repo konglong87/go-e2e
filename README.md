@@ -1,6 +1,11 @@
 # go-e2e
 
-用 Go 完成端到端语义闭环的 Agent runtime。两个端点向中间走，在同一个可持续会话里汇合，这就是 `go-e2e` 的产品象征。
+面向全端的开源桌面级 Agent：覆盖桌面端、TUI、CLI 和 WebUI，
+本地优先、支持私有化部署，从一句话需求出发持续执行并交付结果。
+
+<p align="center">
+  <img src="docs/web_agent/images/go-e2e-desktop-v2.png" alt="go-e2e 最新桌面端界面" width="900">
+</p>
 
 <p align="center">
   <img src="docs/web_agent/images/go-e2e-together.gif" alt="go-e2e 两端汇合的 Blender 3D 动画" width="720">
@@ -10,11 +15,38 @@
   <img src="docs/web_agent/images/go-e2e-webui-v2.png" alt="go-e2e WebUI 2.0，浏览器验收示例会话" width="720">
 </p>
 
-<p align="center">
-  <img src="docs/web_agent/images/go-e2e-desktop-v2.png" alt="go-e2e macOS 桌面端实际窗口" width="720">
-</p>
+## 六大核心亮点
 
-## 重点能力
+**1. 开源桌面级 Agent，四端覆盖**
+
+同时支持桌面端、TUI、CLI 和 WebUI，适合个人使用、开发调试和团队部署。
+
+**2. 本地优先，部署方式自由**
+
+默认支持本地运行和 SQLite，也支持私有化部署及 MySQL，数据边界和部署环境由用户掌控。
+
+**3. 开放源码，方便二次开发**
+
+模型、Provider、工具链、工作流、权限、界面和业务逻辑均可扩展。
+
+**4. 从一句话到结果交付**
+
+Agent 可以理解目标、拆解任务、调用工具、持续执行，并在同一会话中恢复上下文。
+
+**5. Provider 自由接入，多模型扩展**
+
+支持自定义 Provider 和兼容 API 的模型，也为多模态、画图等能力保留扩展空间。
+
+**6. Go 内核，轻量高效**
+
+使用 Go runtime 构建，启动和运行开销较低，适合本地长期运行与私有化部署。
+
+## 一句话版
+
+开源桌面级 Agent，覆盖桌面端、TUI、CLI 和 WebUI；本地优先、支持私有化部署，
+能够从一句话需求出发完成任务执行与结果交付，并通过自定义 Provider 接入不同模型。
+
+## 能力概览
 
 - WebUI 2.0 与 `desktop-v2`：窄导航设置中心、模型、Profile、背景、3D 宠物、数据观测、飞书和 Multi-Agent。
 - 会话标题支持三个点菜单和卡片右键修改，原位编辑并持久化；见[演示截图与验收记录](docs/webui/session-title-rename.md)。
