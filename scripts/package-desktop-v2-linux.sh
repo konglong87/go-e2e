@@ -7,7 +7,7 @@ VERSION="${VERSION:?VERSION is required}"
 ARCH="${ARCH:-amd64}"
 DIST_DIR="${DIST_DIR:-${ROOT}/dist}"
 PLATFORM="linux/${ARCH}"
-STAGE="go-e2e_${VERSION}_linux_${ARCH}"
+STAGE="go-e2e-desktop_${VERSION}_linux_${ARCH}"
 ARCHIVE="${DIST_DIR}/${STAGE}.tar.gz"
 
 if [[ "${ARCH}" != "amd64" ]]; then

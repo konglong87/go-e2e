@@ -104,7 +104,7 @@ test("CI separates source-only checks from real native builds and follows main",
   assert.match(release, /macos-15/);
   assert.match(release, /macos-15-intel/);
   assert.match(release, /APPLE_CERTIFICATE_P12_BASE64/);
-  assert.match(release, /sha256sum go-e2e-\*/);
+  assert.match(release, /sha256sum go-e2e-\* go-e2e_\*/);
   assert.match(release, /gh release create/);
   assert.match(release, /gh release download/);
   assert.match(release, /acceptance-linux:/);
@@ -112,6 +112,13 @@ test("CI separates source-only checks from real native builds and follows main",
   assert.match(release, /acceptance-windows:/);
   assert.match(release, /spctl --assess/);
   assert.match(release, /Start-Process \$installer/);
+  assert.match(release, /verify-release-assets\.sh/);
+  assert.match(release, /name: verified-preview-/);
+  assert.match(release, /GITHUB_EVENT_NAME.*== push/);
+  assert.match(release, /TAG: \$\{\{ github\.ref_name \}\}/);
+  assert.match(release, /assets=\(release-dist\/go-e2e-\* release-dist\/go-e2e_\* release-dist\/SHA256SUMS release-dist\/RELEASE_NOTES\.md\)/);
+  const linuxPackage = readFileSync(path.join(root, "scripts/package-desktop-v2-linux.sh"), "utf8");
+  assert.match(linuxPackage, /STAGE="go-e2e-desktop_\$\{VERSION\}_linux_\$\{ARCH\}"/);
   const macosPackage = readFileSync(path.join(root, "scripts/package-desktop-v2-macos.sh"), "utf8");
   assert.match(macosPackage, /Contents\/MacOS\/go-e2e-desktop/);
   assert.match(macosPackage, /xcrun notarytool submit/);

@@ -31,7 +31,9 @@ hardcoded home directory. Then it runs the scenarios that need neither a key nor
 companion checkout.
 
 It also runs `python3 scripts/release_test.py` (real tar/zip packaging with a
-fake compiler) and `node --test scripts/upstream-agent-lifecycle-capture.test.cjs`.
+fake compiler), `node scripts/test-release-assets.mjs` (release asset names,
+checksums and notes), and
+`node --test scripts/upstream-agent-lifecycle-capture.test.cjs`.
 These checks require Python 3, a Node.js version supporting `node:test`, zip,
 and GNU tar or bsdtar. On macOS the archive test injects a synthetic xattr to
 check that no AppleDouble metadata is shipped. `build.sh` always uses

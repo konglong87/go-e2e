@@ -115,6 +115,12 @@ else
 fi
 
 echo "== release packaging and capture lookup regressions"
+if output="$(node "$SCRIPTS_DIR/test-release-assets.mjs" 2>&1)"; then
+  pass
+else
+  fail "release asset manifest regression:"
+  printf '%s\n' "$output" >&2
+fi
 if output="$(node "$SCRIPTS_DIR/test-desktop-v2-windows-packaging.mjs" 2>&1)"; then
   pass
 else

@@ -27,7 +27,7 @@ jobs:
       - id: version
         shell: bash
         run: |
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+          if [[ "${GITHUB_EVENT_NAME}" == push && "${GITHUB_REF}" == refs/tags/v* ]]; then
             version="${GITHUB_REF_NAME}"
             is_tag=true
           else
@@ -220,9 +220,8 @@ jobs:
     secrets: inherit
 
   publish:
-    name: Publish GitHub Release
+    name: Verify assets and publish GitHub Release
     needs: [metadata, cli, desktop-linux, desktop-macos, desktop-windows]
-    if: needs.metadata.outputs.is_tag == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -245,15 +244,24 @@ jobs:
           bash scripts/generate-release-notes.sh
           (
             cd release-dist
-            sha256sum go-e2e-* > SHA256SUMS
+            sha256sum go-e2e-* go-e2e_* > SHA256SUMS
           )
+          bash scripts/verify-release-assets.sh "$VERSION" release-dist
+      - name: Upload verified preview bundle
+        if: needs.metadata.outputs.is_tag != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: verified-preview-${{ needs.metadata.outputs.version }}
+          path: release-dist/
+          if-no-files-found: error
       - name: Create or update GitHub Release
+        if: needs.metadata.outputs.is_tag == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          assets=(release-dist/go-e2e-* release-dist/SHA256SUMS)
+          assets=(release-dist/go-e2e-* release-dist/go-e2e_* release-dist/SHA256SUMS release-dist/RELEASE_NOTES.md)
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "${assets[@]}" --clobber
             gh release edit "$TAG" --title "$TAG" --notes-file release-dist/RELEASE_NOTES.md
@@ -280,7 +288,7 @@ jobs:
           mkdir -p release
           gh release download "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
-            --pattern "go-e2e_${TAG}_linux_amd64.tar.gz" \
+            --pattern "go-e2e-desktop_${TAG}_linux_amd64.tar.gz" \
             --pattern "SHA256SUMS" \
             --dir release
       - name: Verify checksum, contents, and version
@@ -288,9 +296,9 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          archive="go-e2e_${TAG}_linux_amd64.tar.gz"
+          archive="go-e2e-desktop_${TAG}_linux_amd64.tar.gz"
           grep " ${archive}$" release/SHA256SUMS | (cd release && sha256sum -c -)
-          stage="go-e2e_${TAG}_linux_amd64"
+          stage="go-e2e-desktop_${TAG}_linux_amd64"
           mkdir -p extracted
           tar -xzf "release/${archive}" -C extracted
           test -x "extracted/${stage}/go-e2e-desktop"

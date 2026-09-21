@@ -40,6 +40,10 @@ Release workflow 会并行生成：
 go-e2e-v0.1.0-macos-arm64.dmg
 go-e2e-v0.1.0-macos-amd64.dmg
 go-e2e_v0.1.0_linux_amd64.tar.gz
+go-e2e-desktop_v0.1.0_linux_amd64.tar.gz
+go-e2e_v0.1.0_linux_arm64.tar.gz
+go-e2e_v0.1.0_darwin_amd64.tar.gz
+go-e2e_v0.1.0_darwin_arm64.tar.gz
 go-e2e_v0.1.0_windows_amd64.zip
 go-e2e-setup.exe
 SHA256SUMS
@@ -48,6 +52,11 @@ RELEASE_NOTES.md
 
 CLI 归档也会继续保留在同一 Release 中。所有最终资产由 publish job 统一生成
 `SHA256SUMS`，避免不同构建 job 产生互相覆盖的校验文件。
+CLI 和桌面 Linux 归档使用不同名称，不能合并为同一个文件。
+发布前检查全部 9 个包非空、清单记录唯一，并重新计算 SHA256；
+缺包、多包、重复记录或内容被修改都会中止发布。
+手动预览也执行同一校验，输出 `verified-preview-*` artifact，
+包含全部包、`SHA256SUMS` 和 `RELEASE_NOTES.md`，但不会创建 Release。
 
 ## 验收
 

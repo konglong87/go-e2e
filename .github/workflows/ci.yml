@@ -196,6 +196,7 @@ jobs:
           node-version-file: web/.nvmrc
 
       - run: node --test scripts/test-desktop-ci-prerequisites.mjs
+      - run: node scripts/test-release-assets.mjs
       - run: scripts/offline-acceptance.sh
 
   govulncheck:
