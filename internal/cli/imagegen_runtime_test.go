@@ -153,6 +153,19 @@ func TestConfigureChannelImageGenerationInjectsSchedulerOnlyForExactEligibleAcco
 	if synchronous.Generator == nil || synchronous.Scheduler != nil || synchronous.Async {
 		t.Fatalf("unlisted account runtime = %+v", synchronous)
 	}
+
+	sqliteRepo, err := mysqlstore.OpenSQLiteGormRepository(context.Background(), filepath.Join(t.TempDir(), "desktop.sqlite"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqliteRepo.Close()
+	sqliteRuntime, err := configureChannelImageGeneration(cwd, sqliteRepo, "canary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sqliteRuntime.Generator == nil || sqliteRuntime.Scheduler != nil || sqliteRuntime.Async {
+		t.Fatalf("sqlite runtime must remain synchronous = %+v", sqliteRuntime)
+	}
 }
 
 func TestConfigureImageWorkerRuntimeComposesAllDurableBoundaries(t *testing.T) {

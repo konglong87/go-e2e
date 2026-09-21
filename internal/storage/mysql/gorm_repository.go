@@ -32,6 +32,13 @@ func isSQLite(db *gorm.DB) bool {
 	return db != nil && db.Dialector.Name() == "sqlite"
 }
 
+// IsSQLite reports whether this repository uses the desktop SQLite dialect.
+// Callers use this to avoid wiring MySQL-only background workers onto the
+// local desktop queue.
+func (r *GormRepository) IsSQLite() bool {
+	return r != nil && isSQLite(r.db)
+}
+
 // jsonTextEqualsPredicate builds a dialect-aware "extract JSON text = ?" predicate.
 // MySQL needs JSON_UNQUOTE around JSON_EXTRACT to compare the raw scalar text,
 // while SQLite has no JSON_UNQUOTE and json_extract already returns the unquoted

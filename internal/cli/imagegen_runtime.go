@@ -453,7 +453,10 @@ func configureChannelImageGeneration(cwd string, repo *mysqlstore.GormRepository
 		return channelImageGenerationRuntime{}, err
 	}
 	runtime := channelImageGenerationRuntime{Generator: generator, BlobStore: blobs, MediaStore: mediaStore, History: history}
-	if !resolved.Enabled || !resolved.AsyncChannelEnabledForAccount(accountKey) {
+	// The standalone image worker is currently MySQL-backed. Keep SQLite
+	// desktop channels on the synchronous path so an accepted image request
+	// never lands in a queue with no consumer.
+	if !resolved.Enabled || !resolved.AsyncChannelEnabledForAccount(accountKey) || repo == nil || repo.IsSQLite() {
 		return runtime, nil
 	}
 	runtime.Scheduler = imagegen.NewScheduler(imagegen.SchedulerConfig{
