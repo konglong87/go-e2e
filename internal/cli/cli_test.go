@@ -2456,6 +2456,38 @@ func TestParseLoopArgs(t *testing.T) {
 	}
 }
 
+func TestInteractiveSlashHelpUsesConfiguredGuidanceFilename(t *testing.T) {
+	project := t.TempDir()
+	configDir := filepath.Join(t.TempDir(), "config")
+	t.Setenv("GOLANG_CC_CONFIG_DIR", configDir)
+	t.Setenv("CLAUDE_CONFIG_DIR", configDir)
+	mustWrite(t, filepath.Join(configDir, "settings.json"), `{
+	  "identity": {"guidanceFilename": "agentx.md"}
+	}`)
+
+	var out bytes.Buffer
+	handled, exit, err := handleInteractiveSlash(
+		context.Background(),
+		options{cwd: project, model: "test-model", maxTurns: 1},
+		"/help",
+		&out,
+		&bytes.Buffer{},
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !handled || exit {
+		t.Fatalf("handled=%v exit=%v output=%s", handled, exit, out.String())
+	}
+	if !strings.Contains(out.String(), "初始化或优化 agentx.md") {
+		t.Fatalf("help output did not use configured guidance filename:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), "初始化或优化 go-e2e.md") {
+		t.Fatalf("help output used the canonical filename despite configured identity:\n%s", out.String())
+	}
+}
+
 func TestLoopRunPromptResolvesSlashCommand(t *testing.T) {
 	project := t.TempDir()
 	t.Setenv("HOME", t.TempDir())

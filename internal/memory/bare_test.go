@@ -61,6 +61,38 @@ func TestExplicitDiscoveryLoadsOnlyRootsAndKeepsIncludesInsideRoot(t *testing.T)
 	}
 }
 
+func TestExplicitDiscoveryUsesConfiguredGuidanceFilename(t *testing.T) {
+	configDir := filepath.Join(t.TempDir(), "config")
+	root := filepath.Join(t.TempDir(), "explicit")
+	t.Setenv("GOLANG_CC_CONFIG_DIR", configDir)
+	t.Setenv("CLAUDE_CONFIG_DIR", configDir)
+	mustWrite(t, filepath.Join(configDir, "settings.json"), `{
+	  "identity": {"guidanceFilename": "agentx.md"}
+	}`)
+	mustWrite(t, filepath.Join(root, "agentx.md"), "configured explicit guidance")
+	mustWrite(t, filepath.Join(root, "go-e2e.md"), "canonical guidance should not win")
+
+	docs, err := LoadCodeWithOptions(t.TempDir(), "", LoadCodeOptions{
+		DiscoveryMode: DiscoveryExplicit,
+		ExplicitRoots: []string{root},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var content strings.Builder
+	for _, doc := range docs {
+		content.WriteString(doc.Content)
+		content.WriteByte('\n')
+	}
+	got := content.String()
+	if !strings.Contains(got, "configured explicit guidance") {
+		t.Fatalf("configured guidance was not loaded: %q", got)
+	}
+	if strings.Contains(got, "canonical guidance should not win") {
+		t.Fatalf("canonical guidance bypassed configured identity: %q", got)
+	}
+}
+
 func TestExplicitDiscoveryWithoutRootsReturnsEmpty(t *testing.T) {
 	docs, err := LoadCodeWithOptions(t.TempDir(), "", LoadCodeOptions{DiscoveryMode: DiscoveryExplicit})
 	if err != nil || len(docs) != 0 {

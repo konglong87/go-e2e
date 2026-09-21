@@ -12,9 +12,9 @@ Desktop-v2, tenant APIs, and resumable session transcripts.
 - Keep query execution independent from transcript storage.
 - Use the session repository and session-control interfaces instead of coupling
   callers directly to JSONL or SQLite implementations.
-- JSONL is the default authoritative transcript storage for Desktop-v2.
-- SQLite is a fallback and control-plane/index backend, not a second transcript
-  writer. Do not introduce dual-write behavior.
+- JSONL is the default authoritative transcript backend for Desktop-v2.
+- SQLite is an alternate authoritative backend for rollback and validation.
+  Only one backend is active per process; dual-write behavior is forbidden.
 - Keep tenant memory, project memory, and transcript events as separate
   responsibilities.
 - Prefer small, composable changes over broad refactors.

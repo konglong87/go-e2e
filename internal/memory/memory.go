@@ -98,8 +98,10 @@ func LoadCode(cwd, prompt string) ([]Document, error) {
 }
 
 func LoadCodeWithOptions(cwd, prompt string, opts LoadCodeOptions) ([]Document, error) {
+	loadedSettings := config.LoadSettings(cwd)
+	id := identity.FromSettings(config.IdentitySettings(loadedSettings.Settings))
 	if opts.DiscoveryMode == DiscoveryExplicit {
-		return loadExplicitCodeRoots(prompt, opts.ExplicitRoots)
+		return loadExplicitCodeRoots(prompt, opts.ExplicitRoots, id.GuidanceFilename)
 	}
 	if opts.DiscoveryMode != "" && opts.DiscoveryMode != DiscoveryAuto {
 		return nil, fmt.Errorf("unknown memory discovery mode: %q", string(opts.DiscoveryMode))
@@ -109,8 +111,6 @@ func LoadCodeWithOptions(cwd, prompt string, opts LoadCodeOptions) ([]Document, 
 		return nil, err
 	}
 	loader := documentLoader{files: turnFileCandidates(cwd, prompt), seen: map[string]bool{}}
-	loadedSettings := config.LoadSettings(cwd)
-	id := identity.FromSettings(config.IdentitySettings(loadedSettings.Settings))
 	var docs []Document
 	if scope == LoadScopeAll {
 		managed, err := loadManaged(&loader)
@@ -188,7 +188,7 @@ func LoadCodeWithOptions(cwd, prompt string, opts LoadCodeOptions) ([]Document, 
 	return docs, nil
 }
 
-func loadExplicitCodeRoots(prompt string, roots []string) ([]Document, error) {
+func loadExplicitCodeRoots(prompt string, roots []string, guidanceFilename string) ([]Document, error) {
 	var docs []Document
 	seenRoots := map[string]bool{}
 	for _, root := range roots {
@@ -210,7 +210,7 @@ func loadExplicitCodeRoots(prompt string, roots []string) ([]Document, error) {
 			path string
 			typ  string
 		}{
-			{filepath.Join(abs, product.GuidanceFilename), "Project"},
+			{filepath.Join(abs, guidanceFilename), "Project"},
 			{filepath.Join(abs, "CLAUDE.md"), "Project"},
 			{filepath.Join(abs, ".claude", "CLAUDE.md"), "Project"},
 		} {

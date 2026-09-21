@@ -22,6 +22,7 @@ import (
 	"github.com/konglong87/go-e2e/internal/config"
 	goalpkg "github.com/konglong87/go-e2e/internal/goal"
 	"github.com/konglong87/go-e2e/internal/goalcmd"
+	"github.com/konglong87/go-e2e/internal/identity"
 	imagegensvc "github.com/konglong87/go-e2e/internal/imagegen"
 	"github.com/konglong87/go-e2e/internal/observability"
 	"github.com/konglong87/go-e2e/internal/permissions"
@@ -1294,7 +1295,7 @@ func handleInteractiveSlash(ctx context.Context, opts options, input string, std
 	case "exit", "quit":
 		return true, true, nil
 	case "help":
-		printSlashHelp(stdout)
+		printSlashHelp(stdout, opts.cwd)
 	case "clear":
 		fmt.Fprint(stdout, "\033[H\033[2J")
 	case "status":
@@ -1882,9 +1883,14 @@ var slashHelpItems = []slashHelpItem{
 	{"/exit", "退出 TUI"},
 }
 
-func printSlashHelp(stdout io.Writer) {
+func printSlashHelp(stdout io.Writer, cwd string) {
+	settings := config.LoadSettings(cwd)
+	id := identity.FromSettings(config.IdentitySettings(settings.Settings))
 	fmt.Fprintln(stdout, "Slash commands / 斜杠命令:")
 	for _, item := range slashHelpItems {
+		if item.Command == "/init" {
+			item.Zh = "初始化或优化 " + id.GuidanceFilename
+		}
 		fmt.Fprintf(stdout, "  %-58s %s\n", item.Command, item.Zh)
 	}
 }
