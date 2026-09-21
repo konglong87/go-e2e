@@ -199,9 +199,12 @@ jobs:
         shell: bash
         run: scripts/package-desktop-v2-macos.sh
       - name: Clean up signing keychain
-        if: always() && env.APPLE_KEYCHAIN != ''
+        if: always()
         shell: bash
-        run: security delete-keychain "$APPLE_KEYCHAIN" || true
+        run: |
+          if [[ -n "${APPLE_KEYCHAIN:-}" ]]; then
+            security delete-keychain "$APPLE_KEYCHAIN" || true
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: release-macos-${{ matrix.arch }}-${{ needs.metadata.outputs.version }}
