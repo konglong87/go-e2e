@@ -1,59 +1,55 @@
-# go-e2e
-
-面向全端的开源桌面级 Agent：覆盖桌面端、TUI、CLI 和 WebUI，
-本地优先、支持私有化部署，从一句话需求出发持续执行并交付结果。
+<h1 align="center">go-e2e</h1>
 
 <p align="center">
-  <img src="docs/web_agent/images/go-e2e-desktop-v2.png" alt="go-e2e 最新桌面端界面" width="900">
+  开源桌面级 Agent，覆盖 Desktop / TUI / CLI / WebUI
 </p>
 
 <p align="center">
-  <img src="docs/web_agent/images/go-e2e-together.gif" alt="go-e2e 两端汇合的 Blender 3D 动画" width="720">
+  本地优先 · 开放扩展 · 一句话驱动 · 端到端交付
 </p>
 
 <p align="center">
-  <img src="docs/web_agent/images/go-e2e-webui-v2.png" alt="go-e2e WebUI 2.0，浏览器验收示例会话" width="720">
+  <a href="https://github.com/konglong87/go-e2e/actions/workflows/ci.yml">
+    <img src="https://github.com/konglong87/go-e2e/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI">
+  </a>
+  <a href="https://github.com/konglong87/go-e2e/actions/workflows/release.yml">
+    <img src="https://github.com/konglong87/go-e2e/actions/workflows/release.yml/badge.svg" alt="Release">
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/github/license/konglong87/go-e2e" alt="License">
+  </a>
+  <img src="https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go&logoColor=white" alt="Go 1.25+">
+</p>
+
+<p align="center">
+  <img src="docs/web_agent/images/go-e2e-desktop-v2.png" alt="go-e2e desktop-v2 最新桌面端界面" width="900">
 </p>
 
 ## 六大核心亮点
 
-**1. 开源桌面级 Agent，四端覆盖**
-
-同时支持桌面端、TUI、CLI 和 WebUI，适合个人使用、开发调试和团队部署。
-
-**2. 本地优先，部署方式自由**
-
-默认支持本地运行和 SQLite，也支持私有化部署及 MySQL，数据边界和部署环境由用户掌控。
-
-**3. 开放源码，方便二次开发**
-
-模型、Provider、工具链、工作流、权限、界面和业务逻辑均可扩展。
-
-**4. 从一句话到结果交付**
-
-Agent 可以理解目标、拆解任务、调用工具、持续执行，并在同一会话中恢复上下文。
-
-**5. Provider 自由接入，多模型扩展**
-
-支持自定义 Provider 和兼容 API 的模型，也为多模态、画图等能力保留扩展空间。
-
-**6. Go 内核，轻量高效**
-
-使用 Go runtime 构建，启动和运行开销较低，适合本地长期运行与私有化部署。
+| 核心亮点 | 主要能力 | 用户收益 |
+| --- | --- | --- |
+| **开源桌面级 Agent，四端覆盖** | Desktop / TUI / CLI / WebUI | 个人使用、开发调试和团队部署都能覆盖 |
+| **本地优先，部署方式自由** | SQLite、本地运行、私有化部署、MySQL | 数据边界和部署环境由用户掌控 |
+| **开放源码，方便二次开发** | Provider、工具链、工作流、权限、界面和业务逻辑可扩展 | 可以按项目需求定制 Agent |
+| **从一句话到结果交付** | 理解需求、拆解任务、调用工具、持续执行、结果验证 | 复杂任务可以持续推进并交付结果 |
+| **Provider 自由接入，多模型扩展** | 自定义 Provider、兼容 API、多模态和图片能力扩展 | 不绑定单一模型厂商 |
+| **Go 内核，轻量高效** | Go runtime、本地 sidecar、低部署依赖 | 启动快、易部署，适合长期运行 |
 
 ## 一句话版
 
-开源桌面级 Agent，覆盖桌面端、TUI、CLI 和 WebUI；本地优先、支持私有化部署，
+开源桌面级 Agent，覆盖 Desktop、TUI、CLI 和 WebUI；本地优先、支持私有化部署，
 能够从一句话需求出发完成任务执行与结果交付，并通过自定义 Provider 接入不同模型。
 
-## 能力概览
+## 产品闭环
 
-- WebUI 2.0 与 `desktop-v2`：窄导航设置中心、模型、Profile、背景、3D 宠物、数据观测、飞书和 Multi-Agent。
-- 会话标题支持三个点菜单和卡片右键修改，原位编辑并持久化；见[演示截图与验收记录](docs/webui/session-title-rename.md)。
-- 连续评测：`--session-id` 可重复进入同一会话，追加对话并保留历史上下文；`--sessionId` 同样兼容。
-- Provider-neutral 配置：模型、地址和凭据只从全局 `~/.golang-cc/settings.json` 读取，设置页面编辑的也是同一个文件。
-- 数据库按部署场景选择：默认 SQLite，无需额外服务；需要多租户、审计和并发服务能力时可选 MySQL。
-- 兼容外部项目指导文件格式：可读取 `go-e2e.md`、`AGENTS.md`、`CLAUDE.md` 等文件上下文，但不会读取外部模型配置或 API Key。
+<p align="center">
+  <img src="docs/web_agent/images/go-e2e-together.gif" alt="go-e2e 端到端语义闭环动画" width="720">
+</p>
+
+<p align="center">
+  从需求输入到工具执行、上下文延续和结果交付，形成可持续的 Agent 工作闭环。
+</p>
 
 ## 快速开始
 
@@ -111,13 +107,16 @@ go run ./cmd/go-e2e --sessionId 11111111-1111-4111-8111-111111111111 -p "基于�
 | WebUI 2.0 | `scripts/webui-dev.sh` |
 | 桌面端 | `scripts/build-desktop-v2.sh` |
 
-## 数据库
+## 部署与模型
 
-默认使用 SQLite，无需额外服务。需要多租户、审计、并发服务能力时，可选择 MySQL。数据库由用户根据部署场景自行选择，桌面端不会强制安装 MySQL。
+| 主题 | 支持方式 | 适用场景 |
+| --- | --- | --- |
+| 本地数据库 | SQLite，默认无需额外服务 | 个人使用、桌面端和本地开发 |
+| 服务化数据库 | MySQL，可选多租户、审计和并发能力 | 团队部署和服务端运行 |
+| 模型接入 | 自定义 Provider、兼容 API、Messages 协议适配 | 接入不同模型服务 |
+| 模型配置 | 全局 `~/.golang-cc/settings.json`，WebUI 与桌面端共用 | 统一管理 Provider、地址、模型和凭据 |
 
-## Provider 边界
-
-运行时保留 Messages 协议和对应 SDK 适配层，作为独立的兼容 provider；产品默认配置、推荐文案和示例均保持 provider-neutral，不绑定任何单一模型厂商。
+桌面端不会强制安装 MySQL；远程部署时应配置认证并限制访问范围。
 
 ## 能力全景
 
@@ -128,7 +127,9 @@ go-e2e 不只是一个聊天界面，而是一套可以执行任务、连接外�
 | Agent 执行 | 工具调用、文件操作、命令执行、代码搜索、LSP、Workflow | 真正操作项目并完成任务 |
 | Skills | 项目 Skills、用户 Skills、插件 Skills、Marketplace Skills | 按需扩展 Agent 的专业能力 |
 | MCP | 外部工具、数据库、知识库和企业服务接入 | 连接已有工作系统 |
-| Memory | 项目规则、长期记忆、自动记忆审核和上下文管理 | 让 Agent 更懂项目与用户偏好 |
+| 项目上下文 | 默认 `go-e2e.md`；兼容 `AGENTS.md`、`CLAUDE.md`、`.claude/` 规则 | 遵循项目约定和工作流程 |
+| 项目级 Memory | `MEMORY.md` 索引、关联 Markdown 记忆文件、项目级召回 | 持续理解项目规则和历史经验 |
+| Memory 治理 | 长期记忆、自动记忆审核、团队/托管范围记忆 | 控制记忆来源和有效范围 |
 | Session / Goal | 会话恢复、Checkpoint、Rewind、长期 Goal 和后台运行 | 支持跨进程和长任务持续执行 |
 | Tools | Bash、文件读写、搜索、浏览器、WebFetch、WebSearch、图片生成 | 覆盖开发、研究和自动化场景 |
 | Profile / Multi-Agent | Agent Profile、Teams、子 Agent 和任务编排 | 针对不同任务进行分工协作 |
@@ -138,6 +139,18 @@ go-e2e 不只是一个聊天界面，而是一套可以执行任务、连接外�
 | 部署与观测 | SQLite、MySQL、Trace、Telemetry、Usage 和日志 | 适合本地、私有化和团队部署 |
 
 > 部分能力需要用户配置 Provider、MCP Server、外部凭据或数据库；这里列出的是系统支持范围，不代表所有扩展默认启用。
+
+## 多端体验
+
+### WebUI 2.0
+
+<p align="center">
+  <img src="docs/web_agent/images/go-e2e-webui-v2.png" alt="go-e2e WebUI 2.0 浏览器界面" width="760">
+</p>
+
+<p align="center">
+  会话、工具、权限、模型、Profile、Memory 和运行状态在同一个 Web 工作台中管理。
+</p>
 
 <details>
 <summary>展开查看扩展能力：Skills、MCP、Hooks 与 Plugins</summary>
@@ -154,6 +167,8 @@ go-e2e 不只是一个聊天界面，而是一套可以执行任务、连接外�
 <details>
 <summary>展开查看记忆与长任务能力</summary>
 
+- **项目指导文件**：默认读取 `go-e2e.md`，并兼容 `AGENTS.md`、`CLAUDE.md`、`.claude/CLAUDE.md` 和 `.claude/rules/*.md`。
+- **项目级 Memory**：以 `MEMORY.md` 作为索引，按关联文件召回项目级记忆，并对路径、大小和召回数量设有边界。
 - **持久化 Session**：跨进程继续同一会话，保留消息、工具调用和任务上下文。
 - **Memory**：保存项目规则、长期偏好和可复用上下文，并支持审核与治理。
 - **Goal**：创建目标、持续运行、查看状态、暂停、恢复和记录事件。
