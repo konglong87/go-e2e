@@ -6,9 +6,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/konglong87/go-e2e/internal/agenttasks"
 	"github.com/konglong87/go-e2e/internal/media"
+	"github.com/konglong87/go-e2e/internal/quota"
 )
 
 func TestSQLiteDesktopRepositorySupportsSessionControlPersistence(t *testing.T) {
@@ -284,6 +286,173 @@ func TestSQLiteDesktopRepositorySupportsProfilesAndSkills(t *testing.T) {
 	}
 }
 
+func TestSQLiteDesktopRepositorySupportsPersistenceUpsertsAndKnowledgeSearch(t *testing.T) {
+	ctx := context.Background()
+	repo, err := OpenSQLiteGormRepository(ctx, filepath.Join(t.TempDir(), "persistence.sqlite"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Close()
+
+	tenantID, err := repo.UpsertTenant(ctx, TenantInput{TenantKey: "desktop", Name: "Desktop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	userID, err := repo.EnsureUser(ctx, tenantID, "desktop-user")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	memoryID, err := repo.UpsertMemory(ctx, MemoryInput{
+		TenantID: tenantID, UserID: userID, MemoryKey: "preference",
+		Category: "general", Content: "first", Importance: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updatedMemoryID, err := repo.UpsertMemory(ctx, MemoryInput{
+		TenantID: tenantID, UserID: userID, MemoryKey: "preference",
+		Category: "general", Content: "second", Importance: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updatedMemoryID != memoryID {
+		t.Fatalf("memory id changed across upsert: first=%d second=%d", memoryID, updatedMemoryID)
+	}
+	memories, err := repo.ListMemories(ctx, tenantID, userID, "", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(memories) != 1 || memories[0].Content != "second" {
+		t.Fatalf("memories = %+v", memories)
+	}
+
+	skillID, err := repo.UpsertSkill(ctx, SkillInput{
+		TenantID: tenantID, SkillKey: "sqlite-test", Name: "SQLite test",
+		ContentMD: "test", Version: 1, Enabled: true, CreatedByUserID: userID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	overrideID, err := repo.UpsertSkillOverride(ctx, SkillOverrideInput{
+		TenantID: tenantID, UserID: userID, SkillID: skillID,
+		Enabled: true, ConfigJSON: `{"mode":"first"}`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updatedOverrideID, err := repo.UpsertSkillOverride(ctx, SkillOverrideInput{
+		TenantID: tenantID, UserID: userID, SkillID: skillID,
+		Enabled: false, ConfigJSON: `{"mode":"second"}`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updatedOverrideID != overrideID {
+		t.Fatalf("skill override id changed across upsert: first=%d second=%d", overrideID, updatedOverrideID)
+	}
+	overrides, err := repo.ListSkillOverrides(ctx, tenantID, userID, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(overrides) != 1 || overrides[0].Enabled || overrides[0].ConfigJSON != `{"mode":"second"}` {
+		t.Fatalf("skill overrides = %+v", overrides)
+	}
+
+	sessionID, err := repo.UpsertSession(ctx, SessionInput{
+		TenantID: tenantID, UserID: userID, SessionKey: "target",
+		Title: "Target", Status: "idle", MetadataJSON: `{}`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	linkID, err := repo.UpsertSessionLink(ctx, SessionLinkInput{
+		TenantID: tenantID, UserID: userID, TargetSessionID: sessionID,
+		SourceKind: "tenant", SourceSessionKey: "source",
+		RelationType: "handoff", Status: "active", MetadataJSON: `{"step":1}`,
+		CreatedByUserID: userID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updatedLinkID, err := repo.UpsertSessionLink(ctx, SessionLinkInput{
+		TenantID: tenantID, UserID: userID, TargetSessionID: sessionID,
+		SourceKind: "tenant", SourceSessionKey: "source",
+		RelationType: "handoff", Status: "completed", MetadataJSON: `{"step":2}`,
+		CreatedByUserID: userID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updatedLinkID != linkID {
+		t.Fatalf("session link id changed across upsert: first=%d second=%d", linkID, updatedLinkID)
+	}
+	link, err := repo.GetSessionLink(ctx, tenantID, userID, sessionID, "tenant", "source", "handoff")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if link.Status != "completed" || link.MetadataJSON != `{"step":2}` {
+		t.Fatalf("session link = %+v", link)
+	}
+
+	qpsLimit := uint64(3)
+	if err := repo.UpsertTenantQuotaConfig(ctx, quota.ConfigInput{
+		TenantID: tenantID, QuotaEnabled: true, QPSLimit: &qpsLimit,
+		Timezone: "UTC", ReserveOutputTokens: 128, Status: "active",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	qpsLimit = 5
+	if err := repo.UpsertTenantQuotaConfig(ctx, quota.ConfigInput{
+		TenantID: tenantID, QuotaEnabled: true, QPSLimit: &qpsLimit,
+		Timezone: "UTC", ReserveOutputTokens: 256, Status: "active",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	config, err := repo.GetTenantQuotaConfig(ctx, tenantID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.QPSLimit == nil || *config.QPSLimit != 5 || config.ReserveOutputTokens != 256 {
+		t.Fatalf("quota config = %+v", config)
+	}
+
+	usageDate := time.Date(2026, 9, 21, 0, 0, 0, 0, time.UTC)
+	for _, delta := range []quota.UsageDailyDelta{
+		{TenantID: tenantID, UsageDate: usageDate, Source: "web", Model: "test", RequestCount: 1, MessageCount: 2, InputTokens: 3, OutputTokens: 4, TotalTokens: 7},
+		{TenantID: tenantID, UsageDate: usageDate, Source: "web", Model: "test", RequestCount: 2, MessageCount: 3, InputTokens: 5, OutputTokens: 6, TotalTokens: 11},
+	} {
+		if err := repo.UpsertUsageDailyDelta(ctx, delta); err != nil {
+			t.Fatal(err)
+		}
+	}
+	usage, err := repo.ListTenantUsageDaily(ctx, tenantID, ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(usage) != 1 || usage[0].RequestCount != 3 || usage[0].MessageCount != 5 || usage[0].TotalTokens != 18 {
+		t.Fatalf("usage daily = %+v", usage)
+	}
+
+	documentID, err := repo.SaveKnowledgeDocument(ctx, KnowledgeDocumentInput{
+		TenantID: tenantID, UserID: userID, Title: "SQLite knowledge",
+		SourceType: "manual", Content: "SQLite persistence notes", Status: "active",
+	}, []KnowledgeChunkInput{{TenantID: tenantID, ChunkIndex: 0, Content: "SQLite persistence supports knowledge search"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := repo.SearchKnowledgeChunks(ctx, tenantID, KnowledgeSearchOptions{
+		Query: "knowledge search", UserID: userID, Limit: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].DocumentID != documentID || results[0].SearchMode != "like" {
+		t.Fatalf("knowledge results = %+v", results)
+	}
+}
+
 // The desktop stop button failed on SQLite because the stop idempotency
 // recovery query used the MySQL-only JSON_UNQUOTE function. This round trip
 // exercises cancel + recovery + audit lookup against a real SQLite database.
@@ -357,8 +526,8 @@ func TestSQLiteSessionControlStopRecoveryRoundTrip(t *testing.T) {
 }
 
 // Handoff replay/recovery predicates share the same JSON extraction helper.
-// Links and events are staged directly so this test only covers the JSON
-// predicate dialect, not the link upsert path.
+// Links and events are staged directly so this test covers the JSON predicate
+// dialect without coupling the assertions to the orchestration layer.
 func TestSQLiteHandoffRecoveryJSONPredicates(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "desktop.sqlite")
 	ctx := context.Background()
@@ -388,13 +557,6 @@ func TestSQLiteHandoffRecoveryJSONPredicates(t *testing.T) {
 		AgentName: agenttasks.AgentNameWeb, Status: agenttasks.StatusRunning, MetadataJSON: `{}`,
 	})
 	if err != nil {
-		t.Fatal(err)
-	}
-
-	// The desktop SQLite schema has no tenant_session_links table (handoff is
-	// a managed-MySQL feature); create the minimal shape so the recovery query
-	// can join links while we validate the JSON predicate dialect on SQLite.
-	if err := repo.db.Exec(`CREATE TABLE tenant_session_links (id integer PRIMARY KEY AUTOINCREMENT, tenant_id integer, user_id integer, target_session_id integer, source_kind text, source_session_key text, source_session_id integer, relation_type text, status text, metadata_json text, created_by_user_id integer, created_at datetime, updated_at datetime)`).Error; err != nil {
 		t.Fatal(err)
 	}
 

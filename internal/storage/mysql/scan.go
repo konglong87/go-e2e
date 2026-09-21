@@ -11,6 +11,36 @@ import (
 )
 
 const (
+	upsertQuotaConfigSQLiteSQL = `INSERT INTO tenant_quota_configs (
+		tenant_id, quota_enabled, qps_limit, daily_token_limit, daily_message_limit,
+		max_concurrent_requests, timezone, reserve_output_tokens, status, updated_by_user_id
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	ON CONFLICT (tenant_id) DO UPDATE SET
+		quota_enabled = excluded.quota_enabled,
+		qps_limit = excluded.qps_limit,
+		daily_token_limit = excluded.daily_token_limit,
+		daily_message_limit = excluded.daily_message_limit,
+		max_concurrent_requests = excluded.max_concurrent_requests,
+		timezone = excluded.timezone,
+		reserve_output_tokens = excluded.reserve_output_tokens,
+		status = excluded.status,
+		updated_by_user_id = excluded.updated_by_user_id,
+		updated_at = CURRENT_TIMESTAMP`
+	upsertUsageDailySQLiteSQL = `INSERT INTO tenant_usage_daily (
+		tenant_id, usage_date, source, model, request_count, message_count,
+		input_tokens, output_tokens, cache_read_input_tokens,
+		cache_creation_input_tokens, total_tokens, rejected_count
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	ON CONFLICT (tenant_id, usage_date, source, model) DO UPDATE SET
+		request_count = tenant_usage_daily.request_count + excluded.request_count,
+		message_count = tenant_usage_daily.message_count + excluded.message_count,
+		input_tokens = tenant_usage_daily.input_tokens + excluded.input_tokens,
+		output_tokens = tenant_usage_daily.output_tokens + excluded.output_tokens,
+		cache_read_input_tokens = tenant_usage_daily.cache_read_input_tokens + excluded.cache_read_input_tokens,
+		cache_creation_input_tokens = tenant_usage_daily.cache_creation_input_tokens + excluded.cache_creation_input_tokens,
+		total_tokens = tenant_usage_daily.total_tokens + excluded.total_tokens,
+		rejected_count = tenant_usage_daily.rejected_count + excluded.rejected_count,
+		updated_at = CURRENT_TIMESTAMP`
 	selectQuotaConfigSQL = `SELECT tenant_id, quota_enabled, qps_limit, daily_token_limit, daily_message_limit, max_concurrent_requests, timezone, reserve_output_tokens, status, COALESCE(updated_by_user_id, 0), created_at, updated_at FROM tenant_quota_configs WHERE tenant_id = ? LIMIT 1`
 	upsertQuotaConfigSQL = `INSERT INTO tenant_quota_configs (tenant_id, quota_enabled, qps_limit, daily_token_limit, daily_message_limit, max_concurrent_requests, timezone, reserve_output_tokens, status, updated_by_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE quota_enabled = VALUES(quota_enabled), qps_limit = VALUES(qps_limit), daily_token_limit = VALUES(daily_token_limit), daily_message_limit = VALUES(daily_message_limit), max_concurrent_requests = VALUES(max_concurrent_requests), timezone = VALUES(timezone), reserve_output_tokens = VALUES(reserve_output_tokens), status = VALUES(status), updated_by_user_id = VALUES(updated_by_user_id), updated_at = CURRENT_TIMESTAMP(6)`
 	insertUsageLedgerSQL = `INSERT INTO tenant_usage_ledger (request_id, tenant_id, user_id, session_id, trace_id, source, route, model, provider, turn_index, usage_source, status, estimated, reserved_input_tokens, reserved_output_tokens, input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens, cache_creation_ephemeral_1h_input_tokens, cache_creation_ephemeral_5m_input_tokens, total_tokens, error_code, error_message, started_at, finished_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`

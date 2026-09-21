@@ -158,6 +158,8 @@ type gormKnowledgeDocument struct {
 	Content      string     `gorm:"column:content"`
 	MetadataJSON *string    `gorm:"column:metadata_json"`
 	Status       string     `gorm:"column:status"`
+	CreatedAt    time.Time  `gorm:"column:created_at"`
+	UpdatedAt    time.Time  `gorm:"column:updated_at"`
 	DeletedAt    *time.Time `gorm:"column:deleted_at"`
 }
 
@@ -171,19 +173,22 @@ type gormKnowledgeChunk struct {
 	Content      string     `gorm:"column:content"`
 	MetadataJSON *string    `gorm:"column:metadata_json"`
 	EmbeddingRef *string    `gorm:"column:embedding_ref"`
+	CreatedAt    time.Time  `gorm:"column:created_at"`
+	UpdatedAt    time.Time  `gorm:"column:updated_at"`
 	DeletedAt    *time.Time `gorm:"column:deleted_at"`
 }
 
 func (gormKnowledgeChunk) TableName() string { return "tenant_knowledge_chunks" }
 
 type gormProfile struct {
-	ID                     uint64  `gorm:"column:id;primaryKey"`
-	TenantID               uint64  `gorm:"column:tenant_id"`
-	UserID                 uint64  `gorm:"column:user_id"`
-	ProfileVersion         uint    `gorm:"column:profile_version"`
-	Summary                *string `gorm:"column:summary"`
-	ProfileJSON            string  `gorm:"column:profile_json"`
-	GeneratedFromSessionID *uint64 `gorm:"column:generated_from_session_id"`
+	ID                     uint64    `gorm:"column:id;primaryKey"`
+	TenantID               uint64    `gorm:"column:tenant_id"`
+	UserID                 uint64    `gorm:"column:user_id"`
+	ProfileVersion         uint      `gorm:"column:profile_version"`
+	Summary                *string   `gorm:"column:summary"`
+	ProfileJSON            string    `gorm:"column:profile_json"`
+	GeneratedFromSessionID *uint64   `gorm:"column:generated_from_session_id"`
+	CreatedAt              time.Time `gorm:"column:created_at"`
 }
 
 func (gormProfile) TableName() string { return "tenant_user_profiles" }
@@ -755,6 +760,24 @@ func (r *GormRepository) UpsertMemory(ctx context.Context, input MemoryInput) (u
 		EmbeddingRef: nullableStringPtr(input.EmbeddingRef),
 		Source:       nullableStringPtr(input.Source),
 	}
+	if isSQLite(r.db) {
+		var existing gormMemory
+		err := r.with(ctx).Where("tenant_id = ? AND user_id = ? AND memory_key = ?", input.TenantID, input.UserID, input.MemoryKey).Take(&existing).Error
+		if err == nil {
+			err = r.with(ctx).Table("tenant_user_memories").Where("id = ?", existing.ID).Updates(map[string]any{
+				"category": input.Category, "content": input.Content, "metadata_json": row.MetadataJSON,
+				"importance": input.Importance, "embedding_ref": row.EmbeddingRef, "source": row.Source, "deleted_at": nil,
+			}).Error
+			return existing.ID, err
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, err
+		}
+		if err := r.with(ctx).Create(&row).Error; err != nil {
+			return 0, err
+		}
+		return row.ID, nil
+	}
 	createErr := r.with(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "tenant_id"}, {Name: "user_id"}, {Name: "memory_key"}},
 		DoUpdates: clause.Assignments(map[string]any{
@@ -976,6 +999,23 @@ func (r *GormRepository) UpsertSkillOverride(ctx context.Context, input SkillOve
 		Enabled:    input.Enabled,
 		ConfigJSON: nullableStringPtr(input.ConfigJSON),
 	}
+	if isSQLite(r.db) {
+		var existing gormSkillOverride
+		err := r.with(ctx).Where("tenant_id = ? AND user_id = ? AND skill_id = ?", input.TenantID, input.UserID, input.SkillID).Take(&existing).Error
+		if err == nil {
+			err = r.with(ctx).Table("tenant_user_skill_overrides").Where("id = ?", existing.ID).Updates(map[string]any{
+				"enabled": input.Enabled, "config_json": row.ConfigJSON, "updated_at": time.Now().UTC(),
+			}).Error
+			return existing.ID, err
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, err
+		}
+		if err := r.with(ctx).Create(&row).Error; err != nil {
+			return 0, err
+		}
+		return row.ID, nil
+	}
 	createErr := r.with(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "tenant_id"}, {Name: "user_id"}, {Name: "skill_id"}},
 		DoUpdates: clause.Assignments(map[string]any{
@@ -1193,6 +1233,34 @@ func (r *GormRepository) SearchKnowledgeChunks(ctx context.Context, tenantID uin
 	contentLike := search.likeAny("LOWER(c.content)")
 	titleLike := search.likeAny("LOWER(d.title)")
 	patterns := search.likePatterns()
+	if isSQLite(r.db) {
+		if contentLike == "" {
+			return nil, nil
+		}
+		contentLike = search.likeAnySQLite("LOWER(c.content)")
+		titleLike = search.likeAnySQLite("LOWER(d.title)")
+		score := "CASE WHEN " + contentLike + " THEN 10 ELSE 0 END + CASE WHEN " + titleLike + " THEN 3 ELSE 0 END"
+		scoreArgs := make([]any, 0, len(patterns)*2)
+		scoreArgs = append(scoreArgs, patterns...)
+		scoreArgs = append(scoreArgs, patterns...)
+		filterArgs := []any{tenantID, tenantID, "active", opts.UserID, opts.UserID}
+		filterArgs = append(filterArgs, patterns...)
+		filterArgs = append(filterArgs, patterns...)
+		rows, err := r.with(ctx).Table("tenant_knowledge_chunks c").
+			Select("c.id, c.document_id, d.title, d.source_type, c.chunk_index, c.content, c.metadata_json, c.embedding_ref, ("+score+") AS score, 'like' AS search_mode", scoreArgs...).
+			Joins("INNER JOIN tenant_knowledge_documents d ON d.id = c.document_id").
+			Where("c.tenant_id = ? AND d.tenant_id = ? AND d.status = ? AND d.deleted_at IS NULL AND c.deleted_at IS NULL", filterArgs[:3]...).
+			Where(contentLike+" OR "+titleLike, filterArgs[5:]...).
+			Where("? = 0 OR d.user_id = ?", opts.UserID, opts.UserID).
+			Order("score DESC, d.updated_at DESC, c.chunk_index ASC").
+			Limit(normalizeLimit(opts.Limit)).
+			Rows()
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		return scanKnowledgeChunks(rows)
+	}
 	score := "MATCH(c.content) AGAINST (? IN NATURAL LANGUAGE MODE) * 20"
 	selectArgs := []any{search.Match}
 	filter := "MATCH(c.content) AGAINST (? IN NATURAL LANGUAGE MODE)"
@@ -1605,6 +1673,25 @@ func upsertSessionLink(db *gorm.DB, input SessionLinkInput) (uint64, error) {
 		Status:           input.Status,
 		MetadataJSON:     nullableStringPtr(input.MetadataJSON),
 		CreatedByUserID:  input.CreatedByUserID,
+	}
+	if isSQLite(db) {
+		var existing gormSessionLink
+		err := db.Where("tenant_id = ? AND user_id = ? AND target_session_id = ? AND source_kind = ? AND source_session_key = ? AND relation_type = ?", input.TenantID, input.UserID, input.TargetSessionID, input.SourceKind, input.SourceSessionKey, input.RelationType).Take(&existing).Error
+		if err == nil {
+			if err := db.Table("tenant_session_links").Where("id = ?", existing.ID).Updates(map[string]any{
+				"status": input.Status, "metadata_json": row.MetadataJSON, "updated_at": time.Now().UTC(),
+			}).Error; err != nil {
+				return 0, err
+			}
+			return existing.ID, nil
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, err
+		}
+		if err := db.Create(&row).Error; err != nil {
+			return 0, err
+		}
+		return row.ID, nil
 	}
 	err := db.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "tenant_id"}, {Name: "user_id"}, {Name: "target_session_id"}, {Name: "source_kind"}, {Name: "source_session_key"}, {Name: "relation_type"}},
@@ -2749,7 +2836,11 @@ func (r *GormRepository) UpsertTenantQuotaConfig(ctx context.Context, input Quot
 		return err
 	}
 	r.log(ctx, "quota.config.save", "mysql.GormRepository.UpsertTenantQuotaConfig", "save tenant quota config")
-	return r.with(ctx).Exec(upsertQuotaConfigSQL,
+	query := upsertQuotaConfigSQL
+	if isSQLite(r.db) {
+		query = upsertQuotaConfigSQLiteSQL
+	}
+	return r.with(ctx).Exec(query,
 		cfg.TenantID,
 		cfg.QuotaEnabled,
 		nullableUint64PtrValue(cfg.QPSLimit),
@@ -2820,7 +2911,11 @@ func (r *GormRepository) UpdateUsageLedgerSettlement(ctx context.Context, reques
 
 func (r *GormRepository) UpsertUsageDailyDelta(ctx context.Context, delta UsageDailyDelta) error {
 	r.log(ctx, "quota.usage.daily", "mysql.GormRepository.UpsertUsageDailyDelta", "upsert tenant daily usage delta")
-	return r.with(ctx).Exec(upsertUsageDailySQL,
+	query := upsertUsageDailySQL
+	if isSQLite(r.db) {
+		query = upsertUsageDailySQLiteSQL
+	}
+	return r.with(ctx).Exec(query,
 		delta.TenantID,
 		delta.UsageDate,
 		usageDimension(delta.Source),

@@ -1118,7 +1118,7 @@ func (r *GormRepository) UpsertChannelReactionDesired(ctx context.Context, input
 		DoUpdates: clause.Assignments(map[string]any{
 			"desired_emoji":      input.DesiredEmoji,
 			"status":             ChannelReactionStatusPending,
-			"next_attempt_at":    gorm.Expr("CURRENT_TIMESTAMP(6)"),
+			"next_attempt_at":    channelNow(r.with(ctx)),
 			"lease_owner":        nil,
 			"lease_until":        nil,
 			"last_error_code":    nil,

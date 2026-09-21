@@ -46,18 +46,32 @@ func (s ScreenSupervisor) List(ctx context.Context) ([]provisioning.WorkerStatus
 		if parseErr != nil {
 			continue
 		}
-		spec := provisioning.WorkerSpec{WorkerName: workerName, AccountKey: values["GOLANG_CC_CHANNEL_ACCOUNT_KEY"], Provider: values["GOLANG_CC_CHANNEL_MODEL_PROVIDER"], Model: values["GOLANG_CC_CHANNEL_MODEL"], SettingsRef: values["GOLANG_CC_CHANNEL_SETTINGS_FILE"], Environment: values}
+		spec := provisioning.WorkerSpec{
+			WorkerName:  workerName,
+			AccountKey:  workerEnvValue(values, "CHANNEL_ACCOUNT_KEY"),
+			Provider:    workerEnvValue(values, "CHANNEL_MODEL_PROVIDER"),
+			Model:       workerEnvValue(values, "CHANNEL_MODEL"),
+			SettingsRef: workerEnvValue(values, "CHANNEL_SETTINGS_FILE"),
+			Environment: values,
+		}
 		status, statusErr := s.run(ctx, "status", spec)
 		if statusErr != nil && status.State == provisioning.WorkerStateUnknown {
 			status.State = provisioning.WorkerStateFailed
 			status.Message = statusErr.Error()
 		}
-		status.AccountKey = values["GOLANG_CC_CHANNEL_ACCOUNT_KEY"]
-		status.TenantID, _ = strconv.ParseUint(values["GOLANG_CC_CHANNEL_TENANT_ID"], 10, 64)
-		status.AccountID, _ = strconv.ParseUint(values["GOLANG_CC_CHANNEL_ACCOUNT_ID"], 10, 64)
+		status.AccountKey = workerEnvValue(values, "CHANNEL_ACCOUNT_KEY")
+		status.TenantID, _ = strconv.ParseUint(workerEnvValue(values, "CHANNEL_TENANT_ID"), 10, 64)
+		status.AccountID, _ = strconv.ParseUint(workerEnvValue(values, "CHANNEL_ACCOUNT_ID"), 10, 64)
 		workers = append(workers, status)
 	}
 	return workers, nil
+}
+
+func workerEnvValue(values map[string]string, suffix string) string {
+	if value := strings.TrimSpace(values["GO_E2E_"+suffix]); value != "" {
+		return value
+	}
+	return strings.TrimSpace(values["GOLANG_CC_"+suffix])
 }
 
 func (s ScreenSupervisor) Start(ctx context.Context, spec provisioning.WorkerSpec) (provisioning.WorkerStatus, error) {

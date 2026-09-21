@@ -34,7 +34,13 @@ func (s FileStore) Put(ctx context.Context, ref provisioning.CredentialRef) (pro
 	if ref.ID == "" {
 		return provisioning.CredentialRef{}, ErrInvalidCredential
 	}
-	contents := []byte(ref.AppID + "\n" + ref.SecretValue + "\n")
+	contents, err := json.Marshal(struct {
+		AppID     string `json:"app_id"`
+		AppSecret string `json:"app_secret"`
+	}{AppID: ref.AppID, AppSecret: ref.SecretValue})
+	if err != nil {
+		return provisioning.CredentialRef{}, err
+	}
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, contents, 0o600); err != nil {
 		return provisioning.CredentialRef{}, err
@@ -69,11 +75,18 @@ func (s FileStore) Get(ctx context.Context, id string) (provisioning.CredentialR
 		}
 		return provisioning.CredentialRef{}, err
 	}
-	parts := strings.SplitN(string(data), "\n", 3)
-	if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
-		return provisioning.CredentialRef{}, ErrInvalidCredential
+	var value struct {
+		AppID     string `json:"app_id"`
+		AppSecret string `json:"app_secret"`
 	}
-	return provisioning.CredentialRef{ID: id, Provider: "feishu", AppID: parts[0], SecretValue: parts[1], SecretPresent: true}, nil
+	if json.Unmarshal(data, &value) == nil && value.AppID != "" && value.AppSecret != "" {
+		return provisioning.CredentialRef{ID: id, Provider: "feishu", AppID: value.AppID, SecretValue: value.AppSecret, SecretPresent: true}, nil
+	}
+	parts := strings.SplitN(string(data), "\n", 3)
+	if len(parts) >= 2 && parts[0] != "" && parts[1] != "" {
+		return provisioning.CredentialRef{ID: id, Provider: "feishu", AppID: parts[0], SecretValue: parts[1], SecretPresent: true}, nil
+	}
+	return provisioning.CredentialRef{}, ErrInvalidCredential
 }
 
 func (s FileStore) Delete(_ context.Context, id string) error {

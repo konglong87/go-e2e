@@ -70,12 +70,20 @@ func (q knowledgeSearchQuery) likePatterns() []any {
 // likeAny renders `(column LIKE ? OR column LIKE ? ...)` for the terms, or an
 // empty string when there is nothing to fall back on.
 func (q knowledgeSearchQuery) likeAny(column string) string {
+	return q.likeAnyWithEscape(column, `\\`)
+}
+
+func (q knowledgeSearchQuery) likeAnySQLite(column string) string {
+	return q.likeAnyWithEscape(column, `\`)
+}
+
+func (q knowledgeSearchQuery) likeAnyWithEscape(column, escape string) string {
 	if len(q.Terms) == 0 {
 		return ""
 	}
 	predicates := make([]string, 0, len(q.Terms))
 	for range q.Terms {
-		predicates = append(predicates, column+` LIKE ? ESCAPE '\\'`)
+		predicates = append(predicates, column+` LIKE ? ESCAPE '`+escape+`'`)
 	}
 	return "(" + strings.Join(predicates, " OR ") + ")"
 }
