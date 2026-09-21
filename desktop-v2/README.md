@@ -142,3 +142,11 @@ npx playwright test --config playwright.desktop.config.ts
 Windows 安装/卸载验收仍待完成。首次公开还必须通过
 [开源发布检查](../docs/deployment/open_source_release_checklist.md)，
 不能以本机可运行替代发布就绪结论。
+
+## 正式发布
+
+正式桌面发布由 GitHub Actions 的 `Release` workflow 统一完成。推送
+`v*` tag 后会构建 macOS DMG、Windows 安装程序、Linux 桌面归档和 CLI
+归档，最后生成 `SHA256SUMS` 并创建 GitHub Release。macOS tag 发布前必须
+配置 Developer ID 签名和 notarization Secrets；具体名称、发布命令和验收步骤见
+[Release Pipeline](../docs/deployment/release_pipeline.md)。

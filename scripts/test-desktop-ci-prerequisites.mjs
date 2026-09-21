@@ -42,7 +42,7 @@ test("fresh source embeds only placeholders and passes desktop build, vet and un
   try {
     const files = checked("git", [
       "ls-files", "--cached", "--others", "--exclude-standard", "-z", "--",
-      "go.mod", "go.sum", "third_party", ...desktops,
+      "go.mod", "go.sum", "third_party", "internal", ...desktops,
     ]).split("\0").filter(Boolean);
     for (const file of new Set(files)) {
       const destination = path.join(fixture, file);
@@ -94,4 +94,26 @@ test("CI separates source-only checks from real native builds and follows main",
   assert.match(ci, /node --test scripts\/test-desktop-ci-prerequisites\.mjs/);
   const windows = readFileSync(path.join(root, ".github/workflows/desktop-windows.yml"), "utf8");
   assert.match(windows, /branches:\s+- main/);
+  assert.match(windows, /workflow_call:/);
+  assert.match(windows, /version:/);
+  assert.match(windows, /name: release-windows-/);
+  const release = readFileSync(path.join(root, ".github/workflows/release.yml"), "utf8");
+  assert.match(release, /push:\s+tags:\s+- "v\*"/);
+  assert.match(release, /package-desktop-v2-linux\.sh/);
+  assert.match(release, /package-desktop-v2-macos\.sh/);
+  assert.match(release, /macos-15/);
+  assert.match(release, /macos-15-intel/);
+  assert.match(release, /APPLE_CERTIFICATE_P12_BASE64/);
+  assert.match(release, /sha256sum go-e2e-\*/);
+  assert.match(release, /gh release create/);
+  assert.match(release, /gh release download/);
+  assert.match(release, /acceptance-linux:/);
+  assert.match(release, /acceptance-macos:/);
+  assert.match(release, /acceptance-windows:/);
+  assert.match(release, /spctl --assess/);
+  assert.match(release, /Start-Process \$installer/);
+  const macosPackage = readFileSync(path.join(root, "scripts/package-desktop-v2-macos.sh"), "utf8");
+  assert.match(macosPackage, /Contents\/MacOS\/go-e2e-desktop/);
+  assert.match(macosPackage, /xcrun notarytool submit/);
+  assert.match(macosPackage, /xcrun stapler staple/);
 });

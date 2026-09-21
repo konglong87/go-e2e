@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DESKTOP_DIR="${ROOT}/desktop-v2"
+VERSION="${VERSION:?VERSION is required}"
+ARCH="${ARCH:?ARCH is required}"
+DIST_DIR="${DIST_DIR:-${ROOT}/dist}"
+REQUIRE_NOTARIZATION="${REQUIRE_NOTARIZATION:-0}"
+PLATFORM="darwin/${ARCH}"
+DMG="${DIST_DIR}/go-e2e-${VERSION}-macos-${ARCH}.dmg"
+APP_PATH="${DESKTOP_DIR}/build/bin/go-e2e.app"
+
+case "${ARCH}" in
+  arm64|amd64) ;;
+  *)
+    echo "package-desktop-v2-macos.sh: unsupported architecture: ${ARCH}" >&2
+    exit 2
+    ;;
+esac
+
+mkdir -p "${DIST_DIR}"
+bash "${ROOT}/scripts/build-desktop-v2.sh" -platform "${PLATFORM}"
+
+if [[ ! -d "${APP_PATH}" ]]; then
+  echo "package-desktop-v2-macos.sh: missing app bundle: ${APP_PATH}" >&2
+  exit 1
+fi
+
+if [[ "${REQUIRE_NOTARIZATION}" == "1" ]]; then
+  : "${APPLE_SIGNING_IDENTITY:?APPLE_SIGNING_IDENTITY is required for signed releases}"
+  : "${APPLE_ID:?APPLE_ID is required for notarized releases}"
+  : "${APPLE_TEAM_ID:?APPLE_TEAM_ID is required for notarized releases}"
+  : "${APPLE_APP_SPECIFIC_PASSWORD:?APPLE_APP_SPECIFIC_PASSWORD is required for notarized releases}"
+
+  codesign --force --options runtime --timestamp --sign "${APPLE_SIGNING_IDENTITY}" \
+    "${APP_PATH}/Contents/MacOS/go-e2e-desktop"
+  codesign --force --options runtime --timestamp --sign "${APPLE_SIGNING_IDENTITY}" \
+    "${APP_PATH}/Contents/MacOS/go-e2e"
+  codesign --force --options runtime --timestamp --sign "${APPLE_SIGNING_IDENTITY}" \
+    "${APP_PATH}"
+  codesign --verify --deep --strict --verbose=2 "${APP_PATH}"
+fi
+
+staging="$(mktemp -d)"
+trap 'rm -rf "${staging}"' EXIT
+mkdir -p "${staging}/go-e2e"
+cp -R "${APP_PATH}" "${staging}/go-e2e/"
+
+rm -f "${DMG}"
+hdiutil create \
+  -volname "go-e2e ${VERSION}" \
+  -srcfolder "${staging}" \
+  -ov \
+  -format UDZO \
+  "${DMG}"
+
+if [[ "${REQUIRE_NOTARIZATION}" == "1" ]]; then
+  xcrun notarytool submit "${DMG}" \
+    --apple-id "${APPLE_ID}" \
+    --team-id "${APPLE_TEAM_ID}" \
+    --password "${APPLE_APP_SPECIFIC_PASSWORD}" \
+    --wait
+  xcrun stapler staple "${DMG}"
+  xcrun stapler validate "${DMG}"
+fi
+
+printf 'packaged %s\n' "${DMG}"
