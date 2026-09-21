@@ -20,6 +20,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       is_tag: ${{ steps.version.outputs.is_tag }}
+      signing_mode: ${{ steps.apple.outputs.signing_mode || steps.preview.outputs.signing_mode }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,6 +37,49 @@ jobs:
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "is_tag=${is_tag}" >> "$GITHUB_OUTPUT"
+      - id: apple
+        name: Resolve macOS signing mode
+        if: steps.version.outputs.is_tag == 'true'
+        env:
+          APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          configured=0
+          for value in \
+            "$APPLE_CERTIFICATE_P12_BASE64" \
+            "$APPLE_CERTIFICATE_PASSWORD" \
+            "$APPLE_SIGNING_IDENTITY" \
+            "$APPLE_ID" \
+            "$APPLE_TEAM_ID" \
+            "$APPLE_APP_SPECIFIC_PASSWORD"; do
+            [[ -n "$value" ]] && configured=$((configured + 1))
+          done
+
+          case "$configured" in
+            0)
+              signing_mode="unsigned"
+              echo "macOS release mode: unsigned/unnotarized"
+              ;;
+            6)
+              signing_mode="signed"
+              echo "macOS release mode: Developer ID signed and notarized"
+              ;;
+            *)
+              echo "::error::Configure all six Apple Secrets for signing, or remove all of them for an unsigned release." >&2
+              exit 1
+              ;;
+          esac
+          echo "signing_mode=${signing_mode}" >> "$GITHUB_OUTPUT"
+      - id: preview
+        name: Use unsigned mode for preview
+        if: steps.version.outputs.is_tag != 'true'
+        run: echo "signing_mode=unsigned" >> "$GITHUB_OUTPUT"
 
   cli:
     name: CLI archives
@@ -166,7 +210,7 @@ jobs:
         working-directory: web
       - run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.10.2
       - name: Import Developer ID certificate
-        if: needs.metadata.outputs.is_tag == 'true'
+        if: needs.metadata.outputs.signing_mode == 'signed'
         env:
           CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
           CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -191,7 +235,7 @@ jobs:
           VERSION: ${{ needs.metadata.outputs.version }}
           ARCH: ${{ matrix.arch }}
           DIST_DIR: dist
-          REQUIRE_NOTARIZATION: ${{ needs.metadata.outputs.is_tag == 'true' && '1' || '0' }}
+          REQUIRE_NOTARIZATION: ${{ needs.metadata.outputs.signing_mode == 'signed' && '1' || '0' }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -237,6 +281,7 @@ jobs:
         env:
           VERSION: ${{ needs.metadata.outputs.version }}
           TAG: ${{ github.ref_name }}
+          MACOS_RELEASE_MODE: ${{ needs.metadata.outputs.signing_mode }}
           OUTPUT: release-dist/RELEASE_NOTES.md
         run: |
           set -euo pipefail
@@ -339,6 +384,7 @@ jobs:
       - name: Mount, install, and verify the published app
         env:
           TAG: ${{ github.ref_name }}
+          MACOS_RELEASE_MODE: ${{ needs.metadata.outputs.signing_mode }}
         run: |
           set -euo pipefail
           dmg="release/go-e2e-${TAG}-macos-${{ matrix.arch }}.dmg"
@@ -350,7 +396,11 @@ jobs:
           trap 'hdiutil detach "$mountpoint" >/dev/null || true' EXIT
           ditto "$mountpoint/go-e2e/go-e2e.app" "$install_dir/go-e2e.app"
           codesign --verify --deep --strict --verbose=2 "$install_dir/go-e2e.app"
-          spctl --assess --type execute --verbose=4 "$install_dir/go-e2e.app"
+          if [[ "$MACOS_RELEASE_MODE" == "signed" ]]; then
+            spctl --assess --type execute --verbose=4 "$install_dir/go-e2e.app"
+          else
+            echo "Unsigned/unnotarized macOS release: skipping Gatekeeper assessment."
+          fi
           open "$install_dir/go-e2e.app"
           for _ in {1..12}; do
             if pgrep -f "$install_dir/go-e2e.app/Contents/MacOS/go-e2e-desktop" >/dev/null; then

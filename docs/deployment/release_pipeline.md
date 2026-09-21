@@ -1,13 +1,15 @@
 # Release Pipeline
 
-本仓库的正式发布入口是 GitHub Actions 的 `Release` workflow。它只在推送
-`v*` tag 时创建 GitHub Release；手动运行 workflow 只生成供维护者检查的
+本仓库的正式发布入口是 GitHub Actions 的 `Release` workflow。推送
+`v*` tag 时会创建 GitHub Release；手动运行 workflow 只生成供维护者检查的
 Preview artifacts，不会创建正式 Release。
 
 ## 发布前准备
 
-正式 macOS Release 需要 Apple Developer ID 证书和 notarization 凭据。将以下
-内容配置到仓库的 GitHub Actions Secrets：
+macOS 支持两种正式发布模式。若暂时没有 Apple Developer 账号或凭据，可以不
+配置任何 Apple Secret，照常公开发布未签名/未公证的 DMG；用户首次打开时按
+README 中的 Gatekeeper 提示手动允许打开。若要让用户下载后直接通过 Gatekeeper，
+则将下面六个 Secret **全部**配置到仓库的 GitHub Actions Secrets：
 
 | Secret | 内容 |
 | --- | --- |
@@ -18,10 +20,16 @@ Preview artifacts，不会创建正式 Release。
 | `APPLE_TEAM_ID` | Apple Developer Team ID |
 | `APPLE_APP_SPECIFIC_PASSWORD` | 用于 `notarytool` 的 Apple ID app-specific password |
 
-证书和密码不进入仓库、不写入 workflow 文件。tag 发布时如果这些 Secrets
-缺失，macOS job 会明确失败，整个 Release 不会被发布成“看似成功但未公证”的
-状态。手动运行 workflow 可以不配置这些 Secrets，用于验证其他平台和未签名的
-macOS Preview artifact。
+证书和密码不进入仓库、不写入 workflow 文件。tag 发布时六个 Secret 全部为空会
+进入 `unsigned` 模式；六个全部存在会进入 Developer ID 签名和 notarization
+模式。只配置其中一部分会直接失败，避免生成状态不明确的 macOS 包。手动运行
+workflow 始终生成未签名 Preview artifact。
+
+未签名 macOS 包的首次打开：
+
+1. 双击 `.dmg`，将 `go-e2e.app` 拖入“应用程序”。
+2. 首次打开被阻止时，打开“系统设置 → 隐私与安全性 → 安全性”。
+3. 点击“仍要打开”，按系统提示确认。
 
 ## 发布命令
 
@@ -63,7 +71,8 @@ CLI 和桌面 Linux 归档使用不同名称，不能合并为同一个文件。
 `publish` 成功后，workflow 会从刚创建的 GitHub Release 重新下载资产并自动执行
 三平台验收；维护者仍需查看 job 日志和 Release 页面：
 
-1. macOS DMG 挂载、安装复制、签名/notarization 校验和启动是否通过。
+1. macOS DMG 挂载、安装复制和启动是否通过；签名模式校验会在配置
+   Developer ID 时执行，未签名模式会跳过 Gatekeeper 评估。
 2. Windows 安装程序是否能安装、启动和卸载，并保留用户数据。
 3. Linux 归档是否能解包，`go-e2e-desktop` 与旁边的 `go-e2e` 是否都存在，sidecar 版本是否正确。
 4. 各平台下载的资产校验和是否通过。

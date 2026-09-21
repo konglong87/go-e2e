@@ -104,6 +104,10 @@ test("CI separates source-only checks from real native builds and follows main",
   assert.match(release, /macos-15/);
   assert.match(release, /macos-15-intel/);
   assert.match(release, /APPLE_CERTIFICATE_P12_BASE64/);
+  assert.match(release, /signing_mode/);
+  assert.match(release, /Configure all six Apple Secrets/);
+  assert.match(release, /MACOS_RELEASE_MODE/);
+  assert.match(release, /skipping Gatekeeper assessment/);
   assert.match(release, /sha256sum go-e2e-\* go-e2e_\*/);
   assert.match(release, /gh release create/);
   assert.match(release, /gh release download/);
@@ -123,4 +127,7 @@ test("CI separates source-only checks from real native builds and follows main",
   assert.match(macosPackage, /Contents\/MacOS\/go-e2e-desktop/);
   assert.match(macosPackage, /xcrun notarytool submit/);
   assert.match(macosPackage, /xcrun stapler staple/);
+  const releaseDocs = readFileSync(path.join(root, "docs/deployment/release_pipeline.md"), "utf8");
+  assert.match(releaseDocs, /未签名\/未公证/);
+  assert.match(releaseDocs, /系统设置 → 隐私与安全性 → 安全性/);
 });

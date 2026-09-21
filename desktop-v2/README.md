@@ -138,15 +138,15 @@ npx playwright test --config playwright.desktop.config.ts
 当前入口修复证据见 [首次入口验收](../docs/manual_testing/desktop_v2_entry.md)，
 已有模型回复与持久化记录见 [PromptPicker 验收](../docs/manual_testing/prompt_picker_ui.md)。
 
-当前定位是开发预览版：macOS 签名、公证、自动更新、系统凭据库、完整
-Windows 安装/卸载验收仍待完成。首次公开还必须通过
-[开源发布检查](../docs/deployment/open_source_release_checklist.md)，
-不能以本机可运行替代发布就绪结论。
+自动更新、系统凭据库仍未接入。Windows 安装/卸载和跨平台发布验收由
+GitHub Actions 的 Release workflow 执行；本机可运行不能替代发布就绪结论。
 
 ## 正式发布
 
 正式桌面发布由 GitHub Actions 的 `Release` workflow 统一完成。推送
 `v*` tag 后会构建 macOS DMG、Windows 安装程序、Linux 桌面归档和 CLI
-归档，最后生成 `SHA256SUMS` 并创建 GitHub Release。macOS tag 发布前必须
-配置 Developer ID 签名和 notarization Secrets；具体名称、发布命令和验收步骤见
-[Release Pipeline](../docs/deployment/release_pipeline.md)。
+归档，最后生成 `SHA256SUMS` 并创建 GitHub Release。macOS tag 发布时，可以
+配置 Developer ID 签名和 notarization Secrets，也可以让六个 Apple Secret
+全部为空，以未签名/未公证模式发布。未签名模式下，用户首次打开需要在
+“系统设置 → 隐私与安全性 → 安全性”点击“仍要打开”。具体 Secret 名称、
+发布命令和验收步骤见 [Release Pipeline](../docs/deployment/release_pipeline.md)。

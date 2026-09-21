@@ -96,6 +96,23 @@ go run ./cmd/go-e2e --session-id 11111111-1111-4111-8111-111111111111 -p "记住
 go run ./cmd/go-e2e --sessionId 11111111-1111-4111-8111-111111111111 -p "基于上一轮结果给出修复建议"
 ```
 
+## 下载桌面版
+
+正式桌面安装包发布在 GitHub Releases 中。macOS 提供 Apple Silicon
+(`arm64`) 和 Intel (`amd64`) 两种 DMG，Windows 提供 amd64 安装程序；
+Linux 桌面包和 CLI 归档也会随版本一同发布。下载后可先按 Release 页面中的
+`SHA256SUMS` 校验文件完整性。
+
+macOS 首次打开如果提示无法验证开发者，表示当前版本未使用 Apple Developer
+ID 签名和 notarization。请先将 `go-e2e.app` 拖入“应用程序”，然后打开：
+
+```text
+系统设置 → 隐私与安全性 → 安全性 → 仍要打开
+```
+
+确认后重新打开应用即可。配置了 Apple Developer Secrets 的版本会自动签名并
+完成 notarization，通常不需要这一步。
+
 ## 运行入口
 
 | 场景 | 命令 |
