@@ -10,10 +10,12 @@ FAKE_SCREEN_STATE="${TEST_ROOT}/screen"
 WORKER_NAME="persist-test-$$"
 LEGACY_WORKER_NAME="legacy-test-$$"
 STALE_LOCK_WORKER_NAME="stale-lock-test-$$"
+LEGACY_PREFIX_WORKER_NAME="legacy-prefix-test-$$"
 PERSISTENT_STATE_DIR="${TEST_HOME}/.golang-cc/channel-workers"
 WORKER_BINARY="${PERSISTENT_STATE_DIR}/golang-cc-channel-worker-${WORKER_NAME}"
 LEGACY_WORKER_BINARY="${PERSISTENT_STATE_DIR}/golang-cc-channel-worker-${LEGACY_WORKER_NAME}"
 STALE_LOCK_WORKER_BINARY="${PERSISTENT_STATE_DIR}/golang-cc-channel-worker-${STALE_LOCK_WORKER_NAME}"
+LEGACY_PREFIX_WORKER_BINARY="${PERSISTENT_STATE_DIR}/golang-cc-channel-worker-${LEGACY_PREFIX_WORKER_NAME}"
 LEGACY_STATE_DIR="/tmp/golang-cc-channel-workers"
 
 cleanup() {
@@ -30,6 +32,12 @@ cleanup() {
   rmdir "${LEGACY_STATE_DIR}/accounts/91-92" 2>/dev/null || true
   rm -f "${LEGACY_STATE_DIR}/accounts/94-95/owner"
   rmdir "${LEGACY_STATE_DIR}/accounts/94-95" 2>/dev/null || true
+  rm -f "${PERSISTENT_STATE_DIR}/${LEGACY_PREFIX_WORKER_NAME}.env"
+  rm -f "${PERSISTENT_STATE_DIR}/${LEGACY_PREFIX_WORKER_NAME}.run.sh"
+  rm -f "${PERSISTENT_STATE_DIR}/${LEGACY_PREFIX_WORKER_NAME}.log"
+  rm -f "${PERSISTENT_STATE_DIR}/golang-cc-channel-worker-${LEGACY_PREFIX_WORKER_NAME}"
+  rm -f "${PERSISTENT_STATE_DIR}/accounts/101-102/owner"
+  rmdir "${PERSISTENT_STATE_DIR}/accounts/101-102" 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -116,6 +124,30 @@ env -i "${common_env[@]}" /bin/bash "${SCRIPT}" stop >/dev/null
 env -i "${common_env[@]}" /bin/bash "${SCRIPT}" start >/dev/null
 env -i "${common_env[@]}" /bin/bash "${SCRIPT}" status >/dev/null
 env -i "${common_env[@]}" /bin/bash "${SCRIPT}" stop >/dev/null
+
+legacy_prefix_env=(
+  "PATH=${FAKE_BIN}:/usr/bin:/bin"
+  "HOME=${TEST_HOME}"
+  "FAKE_SCREEN_STATE=${FAKE_SCREEN_STATE}"
+  "FAKE_WORKER_BINARY=${LEGACY_PREFIX_WORKER_BINARY}"
+  "GOLANG_CC_CHANNEL_WORKER_NAME=${LEGACY_PREFIX_WORKER_NAME}"
+)
+env -i "${legacy_prefix_env[@]}" \
+  GO_E2E_SQLITE_PATH='legacy-desktop.sqlite' \
+  GOLANG_CC_FEISHU_CREDENTIAL_FILE='legacy-credentials.json' \
+  GOLANG_CC_CHANNEL_TENANT_ID=101 \
+  GOLANG_CC_CHANNEL_ACCOUNT_ID=102 \
+  GOLANG_CC_CHANNEL_ACCOUNT_KEY='legacy-prefix-worker' \
+  GOLANG_CC_CHANNEL_USER_ID=103 \
+  GOLANG_CC_CHANNEL_PAYLOAD_KEY='legacy-payload-key' \
+  /bin/bash "${SCRIPT}" start >/dev/null
+LEGACY_PREFIX_CONFIG="${PERSISTENT_STATE_DIR}/${LEGACY_PREFIX_WORKER_NAME}.env"
+grep -q '^GO_E2E_SQLITE_PATH=legacy-desktop.sqlite$' "${LEGACY_PREFIX_CONFIG}"
+grep -q '^GO_E2E_FEISHU_CREDENTIAL_FILE=legacy-credentials.json$' "${LEGACY_PREFIX_CONFIG}"
+grep -q '^GO_E2E_CHANNEL_TENANT_ID=101$' "${LEGACY_PREFIX_CONFIG}"
+grep -q '^GO_E2E_CHANNEL_ACCOUNT_ID=102$' "${LEGACY_PREFIX_CONFIG}"
+grep -q '^GO_E2E_CHANNEL_USER_ID=103$' "${LEGACY_PREFIX_CONFIG}"
+env -i "${legacy_prefix_env[@]}" /bin/bash "${SCRIPT}" stop >/dev/null
 
 env -i "${common_env[@]}" \
   GO_E2E_CHANNEL_MODEL_PROVIDER='updated-provider' \

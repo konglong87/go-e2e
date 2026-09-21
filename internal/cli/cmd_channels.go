@@ -133,25 +133,25 @@ func onboardFeishu(ctx context.Context, args []string, stdout io.Writer) error {
 
 func runChannelsWorker(ctx context.Context, opts options, stdout io.Writer) error {
 	sqlitePath := strings.TrimSpace(firstEnv("GO_E2E_SQLITE_PATH"))
-	dsn := firstEnv("GOLANG_CC_MYSQL_DSN", "MYSQL_DSN")
+	dsn := firstEnv("GO_E2E_MYSQL_DSN", "GOLANG_CC_MYSQL_DSN", "MYSQL_DSN")
 	if sqlitePath == "" && dsn == "" {
-		return errors.New("channels run requires GO_E2E_SQLITE_PATH or GOLANG_CC_MYSQL_DSN")
+		return errors.New("channels run requires GO_E2E_SQLITE_PATH or GO_E2E_MYSQL_DSN")
 	}
-	tenantID, err := requiredUintEnv("GOLANG_CC_CHANNEL_TENANT_ID")
+	tenantID, err := requiredUintEnv("GO_E2E_CHANNEL_TENANT_ID", "GOLANG_CC_CHANNEL_TENANT_ID")
 	if err != nil {
 		return err
 	}
-	accountID, err := requiredUintEnv("GOLANG_CC_CHANNEL_ACCOUNT_ID")
+	accountID, err := requiredUintEnv("GO_E2E_CHANNEL_ACCOUNT_ID", "GOLANG_CC_CHANNEL_ACCOUNT_ID")
 	if err != nil {
 		return err
 	}
-	userID, err := requiredUintEnv("GOLANG_CC_CHANNEL_USER_ID")
+	userID, err := requiredUintEnv("GO_E2E_CHANNEL_USER_ID", "GOLANG_CC_CHANNEL_USER_ID")
 	if err != nil {
 		return err
 	}
-	accountKey := firstEnv("GOLANG_CC_CHANNEL_ACCOUNT_KEY", "FEISHU_ACCOUNT_KEY")
+	accountKey := firstEnv("GO_E2E_CHANNEL_ACCOUNT_KEY", "GOLANG_CC_CHANNEL_ACCOUNT_KEY", "FEISHU_ACCOUNT_KEY")
 	if accountKey == "" {
-		return errors.New("channels run requires GOLANG_CC_CHANNEL_ACCOUNT_KEY")
+		return errors.New("channels run requires GO_E2E_CHANNEL_ACCOUNT_KEY")
 	}
 	creds, err := (onboarding.FileCredentialsStore{Path: channelCredentialPath()}).LoadFeishuCredentials()
 	if err != nil {
@@ -190,10 +190,10 @@ func runChannelsWorker(ctx context.Context, opts options, stdout io.Writer) erro
 		return err
 	}
 	baseOpts := opts
-	if provider := firstEnv("GOLANG_CC_CHANNEL_MODEL_PROVIDER", "GOLANG_CC_PROVIDER"); provider != "" {
+	if provider := firstEnv("GO_E2E_CHANNEL_MODEL_PROVIDER", "GOLANG_CC_CHANNEL_MODEL_PROVIDER", "GO_E2E_PROVIDER", "GOLANG_CC_PROVIDER"); provider != "" {
 		baseOpts.providerName = provider
 	}
-	if model := firstEnv("GOLANG_CC_CHANNEL_MODEL", "CLAUDE_CODE_MODEL"); model != "" {
+	if model := firstEnv("GO_E2E_CHANNEL_MODEL", "GOLANG_CC_CHANNEL_MODEL", "CLAUDE_CODE_MODEL"); model != "" {
 		baseOpts.model = model
 	}
 	imageRuntime, imageErr := configureChannelImageGeneration(baseOpts.cwd, repo, accountKey)
@@ -227,7 +227,7 @@ func runChannelsWorker(ctx context.Context, opts options, stdout io.Writer) erro
 	if _, err := fmt.Fprintf(stdout, "provider preflight: provider=%s model=%s settings=%s\n", effectiveProvider, effectiveModel, strings.Join(runtimeConfig.Sources, ",")); err != nil {
 		return err
 	}
-	adminOpenIDs := splitChannelList(firstEnv("GOLANG_CC_CHANNEL_ADMIN_OPEN_IDS", "CHANNEL_ADMIN_OPEN_IDS"))
+	adminOpenIDs := splitChannelList(firstEnv("GO_E2E_CHANNEL_ADMIN_OPEN_IDS", "GOLANG_CC_CHANNEL_ADMIN_OPEN_IDS", "CHANNEL_ADMIN_OPEN_IDS"))
 	permissionBroker := channelruntime.NewPermissionBroker(channelruntime.PermissionBrokerConfig{TenantID: tenantID, AccountID: accountID, RuntimeFingerprint: channelruntime.DefaultFingerprint, RuntimeFingerprintVersion: channelruntime.DefaultRuntimeVersion, Repo: repo, Sender: adapter, AdminOpenIDs: adminOpenIDs})
 	questionBroker := channelruntime.NewQuestionBroker(channelruntime.QuestionBrokerConfig{TenantID: tenantID, AccountID: accountID, RuntimeFingerprint: channelruntime.DefaultFingerprint, RuntimeFingerprintVersion: channelruntime.DefaultRuntimeVersion, Repo: repo, PayloadCodec: codec})
 	questionsEnabled, err := channelQuestionsEnabled()
@@ -252,7 +252,7 @@ func runChannelsWorker(ctx context.Context, opts options, stdout io.Writer) erro
 		return err
 	}
 	decision := channelcontract.EvaluateStreamingCard(global, accountMode, adapter.Capabilities().SupportsStreamingCard())
-	workspaceRoots := splitChannelList(firstEnv("GOLANG_CC_CHANNEL_WORKSPACE_ROOTS", "CHANNEL_WORKSPACE_ROOTS"))
+	workspaceRoots := splitChannelList(firstEnv("GO_E2E_CHANNEL_WORKSPACE_ROOTS", "GOLANG_CC_CHANNEL_WORKSPACE_ROOTS", "CHANNEL_WORKSPACE_ROOTS"))
 	if len(workspaceRoots) == 0 && strings.TrimSpace(baseOpts.cwd) != "" {
 		workspaceRoots = []string{baseOpts.cwd}
 	}
@@ -263,7 +263,7 @@ func runChannelsWorker(ctx context.Context, opts options, stdout io.Writer) erro
 	baseOpts.cwd = resolvedWorkspace
 	baseOpts.imageGenerator = imageGenerator
 	workspaceRoots = normalizeChannelWorkspaceRoots(workspaceRoots)
-	permissionMode := firstEnv("GOLANG_CC_CHANNEL_PERMISSION_MODE", "CHANNEL_PERMISSION_MODE")
+	permissionMode := firstEnv("GO_E2E_CHANNEL_PERMISSION_MODE", "GOLANG_CC_CHANNEL_PERMISSION_MODE", "CHANNEL_PERMISSION_MODE")
 	if permissionMode == "" {
 		permissionMode = channelruntime.PermissionModeAsk
 	}
@@ -272,7 +272,7 @@ func runChannelsWorker(ctx context.Context, opts options, stdout io.Writer) erro
 	}
 	commandRouter := channelcontract.NewChannelCommandRouter(adminOpenIDs)
 	var reactions *channelruntime.ReactionReconciler
-	if channelEnvEnabled(firstEnv("GOLANG_CC_CHANNEL_REACTIONS", "CHANNEL_REACTIONS")) && adapter.Capabilities().Reactions {
+	if channelEnvEnabled(firstEnv("GO_E2E_CHANNEL_REACTIONS", "GOLANG_CC_CHANNEL_REACTIONS", "CHANNEL_REACTIONS")) && adapter.Capabilities().Reactions {
 		reactions = channelruntime.NewReactionReconciler(channelruntime.ReactionConfig{TenantID: tenantID, AccountID: accountID, WorkerID: channelruntime.DefaultWorkerID, Repo: repo, Adapter: adapter})
 	}
 	teamRuntime, teamRouter, err := newChannelTeamRuntime(ctx, repo, teamService, adapter, baseOpts, tenantID, accountID, userID, tenantRecord.TenantKey, userRecord.UserKey, accountKey, baseOpts.cwd, permissionMode, baseOpts.model)
@@ -296,8 +296,8 @@ func runChannelsWorker(ctx context.Context, opts options, stdout io.Writer) erro
 		return feishu.RenderStreamingCard(state, feishu.CardOptions{ToolDetailsMode: toolDetailsMode})
 	}, RenderTimelineCards: channelTimelineCardRenderer(toolDetailsMode)})
 	workerCfg := channelruntime.WorkerConfig{Service: svc}
-	if redisAddr := firstEnv("GOLANG_CC_CHANNEL_REDIS_ADDR", "CHANNEL_REDIS_ADDR"); redisAddr != "" {
-		workerCfg.Lease = channelruntime.NewRedisLeaseFromAddr(redisAddr, firstEnv("GOLANG_CC_CHANNEL_REDIS_PASSWORD", "CHANNEL_REDIS_PASSWORD"), 0, firstEnv("GOLANG_CC_CHANNEL_REDIS_PREFIX", "CHANNEL_REDIS_PREFIX"))
+	if redisAddr := firstEnv("GO_E2E_CHANNEL_REDIS_ADDR", "GOLANG_CC_CHANNEL_REDIS_ADDR", "CHANNEL_REDIS_ADDR"); redisAddr != "" {
+		workerCfg.Lease = channelruntime.NewRedisLeaseFromAddr(redisAddr, firstEnv("GO_E2E_CHANNEL_REDIS_PASSWORD", "GOLANG_CC_CHANNEL_REDIS_PASSWORD", "CHANNEL_REDIS_PASSWORD"), 0, firstEnv("GO_E2E_CHANNEL_REDIS_PREFIX", "GOLANG_CC_CHANNEL_REDIS_PREFIX", "CHANNEL_REDIS_PREFIX"))
 	} else {
 		_, _ = fmt.Fprintln(stdout, "warning: channel Redis lease is not configured; using single-instance local lease")
 	}
@@ -309,15 +309,15 @@ func runChannelsWorker(ctx context.Context, opts options, stdout io.Writer) erro
 }
 
 func channelStreamingGlobalSetting() string {
-	return firstEnv("GOLANG_CC_CHANNEL_STREAMING_CARD_MODE", "GOLANG_CC_CHANNEL_STREAMING", "CHANNEL_STREAMING_CARD_MODE", "CHANNEL_STREAMING")
+	return firstEnv("GO_E2E_CHANNEL_STREAMING_CARD_MODE", "GO_E2E_CHANNEL_STREAMING", "GOLANG_CC_CHANNEL_STREAMING_CARD_MODE", "GOLANG_CC_CHANNEL_STREAMING", "CHANNEL_STREAMING_CARD_MODE", "CHANNEL_STREAMING")
 }
 
 func channelStreamingAccountSetting() string {
-	return firstEnv("GOLANG_CC_CHANNEL_STREAMING_ACCOUNT_MODE", "GOLANG_CC_CHANNEL_STREAMING_ACCOUNT", "CHANNEL_STREAMING_ACCOUNT_MODE", "CHANNEL_STREAMING_ACCOUNT")
+	return firstEnv("GO_E2E_CHANNEL_STREAMING_ACCOUNT_MODE", "GO_E2E_CHANNEL_STREAMING_ACCOUNT", "GOLANG_CC_CHANNEL_STREAMING_ACCOUNT_MODE", "GOLANG_CC_CHANNEL_STREAMING_ACCOUNT", "CHANNEL_STREAMING_ACCOUNT_MODE", "CHANNEL_STREAMING_ACCOUNT")
 }
 
 func channelToolDetailsSetting() string {
-	return firstEnv("GOLANG_CC_CHANNEL_TOOL_DETAILS", "CHANNEL_TOOL_DETAILS")
+	return firstEnv("GO_E2E_CHANNEL_TOOL_DETAILS", "GOLANG_CC_CHANNEL_TOOL_DETAILS", "CHANNEL_TOOL_DETAILS")
 }
 
 func channelTimelineCardRenderer(mode channelcontract.ToolDetailsMode) func(channelcontract.CardState) ([]channelcontract.RenderedCardPage, error) {
@@ -327,7 +327,7 @@ func channelTimelineCardRenderer(mode channelcontract.ToolDetailsMode) func(chan
 }
 
 func channelQuestionsEnabled() (bool, error) {
-	value := strings.TrimSpace(firstEnv("GOLANG_CC_CHANNEL_QUESTIONS", "CHANNEL_QUESTIONS"))
+	value := strings.TrimSpace(firstEnv("GO_E2E_CHANNEL_QUESTIONS", "GOLANG_CC_CHANNEL_QUESTIONS", "CHANNEL_QUESTIONS"))
 	if value == "" {
 		return true, nil
 	}
@@ -853,14 +853,18 @@ func (w *streamDeltaWriter) Write(data []byte) (int, error) {
 }
 
 func channelCredentialPath() string {
-	if value := firstEnv("GOLANG_CC_FEISHU_CREDENTIAL_FILE", "FEISHU_CREDENTIAL_FILE"); value != "" {
+	if value := firstEnv("GO_E2E_FEISHU_CREDENTIAL_FILE", "GOLANG_CC_FEISHU_CREDENTIAL_FILE", "FEISHU_CREDENTIAL_FILE"); value != "" {
 		return value
 	}
 	dir, _ := os.UserConfigDir()
 	return filepath.Join(dir, "golang-cc", "feishu-credentials.json")
 }
-func requiredUintEnv(key string) (uint64, error) {
-	value := firstEnv(key)
+func requiredUintEnv(keys ...string) (uint64, error) {
+	if len(keys) == 0 {
+		return 0, errors.New("channels run requires an environment variable")
+	}
+	key := keys[0]
+	value := firstEnv(keys...)
 	if value == "" {
 		return 0, fmt.Errorf("channels run requires %s", key)
 	}
@@ -871,13 +875,13 @@ func requiredUintEnv(key string) (uint64, error) {
 	return parsed, nil
 }
 func channelPayloadCodec() (channelruntime.PayloadCodec, error) {
-	raw := firstEnv("GOLANG_CC_CHANNEL_PAYLOAD_KEY", "CHANNEL_PAYLOAD_KEY")
+	raw := firstEnv("GO_E2E_CHANNEL_PAYLOAD_KEY", "GOLANG_CC_CHANNEL_PAYLOAD_KEY", "CHANNEL_PAYLOAD_KEY")
 	if raw == "" {
 		sqlitePath := strings.TrimSpace(firstEnv("GO_E2E_SQLITE_PATH"))
-		tenantID := firstEnv("GOLANG_CC_CHANNEL_TENANT_ID")
-		accountID := firstEnv("GOLANG_CC_CHANNEL_ACCOUNT_ID")
+		tenantID := firstEnv("GO_E2E_CHANNEL_TENANT_ID", "GOLANG_CC_CHANNEL_TENANT_ID")
+		accountID := firstEnv("GO_E2E_CHANNEL_ACCOUNT_ID", "GOLANG_CC_CHANNEL_ACCOUNT_ID")
 		if sqlitePath == "" || tenantID == "" || accountID == "" {
-			return nil, errors.New("channels run requires GOLANG_CC_CHANNEL_PAYLOAD_KEY (32-byte hex key)")
+			return nil, errors.New("channels run requires GO_E2E_CHANNEL_PAYLOAD_KEY (32-byte hex key)")
 		}
 		sum := sha256.Sum256([]byte(sqlitePath + "\x00" + tenantID + "\x00" + accountID))
 		raw = hex.EncodeToString(sum[:])
@@ -886,7 +890,7 @@ func channelPayloadCodec() (channelruntime.PayloadCodec, error) {
 	if err != nil {
 		return nil, fmt.Errorf("channel payload key must be hex: %w", err)
 	}
-	codec, err := channelruntime.NewAESGCMCodec(key, firstEnv("GOLANG_CC_CHANNEL_PAYLOAD_KEY_VERSION", "CHANNEL_PAYLOAD_KEY_VERSION"))
+	codec, err := channelruntime.NewAESGCMCodec(key, firstEnv("GO_E2E_CHANNEL_PAYLOAD_KEY_VERSION", "GOLANG_CC_CHANNEL_PAYLOAD_KEY_VERSION", "CHANNEL_PAYLOAD_KEY_VERSION"))
 	if err != nil {
 		return nil, err
 	}

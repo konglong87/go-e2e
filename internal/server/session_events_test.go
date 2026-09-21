@@ -12,6 +12,28 @@ import (
 	mysqlstore "github.com/konglong87/go-e2e/internal/storage/mysql"
 )
 
+type fallbackSessionEventReader struct {
+	calls int
+}
+
+func (r *fallbackSessionEventReader) ListSessionConversationEvents(_ context.Context, sessionID, afterID uint64, _ int) ([]mysqlstore.AgentTaskEvent, error) {
+	r.calls++
+	return []mysqlstore.AgentTaskEvent{{ID: afterID + 1, TaskID: sessionID, EventType: agenttasks.EventMessage, PayloadJSON: `{"content":"from sqlite"}`}}, nil
+}
+
+func TestJSONLSessionEventStoreFallsBackWhenTranscriptIsMissing(t *testing.T) {
+	fallback := &fallbackSessionEventReader{}
+	events := NewJSONLSessionEventStoreWithFallback(session.Store{TranscriptProjectsRoot: t.TempDir()}, fallback)
+
+	got, err := events.ListSessionEvents(context.Background(), 7, 11, 99, "", 4, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fallback.calls != 1 || len(got) != 1 || got[0].ID != 5 || got[0].PayloadJSON != `{"content":"from sqlite"}` {
+		t.Fatalf("fallback calls=%d events=%+v", fallback.calls, got)
+	}
+}
+
 func TestJSONLSessionEventStoreAppendsAndReadsScopedEvents(t *testing.T) {
 	store := session.Store{TranscriptProjectsRoot: t.TempDir()}
 	events := NewJSONLSessionEventStore(store)

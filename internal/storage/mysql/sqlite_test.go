@@ -65,6 +65,13 @@ func TestSQLiteDesktopRepositorySupportsSessionControlPersistence(t *testing.T) 
 	}); err != nil {
 		t.Fatal(err)
 	}
+	channelEvents, err := repo.ListSessionConversationEvents(ctx, tenantID, userID, sessionID, 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(channelEvents) != 2 || channelEvents[0].EventType != agenttasks.EventMessage || channelEvents[1].EventType != agenttasks.EventCompleted {
+		t.Fatalf("projected channel events = %+v", channelEvents)
+	}
 	taskID, err := repo.CreateAgentTask(ctx, agenttasks.TaskInput{
 		TenantID: tenantID, UserID: userID, ParentSessionID: sessionID,
 		AgentName: agenttasks.AgentNameWeb, Status: agenttasks.StatusReady,

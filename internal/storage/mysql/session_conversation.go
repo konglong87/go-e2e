@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"context"
+	"encoding/json"
 	"strconv"
 
 	"github.com/konglong87/go-e2e/internal/agenttasks"
@@ -64,5 +65,65 @@ func (r *GormRepository) ListSessionConversationEvents(ctx context.Context, tena
 		return nil, err
 	}
 	defer rows.Close()
-	return scanAgentTaskEvents(rows)
+	events, err := scanAgentTaskEvents(rows)
+	if err != nil {
+		return nil, err
+	}
+	if len(events) > 0 || !isSQLite(r.db) {
+		return events, nil
+	}
+
+	// Channel workers persist the durable user/assistant projection in
+	// tenant_session_messages, while they do not create Web Agent task events.
+	// Project those messages only when the task event stream is empty so the
+	// existing WebUI event contract can render Feishu conversations too.
+	messageLimit := (normalizeLimit(limit) + 1) / 2
+	messageRows, err := r.with(ctx).Table("tenant_session_messages").
+		Select(messageSelectColumns).
+		Where("tenant_id = ? AND user_id = ? AND session_id = ? AND (id * 2) > ?", tenantID, userID, sessionID, afterID).
+		Order("turn_index ASC, id ASC").
+		Limit(messageLimit).
+		Rows()
+	if err != nil {
+		return nil, err
+	}
+	defer messageRows.Close()
+	messages, err := scanMessages(messageRows)
+	if err != nil {
+		return nil, err
+	}
+	return projectSessionMessages(messages), nil
+}
+
+func projectSessionMessages(messages []Message) []AgentTaskEvent {
+	events := make([]AgentTaskEvent, 0, len(messages)*2)
+	for _, message := range messages {
+		if message.ID == 0 {
+			continue
+		}
+		payload, err := json.Marshal(map[string]any{"content": message.Content})
+		if err != nil {
+			continue
+		}
+		taskID := message.ID
+		firstID := message.ID*2 - 1
+		events = append(events, AgentTaskEvent{
+			ID: firstID, TaskID: taskID, EventType: agenttasks.EventMessage,
+			PayloadJSON: string(payload), TraceID: message.TraceID, CreatedAt: message.CreatedAt,
+		})
+		if message.Role == "assistant" {
+			events[len(events)-1].EventType = agenttasks.EventTextDelta
+		}
+		terminalType := agenttasks.EventCompleted
+		terminalPayload := `{"response":""}`
+		if message.IsError {
+			terminalType = agenttasks.EventFailed
+			terminalPayload = `{"error":"channel message failed"}`
+		}
+		events = append(events, AgentTaskEvent{
+			ID: firstID + 1, TaskID: taskID, EventType: terminalType,
+			PayloadJSON: terminalPayload, TraceID: message.TraceID, CreatedAt: message.CreatedAt,
+		})
+	}
+	return events
 }

@@ -244,7 +244,11 @@ func serverCommand(ctx context.Context, args []string, opts options, stdout io.W
 		tenantStorageMode = "memory"
 	}
 	if serverOpts.SessionBackend == sessioncontrol.SessionBackendJSONL && serverOpts.TenantService != nil {
-		serverOpts.SessionEvents = server.NewJSONLSessionEventStore(session.DefaultStore())
+		var fallback server.SessionConversationEventReader
+		if reader, ok := serverOpts.TenantService.(server.SessionConversationEventReader); ok {
+			fallback = reader
+		}
+		serverOpts.SessionEvents = server.NewJSONLSessionEventStoreWithFallback(session.DefaultStore(), fallback)
 		serverOpts.SessionControlEvents = server.NewSessionControlEventReader(serverOpts)
 	}
 	serverOpts.AgentTaskController = agenttasks.NewController()

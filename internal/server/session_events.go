@@ -24,16 +24,25 @@ type SessionEventStore interface {
 	ListSessionEvents(context.Context, uint64, uint64, uint64, string, uint64, int) ([]mysqlstore.AgentTaskEvent, error)
 }
 
+type SessionConversationEventReader interface {
+	ListSessionConversationEvents(context.Context, uint64, uint64, int) ([]mysqlstore.AgentTaskEvent, error)
+}
+
 // JSONLSessionEventStore maps a database control-plane session to a stable
 // transcript UUID. The mapping is deterministic so a restart never creates a
 // second transcript for the same tenant/user/session tuple.
 type JSONLSessionEventStore struct {
-	store session.Store
+	store    session.Store
+	fallback SessionConversationEventReader
 }
 
 func NewJSONLSessionEventStore(store session.Store) *JSONLSessionEventStore {
+	return NewJSONLSessionEventStoreWithFallback(store, nil)
+}
+
+func NewJSONLSessionEventStoreWithFallback(store session.Store, fallback SessionConversationEventReader) *JSONLSessionEventStore {
 	store.SchemaV2 = true
-	return &JSONLSessionEventStore{store: store}
+	return &JSONLSessionEventStore{store: store, fallback: fallback}
 }
 
 func (s *JSONLSessionEventStore) AppendTaskEvent(_ context.Context, task mysqlstore.AgentTask, input agenttasks.EventInput) (uint64, error) {
@@ -76,20 +85,33 @@ func (s *JSONLSessionEventStore) ListTaskEvents(_ context.Context, task mysqlsto
 	return projectTranscriptEvents(events), nil
 }
 
-func (s *JSONLSessionEventStore) ListSessionEvents(_ context.Context, tenantID, userID, sessionID uint64, cwd string, after uint64, limit int) ([]mysqlstore.AgentTaskEvent, error) {
+func (s *JSONLSessionEventStore) ListSessionEvents(ctx context.Context, tenantID, userID, sessionID uint64, _ string, after uint64, limit int) ([]mysqlstore.AgentTaskEvent, error) {
 	if s == nil {
 		return nil, fmt.Errorf("JSONL session event store is nil")
 	}
 	transcriptID := transcriptIDForSession(tenantID, userID, sessionID)
 	summary, ok, err := s.store.Find(transcriptID)
-	if err != nil || !ok {
+	if err != nil {
 		return nil, err
+	}
+	if !ok {
+		return s.readFallback(ctx, sessionID, after, limit)
 	}
 	events, err := session.LoadEvents(summary.Path, after, limit)
 	if err != nil {
 		return nil, err
 	}
+	if len(events) == 0 {
+		return s.readFallback(ctx, sessionID, after, limit)
+	}
 	return projectTranscriptEvents(events), nil
+}
+
+func (s *JSONLSessionEventStore) readFallback(ctx context.Context, sessionID, after uint64, limit int) ([]mysqlstore.AgentTaskEvent, error) {
+	if s.fallback == nil {
+		return nil, nil
+	}
+	return s.fallback.ListSessionConversationEvents(ctx, sessionID, after, limit)
 }
 
 func (s *JSONLSessionEventStore) openRecorder(task mysqlstore.AgentTask) (*session.Recorder, error) {

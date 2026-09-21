@@ -422,6 +422,20 @@ func channelNow(db *gorm.DB) clause.Expr {
 	return gorm.Expr("CURRENT_TIMESTAMP(6)")
 }
 
+func channelForUpdate(db *gorm.DB) *gorm.DB {
+	if isSQLite(db) {
+		return db
+	}
+	return db.Clauses(clause.Locking{Strength: "UPDATE"})
+}
+
+func channelForUpdateSkipLocked(db *gorm.DB) *gorm.DB {
+	if isSQLite(db) {
+		return db
+	}
+	return db.Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"})
+}
+
 func (r *GormRepository) CreateChannelAccount(ctx context.Context, input ChannelAccountInput) (ChannelAccount, error) {
 	if input.TenantID == 0 || input.Provider == "" || input.AccountKey == "" {
 		return ChannelAccount{}, ErrInvalidInput
@@ -572,9 +586,9 @@ func (r *GormRepository) ClaimDueInbox(ctx context.Context, tenantID, accountID 
 	}
 	var rows []gormChannelInboxEvent
 	now := time.Now().UTC()
-	q := tx.Table("channel_inbox_events").Select(channelInboxSelect).
+	q := channelForUpdate(tx.Table("channel_inbox_events").Select(channelInboxSelect).
 		Where("tenant_id = ? AND account_id = ? AND status IN (?, ?, ?) AND available_at <= ? AND (lease_until IS NULL OR lease_until < ?)", tenantID, accountID, ChannelInboxStatusQueued, ChannelInboxStatusRetry, ChannelInboxStatusProcessing, now, now).
-		Order("available_at ASC, id ASC").Limit(limit).Clauses(clause.Locking{Strength: "UPDATE"}).Find(&rows)
+		Order("available_at ASC, id ASC").Limit(limit)).Find(&rows)
 	if q.Error != nil {
 		_ = tx.Rollback()
 		return nil, q.Error
@@ -730,9 +744,11 @@ func (r *GormRepository) RotateChannelConversationSession(ctx context.Context, i
 		return 0, err
 	}
 	var conversation gormChannelConversation
-	err := tx.Table("channel_conversations").Select(channelConversationSelect).
-		Where("tenant_id = ? AND account_id = ? AND id = ? AND archived_at IS NULL", input.TenantID, input.AccountID, input.ConversationID).
-		Clauses(clause.Locking{Strength: "UPDATE"}).Limit(1).Take(&conversation).Error
+	err := channelForUpdate(
+		tx.Table("channel_conversations").Select(channelConversationSelect).
+			Where("tenant_id = ? AND account_id = ? AND id = ? AND archived_at IS NULL", input.TenantID, input.AccountID, input.ConversationID),
+	).
+		Limit(1).Take(&conversation).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return rollback(ErrNotFound)
 	}
@@ -971,7 +987,11 @@ func (r *GormRepository) ClaimConversationRun(ctx context.Context, tenantID, acc
 		}
 	}()
 	var existing gormChannelRun
-	err := tx.Table("channel_runs").Select(channelRunSelect).Where("tenant_id = ? AND account_id = ? AND conversation_id = ? AND status IN (?, ?, ?)", tenantID, accountID, conversationID, ChannelRunStatusRunning, ChannelRunStatusCancelRequested, ChannelRunStatusWaitingInput).Clauses(clause.Locking{Strength: "UPDATE"}).Limit(1).Take(&existing).Error
+	err := channelForUpdate(
+		tx.Table("channel_runs").Select(channelRunSelect).
+			Where("tenant_id = ? AND account_id = ? AND conversation_id = ? AND status IN (?, ?, ?)", tenantID, accountID, conversationID, ChannelRunStatusRunning, ChannelRunStatusCancelRequested, ChannelRunStatusWaitingInput),
+	).
+		Limit(1).Take(&existing).Error
 	if err == nil {
 		tx.Rollback()
 		return ChannelRun{}, ErrChannelRunBusy
@@ -981,7 +1001,11 @@ func (r *GormRepository) ClaimConversationRun(ctx context.Context, tenantID, acc
 		return ChannelRun{}, err
 	}
 	var row gormChannelRun
-	err = tx.Table("channel_runs").Select(channelRunSelect).Where("tenant_id = ? AND account_id = ? AND conversation_id = ? AND status = ?", tenantID, accountID, conversationID, ChannelRunStatusQueued).Clauses(clause.Locking{Strength: "UPDATE"}).Limit(1).Take(&row).Error
+	err = channelForUpdate(
+		tx.Table("channel_runs").Select(channelRunSelect).
+			Where("tenant_id = ? AND account_id = ? AND conversation_id = ? AND status = ?", tenantID, accountID, conversationID, ChannelRunStatusQueued),
+	).
+		Limit(1).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		tx.Rollback()
 		return ChannelRun{}, ErrNotFound
@@ -1137,9 +1161,10 @@ func (r *GormRepository) ClaimDueChannelReactions(ctx context.Context, tenantID,
 	}
 	var rows []gormChannelReaction
 	now := time.Now().UTC()
-	err := tx.Table("channel_reactions").Select(channelReactionSelect).
+	query := channelForUpdateSkipLocked(tx.Table("channel_reactions").Select(channelReactionSelect).
 		Where("tenant_id = ? AND account_id = ? AND ((status IN (?, ?) AND next_attempt_at <= ? AND (lease_until IS NULL OR lease_until < ?)) OR (status = ? AND lease_until < ?))", tenantID, accountID, ChannelReactionStatusPending, ChannelReactionStatusRetry, now, now, ChannelReactionStatusReconciling, now).
-		Order("next_attempt_at ASC, id ASC").Limit(normalizeLimit(limit)).Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).Find(&rows).Error
+		Order("next_attempt_at ASC, id ASC").Limit(normalizeLimit(limit)))
+	err := query.Find(&rows).Error
 	if err != nil {
 		_ = tx.Rollback().Error
 		return nil, err
@@ -1183,7 +1208,7 @@ func (r *GormRepository) MarkChannelReactionApplied(ctx context.Context, tenantI
 }
 
 func (r *GormRepository) MarkChannelReactionDeleted(ctx context.Context, tenantID, accountID, reactionRowID uint64, workerID string) error {
-	return r.updateClaimedChannelReaction(ctx, tenantID, accountID, reactionRowID, workerID, map[string]any{"current_emoji": nil, "reaction_id": nil, "status": ChannelReactionStatusPending, "next_attempt_at": gorm.Expr("CURRENT_TIMESTAMP(6)"), "lease_owner": nil, "lease_until": nil})
+	return r.updateClaimedChannelReaction(ctx, tenantID, accountID, reactionRowID, workerID, map[string]any{"current_emoji": nil, "reaction_id": nil, "status": ChannelReactionStatusPending, "next_attempt_at": channelNow(r.with(ctx)), "lease_owner": nil, "lease_until": nil})
 }
 
 func (r *GormRepository) MarkChannelReactionRetry(ctx context.Context, tenantID, accountID, reactionRowID uint64, workerID string, nextAttempt time.Time, code, message string) error {
@@ -1348,7 +1373,7 @@ func resolveChannelImageCompletion(db *gorm.DB, input ResolveChannelImageComplet
 	query := func(value any) *gorm.DB {
 		q := db
 		if lock {
-			q = q.Clauses(clause.Locking{Strength: "UPDATE"})
+			q = channelForUpdate(q)
 		}
 		return q.Model(value)
 	}
@@ -1469,7 +1494,7 @@ func loadChannelImageOriginInbox(db *gorm.DB, input ResolveChannelImageCompletio
 		Where("run_input.tenant_id = ? AND run_input.run_id = ? AND inbox.tenant_id = ? AND inbox.account_id = ? AND inbox.conversation_id = ? AND inbox.provider_message_id = ?", input.TenantID, input.Origin.RunID, input.TenantID, input.Origin.AccountID, input.Origin.ConversationID, input.Origin.ReplyMessageID).
 		Order("run_input.sequence_no ASC")
 	if lock {
-		query = query.Clauses(clause.Locking{Strength: "UPDATE"})
+		query = channelForUpdate(query)
 	}
 	var inbox gormChannelInboxEvent
 	return inbox, query.Take(&inbox).Error
@@ -1536,7 +1561,7 @@ func loadImageGenerationBatchProgress(query func(any) *gorm.DB, tenantID uint64,
 
 func insertOrLoadChannelImageMessage(tx *gorm.DB, material resolvedChannelImageCompletion, input MaterializeChannelImageCompletionInput) (gormChannelMessage, error) {
 	var row gormChannelMessage
-	query := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id = ? AND account_id = ? AND conversation_id = ? AND run_id = ? AND direction = ? AND operation = ? AND idempotency_key = ?", material.TenantID, material.Origin.AccountID, material.Origin.ConversationID, material.Origin.RunID, ChannelMessageDirectionOutbound, ChannelMessageOperationCreate, input.ImageIdempotencyKey)
+	query := channelForUpdate(tx).Where("tenant_id = ? AND account_id = ? AND conversation_id = ? AND run_id = ? AND direction = ? AND operation = ? AND idempotency_key = ?", material.TenantID, material.Origin.AccountID, material.Origin.ConversationID, material.Origin.RunID, ChannelMessageDirectionOutbound, ChannelMessageOperationCreate, input.ImageIdempotencyKey)
 	err := query.Take(&row).Error
 	if err == nil {
 		if !channelJSONEqual(row.ContentJSON, input.ImagePayloadJSON) {
@@ -1556,7 +1581,7 @@ func insertOrLoadChannelImageMessage(tx *gorm.DB, material resolvedChannelImageC
 
 func insertOrLoadChannelImageOutbox(tx *gorm.DB, material resolvedChannelImageCompletion, messageID uint64, operation, idempotencyKey, payloadJSON string) (gormChannelOutbox, error) {
 	var row gormChannelOutbox
-	query := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id = ? AND account_id = ? AND conversation_id = ? AND run_id = ? AND idempotency_key = ? AND sequence_no = ? AND operation = ?", material.TenantID, material.Origin.AccountID, material.Origin.ConversationID, material.Origin.RunID, idempotencyKey, uint(1), operation)
+	query := channelForUpdate(tx).Where("tenant_id = ? AND account_id = ? AND conversation_id = ? AND run_id = ? AND idempotency_key = ? AND sequence_no = ? AND operation = ?", material.TenantID, material.Origin.AccountID, material.Origin.ConversationID, material.Origin.RunID, idempotencyKey, uint(1), operation)
 	err := query.Take(&row).Error
 	if err == nil {
 		if row.MessageID != messageID || !channelJSONEqual(row.PayloadJSON, payloadJSON) {
@@ -1711,7 +1736,7 @@ func (r *GormRepository) ClaimDueOutbox(ctx context.Context, tenantID, accountID
 		return nil, tx.Error
 	}
 	var rows []gormChannelOutbox
-	if err := tx.Table("channel_outbox").Select(channelOutboxSelect).Where("tenant_id = ? AND account_id = ? AND status IN (?, ?) AND next_attempt_at <= ? AND (lease_until IS NULL OR lease_until < ?)", tenantID, accountID, ChannelOutboxStatusPending, ChannelOutboxStatusRetry, time.Now().UTC(), time.Now().UTC()).Order("next_attempt_at ASC, id ASC").Limit(limit).Clauses(clause.Locking{Strength: "UPDATE"}).Find(&rows).Error; err != nil {
+	if err := channelForUpdate(tx.Table("channel_outbox").Select(channelOutboxSelect).Where("tenant_id = ? AND account_id = ? AND status IN (?, ?) AND next_attempt_at <= ? AND (lease_until IS NULL OR lease_until < ?)", tenantID, accountID, ChannelOutboxStatusPending, ChannelOutboxStatusRetry, time.Now().UTC(), time.Now().UTC()).Order("next_attempt_at ASC, id ASC").Limit(limit)).Find(&rows).Error; err != nil {
 		tx.Rollback()
 		return nil, err
 	}

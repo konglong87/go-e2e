@@ -131,6 +131,32 @@ func TestChannelQuestionsSettingDefaultsOnAndSupportsOff(t *testing.T) {
 	}
 }
 
+func TestChannelEnvironmentAliasesSupportProvisionedWorkers(t *testing.T) {
+	t.Setenv("GO_E2E_CHANNEL_TENANT_ID", "")
+	t.Setenv("GOLANG_CC_CHANNEL_TENANT_ID", "17")
+	if got, err := requiredUintEnv("GO_E2E_CHANNEL_TENANT_ID", "GOLANG_CC_CHANNEL_TENANT_ID"); err != nil || got != 17 {
+		t.Fatalf("tenant alias = %d err=%v", got, err)
+	}
+
+	t.Setenv("GO_E2E_FEISHU_CREDENTIAL_FILE", "")
+	t.Setenv("GOLANG_CC_FEISHU_CREDENTIAL_FILE", "/tmp/feishu-credentials.json")
+	if got := channelCredentialPath(); got != "/tmp/feishu-credentials.json" {
+		t.Fatalf("credential alias = %q", got)
+	}
+
+	t.Setenv("GO_E2E_SQLITE_PATH", "")
+	t.Setenv("GO_E2E_SQLITE_PATH", "/tmp/desktop.sqlite")
+	t.Setenv("GO_E2E_CHANNEL_TENANT_ID", "")
+	t.Setenv("GOLANG_CC_CHANNEL_TENANT_ID", "17")
+	t.Setenv("GO_E2E_CHANNEL_ACCOUNT_ID", "")
+	t.Setenv("GOLANG_CC_CHANNEL_ACCOUNT_ID", "23")
+	t.Setenv("GO_E2E_CHANNEL_PAYLOAD_KEY", "")
+	t.Setenv("GOLANG_CC_CHANNEL_PAYLOAD_KEY", strings.Repeat("a", 64))
+	if _, err := channelPayloadCodec(); err != nil {
+		t.Fatalf("payload key alias: %v", err)
+	}
+}
+
 func TestChannelToolCollectorKeepsCommandAndOutput(t *testing.T) {
 	collector := newChannelToolCollector()
 	collector.onCall(query.ToolCallEvent{ID: "tool-1", Name: "Bash", Input: []byte(`{"command":"go test ./..."}`)})

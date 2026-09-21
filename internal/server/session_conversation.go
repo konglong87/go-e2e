@@ -15,10 +15,6 @@ const (
 	conversationSchema            = "golang-cc.session-conversation.v1"
 )
 
-type sessionConversationReader interface {
-	ListSessionConversationEvents(context.Context, uint64, uint64, int) ([]mysqlstore.AgentTaskEvent, error)
-}
-
 type sessionConversationPage struct {
 	Schema  string                      `json:"schema_version"`
 	Session sessionControlSessionDTO    `json:"session"`
@@ -40,7 +36,7 @@ func readSessionConversation(ctx context.Context, opts Options, scope sessioncon
 	if opts.SessionEvents != nil {
 		events, err = opts.SessionEvents.ListSessionEvents(ctx, scope.TenantID, scope.UserID, snapshot.ID, snapshot.CWD, cursor, conversationPageLimit)
 	} else {
-		reader, ok := opts.TenantService.(sessionConversationReader)
+		reader, ok := opts.TenantService.(SessionConversationEventReader)
 		if !ok {
 			return sessionConversationPage{}, fmt.Errorf("conversation event reader unavailable")
 		}

@@ -135,7 +135,7 @@ func (a *app) startup(ctx context.Context) {
 		port:       a.port,
 		token:      a.token,
 		env: []string{
-			"GOLANG_CC_SQLITE_PATH=" + sqlitePath,
+			"GO_E2E_SQLITE_PATH=" + sqlitePath,
 			"GOLANG_CC_TENANT_KEY=webui-local",
 			"GOLANG_CC_USER_ID=webui-local-user",
 			"GOLANG_CC_DESKTOP_MODE=1",
