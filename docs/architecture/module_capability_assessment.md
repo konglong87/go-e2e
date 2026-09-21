@@ -45,7 +45,7 @@
 
 - system prompt 优先级链完整:`effectiveSystemBlocks`(`query.go:3919`)实现 `OverrideSystemPrompt > CoordinatorPrompt > MainThreadAgentPrompt > SystemPrompt > default`。
 - cache breakpoint 是真实工程:`buildSystemPromptBlocks`(`query.go:6764`)→ `splitSystemPromptPrefix`(`query.go:6781`)切成 attribution/identity/static(global-cached)/dynamic 四类;`cacheControlForScope`(`query.go:6868`)支持 1h/5m TTL,`shouldUsePromptCache1hTTL`(`query.go:6885`)带 user-eligible + querySource allowlist 门控。
-- memory 加载覆盖 15+ 源(`~/.claude/CLAUDE.md`、managed memory、project `go-claude.md`、legacy `CLAUDE.md`、`MEMORY.md` index、`AGENTS.md` fallback 等),`AGENTS.md` fallback 有 per-directory 门控。
+- memory 加载覆盖 15+ 源(`~/.claude/CLAUDE.md`、managed memory、project `go-e2e.md`、`CLAUDE.md`、`MEMORY.md` index、`AGENTS.md` fallback 等),`AGENTS.md` fallback 有 per-directory 门控。
 - **结论**:扎实强项,剩余 gap 是逐字文案级别(system/auto_memory prompt 比原版短约 1/3)。
 
 ### 3.2 permissions — 🟢 强

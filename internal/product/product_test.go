@@ -35,8 +35,8 @@ func TestCanonicalProductIdentity(t *testing.T) {
 	if GuidanceFilename != "go-e2e.md" {
 		t.Fatalf("GuidanceFilename = %q, want go-e2e.md", GuidanceFilename)
 	}
-	if PreviousProductName != "golang-cc" || PreviousBinaryName != "golang-cc" || PreviousGuidanceFilename != "golang-cc.md" {
-		t.Fatalf("previous product identity = %q/%q/%q", PreviousProductName, PreviousBinaryName, PreviousGuidanceFilename)
+	if PreviousProductName != "golang-cc" || PreviousBinaryName != "golang-cc" {
+		t.Fatalf("previous product identity = %q/%q", PreviousProductName, PreviousBinaryName)
 	}
 }
 

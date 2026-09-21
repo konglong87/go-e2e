@@ -1451,8 +1451,10 @@ func TestInitCommandUsesConfiguredIdentity(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(project, ".agentx", "settings.json")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(project, "golang-cc.md")); !os.IsNotExist(err) {
-		t.Fatalf("default guidance file should not be created, err=%v", err)
+	for _, filename := range []string{"go-e2e.md", "golang-cc.md", "go-claude.md"} {
+		if _, err := os.Stat(filepath.Join(project, filename)); !os.IsNotExist(err) {
+			t.Fatalf("default guidance file should not be created, filename=%s err=%v", filename, err)
+		}
 	}
 	if _, err := os.Stat(filepath.Join(project, ".golang-cc", "settings.json")); !os.IsNotExist(err) {
 		t.Fatalf("default project settings should not be created, err=%v", err)
@@ -1628,7 +1630,7 @@ func TestInteractiveSlashCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 	help := out.String()
-	for _, want := range []string{"Slash commands / 斜杠命令:", "/status", "查看当前项目和运行状态", "/init", "初始化或优化 golang-cc.md", "/mcp", "管理 MCP 服务", goalcmd.SlashUsage, goalcmd.HelpDescriptionZH} {
+	for _, want := range []string{"Slash commands / 斜杠命令:", "/status", "查看当前项目和运行状态", "/init", "初始化或优化 go-e2e.md", "/mcp", "管理 MCP 服务", goalcmd.SlashUsage, goalcmd.HelpDescriptionZH} {
 		if !strings.Contains(help, want) {
 			t.Fatalf("help output missing %q:\n%s", want, help)
 		}

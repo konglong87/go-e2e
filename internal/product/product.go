@@ -31,8 +31,6 @@ const (
 	LegacyTranscriptSchemaV2 = "go-claude.transcript.v2"
 	PreviousProductName      = "golang-cc"
 	PreviousBinaryName       = "golang-cc"
-	PreviousGuidanceFilename = "golang-cc.md"
-	LegacyGuidanceFilename   = "go-claude.md"
 
 	ProductNameEnv      = EnvPrefix + "PRODUCT_NAME"
 	ProductKeyEnv       = EnvPrefix + "PRODUCT_KEY"

@@ -364,10 +364,10 @@ func TestLoadCodePrefersSameDirectoryClaudeOverAgents(t *testing.T) {
 	}
 }
 
-func TestLoadCodePrefersGoClaudeGuidanceOverClaudeAndAgents(t *testing.T) {
+func TestLoadCodePrefersGoE2EGuidanceOverClaudeAndAgents(t *testing.T) {
 	project := t.TempDir()
 	t.Setenv("HOME", t.TempDir())
-	mustWrite(t, filepath.Join(project, "go-claude.md"), "go guidance")
+	mustWrite(t, filepath.Join(project, "go-e2e.md"), "go-e2e guidance")
 	mustWrite(t, filepath.Join(project, "CLAUDE.md"), "legacy guidance")
 	mustWrite(t, filepath.Join(project, "AGENTS.md"), "agents fallback")
 
@@ -376,16 +376,36 @@ func TestLoadCodePrefersGoClaudeGuidanceOverClaudeAndAgents(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := strings.Join(documentContents(docs), "\n")
-	if !strings.Contains(got, "go guidance") {
-		t.Fatalf("go-claude.md not loaded:\n%s", got)
+	if !strings.Contains(got, "go-e2e guidance") {
+		t.Fatalf("go-e2e.md not loaded:\n%s", got)
 	}
 	for _, notWant := range []string{"legacy guidance", "agents fallback"} {
 		if strings.Contains(got, notWant) {
-			t.Fatalf("unexpected %q with go-claude.md present:\n%s", notWant, got)
+			t.Fatalf("unexpected %q with go-e2e.md present:\n%s", notWant, got)
 		}
 	}
-	if len(docs) != 1 || docs[0].Type != "Project" || filepath.Base(docs[0].Path) != "go-claude.md" {
+	if len(docs) != 1 || docs[0].Type != "Project" || filepath.Base(docs[0].Path) != "go-e2e.md" {
 		t.Fatalf("docs = %+v", docs)
+	}
+}
+
+func TestLoadCodeIgnoresRemovedProductGuidanceFilenames(t *testing.T) {
+	project := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+	mustWrite(t, filepath.Join(project, "golang-cc.md"), "removed previous guidance")
+	mustWrite(t, filepath.Join(project, "go-claude.md"), "removed legacy guidance")
+	mustWrite(t, filepath.Join(project, "AGENTS.md"), "agents fallback")
+
+	docs, err := LoadCode(project, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(documentContents(docs), "\n")
+	if strings.Contains(got, "removed previous guidance") || strings.Contains(got, "removed legacy guidance") {
+		t.Fatalf("removed product guidance filename was loaded:\n%s", got)
+	}
+	if !strings.Contains(got, "agents fallback") {
+		t.Fatalf("AGENTS.md fallback was not loaded:\n%s", got)
 	}
 }
 
@@ -397,7 +417,7 @@ func TestLoadCodeUsesConfiguredGuidanceFilename(t *testing.T) {
 	  "identity": {"guidanceFilename": "agentx.md"}
 	}`)
 	mustWrite(t, filepath.Join(project, "agentx.md"), "agentx guidance")
-	mustWrite(t, filepath.Join(project, "go-claude.md"), "default guidance")
+	mustWrite(t, filepath.Join(project, "go-e2e.md"), "default guidance")
 
 	docs, err := LoadCode(project, "")
 	if err != nil {

@@ -1850,7 +1850,7 @@ type slashHelpItem struct {
 
 var slashHelpItems = []slashHelpItem{
 	{"/help", "查看命令帮助"},
-	{"/init", "初始化或优化 golang-cc.md"},
+	{"/init", "初始化或优化 go-e2e.md"},
 	{"/clear", "清屏"},
 	{"/status", "查看当前项目和运行状态"},
 	{"/tools", "查看可用工具"},

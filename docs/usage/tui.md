@@ -276,7 +276,7 @@ go run ./cmd/golang-cc --cwd /path/to/your-project
 
 - git 操作通过「运行命令」工具执行：权限为 `allow` 时直接跑，`ask` 时会先弹审批。
 - 提交信息、要不要新建分支、推到哪个 remote，都由你在对话里指定。
-- golang-cc 会遵循目标项目的提交规范（如 `golang-cc.md` / legacy `CLAUDE.md` 里约定的 commit message 规则、身份要求等）。
+- go-e2e 会遵循目标项目的提交规范（如 `go-e2e.md` / `CLAUDE.md` 里约定的 commit message 规则、身份要求等）。
 - 和「代码修改」（[3](#3-代码修改含权限审批)）、「创建 skill」（[4](#4-skills-使用与创建)）天然衔接：改完/建完直接提交推送，形成闭环。
 
 ---

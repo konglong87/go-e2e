@@ -18,7 +18,7 @@
 | CLI 源码入口 | `cmd/golang-cc/main.go` | 旧目录移除 |
 | 全局状态目录 | `~/.golang-cc` | 只读兼容 `~/.go-claude`；新写入落到新目录 |
 | 项目配置目录 | `.golang-cc` | 读取 `.go-claude`，新配置优先；写入使用 `.golang-cc` |
-| 项目指导文件 | `golang-cc.md` | `go-claude.md` 作为 fallback，之后仍兼容 `CLAUDE.md` |
+| 项目指导文件 | `go-e2e.md` | 只生成和自动加载 `go-e2e.md`；外部项目可继续使用 `CLAUDE.md` fallback |
 | 环境变量 | `GOLANG_CC_*` | `GOLANG_CLAUDE_CODE_*` fallback；两者同时存在时新变量优先 |
 | WebUI localStorage | `golang-cc-webui.*` | 首次读取旧 `go-claude-webui.*` 后复制到新 key |
 | npm package | `golang-cc-*` | 不保留旧 package 名 |

@@ -190,7 +190,7 @@ type LoadCodeOptions struct {
 bare 使用 `DiscoveryExplicit`：
 
 - `ExplicitRoots` 为空时返回空文档，不读取 `/etc`、home、cwd、父目录或 project memory。
-- 每个 `--add-dir` 只读取该 root 下受支持的 `golang-cc.md`、`CLAUDE.md`、`.claude/CLAUDE.md`、`.claude/rules/*.md` 和必要 include。
+- 每个 `--add-dir` 只读取该 root 下受支持的 `go-e2e.md`、`CLAUDE.md`、`.claude/CLAUDE.md`、`.claude/rules/*.md` 和必要 include。
 - 不把 `AGENTS.md` 当作 implicit fallback；bare 的显式目录语义应窄且可预测。
 - 不注入 `compatibleMemorySystemBlock`，不把 project memory dir 自动加入 writable roots。
 

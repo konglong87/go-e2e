@@ -6,7 +6,7 @@
 
 原版 Claude Code 的 `/init` 不是简单本地写文件逻辑，而是一个内置 prompt 型 slash command：命令展开为一段初始化 prompt，让模型扫描仓库并生成或改进项目指导文件。
 
-当前 go-claude 已有 slash command 列表、TUI slash 补全、Web Agent slash command endpoint、custom command/skill 动态展开，以及普通 CLI `golang-claude-code init [--settings]`。缺口是：
+当前 go-claude 已有 slash command 列表、TUI slash 补全、Web Agent slash command endpoint、custom command/skill 动态展开，以及普通 CLI `go-e2e init [--settings]`。缺口是：
 
 - 内置 slash command 列表没有 `/init`。
 - slash prompt 解析只覆盖 skills/custom commands，没有内置 prompt 型 command。
@@ -16,11 +16,11 @@
 ## 目标
 
 1. 新增 `/init` slash command，行为参考原版 Claude Code：展开为初始化 prompt，由模型扫描当前 `cwd` 后生成或改进项目指导文件。
-2. 默认项目指导文件名为 `go-claude.md`，但文件名必须配置化，方便后续改名。
+2. 默认项目指导文件名为 `go-e2e.md`，但文件名必须配置化，方便后续改名。
 3. 新增或修改的 go-claude 自有配置、文件、文案、目录优先使用可配置的 `go-claude` 标识，不再新增 `Claude` 标识。
 4. `go-claude` 标识本身也要配置化，避免产品名或目录名后续演进时散落在代码中。
-5. `golang-claude-code init --settings` 创建 `go-claude.md` 和 `.go-claude/settings.json`。
-6. 项目指导加载优先级固定为：`go-claude.md` -> `CLAUDE.md` -> `AGENTS.md` fallback。
+5. `go-e2e init --settings` 创建 `go-e2e.md` 和 `.go-claude/settings.json`。
+6. 项目指导加载优先级固定为：`go-e2e.md` -> `CLAUDE.md` -> `AGENTS.md` fallback。
 
 ## 非目标
 
@@ -38,7 +38,7 @@ type Identity struct {
 	ProductName          string // default: "go-claude"
 	ProductKey           string // default: "go-claude"
 	ConfigDirName        string // default: ".go-claude"
-	GuidanceFilename     string // default: "go-claude.md"
+	GuidanceFilename     string // default: "go-e2e.md"
 	LegacyGuidanceFile   string // default: "CLAUDE.md"
 	WorkflowFallbackFile string // default: "AGENTS.md"
 }
@@ -50,7 +50,7 @@ type Identity struct {
 ProductName:          go-claude
 ProductKey:           go-claude
 ConfigDirName:        .go-claude
-GuidanceFilename:     go-claude.md
+GuidanceFilename:     go-e2e.md
 LegacyGuidanceFile:   CLAUDE.md
 WorkflowFallbackFile: AGENTS.md
 ```
@@ -75,11 +75,11 @@ WorkflowFallbackFile: AGENTS.md
 
 ```text
 Name: init
-Description: Initialize go-claude.md with project guidance
+Description: Initialize go-e2e.md with project guidance
 Source: builtin
 ```
 
-`Description` 中的 `go-claude.md` 来自 `Identity.GuidanceFilename`，不要写死。
+`Description` 中的 `go-e2e.md` 来自 `Identity.GuidanceFilename`，不要写死。
 
 ### 解析
 
@@ -110,7 +110,7 @@ func ResolvePrompt(ctx context.Context, cwd string, input string, identity Ident
 - 文件头使用配置化 product name：
 
 ```md
-# go-claude.md
+# go-e2e.md
 
 This file provides guidance to go-claude when working in this repository.
 ```
@@ -119,17 +119,17 @@ This file provides guidance to go-claude when working in this repository.
 
 ## CLI Init 设计
 
-普通 CLI `golang-claude-code init [--settings]` 与 slash `/init` 分工如下：
+普通 CLI `go-e2e init [--settings]` 与 slash `/init` 分工如下：
 
-- `golang-claude-code init`：创建最小 `${GuidanceFilename}` scaffold。
-- `golang-claude-code init --settings`：同时创建 `${ConfigDirName}/settings.json`。
+- `go-e2e init`：创建最小 `${GuidanceFilename}` scaffold。
+- `go-e2e init --settings`：同时创建 `${ConfigDirName}/settings.json`。
 - `/init`：通过模型扫描仓库，生成或改进 `${GuidanceFilename}`。
 
 默认行为：
 
 ```text
-golang-claude-code init --settings
-  creates go-claude.md
+go-e2e init --settings
+  creates go-e2e.md
   creates .go-claude/settings.json
 ```
 
@@ -140,7 +140,7 @@ golang-claude-code init --settings
 `internal/memory` 的项目指导文件加载规则调整为同目录优先级：
 
 ```text
-go-claude.md -> CLAUDE.md -> AGENTS.md fallback
+go-e2e.md -> CLAUDE.md -> AGENTS.md fallback
 ```
 
 具体规则：
@@ -178,12 +178,12 @@ Web Agent：
   - `/init` 展开 prompt，且 prompt 包含配置化 `${GuidanceFilename}`。
   - 修改 identity 后，prompt 与 description 使用新文件名。
 - `internal/memory`
-  - 只存在 `go-claude.md` 时加载它。
-  - 同目录同时存在 `go-claude.md` 和 `CLAUDE.md` 时只加载 `go-claude.md`。
+  - 只存在 `go-e2e.md` 时加载它。
+  - 同目录同时存在 `go-e2e.md` 和 `CLAUDE.md` 时只加载 `go-e2e.md`。
   - 只存在 `CLAUDE.md` 时兼容加载。
   - 两者都不存在时加载 `AGENTS.md` fallback。
 - `internal/cli`
-  - `golang-claude-code init --settings` 创建 `go-claude.md` 和 `.go-claude/settings.json`。
+  - `go-e2e init --settings` 创建 `go-e2e.md` 和 `.go-claude/settings.json`。
   - `/init` 在 TUI slash path 中能被 resolver 接管，不报 unknown。
   - `loopRunPrompt(cwd, "/init")` 展开为初始化 prompt。
 - `internal/server`
@@ -207,10 +207,10 @@ npm --prefix web run build
 
 ## 迁移策略
 
-1. 第一阶段只新增 `go-claude.md` 默认与 `CLAUDE.md` 兼容读取，不删除旧行为。
-2. 文档和 help 文案统一改为 go-claude 自有默认：`go-claude.md`、`.go-claude/settings.json`。
-3. 对已有 `CLAUDE.md` 项目保持可运行，避免一次性破坏用户现有仓库。
-4. 后续如需要完全去 Claude 化，再单独规划 `.go-claude/rules`、`.go-claude/commands`、`.go-claude/skills` 的兼容与迁移。
+1. 默认只生成和加载 `go-e2e.md`，不再生成或读取旧产品规则文件名。
+2. 文档和 help 文案统一使用 `go-e2e.md`、`.go-claude/settings.json`。
+3. 对外部项目的 `CLAUDE.md` 和 `AGENTS.md` 保持读取能力。
+4. `.claude/rules`、`.claude/commands`、`.claude/skills` 等外部兼容目录继续独立处理，不与项目规则文件名混用。
 
 ## 实施顺序
 
@@ -224,8 +224,8 @@ npm --prefix web run build
 
 ## 风险与约束
 
-- 不能把 `go-claude.md` 写成硬编码，否则后续改名成本高。
+- 不能把 `go-e2e.md` 写成硬编码，否则后续改名成本高。
 - 不能只改 slash 列表不改执行 resolver，否则 UI 会显示 `/init` 但执行无效。
-- 不能只生成 `go-claude.md` 不加载它，否则初始化结果不会进入后续上下文。
-- 不能在同目录同时加载 `go-claude.md` 和 `CLAUDE.md`，否则项目指导可能重复或冲突。
+- 不能只生成 `go-e2e.md` 不加载它，否则初始化结果不会进入后续上下文。
+- 不能在同目录同时加载 `go-e2e.md` 和 `CLAUDE.md`，否则项目指导可能重复或冲突。
 - 不能把 `AGENTS.md` 提升为同级项目指导；它仍是 fallback workflow rule。

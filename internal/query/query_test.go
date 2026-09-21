@@ -4978,7 +4978,7 @@ func TestDefaultSystemPromptContainsGolangCCEngineeringContract(t *testing.T) {
 // The # System section states that the user's current message always has the
 // highest priority. # Information Priority Hierarchy used to place stored
 // instructions "at level 1 alongside the user's input", which a model could
-// read as licence for a golang-cc.md rule to override an explicit user request.
+// read as licence for a go-e2e.md rule to override an explicit user request.
 // Both sections ship in the same default prompt, so they must agree on the
 // ranking.
 //

@@ -38,7 +38,7 @@ flowchart TD
 | `internal/query/query.go:defaultSystemPromptParts` | 默认系统提示词和动态 section registry。 |
 | `internal/query/query.go:assembleContextMessages` | 代码模式下把 memory 作为 `<system-reminder>` user-context 前缀消息，并为 manifest 收集来源计数。 |
 | `internal/query/query.go:recordContextManifest` | 每轮 query 记录 `query.prompt_context` telemetry 和 transcript `prompt_context` entry。 |
-| `internal/memory/memory.go:SystemAddendumForPrompt` | 加载 `golang-cc.md`、legacy `CLAUDE.md`、`.claude/rules`、local memory、include 和路径条件 memory。 |
+| `internal/memory/memory.go:SystemAddendumForPrompt` | 加载 `go-e2e.md`、`CLAUDE.md`、`.claude/rules`、local memory、include 和路径条件 memory。 |
 | `internal/skills/skills.go:CatalogPromptForPrompt` | 根据当前 prompt 注入轻量 skills catalog。 |
 | `internal/server/tenant_context.go` | API Server tenant runtime 下拼接 tenant memory/profile/document/knowledge 和 DB managed/team memory。 |
 
@@ -159,8 +159,8 @@ CLAUDE_CONFIG_DIR/memory/auto.md
 CLAUDE_CONFIG_DIR/memory/AUTOMEM.md
 CLAUDE_CONFIG_DIR/AUTOMEM.md
 CLAUDE_CONFIG_DIR/projects/<project-slug>/memory/MEMORY.md
-当前项目路径及父路径上的 golang-cc.md（默认，可通过 identity.guidanceFilename 配置）
-当前项目路径及父路径上的 CLAUDE.md（legacy compatibility）
+当前项目路径及父路径上的 go-e2e.md（默认，可通过 identity.guidanceFilename 配置）
+当前项目路径及父路径上的 CLAUDE.md（外部项目规则）
 当前项目路径及父路径上的 AGENTS.md（仅当前两者同目录都不存在时作为 fallback）
 当前项目路径及父路径上的 .claude/CLAUDE.md
 当前项目路径及父路径上的 .claude/rules/*.md
@@ -171,7 +171,7 @@ frontmatter paths / exclude / excludes
 
 Claude Code project memory index 只在 code prompt mode 加载；当前只读取 `MEMORY.md` 前 200 行或 25KB，不默认全量读取 `memory/` 下的 topic 文件。
 
-`AGENTS.md` 是低优先级项目 workflow fallback，不会和同目录 `golang-cc.md` 或 legacy `CLAUDE.md` 同时加载。加载规则按每个项目目录单独判断：如果该目录存在配置化指导文件，使用它并跳过同目录 `CLAUDE.md` 与 `AGENTS.md`；否则如果存在 `CLAUDE.md`，使用 `CLAUDE.md` 并跳过同目录 `AGENTS.md`；前两者都不存在时，才尝试加载同目录 `AGENTS.md`。父目录和子目录彼此独立，父目录有项目指导文件不会阻止子目录自己的 `AGENTS.md` fallback。
+`AGENTS.md` 是低优先级项目 workflow fallback，不会和同目录 `go-e2e.md` 或 `CLAUDE.md` 同时加载。加载规则按每个项目目录单独判断：如果该目录存在配置化指导文件，使用它并跳过同目录 `CLAUDE.md` 与 `AGENTS.md`；否则如果存在 `CLAUDE.md`，使用 `CLAUDE.md` 并跳过同目录 `AGENTS.md`；前两者都不存在时，才尝试加载同目录 `AGENTS.md`。父目录和子目录彼此独立，父目录有项目指导文件不会阻止子目录自己的 `AGENTS.md` fallback。
 
 ### Memory 本地坏链检查
 
@@ -273,7 +273,7 @@ sequenceDiagram
 1. 启动参数：是否用了 `--system-prompt`、`--system-prompt-file`、`--append-system-prompt`、`--model`。
 2. 配置文件：`config/config.yaml`、`config/config.{env}.yaml`、`config/config.local.yaml`。
 3. 全局记忆：`~/.claude/CLAUDE.md`。
-4. 项目记忆：当前项目或父目录里的 `golang-cc.md`、legacy `CLAUDE.md` 或 `AGENTS.md` fallback。
+4. 项目记忆：当前项目或父目录里的 `go-e2e.md`、`CLAUDE.md` 或 `AGENTS.md` fallback。
 5. Output style：`~/.claude/output-styles`、项目 `.claude/output-styles`、plugin output styles。
 6. Skills catalog：`skills context --prompt "..."` 预览当前 prompt 会暴露哪些 skills。
 7. 环境变量：`GOLANG_CC_SIMPLE`、`CLAUDE_CODE_SIMPLE`、`USER_TYPE`、feature flags、GrowthBook 配置。

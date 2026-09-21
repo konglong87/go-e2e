@@ -1,21 +1,21 @@
-# go-claude.md Quality Optimization Plan
+# go-e2e.md Quality Optimization Plan
 
 ## 背景
 
-现有 `/init` 已能创建或改进 `go-claude.md`，并且默认使用 go-claude 自有标识、可配置文件名，以及 `go-claude.md -> CLAUDE.md -> AGENTS.md` 的加载优先级。
+现有 `/init` 已能创建或改进 `go-e2e.md`，并且默认使用 go-claude 自有标识、可配置文件名，以及 `go-e2e.md -> CLAUDE.md -> AGENTS.md` 的加载优先级。
 
 实际与原版 Claude Code `/init` 对比后发现：
 
 - 原版生成的 `CLAUDE.md` 更像项目说明书，会包含 commands、核心类型、核心函数和行为摘要。
-- 当前 go-claude 生成的 `go-claude.md` 更像操作守则，强调验证、架构约束和边界，内容更短。
+- 当前 go-claude 生成的 `go-e2e.md` 更像操作守则，强调验证、架构约束和边界，内容更短。
 - 完全照搬原版会增加上下文噪音和过期风险；完全不写核心入口又会让后续 agent 缺少快速定位和业务契约提示。
 
-本方案目标是把 `go-claude.md` 从“简短提示文件”升级为“精炼的项目级 agent 操作手册”，吸收 Codex `AGENTS.md` 的质量标准：规则明确、验证闭环、风险边界清楚，同时保持 go-claude 的轻量和自有标识。
+本方案目标是把 `go-e2e.md` 从“简短提示文件”升级为“精炼的项目级 agent 操作手册”，吸收 Codex `AGENTS.md` 的质量标准：规则明确、验证闭环、风险边界清楚，同时保持 go-claude 的轻量和自有标识。
 
 ## 目标
 
-1. `/init` 默认生成 balanced 风格的 `go-claude.md`。
-2. `go-claude.md` 不变成 README，不镜像源码，不列文件树。
+1. `/init` 默认生成 balanced 风格的 `go-e2e.md`。
+2. `go-e2e.md` 不变成 README，不镜像源码，不列文件树。
 3. 允许在默认模式下写少量稳定的核心入口或公共 API surface，帮助后续 agent 避免误改。
 4. 新增 `init.detailLevel` 配置，方便用户在 minimal、balanced、detailed 之间切换。
 5. 保持所有新增文案使用 go-claude 自有标识和可配置 guidance filename。
@@ -24,7 +24,7 @@
 
 - 不实现原版 Claude Code 新 `/init` 的多阶段 AskUserQuestion、skills/hooks 引导流程。
 - 不默认生成 `.claude/skills`、hooks、personal guidance 文件。
-- 不把 `go-claude.md` 扩展成完整架构文档、API 文档或 README。
+- 不把 `go-e2e.md` 扩展成完整架构文档、API 文档或 README。
 - 不移除 `CLAUDE.md` 和 `AGENTS.md` 兼容读取。
 
 ## 配置设计
@@ -60,12 +60,12 @@
 
 无效值回退到 `balanced`，避免配置错误导致 prompt 失控。
 
-## go-claude.md 推荐结构
+## go-e2e.md 推荐结构
 
 `/init` 不强制每个项目都有所有 section，但应优先生成以下结构：
 
 ```md
-# go-claude.md
+# go-e2e.md
 
 This file provides guidance to go-claude when working in this repository.
 

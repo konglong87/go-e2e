@@ -61,7 +61,7 @@ go run ./cmd/golang-cc \
   --output-format json
 ```
 
-`--cwd` 决定加载哪个项目的 `.golang-cc/settings*`、`golang-cc.md`、skills、plugins 和 project memory。
+`--cwd` 决定加载哪个项目的 `.golang-cc/settings*`、`go-e2e.md`、skills、plugins 和 project memory。
 
 **要点**
 

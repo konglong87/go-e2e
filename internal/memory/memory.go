@@ -210,7 +210,7 @@ func loadExplicitCodeRoots(prompt string, roots []string) ([]Document, error) {
 			path string
 			typ  string
 		}{
-			{filepath.Join(abs, "golang-cc.md"), "Project"},
+			{filepath.Join(abs, product.GuidanceFilename), "Project"},
 			{filepath.Join(abs, "CLAUDE.md"), "Project"},
 			{filepath.Join(abs, ".claude", "CLAUDE.md"), "Project"},
 		} {
@@ -653,14 +653,6 @@ func loadProjectGuidanceDocument(loader *documentLoader, dir string, id identity
 		return loader.load(guidancePath, "Project", false, "")
 	} else if !os.IsNotExist(err) {
 		return nil, err
-	}
-	legacyOwnedPath := filepath.Join(dir, product.LegacyGuidanceFilename)
-	if filepath.Clean(legacyOwnedPath) != filepath.Clean(guidancePath) {
-		if _, err := os.Stat(legacyOwnedPath); err == nil {
-			return loader.load(legacyOwnedPath, "Project", false, "")
-		} else if !os.IsNotExist(err) {
-			return nil, err
-		}
 	}
 	claudePath := filepath.Join(dir, id.LegacyGuidanceFile)
 	if _, err := os.Stat(claudePath); err == nil {

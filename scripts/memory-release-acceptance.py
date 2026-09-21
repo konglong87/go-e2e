@@ -96,7 +96,7 @@ class Gate:
         if Path("/etc/claude-code/CLAUDE.md").exists():
             raise RuntimeError("managed guidance is present; use an isolated host")
         for ancestor in self.workspace_a.parents:
-            for name in ("golang-cc.md", "golang-claude-code.md", "CLAUDE.md", "AGENTS.md",
+            for name in ("go-e2e.md", "CLAUDE.md", "AGENTS.md",
                          "CLAUDE.local.md", ".claude/CLAUDE.md", ".claude/rules",
                          ".claude/workflows", "SKILL.md", "WORKFLOW.md", "CONTRACT.md",
                          "references/README.md", "references/WORKFLOW.md", "docs/WORKFLOW.md"):

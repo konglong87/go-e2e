@@ -137,7 +137,7 @@ func TestResolvePromptInitUsesConfiguredGuidanceFilename(t *testing.T) {
 	if !ok || !strings.Contains(prompt, "`agentx.md`") || !strings.Contains(prompt, "guidance to agentx") {
 		t.Fatalf("prompt did not use configured identity ok=%v:\n%s", ok, prompt)
 	}
-	if strings.Contains(prompt, "# go-claude.md") {
+	if strings.Contains(prompt, "# go-e2e.md") {
 		t.Fatalf("prompt used hard-coded guidance filename:\n%s", prompt)
 	}
 }

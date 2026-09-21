@@ -31,7 +31,7 @@ func TestExplicitDiscoveryLoadsOnlyRootsAndKeepsIncludesInsideRoot(t *testing.T)
 	if err := os.WriteFile(filepath.Join(root, "inside.md"), []byte("inside include"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "CLAUDE.md"), []byte("explicit memory\n@inside.md\n@../outside.md"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "go-e2e.md"), []byte("explicit memory\n@inside.md\n@../outside.md"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(root, ".claude", "rules", "rule.md"), []byte("explicit rule"), 0o600); err != nil {

@@ -6,7 +6,7 @@ Go Claude 当前已经具备自己的运行时身份和部分自有路径：
 
 - 默认产品标识：`go-claude`
 - 默认配置目录：`.go-claude`
-- 默认项目指导文件：`go-claude.md`
+- 默认项目指导文件：`go-e2e.md`
 - 全局 settings 写入：`~/.go-claude/settings.json`
 - transcript 默认写入：`~/.go-claude/projects/...`
 
@@ -36,7 +36,7 @@ Go Claude 当前已经具备自己的运行时身份和部分自有路径：
 | 项目 settings 写入 | `ProjectSettingsPath` 根据 identity 的 `ConfigDirName` 生成，默认 `.go-claude/settings*.json` | `internal/config/config.go:436-455` |
 | settings 读取顺序 | 先全局 `.go-claude`，再 legacy 项目 `.claude`，再项目 `.go-claude`，最后 `config/*.yaml` | `internal/config/config.go:470-497` |
 | transcript 默认写入 | 默认 `GOLANG_CLAUDE_CODE_CONFIG_DIR` 或 `~/.go-claude/projects` | `internal/session/store.go:121-132` |
-| 项目指导文件 | 优先 `go-claude.md`，再 fallback `CLAUDE.md`，再 `AGENTS.md` | `internal/memory/memory.go:472-489` |
+| 项目指导文件 | 优先 `go-e2e.md`，再 fallback `CLAUDE.md`，再 `AGENTS.md` | `internal/memory/memory.go:472-489` |
 | identity 默认值 | 默认产品名、配置目录、指导文件集中在 `internal/identity` | `internal/identity/identity.go:10-17` |
 
 这说明配置隔离方向已经开始落地，但还没有覆盖所有运行状态和扩展目录。
@@ -76,8 +76,8 @@ Go Claude 当前已经具备自己的运行时身份和部分自有路径：
 
 | 模块 | 当前读取 | 建议 |
 | --- | --- | --- |
-| Project memory | `go-claude.md` 优先，`CLAUDE.md` fallback，`.claude/CLAUDE.md`、`.claude/rules/*.md` 仍读取 | 增加 `.go-claude/rules/*.md`、`.go-claude/workflows/*.md` 优先读取；`.claude/*` 保留 fallback |
-| User memory | 仍读 `~/.claude/CLAUDE.md` | 增加 `~/.go-claude/go-claude.md` 或 `~/.go-claude/memory/*.md` 优先；`~/.claude/CLAUDE.md` fallback |
+| Project memory | `go-e2e.md` 优先，`CLAUDE.md` fallback，`.claude/CLAUDE.md`、`.claude/rules/*.md` 仍读取 | 增加 `.go-claude/rules/*.md`、`.go-claude/workflows/*.md` 优先读取；`.claude/*` 保留 fallback |
+| User memory | 仍读 `~/.claude/CLAUDE.md` | 增加 `~/.go-claude/go-e2e.md` 或 `~/.go-claude/memory/*.md` 优先；`~/.claude/CLAUDE.md` fallback |
 | Agent memory | 项目 `.claude/agent-memory*` | 增加 `.go-claude/agent-memory*` 优先；legacy fallback |
 | Skills / commands | `~/.claude/skills`、`~/.claude/commands`、项目 `.claude/skills`、`.claude/commands` | 必须聚合加载所有 skill 来源：`.go-claude/skills`、`.claude/skills`、npx/marketplace/MCP/bundled/env skills；commands 可按 `.go-claude/commands` 优先、`.claude/commands` fallback |
 | Agents | `~/.claude/agents`、项目 `.claude/agents` | 增加 `.go-claude/agents` 优先；legacy fallback |
@@ -131,7 +131,7 @@ const (
     defaultProductName      = "go-claude"
     defaultProductKey       = "go-claude"
     defaultConfigDirName    = ".go-claude"
-    defaultGuidanceFilename = "go-claude.md"
+    defaultGuidanceFilename = "go-e2e.md"
 )
 ```
 
@@ -142,7 +142,7 @@ var DefaultProductIdentity = identity.Settings{
     ProductName:      "go-claude",
     ProductKey:       "go-claude",
     ConfigDirName:    ".go-claude",
-    GuidanceFilename: "go-claude.md",
+    GuidanceFilename: "go-e2e.md",
 }
 ```
 
