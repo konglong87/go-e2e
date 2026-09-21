@@ -178,7 +178,7 @@ jobs:
           keychain="${RUNNER_TEMP}/go-e2e-release.keychain-db"
           keychain_password="$(openssl rand -hex 24)"
           certificate="${RUNNER_TEMP}/developer-id.p12"
-          echo "$CERTIFICATE_BASE64" | base64 --decode > "$certificate"
+          echo "$CERTIFICATE_BASE64" | base64 -D > "$certificate"
           security create-keychain -p "$keychain_password" "$keychain"
           security set-keychain-settings -lut 21600 "$keychain"
           security unlock-keychain -p "$keychain_password" "$keychain"
