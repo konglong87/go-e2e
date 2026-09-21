@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -131,9 +132,10 @@ func onboardFeishu(ctx context.Context, args []string, stdout io.Writer) error {
 }
 
 func runChannelsWorker(ctx context.Context, opts options, stdout io.Writer) error {
+	sqlitePath := strings.TrimSpace(firstEnv("GO_E2E_SQLITE_PATH"))
 	dsn := firstEnv("GOLANG_CC_MYSQL_DSN", "MYSQL_DSN")
-	if dsn == "" {
-		return errors.New("channels run requires GOLANG_CC_MYSQL_DSN")
+	if sqlitePath == "" && dsn == "" {
+		return errors.New("channels run requires GO_E2E_SQLITE_PATH or GOLANG_CC_MYSQL_DSN")
 	}
 	tenantID, err := requiredUintEnv("GOLANG_CC_CHANNEL_TENANT_ID")
 	if err != nil {
@@ -155,7 +157,12 @@ func runChannelsWorker(ctx context.Context, opts options, stdout io.Writer) erro
 	if err != nil {
 		return err
 	}
-	repo, err := mysqlstore.OpenGormRepository(ctx, dsn, nil)
+	var repo *mysqlstore.GormRepository
+	if sqlitePath != "" {
+		repo, err = mysqlstore.OpenSQLiteGormRepository(ctx, sqlitePath, nil)
+	} else {
+		repo, err = mysqlstore.OpenGormRepository(ctx, dsn, nil)
+	}
 	if err != nil {
 		return err
 	}
@@ -866,7 +873,14 @@ func requiredUintEnv(key string) (uint64, error) {
 func channelPayloadCodec() (channelruntime.PayloadCodec, error) {
 	raw := firstEnv("GOLANG_CC_CHANNEL_PAYLOAD_KEY", "CHANNEL_PAYLOAD_KEY")
 	if raw == "" {
-		return nil, errors.New("channels run requires GOLANG_CC_CHANNEL_PAYLOAD_KEY (32-byte hex key)")
+		sqlitePath := strings.TrimSpace(firstEnv("GO_E2E_SQLITE_PATH"))
+		tenantID := firstEnv("GOLANG_CC_CHANNEL_TENANT_ID")
+		accountID := firstEnv("GOLANG_CC_CHANNEL_ACCOUNT_ID")
+		if sqlitePath == "" || tenantID == "" || accountID == "" {
+			return nil, errors.New("channels run requires GOLANG_CC_CHANNEL_PAYLOAD_KEY (32-byte hex key)")
+		}
+		sum := sha256.Sum256([]byte(sqlitePath + "\x00" + tenantID + "\x00" + accountID))
+		raw = hex.EncodeToString(sum[:])
 	}
 	key, err := hex.DecodeString(strings.TrimSpace(raw))
 	if err != nil {

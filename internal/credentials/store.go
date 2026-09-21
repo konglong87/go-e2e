@@ -2,6 +2,7 @@ package credentials
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"strings"
@@ -11,7 +12,10 @@ import (
 
 var ErrInvalidCredential = errors.New("credentials: invalid credential")
 
-type FileStore struct{ Dir string }
+type FileStore struct {
+	Dir        string
+	LegacyPath string
+}
 
 func (s FileStore) Put(ctx context.Context, ref provisioning.CredentialRef) (provisioning.CredentialRef, error) {
 	if err := ctx.Err(); err != nil {
@@ -53,6 +57,16 @@ func (s FileStore) Get(ctx context.Context, id string) (provisioning.CredentialR
 	}
 	data, err := os.ReadFile(s.path(id))
 	if err != nil {
+		if os.IsNotExist(err) && s.LegacyPath != "" {
+			var legacy struct {
+				AppID     string `json:"app_id"`
+				AppSecret string `json:"app_secret"`
+			}
+			legacyData, legacyErr := os.ReadFile(s.LegacyPath)
+			if legacyErr == nil && json.Unmarshal(legacyData, &legacy) == nil && legacy.AppID != "" && legacy.AppSecret != "" {
+				return provisioning.CredentialRef{ID: id, Provider: "feishu", AppID: legacy.AppID, SecretValue: legacy.AppSecret, SecretPresent: true}, nil
+			}
+		}
 		return provisioning.CredentialRef{}, err
 	}
 	parts := strings.SplitN(string(data), "\n", 3)

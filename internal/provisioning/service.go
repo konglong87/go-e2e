@@ -24,6 +24,7 @@ type Repository interface {
 type Service struct {
 	Repo        Repository
 	Credentials CredentialStore
+	Channels    ChannelAccountStore
 	Feishu      FeishuProvisioner
 	Supervisor  WorkerSupervisor
 	Inventory   WorkerInventory
@@ -43,6 +44,9 @@ func (s *Service) Create(ctx context.Context, tenantID, userID uint64, req Creat
 	}
 	if req.Worker.Supervisor == "" {
 		req.Worker.Supervisor = "screen"
+	}
+	if strings.TrimSpace(req.Worker.WorkerName) == "" {
+		req.Worker.WorkerName = strings.TrimSpace(req.ProfileKey)
 	}
 	if req.SecretValue == "" {
 		req.SecretValue = req.CredentialRef.SecretValue
@@ -69,6 +73,13 @@ func (s *Service) Create(ctx context.Context, tenantID, userID uint64, req Creat
 	}
 	req.Worker.Environment["GOLANG_CC_CHANNEL_TENANT_ID"] = fmt.Sprint(tenantID)
 	req.Worker.Environment["GOLANG_CC_CHANNEL_USER_ID"] = fmt.Sprint(userID)
+	if s.Channels != nil {
+		accountID, err := s.Channels.EnsureChannelAccount(ctx, tenantID, "feishu", req.AccountKey, req.CredentialRef.AppID, req.CredentialRef.ID)
+		if err != nil {
+			return Record{}, NewError(ErrInvalidInput, err.Error())
+		}
+		req.Worker.Environment["GOLANG_CC_CHANNEL_ACCOUNT_ID"] = fmt.Sprint(accountID)
+	}
 	return s.Repo.UpsertAgentProvisioning(ctx, RecordInput{TenantID: tenantID, ProfileKey: req.ProfileKey, AccountKey: req.AccountKey, CredentialRef: req.CredentialRef.ID, Supervisor: req.Worker.Supervisor, Status: string(StatusDraft), WorkerSpec: req.Worker, UserID: userID})
 }
 func (s *Service) List(ctx context.Context, tenantID uint64, limit int) ([]Record, error) {

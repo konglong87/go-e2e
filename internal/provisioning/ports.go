@@ -15,6 +15,12 @@ type ProviderCatalog interface {
 	Resolve(ctx context.Context, name, model string) (ProviderOption, error)
 }
 
+// ChannelAccountStore lets provisioning create the durable provider account
+// without coupling this package to a concrete SQL repository.
+type ChannelAccountStore interface {
+	EnsureChannelAccount(ctx context.Context, tenantID uint64, provider, accountKey, appID, credentialRef string) (uint64, error)
+}
+
 type FeishuProvisioner interface {
 	Preflight(ctx context.Context, credential CredentialRef, spec WorkerSpec) ([]HealthCheck, error)
 }

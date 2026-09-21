@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/konglong87/go-e2e/internal/provisioning"
@@ -30,6 +31,42 @@ type gormAgentProvisioning struct {
 }
 
 func (gormAgentProvisioning) TableName() string { return "agent_provisionings" }
+
+// EnsureChannelAccount is the storage-side idempotent bridge between a
+// provisioning record and the provider-neutral channel runtime account.
+func (r *GormRepository) EnsureChannelAccount(ctx context.Context, tenantID uint64, provider, accountKey, appID, credentialRef string) (uint64, error) {
+	if tenantID == 0 || provider == "" || accountKey == "" {
+		return 0, ErrInvalidInput
+	}
+	var row gormChannelAccount
+	err := r.with(ctx).Where("tenant_id = ? AND provider = ? AND account_key = ? AND archived_at IS NULL", tenantID, provider, accountKey).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		row = gormChannelAccount{
+			TenantID: tenantID, Provider: provider, AccountKey: accountKey,
+			AppID: appID, CredentialRef: credentialRef, Mode: ChannelAccountModeStream,
+			Enabled: true, PolicyJSON: `{}`, Status: ChannelAccountStatusReady,
+		}
+		if err := r.with(ctx).Create(&row).Error; err != nil {
+			return 0, err
+		}
+		return row.ID, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	updates := map[string]any{"enabled": true, "status": ChannelAccountStatusReady}
+	if appID != "" {
+		updates["app_id"] = appID
+	}
+	if credentialRef != "" {
+		updates["credential_ref"] = credentialRef
+	}
+	if err := r.with(ctx).Table("channel_accounts").Where("tenant_id = ? AND id = ?", tenantID, row.ID).Updates(updates).Error; err != nil {
+		return 0, fmt.Errorf("update channel account: %w", err)
+	}
+	return row.ID, nil
+}
+
 func (r *GormRepository) UpsertAgentProvisioning(ctx context.Context, input provisioning.RecordInput) (provisioning.Record, error) {
 	if input.TenantID == 0 || input.ProfileKey == "" || input.AccountKey == "" {
 		return provisioning.Record{}, ErrInvalidInput
@@ -84,6 +121,9 @@ func provisioningFromRow(row gormAgentProvisioning) provisioning.Record {
 	var ws provisioning.WorkerStatus
 	var checks []provisioning.HealthCheck
 	_ = json.Unmarshal([]byte(row.WorkerSpecJSON), &spec)
+	if spec.WorkerName == "" {
+		spec.WorkerName = row.ProfileKey
+	}
 	if row.WorkerStatusJSON != nil {
 		_ = json.Unmarshal([]byte(*row.WorkerStatusJSON), &ws)
 	}

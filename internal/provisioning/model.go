@@ -105,19 +105,22 @@ func (s ProvisioningSession) Redacted() ProvisioningSession {
 }
 
 type WorkerSpec struct {
-	Supervisor     string            `json:"supervisor"`
-	AccountKey     string            `json:"account_key"`
-	Workspace      string            `json:"workspace"`
-	SettingsRef    string            `json:"settings_ref"`
-	Provider       string            `json:"provider"`
-	Model          string            `json:"model"`
-	Streaming      string            `json:"streaming"`
-	Reactions      string            `json:"reactions"`
-	PermissionMode string            `json:"permission_mode"`
-	PayloadKeyRef  string            `json:"payload_key_ref"`
-	PayloadKey     string            `json:"-"`
-	Environment    map[string]string `json:"-"`
-	WorkerName     string            `json:"worker_name,omitempty"`
+	Supervisor     string `json:"supervisor"`
+	AccountKey     string `json:"account_key"`
+	Workspace      string `json:"workspace"`
+	SettingsRef    string `json:"settings_ref"`
+	Provider       string `json:"provider"`
+	Model          string `json:"model"`
+	Streaming      string `json:"streaming"`
+	Reactions      string `json:"reactions"`
+	PermissionMode string `json:"permission_mode"`
+	PayloadKeyRef  string `json:"payload_key_ref"`
+	PayloadKey     string `json:"-"`
+	// Environment contains non-secret worker wiring such as the SQLite path,
+	// account id and credential file location. Secret values are intentionally
+	// never placed here; the worker derives its payload key locally.
+	Environment map[string]string `json:"environment,omitempty"`
+	WorkerName  string            `json:"worker_name,omitempty"`
 }
 
 type WorkerStatus struct {

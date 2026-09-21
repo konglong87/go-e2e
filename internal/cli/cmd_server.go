@@ -129,7 +129,7 @@ func serverCommand(ctx context.Context, args []string, opts options, stdout io.W
 		serverOpts.SessionBackend = sessionBackend
 	}
 	tenantStorageMode := "disabled"
-	if sqlitePath := strings.TrimSpace(os.Getenv("GOLANG_CC_SQLITE_PATH")); sqlitePath != "" {
+	if sqlitePath := strings.TrimSpace(os.Getenv("GO_E2E_SQLITE_PATH")); sqlitePath != "" {
 		repo, err := mysqlstore.OpenSQLiteGormRepository(ctx, sqlitePath, nil)
 		if err != nil {
 			return fmt.Errorf("open desktop sqlite repository: %w", err)
@@ -169,6 +169,18 @@ func serverCommand(ctx context.Context, args []string, opts options, stdout io.W
 				return err
 			},
 		})
+		workerSupervisor := supervisor.ScreenSupervisor{
+			ScriptPath: filepath.Join(serverOpts.Workspace, "scripts", "channel-worker-screen.sh"),
+			BaseEnv: []string{
+				"GO_E2E_SQLITE_PATH=" + sqlitePath,
+				"GOLANG_CC_FEISHU_CREDENTIAL_FILE=" + channelCredentialPath(),
+			},
+		}
+		serverOpts.ProvisioningService = &provisioning.Service{
+			Repo: repo, Channels: repo,
+			Credentials: credentials.FileStore{Dir: filepath.Dir(channelCredentialPath()), LegacyPath: channelCredentialPath()},
+			Feishu:      feishuprovision.HTTPProvisioner{}, Supervisor: workerSupervisor, Inventory: workerSupervisor,
+		}
 		tenantStorageMode = "sqlite"
 		if err := configureServerImageRuntime(serverOpts.Workspace, opts.settingsInputs, repo, &serverOpts); err != nil {
 			return err
@@ -207,7 +219,11 @@ func serverCommand(ctx context.Context, args []string, opts options, stdout io.W
 			return err
 		}
 		workerSupervisor := supervisor.ScreenSupervisor{ScriptPath: filepath.Join(serverOpts.Workspace, "scripts", "channel-worker-screen.sh")}
-		serverOpts.ProvisioningService = &provisioning.Service{Repo: repo, Credentials: credentials.FileStore{Dir: filepath.Dir(channelCredentialPath())}, Feishu: feishuprovision.HTTPProvisioner{}, Supervisor: workerSupervisor, Inventory: workerSupervisor}
+		serverOpts.ProvisioningService = &provisioning.Service{
+			Repo: repo, Channels: repo,
+			Credentials: credentials.FileStore{Dir: filepath.Dir(channelCredentialPath()), LegacyPath: channelCredentialPath()},
+			Feishu:      feishuprovision.HTTPProvisioner{}, Supervisor: workerSupervisor, Inventory: workerSupervisor,
+		}
 		serverOpts.AgentTaskStore = tenantSvc
 		serverOpts.PendingInputQueue = repo
 		serverOpts.SessionControlEvents = tenantSvc

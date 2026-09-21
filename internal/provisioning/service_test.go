@@ -46,6 +46,9 @@ func TestServicePreflightPersistsChecks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if item.WorkerSpec.WorkerName != "writer" {
+		t.Fatalf("worker name = %q, want profile key", item.WorkerSpec.WorkerName)
+	}
 	item, err = service.Preflight(context.Background(), 9, item.ID, 2)
 	if err != nil || item.Status != StatusPreflight || len(item.Checks) != 1 {
 		t.Fatalf("item=%#v err=%v", item, err)

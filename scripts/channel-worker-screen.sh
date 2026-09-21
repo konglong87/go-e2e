@@ -41,6 +41,7 @@ if [[ -f "${ENV_FILE}" ]]; then
   persisted_override_keys=(
     WORKSPACE
     GO_E2E_MYSQL_DSN
+    GO_E2E_SQLITE_PATH
     GO_E2E_FEISHU_CREDENTIAL_FILE
     GO_E2E_CHANNEL_TENANT_ID
     GO_E2E_CHANNEL_ACCOUNT_ID
@@ -200,13 +201,15 @@ status_worker() {
 start_worker() {
   need go
   need screen
-  require_env GO_E2E_MYSQL_DSN
+  if [[ -z "${GO_E2E_SQLITE_PATH:-}" && -z "${GO_E2E_MYSQL_DSN:-}" ]]; then
+    echo "channel-worker-screen requires GO_E2E_SQLITE_PATH or GO_E2E_MYSQL_DSN" >&2
+    exit 2
+  fi
   require_env GO_E2E_FEISHU_CREDENTIAL_FILE
   require_env GO_E2E_CHANNEL_TENANT_ID
   require_env GO_E2E_CHANNEL_ACCOUNT_ID
   require_env GO_E2E_CHANNEL_ACCOUNT_KEY
   require_env GO_E2E_CHANNEL_USER_ID
-  require_env GO_E2E_CHANNEL_PAYLOAD_KEY
   mkdir -p "${STATE_DIR}"
   chmod 700 "${STATE_DIR}"
   ACCOUNT_LOCK_DIR="${ACCOUNT_LOCK_ROOT}/${GO_E2E_CHANNEL_TENANT_ID}-${GO_E2E_CHANNEL_ACCOUNT_ID}"
@@ -221,7 +224,8 @@ start_worker() {
   chmod 700 "${BINARY}"
   umask 077
   {
-    printf 'GO_E2E_MYSQL_DSN=%q\n' "${GO_E2E_MYSQL_DSN}"
+    printf 'GO_E2E_MYSQL_DSN=%q\n' "${GO_E2E_MYSQL_DSN:-}"
+    printf 'GO_E2E_SQLITE_PATH=%q\n' "${GO_E2E_SQLITE_PATH:-}"
     printf 'GO_E2E_FEISHU_CREDENTIAL_FILE=%q\n' "${GO_E2E_FEISHU_CREDENTIAL_FILE}"
     printf 'GO_E2E_CHANNEL_TENANT_ID=%q\n' "${GO_E2E_CHANNEL_TENANT_ID}"
     printf 'GO_E2E_CHANNEL_ACCOUNT_ID=%q\n' "${GO_E2E_CHANNEL_ACCOUNT_ID}"

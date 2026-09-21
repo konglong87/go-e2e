@@ -308,6 +308,15 @@ type gormChannelReaction struct {
 	UpdatedAt         time.Time  `gorm:"column:updated_at"`
 }
 
+type gormChannelRunInput struct {
+	ID           uint64    `gorm:"column:id;primaryKey"`
+	TenantID     uint64    `gorm:"column:tenant_id"`
+	RunID        string    `gorm:"column:run_id"`
+	InboxEventID uint64    `gorm:"column:inbox_event_id"`
+	SequenceNo   uint      `gorm:"column:sequence_no"`
+	CreatedAt    time.Time `gorm:"column:created_at"`
+}
+
 const (
 	channelAccountSelect      = "id, tenant_id, provider, account_key, app_id, credential_ref, mode, enabled, policy_json, status, last_connected_at, last_error_code, last_error_message, created_at, updated_at, archived_at"
 	channelIdentitySelect     = "id, tenant_id, account_id, external_user_id, external_union_id, user_id, display_name, metadata_json, created_at, updated_at, archived_at"
@@ -331,6 +340,7 @@ func (gormChannelMessage) TableName() string      { return "channel_messages" }
 func (gormChannelOutbox) TableName() string       { return "channel_outbox" }
 func (gormChannelCallback) TableName() string     { return "channel_callbacks" }
 func (gormChannelReaction) TableName() string     { return "channel_reactions" }
+func (gormChannelRunInput) TableName() string     { return "channel_run_inputs" }
 
 func channelStringPtr(s string) *string {
 	if s == "" {
@@ -403,6 +413,13 @@ func valueTime(v *time.Time) time.Time {
 		return time.Time{}
 	}
 	return *v
+}
+
+func channelNow(db *gorm.DB) clause.Expr {
+	if isSQLite(db) {
+		return gorm.Expr("CURRENT_TIMESTAMP")
+	}
+	return gorm.Expr("CURRENT_TIMESTAMP(6)")
 }
 
 func (r *GormRepository) CreateChannelAccount(ctx context.Context, input ChannelAccountInput) (ChannelAccount, error) {
@@ -514,7 +531,7 @@ func (r *GormRepository) updateInbox(ctx context.Context, tenantID, eventID uint
 	return nil
 }
 func (r *GormRepository) MarkInboxQueued(ctx context.Context, tenantID, eventID, conversationID uint64, scopeHash []byte) error {
-	return r.updateInbox(ctx, tenantID, eventID, map[string]any{"conversation_id": conversationID, "scope_hash": scopeHash, "status": ChannelInboxStatusQueued, "acked_at": gorm.Expr("COALESCE(acked_at, CURRENT_TIMESTAMP(6))")})
+	return r.updateInbox(ctx, tenantID, eventID, map[string]any{"conversation_id": conversationID, "scope_hash": scopeHash, "status": ChannelInboxStatusQueued, "acked_at": gorm.Expr("COALESCE(acked_at, ?)", channelNow(r.with(ctx)))})
 }
 
 func (r *GormRepository) MarkInboxProcessing(ctx context.Context, tenantID, eventID uint64, workerID string, leaseUntil time.Time) error {
@@ -531,7 +548,7 @@ func (r *GormRepository) MarkInboxProcessing(ctx context.Context, tenantID, even
 	return nil
 }
 func (r *GormRepository) MarkInboxProcessed(ctx context.Context, tenantID, eventID uint64) error {
-	return r.updateInbox(ctx, tenantID, eventID, map[string]any{"status": ChannelInboxStatusProcessed, "processed_at": gorm.Expr("CURRENT_TIMESTAMP(6)"), "lease_owner": nil, "lease_until": nil})
+	return r.updateInbox(ctx, tenantID, eventID, map[string]any{"status": ChannelInboxStatusProcessed, "processed_at": channelNow(r.with(ctx)), "lease_owner": nil, "lease_until": nil})
 }
 func (r *GormRepository) MarkInboxRetry(ctx context.Context, tenantID, eventID uint64, availableAt time.Time, errorCode, errorMessage string) error {
 	return r.updateInbox(ctx, tenantID, eventID, map[string]any{"status": ChannelInboxStatusRetry, "available_at": availableAt, "attempts": gorm.Expr("attempts + 1"), "error_code": channelStringPtr(errorCode), "error_message": channelStringPtr(errorMessage), "lease_owner": nil, "lease_until": nil})
@@ -540,7 +557,7 @@ func (r *GormRepository) MarkInboxFailed(ctx context.Context, tenantID, eventID 
 	return r.updateInbox(ctx, tenantID, eventID, map[string]any{"status": ChannelInboxStatusFailed, "attempts": gorm.Expr("attempts + 1"), "error_code": channelStringPtr(errorCode), "error_message": channelStringPtr(errorMessage), "lease_owner": nil, "lease_until": nil})
 }
 func (r *GormRepository) MarkInboxIgnored(ctx context.Context, tenantID, eventID uint64, errorCode, errorMessage string) error {
-	return r.updateInbox(ctx, tenantID, eventID, map[string]any{"status": ChannelInboxStatusIgnored, "processed_at": gorm.Expr("CURRENT_TIMESTAMP(6)"), "error_code": channelStringPtr(errorCode), "error_message": channelStringPtr(errorMessage), "lease_owner": nil, "lease_until": nil})
+	return r.updateInbox(ctx, tenantID, eventID, map[string]any{"status": ChannelInboxStatusIgnored, "processed_at": channelNow(r.with(ctx)), "error_code": channelStringPtr(errorCode), "error_message": channelStringPtr(errorMessage), "lease_owner": nil, "lease_until": nil})
 }
 
 // ClaimDueInbox claims queued/retry inbox events for worker restart recovery.
@@ -1017,11 +1034,33 @@ func (r *GormRepository) RequeueStrandedChannelRuns(ctx context.Context, tenantI
 		_ = tx.Rollback().Error
 		return err
 	}
-	if err := tx.Exec("UPDATE channel_inbox_events i JOIN channel_run_inputs ri ON ri.inbox_event_id = i.id JOIN channel_runs r ON r.id = ri.run_id AND r.tenant_id = i.tenant_id SET i.status = ?, i.processed_at = CURRENT_TIMESTAMP(6), i.lease_owner = NULL, i.lease_until = NULL WHERE i.tenant_id = ? AND i.account_id = ? AND r.status = ?", ChannelInboxStatusProcessed, tenantID, accountID, ChannelRunStatusCancelRequested).Error; err != nil {
+	var cancelInboxQuery string
+	if isSQLite(tx) {
+		cancelInboxQuery = `UPDATE channel_inbox_events
+			SET status = ?, processed_at = CURRENT_TIMESTAMP, lease_owner = NULL, lease_until = NULL
+			WHERE tenant_id = ? AND account_id = ? AND id IN (
+				SELECT ri.inbox_event_id FROM channel_run_inputs ri
+				JOIN channel_runs r ON r.id = ri.run_id AND r.tenant_id = ?
+				WHERE r.status = ?
+			)`
+	} else {
+		cancelInboxQuery = "UPDATE channel_inbox_events i JOIN channel_run_inputs ri ON ri.inbox_event_id = i.id JOIN channel_runs r ON r.id = ri.run_id AND r.tenant_id = i.tenant_id SET i.status = ?, i.processed_at = CURRENT_TIMESTAMP(6), i.lease_owner = NULL, i.lease_until = NULL WHERE i.tenant_id = ? AND i.account_id = ? AND r.status = ?"
+	}
+	var cancelInboxArgs []any
+	if isSQLite(tx) {
+		cancelInboxArgs = []any{ChannelInboxStatusProcessed, tenantID, accountID, tenantID, ChannelRunStatusCancelRequested}
+	} else {
+		cancelInboxArgs = []any{ChannelInboxStatusProcessed, tenantID, accountID, ChannelRunStatusCancelRequested}
+	}
+	if err := tx.Exec(cancelInboxQuery, cancelInboxArgs...).Error; err != nil {
 		_ = tx.Rollback().Error
 		return err
 	}
-	if err := tx.Exec("UPDATE channel_runs SET status = ?, finished_at = CURRENT_TIMESTAMP(6), worker_id = NULL, heartbeat_at = NULL WHERE tenant_id = ? AND account_id = ? AND status = ?", ChannelRunStatusCancelled, tenantID, accountID, ChannelRunStatusCancelRequested).Error; err != nil {
+	finishedAt := "CURRENT_TIMESTAMP(6)"
+	if isSQLite(tx) {
+		finishedAt = "CURRENT_TIMESTAMP"
+	}
+	if err := tx.Exec("UPDATE channel_runs SET status = ?, finished_at = "+finishedAt+", worker_id = NULL, heartbeat_at = NULL WHERE tenant_id = ? AND account_id = ? AND status = ?", ChannelRunStatusCancelled, tenantID, accountID, ChannelRunStatusCancelRequested).Error; err != nil {
 		_ = tx.Rollback().Error
 		return err
 	}
@@ -1042,14 +1081,27 @@ func (r *GormRepository) HeartbeatChannelRun(ctx context.Context, tenantID, acco
 	return r.updateRun(ctx, tenantID, accountID, runID, map[string]any{"heartbeat_at": time.Now().UTC(), "last_event_seq": lastEventSeq, "worker_id": workerID})
 }
 func (r *GormRepository) RequestCancelChannelRun(ctx context.Context, tenantID, accountID uint64, runID string) error {
-	return r.updateRun(ctx, tenantID, accountID, runID, map[string]any{"status": ChannelRunStatusCancelRequested, "cancel_requested_at": gorm.Expr("CURRENT_TIMESTAMP(6)")})
+	return r.updateRun(ctx, tenantID, accountID, runID, map[string]any{"status": ChannelRunStatusCancelRequested, "cancel_requested_at": channelNow(r.with(ctx))})
 }
 
 func (r *GormRepository) RequestCancelActiveChannelRun(ctx context.Context, tenantID, accountID, conversationID uint64) (bool, error) {
 	if tenantID == 0 || accountID == 0 || conversationID == 0 {
 		return false, ErrInvalidInput
 	}
-	res := r.with(ctx).Exec("UPDATE channel_runs SET status = ?, cancel_requested_at = CURRENT_TIMESTAMP(6) WHERE tenant_id = ? AND account_id = ? AND conversation_id = ? AND status IN (?, ?, ?) ORDER BY CASE WHEN status = ? THEN 0 WHEN status = ? THEN 1 ELSE 2 END, created_at ASC, id ASC LIMIT 1", ChannelRunStatusCancelRequested, tenantID, accountID, conversationID, ChannelRunStatusRunning, ChannelRunStatusQueued, ChannelRunStatusWaitingInput, ChannelRunStatusRunning, ChannelRunStatusWaitingInput)
+	var res *gorm.DB
+	if isSQLite(r.db) {
+		var row gormChannelRun
+		err := r.with(ctx).Table("channel_runs").Where("tenant_id = ? AND account_id = ? AND conversation_id = ? AND status IN (?, ?, ?)", tenantID, accountID, conversationID, ChannelRunStatusRunning, ChannelRunStatusQueued, ChannelRunStatusWaitingInput).Order("CASE WHEN status = '" + ChannelRunStatusRunning + "' THEN 0 WHEN status = '" + ChannelRunStatusWaitingInput + "' THEN 1 ELSE 2 END, created_at ASC, id ASC").Limit(1).Take(&row).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		res = r.with(ctx).Table("channel_runs").Where("tenant_id = ? AND account_id = ? AND id = ? AND status IN (?, ?, ?)", tenantID, accountID, row.ID, ChannelRunStatusRunning, ChannelRunStatusQueued, ChannelRunStatusWaitingInput).Updates(map[string]any{"status": ChannelRunStatusCancelRequested, "cancel_requested_at": channelNow(r.with(ctx))})
+	} else {
+		res = r.with(ctx).Exec("UPDATE channel_runs SET status = ?, cancel_requested_at = CURRENT_TIMESTAMP(6) WHERE tenant_id = ? AND account_id = ? AND conversation_id = ? AND status IN (?, ?, ?) ORDER BY CASE WHEN status = ? THEN 0 WHEN status = ? THEN 1 ELSE 2 END, created_at ASC, id ASC LIMIT 1", ChannelRunStatusCancelRequested, tenantID, accountID, conversationID, ChannelRunStatusRunning, ChannelRunStatusQueued, ChannelRunStatusWaitingInput, ChannelRunStatusRunning, ChannelRunStatusWaitingInput)
+	}
 	if res.Error != nil {
 		return false, res.Error
 	}
@@ -1169,7 +1221,7 @@ func (r *GormRepository) FinishChannelRun(ctx context.Context, tenantID, account
 	if status == "" {
 		return ErrInvalidInput
 	}
-	return r.updateRun(ctx, tenantID, accountID, runID, map[string]any{"status": status, "finished_at": gorm.Expr("CURRENT_TIMESTAMP(6)"), "error_code": channelStringPtr(errorCode), "error_message": channelStringPtr(errorMessage)})
+	return r.updateRun(ctx, tenantID, accountID, runID, map[string]any{"status": status, "finished_at": channelNow(r.with(ctx)), "error_code": channelStringPtr(errorCode), "error_message": channelStringPtr(errorMessage)})
 }
 
 func (r *GormRepository) MarkChannelRunWaitingInput(ctx context.Context, tenantID, accountID uint64, runID string) error {
@@ -1601,7 +1653,7 @@ func (r *GormRepository) MarkChannelMessageSent(ctx context.Context, tenantID, a
 	if tenantID == 0 || accountID == 0 || messageID == 0 || externalMessageID == "" {
 		return ErrInvalidInput
 	}
-	res := r.with(ctx).Table("channel_messages").Where("tenant_id = ? AND account_id = ? AND id = ?", tenantID, accountID, messageID).Updates(map[string]any{"external_message_id": externalMessageID, "status": ChannelMessageStatusSent, "sent_at": gorm.Expr("CURRENT_TIMESTAMP(6)")})
+	res := r.with(ctx).Table("channel_messages").Where("tenant_id = ? AND account_id = ? AND id = ?", tenantID, accountID, messageID).Updates(map[string]any{"external_message_id": externalMessageID, "status": ChannelMessageStatusSent, "sent_at": channelNow(r.with(ctx))})
 	if res.Error != nil {
 		return res.Error
 	}
@@ -1715,7 +1767,7 @@ func (r *GormRepository) updateOutbox(ctx context.Context, tenantID, accountID, 
 	return nil
 }
 func (r *GormRepository) MarkOutboxSent(ctx context.Context, tenantID, accountID, id uint64) error {
-	return r.updateOutbox(ctx, tenantID, accountID, id, map[string]any{"status": ChannelOutboxStatusSent, "sent_at": gorm.Expr("CURRENT_TIMESTAMP(6)"), "lease_owner": nil, "lease_until": nil})
+	return r.updateOutbox(ctx, tenantID, accountID, id, map[string]any{"status": ChannelOutboxStatusSent, "sent_at": channelNow(r.with(ctx)), "lease_owner": nil, "lease_until": nil})
 }
 func (r *GormRepository) MarkOutboxRetry(ctx context.Context, tenantID, accountID, id uint64, nextAttemptAt time.Time, errorCode, errorMessage string) error {
 	return r.updateOutbox(ctx, tenantID, accountID, id, map[string]any{"status": ChannelOutboxStatusRetry, "next_attempt_at": nextAttemptAt, "last_error_code": channelStringPtr(errorCode), "last_error_message": channelStringPtr(errorMessage), "lease_owner": nil, "lease_until": nil})
