@@ -545,7 +545,14 @@ func (r *GormRepository) updateInbox(ctx context.Context, tenantID, eventID uint
 	return nil
 }
 func (r *GormRepository) MarkInboxQueued(ctx context.Context, tenantID, eventID, conversationID uint64, scopeHash []byte) error {
-	return r.updateInbox(ctx, tenantID, eventID, map[string]any{"conversation_id": conversationID, "scope_hash": scopeHash, "status": ChannelInboxStatusQueued, "acked_at": gorm.Expr("COALESCE(acked_at, ?)", channelNow(r.with(ctx)))})
+	return r.updateInbox(ctx, tenantID, eventID, map[string]any{
+		"conversation_id": conversationID,
+		"scope_hash":      scopeHash,
+		"status":          ChannelInboxStatusQueued,
+		"acked_at":        gorm.Expr("COALESCE(acked_at, ?)", channelNow(r.with(ctx))),
+		"lease_owner":     nil,
+		"lease_until":     nil,
+	})
 }
 
 func (r *GormRepository) MarkInboxProcessing(ctx context.Context, tenantID, eventID uint64, workerID string, leaseUntil time.Time) error {
@@ -996,10 +1003,30 @@ func (r *GormRepository) ClaimConversationRun(ctx context.Context, tenantID, acc
 			panic("channel run claim panic")
 		}
 	}()
+	now := time.Now().UTC()
 	var existing gormChannelRun
 	err := channelForUpdate(
 		tx.Table("channel_runs").Select(channelRunSelect).
-			Where("tenant_id = ? AND account_id = ? AND conversation_id = ? AND status IN (?, ?, ?)", tenantID, accountID, conversationID, ChannelRunStatusRunning, ChannelRunStatusCancelRequested, ChannelRunStatusWaitingInput),
+			Where(`tenant_id = ? AND account_id = ? AND conversation_id = ? AND (
+				status IN (?, ?) OR
+				(status = ? AND EXISTS (
+					SELECT 1 FROM channel_interactions interactions
+					WHERE interactions.tenant_id = ?
+						AND interactions.account_id = ?
+						AND interactions.run_id = channel_runs.id
+						AND (
+							(interactions.status = ? AND interactions.expires_at > ?)
+							OR interactions.status = ?
+						)
+				))
+			)`,
+				tenantID, accountID, conversationID,
+				ChannelRunStatusRunning, ChannelRunStatusCancelRequested,
+				ChannelRunStatusWaitingInput,
+				tenantID, accountID,
+				ChannelInteractionStatusPending, now,
+				ChannelInteractionStatusAnswered,
+			),
 	).
 		Limit(1).Take(&existing).Error
 	if err == nil {
@@ -1024,7 +1051,6 @@ func (r *GormRepository) ClaimConversationRun(ctx context.Context, tenantID, acc
 		tx.Rollback()
 		return ChannelRun{}, err
 	}
-	now := time.Now().UTC()
 	res := tx.Table("channel_runs").Where("tenant_id = ? AND account_id = ? AND id = ? AND status = ?", tenantID, accountID, row.ID, ChannelRunStatusQueued).Updates(map[string]any{"status": ChannelRunStatusRunning, "worker_id": workerID, "heartbeat_at": now, "started_at": now})
 	if res.Error != nil {
 		tx.Rollback()

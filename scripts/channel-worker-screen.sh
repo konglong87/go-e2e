@@ -303,6 +303,7 @@ start_worker() {
   cat >"${RUNNER_FILE}" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
+unset GOLANG_CC_SQLITE_PATH
 set -a
 . '${ENV_FILE}'
 set +a

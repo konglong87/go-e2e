@@ -132,6 +132,13 @@ func TestSQLiteDesktopRepositorySupportsChannelClaims(t *testing.T) {
 	if err != nil || len(inbox) != 1 || inbox[0].Status != ChannelInboxStatusProcessing {
 		t.Fatalf("claim due inbox = %+v err=%v", inbox, err)
 	}
+	if err := repo.MarkInboxQueued(ctx, tenantID, inbox[0].ID, conversation.ID, scope.Hash[:]); err != nil {
+		t.Fatal(err)
+	}
+	reclaimed, err := repo.ClaimDueInbox(ctx, tenantID, accountID, "worker-inbox-reclaimed", 10, leaseUntil)
+	if err != nil || len(reclaimed) != 1 || reclaimed[0].Status != ChannelInboxStatusProcessing {
+		t.Fatalf("reclaim queued inbox = %+v err=%v", reclaimed, err)
+	}
 
 	message, err := repo.CreateChannelMessage(ctx, ChannelMessageInput{
 		TenantID: tenantID, AccountID: accountID, ConversationID: conversation.ID,
@@ -236,6 +243,75 @@ func TestSQLiteDesktopRepositoryExpiresPendingInteractionsWithoutLocking(t *test
 	}
 	if len(expired) != 1 || expired[0].ID != "expired-interaction" || expired[0].Status != ChannelInteractionStatusExpired {
 		t.Fatalf("expired interactions = %+v", expired)
+	}
+}
+
+func TestSQLiteDesktopRepositoryDoesNotBlockOnExpiredWaitingInputRun(t *testing.T) {
+	ctx := context.Background()
+	repo, err := OpenSQLiteGormRepository(ctx, filepath.Join(t.TempDir(), "expired-waiting-run.sqlite"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Close()
+
+	tenantID, err := repo.UpsertTenant(ctx, TenantInput{TenantKey: "expired-waiting-tenant", Name: "Expired waiting"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	userID, err := repo.EnsureUser(ctx, tenantID, "expired-waiting-user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	accountID, err := repo.EnsureChannelAccount(ctx, tenantID, ChannelProviderFeishu, "expired-waiting-account", "app", "credential")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope, err := channelcontract.NewScope(channelcontract.ProviderFeishu, "expired-waiting-account", "expired-waiting-chat", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation, err := repo.GetOrCreateChannelConversation(ctx, ChannelConversationInput{
+		TenantID: tenantID, AccountID: accountID, ExternalChatID: "expired-waiting-chat",
+		ScopeKey: scope.Key, ScopeHash: scope.Hash[:], ExternalUserID: "expired-waiting-user",
+		ChatType: ChannelChatTypeP2P, SessionID: userID, RuntimeFingerprint: channelruntimeFingerprintForSQLiteTest,
+		RuntimeFingerprintVersion: 1, Status: ChannelConversationStatusActive,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.CreateChannelRun(ctx, ChannelRunInput{
+		ID: "expired-waiting-run", TenantID: tenantID, AccountID: accountID,
+		ConversationID: conversation.ID, ScopeHash: scope.Hash[:], SessionID: userID,
+		Status: ChannelRunStatusWaitingInput, RuntimeFingerprint: channelruntimeFingerprintForSQLiteTest,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.CreateChannelInteraction(ctx, ChannelInteractionInput{
+		ID: "expired-waiting-interaction", TenantID: tenantID, AccountID: accountID,
+		ConversationID: conversation.ID, RunID: "expired-waiting-run", SessionID: userID,
+		Kind: "question", Status: ChannelInteractionStatusExpired,
+		ExternalChatID: "expired-waiting-chat", ExternalUserID: "expired-waiting-user",
+		ScopeHash: scope.Hash[:], AllowedUserID: userID,
+		QuestionCiphertext: []byte("question"), ResumeCheckpointCiphertext: []byte("resume"),
+		NonceHash: []byte("nonce"), RuntimeFingerprint: channelruntimeFingerprintForSQLiteTest,
+		RuntimeFingerprintVersion: 1, ExpiresAt: time.Now().UTC().Add(-time.Minute),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.CreateChannelRun(ctx, ChannelRunInput{
+		ID: "new-queued-run", TenantID: tenantID, AccountID: accountID,
+		ConversationID: conversation.ID, ScopeHash: scope.Hash[:], SessionID: userID,
+		Status: ChannelRunStatusQueued, RuntimeFingerprint: channelruntimeFingerprintForSQLiteTest,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	claimed, err := repo.ClaimConversationRun(ctx, tenantID, accountID, conversation.ID, "worker-expired")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claimed.ID != "new-queued-run" || claimed.Status != ChannelRunStatusRunning {
+		t.Fatalf("claimed run = %+v", claimed)
 	}
 }
 
