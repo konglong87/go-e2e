@@ -176,11 +176,15 @@ func serverCommand(ctx context.Context, args []string, opts options, stdout io.W
 				"GOLANG_CC_FEISHU_CREDENTIAL_FILE=" + channelCredentialPath(),
 			},
 		}
-		serverOpts.ProvisioningService = &provisioning.Service{
+		provisioningService := &provisioning.Service{
 			Repo: repo, Channels: repo,
 			Credentials: credentials.FileStore{Dir: filepath.Dir(channelCredentialPath()), LegacyPath: channelCredentialPath()},
 			Feishu:      feishuprovision.HTTPProvisioner{}, Supervisor: workerSupervisor, Inventory: workerSupervisor,
 		}
+		if err := provisioningService.Reconcile(ctx, tenantID); err != nil {
+			return fmt.Errorf("reconcile desktop channel accounts: %w", err)
+		}
+		serverOpts.ProvisioningService = provisioningService
 		tenantStorageMode = "sqlite"
 		if err := configureServerImageRuntime(serverOpts.Workspace, opts.settingsInputs, repo, &serverOpts); err != nil {
 			return err
@@ -219,11 +223,15 @@ func serverCommand(ctx context.Context, args []string, opts options, stdout io.W
 			return err
 		}
 		workerSupervisor := supervisor.ScreenSupervisor{ScriptPath: filepath.Join(serverOpts.Workspace, "scripts", "channel-worker-screen.sh")}
-		serverOpts.ProvisioningService = &provisioning.Service{
+		provisioningService := &provisioning.Service{
 			Repo: repo, Channels: repo,
 			Credentials: credentials.FileStore{Dir: filepath.Dir(channelCredentialPath()), LegacyPath: channelCredentialPath()},
 			Feishu:      feishuprovision.HTTPProvisioner{}, Supervisor: workerSupervisor, Inventory: workerSupervisor,
 		}
+		if err := provisioningService.ReconcileAll(ctx); err != nil {
+			return fmt.Errorf("reconcile tenant channel accounts: %w", err)
+		}
+		serverOpts.ProvisioningService = provisioningService
 		serverOpts.AgentTaskStore = tenantSvc
 		serverOpts.PendingInputQueue = repo
 		serverOpts.SessionControlEvents = tenantSvc

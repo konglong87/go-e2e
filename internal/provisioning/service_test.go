@@ -37,6 +37,24 @@ func (fakeCreds) Get(context.Context, string) (CredentialRef, error) {
 }
 func (fakeCreds) Delete(context.Context, string) error { return nil }
 
+type fakeChannels struct {
+	accountID  uint64
+	provider   string
+	accountKey string
+	appID      string
+	credential string
+	calls      int
+}
+
+func (f *fakeChannels) EnsureChannelAccount(_ context.Context, _ uint64, provider, accountKey, appID, credentialRef string) (uint64, error) {
+	f.calls++
+	f.provider, f.accountKey, f.appID, f.credential = provider, accountKey, appID, credentialRef
+	if f.accountID == 0 {
+		f.accountID = 41
+	}
+	return f.accountID, nil
+}
+
 type fakeFeishu struct{}
 
 func (fakeFeishu) Preflight(context.Context, CredentialRef, WorkerSpec) ([]HealthCheck, error) {
@@ -107,5 +125,33 @@ func TestServiceOverviewReconcilesDiscoveredWorker(t *testing.T) {
 	}
 	if record.CredentialRef != discoveredCredentialRef {
 		t.Fatalf("credential ref=%q, want %q", record.CredentialRef, discoveredCredentialRef)
+	}
+}
+
+func TestServiceReconcileRepairsExistingWorkerAccount(t *testing.T) {
+	repo := &memoryRepo{item: Record{
+		ID:            7,
+		TenantID:      9,
+		ProfileKey:    "code",
+		AccountKey:    "feishu-e2e",
+		CredentialRef: discoveredCredentialRef,
+		WorkerSpec: WorkerSpec{Environment: map[string]string{
+			"GOLANG_CC_CHANNEL_ACCOUNT_ID": "1",
+		}},
+	}}
+	channels := &fakeChannels{}
+	service := &Service{Repo: repo, Channels: channels, Credentials: fakeCreds{}}
+
+	if err := service.Reconcile(context.Background(), 9); err != nil {
+		t.Fatal(err)
+	}
+	if channels.calls != 1 || channels.provider != feishuProvider || channels.accountKey != "feishu-e2e" || channels.appID != "app" || channels.credential != discoveredCredentialRef {
+		t.Fatalf("channel reconciliation = %+v", channels)
+	}
+	if got := repo.item.WorkerSpec.Environment[channelAccountIDEnv]; got != "41" {
+		t.Fatalf("account id environment = %q, want 41", got)
+	}
+	if got := repo.item.WorkerSpec.Environment[channelAccountKeyEnv]; got != "feishu-e2e" {
+		t.Fatalf("account key environment = %q, want feishu-e2e", got)
 	}
 }

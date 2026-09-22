@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/konglong87/go-e2e/internal/provisioning"
@@ -35,18 +36,36 @@ func (gormAgentProvisioning) TableName() string { return "agent_provisionings" }
 // EnsureChannelAccount is the storage-side idempotent bridge between a
 // provisioning record and the provider-neutral channel runtime account.
 func (r *GormRepository) EnsureChannelAccount(ctx context.Context, tenantID uint64, provider, accountKey, appID, credentialRef string) (uint64, error) {
+	provider, accountKey = strings.TrimSpace(provider), strings.TrimSpace(accountKey)
 	if tenantID == 0 || provider == "" || accountKey == "" {
 		return 0, ErrInvalidInput
 	}
 	var row gormChannelAccount
-	err := r.with(ctx).Where("tenant_id = ? AND provider = ? AND account_key = ? AND archived_at IS NULL", tenantID, provider, accountKey).Take(&row).Error
+	lookup := r.with(ctx).Where("tenant_id = ? AND provider = ? AND account_key = ?", tenantID, provider, accountKey)
+	err := lookup.Where("archived_at IS NULL").Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
+		// Reuse an archived identity instead of colliding with the tenant-scoped
+		// unique key. A worker restart should reactivate the same account row.
+		if archivedErr := lookup.Take(&row).Error; archivedErr == nil {
+			if err := r.with(ctx).Table("channel_accounts").Where("tenant_id = ? AND id = ?", tenantID, row.ID).Updates(channelAccountReadyUpdates(appID, credentialRef, true)).Error; err != nil {
+				return 0, fmt.Errorf("restore channel account: %w", err)
+			}
+			return row.ID, nil
+		}
 		row = gormChannelAccount{
 			TenantID: tenantID, Provider: provider, AccountKey: accountKey,
 			AppID: appID, CredentialRef: credentialRef, Mode: ChannelAccountModeStream,
 			Enabled: true, PolicyJSON: `{}`, Status: ChannelAccountStatusReady,
 		}
 		if err := r.with(ctx).Create(&row).Error; err != nil {
+			// Another process may have won the create race. Re-read the
+			// canonical row before surfacing a real database failure.
+			if lookupErr := lookup.Where("archived_at IS NULL").Take(&row).Error; lookupErr == nil {
+				if updateErr := r.with(ctx).Table("channel_accounts").Where("tenant_id = ? AND id = ?", tenantID, row.ID).Updates(channelAccountReadyUpdates(appID, credentialRef, false)).Error; updateErr != nil {
+					return 0, fmt.Errorf("update channel account after create race: %w", updateErr)
+				}
+				return row.ID, nil
+			}
 			return 0, err
 		}
 		return row.ID, nil
@@ -54,17 +73,24 @@ func (r *GormRepository) EnsureChannelAccount(ctx context.Context, tenantID uint
 	if err != nil {
 		return 0, err
 	}
-	updates := map[string]any{"enabled": true, "status": ChannelAccountStatusReady}
-	if appID != "" {
-		updates["app_id"] = appID
-	}
-	if credentialRef != "" {
-		updates["credential_ref"] = credentialRef
-	}
-	if err := r.with(ctx).Table("channel_accounts").Where("tenant_id = ? AND id = ?", tenantID, row.ID).Updates(updates).Error; err != nil {
+	if err := r.with(ctx).Table("channel_accounts").Where("tenant_id = ? AND id = ?", tenantID, row.ID).Updates(channelAccountReadyUpdates(appID, credentialRef, false)).Error; err != nil {
 		return 0, fmt.Errorf("update channel account: %w", err)
 	}
 	return row.ID, nil
+}
+
+func channelAccountReadyUpdates(appID, credentialRef string, restore bool) map[string]any {
+	updates := map[string]any{"enabled": true, "status": ChannelAccountStatusReady}
+	if restore {
+		updates["archived_at"] = nil
+	}
+	if strings.TrimSpace(appID) != "" {
+		updates["app_id"] = strings.TrimSpace(appID)
+	}
+	if strings.TrimSpace(credentialRef) != "" {
+		updates["credential_ref"] = strings.TrimSpace(credentialRef)
+	}
+	return updates
 }
 
 func (r *GormRepository) UpsertAgentProvisioning(ctx context.Context, input provisioning.RecordInput) (provisioning.Record, error) {

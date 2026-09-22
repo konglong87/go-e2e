@@ -6,7 +6,12 @@ import (
 	"strings"
 )
 
-const discoveredCredentialRef = "feishu-default"
+const (
+	discoveredCredentialRef = "feishu-default"
+	feishuProvider          = "feishu"
+	channelAccountIDEnv     = "GO_E2E_CHANNEL_ACCOUNT_ID"
+	channelAccountKeyEnv    = "GO_E2E_CHANNEL_ACCOUNT_KEY"
+)
 
 type RecordInput struct {
 	ID                                                        uint64
@@ -76,16 +81,101 @@ func (s *Service) Create(ctx context.Context, tenantID, userID uint64, req Creat
 	req.Worker.Environment["GOLANG_CC_CHANNEL_TENANT_ID"] = fmt.Sprint(tenantID)
 	req.Worker.Environment["GOLANG_CC_CHANNEL_USER_ID"] = fmt.Sprint(userID)
 	if s.Channels != nil {
-		accountID, err := s.Channels.EnsureChannelAccount(ctx, tenantID, "feishu", req.AccountKey, req.CredentialRef.AppID, req.CredentialRef.ID)
+		accountID, err := s.Channels.EnsureChannelAccount(ctx, tenantID, feishuProvider, req.AccountKey, req.CredentialRef.AppID, req.CredentialRef.ID)
 		if err != nil {
 			return Record{}, NewError(ErrInvalidInput, err.Error())
 		}
-		req.Worker.Environment["GOLANG_CC_CHANNEL_ACCOUNT_ID"] = fmt.Sprint(accountID)
+		setChannelAccountEnvironment(req.Worker.Environment, accountID, req.AccountKey)
 	}
 	return s.Repo.UpsertAgentProvisioning(ctx, RecordInput{TenantID: tenantID, ProfileKey: req.ProfileKey, AccountKey: req.AccountKey, CredentialRef: req.CredentialRef.ID, Supervisor: req.Worker.Supervisor, Status: string(StatusDraft), WorkerSpec: req.Worker, UserID: userID})
 }
 func (s *Service) List(ctx context.Context, tenantID uint64, limit int) ([]Record, error) {
-	return s.Repo.ListAgentProvisionings(ctx, tenantID, limit)
+	records, err := s.Repo.ListAgentProvisionings(ctx, tenantID, limit)
+	if err != nil {
+		return nil, err
+	}
+	return s.reconcileRecords(ctx, records)
+}
+
+// Reconcile repairs durable channel account rows and worker wiring for one
+// tenant. It is safe to run repeatedly during startup and settings reads.
+func (s *Service) Reconcile(ctx context.Context, tenantID uint64) error {
+	if tenantID == 0 {
+		return NewError(ErrInvalidInput, "tenant context is required")
+	}
+	records, err := s.Repo.ListAgentProvisionings(ctx, tenantID, 500)
+	if err != nil {
+		return err
+	}
+	_, err = s.reconcileRecords(ctx, records)
+	return err
+}
+
+// ReconcileAll is used by shared MySQL services where startup has no single
+// tenant scope. Repositories that do not expose tenant enumeration simply
+// rely on the per-tenant List/WorkerAction paths.
+func (s *Service) ReconcileAll(ctx context.Context) error {
+	inventory, ok := s.Repo.(TenantInventory)
+	if !ok {
+		return nil
+	}
+	tenantIDs, err := inventory.ListTenantIDs(ctx, 5000)
+	if err != nil {
+		return err
+	}
+	for _, tenantID := range tenantIDs {
+		if err := s.Reconcile(ctx, tenantID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Service) reconcileRecords(ctx context.Context, records []Record) ([]Record, error) {
+	out := make([]Record, 0, len(records))
+	for _, record := range records {
+		reconciled, err := s.reconcileRecord(ctx, record)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, reconciled)
+	}
+	return out, nil
+}
+
+func (s *Service) reconcileRecord(ctx context.Context, record Record) (Record, error) {
+	if s.Channels == nil {
+		return record, nil
+	}
+	appID := ""
+	credentialRef := strings.TrimSpace(record.CredentialRef)
+	if s.Credentials != nil && credentialRef != "" {
+		credential, err := s.Credentials.Get(ctx, credentialRef)
+		if err == nil {
+			appID = strings.TrimSpace(credential.AppID)
+		} else if ctx.Err() != nil {
+			return record, ctx.Err()
+		}
+	}
+	accountID, err := s.Channels.EnsureChannelAccount(ctx, record.TenantID, feishuProvider, record.AccountKey, appID, credentialRef)
+	if err != nil {
+		return record, NewError(ErrInvalidInput, err.Error())
+	}
+	if record.WorkerSpec.Environment == nil {
+		record.WorkerSpec.Environment = map[string]string{}
+	}
+	beforeID := record.WorkerSpec.Environment[channelAccountIDEnv]
+	beforeKey := record.WorkerSpec.Environment[channelAccountKeyEnv]
+	setChannelAccountEnvironment(record.WorkerSpec.Environment, accountID, record.AccountKey)
+	if beforeID != record.WorkerSpec.Environment[channelAccountIDEnv] || beforeKey != record.WorkerSpec.Environment[channelAccountKeyEnv] {
+		return s.save(ctx, record, 0)
+	}
+	return record, nil
+}
+
+func setChannelAccountEnvironment(environment map[string]string, accountID uint64, accountKey string) {
+	environment[channelAccountIDEnv] = fmt.Sprint(accountID)
+	environment[channelAccountKeyEnv] = strings.TrimSpace(accountKey)
 }
 func (s *Service) Overview(ctx context.Context, tenantID uint64, limit int) (Overview, error) {
 	records, err := s.List(ctx, tenantID, limit)
@@ -141,6 +231,10 @@ func (s *Service) reconcileDiscoveredWorkers(ctx context.Context, tenantID uint6
 		if err != nil {
 			return nil, err
 		}
+		record, err = s.reconcileRecord(ctx, record)
+		if err != nil {
+			return nil, err
+		}
 		known[record.AccountKey] = true
 		records = append(records, record)
 	}
@@ -171,7 +265,11 @@ func statusForWorker(state WorkerState) Status {
 	}
 }
 func (s *Service) Get(ctx context.Context, tenantID, id uint64, key string) (Record, error) {
-	return s.Repo.GetAgentProvisioning(ctx, tenantID, id, key)
+	record, err := s.Repo.GetAgentProvisioning(ctx, tenantID, id, key)
+	if err != nil {
+		return Record{}, err
+	}
+	return s.reconcileRecord(ctx, record)
 }
 func (s *Service) Preflight(ctx context.Context, tenantID, id, userID uint64) (Record, error) {
 	item, err := s.Get(ctx, tenantID, id, "")

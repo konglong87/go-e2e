@@ -564,6 +564,17 @@ func (r *GormRepository) ListTenants(ctx context.Context, limit int) ([]Tenant, 
 	return tenants, err
 }
 
+func (r *GormRepository) ListTenantIDs(ctx context.Context, limit int) ([]uint64, error) {
+	if limit <= 0 || limit > 5000 {
+		limit = 5000
+	}
+	var ids []uint64
+	if err := r.with(ctx).Table("tenants").Select("id").Where("deleted_at IS NULL").Order("id ASC").Limit(limit).Scan(&ids).Error; err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
 func (r *GormRepository) ListTenantsFiltered(ctx context.Context, opts ListOptions) ([]Tenant, error) {
 	r.log(ctx, "tenant.list_filtered", "mysql.GormRepository.ListTenantsFiltered", "list tenants filtered")
 	var tenants []Tenant

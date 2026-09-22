@@ -15,6 +15,12 @@ type ProviderCatalog interface {
 	Resolve(ctx context.Context, name, model string) (ProviderOption, error)
 }
 
+// TenantInventory lets startup reconciliation cover every tenant without
+// coupling provisioning to the concrete SQL repository.
+type TenantInventory interface {
+	ListTenantIDs(context.Context, int) ([]uint64, error)
+}
+
 // ChannelAccountStore lets provisioning create the durable provider account
 // without coupling this package to a concrete SQL repository.
 type ChannelAccountStore interface {

@@ -32,6 +32,20 @@ func TestSQLiteDesktopRepositorySupportsChannelRuntimePersistence(t *testing.T) 
 	if accountID == 0 {
 		t.Fatal("channel account id is zero")
 	}
+	sameAccountID, err := repo.EnsureChannelAccount(ctx, tenantID, ChannelProviderFeishu, "code", "cli_test_updated", "code")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sameAccountID != accountID {
+		t.Fatalf("reconciled account id = %d, want %d", sameAccountID, accountID)
+	}
+	var accountCount int64
+	if err := repo.db.Table("channel_accounts").Where("tenant_id = ? AND provider = ? AND account_key = ?", tenantID, ChannelProviderFeishu, "code").Count(&accountCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if accountCount != 1 {
+		t.Fatalf("channel account count = %d, want 1", accountCount)
+	}
 
 	scope, err := channelcontract.NewScope(channelcontract.ProviderFeishu, "code", "chat-1", "")
 	if err != nil {
