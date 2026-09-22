@@ -162,10 +162,12 @@ stop_worker() {
 
 account_process_pids() {
   local processes
-  local marker="GO_E2E_CHANNEL_ACCOUNT_ID=${GO_E2E_CHANNEL_ACCOUNT_ID:-}"
   [[ -n "${GO_E2E_CHANNEL_ACCOUNT_ID:-}" ]] || return 0
   processes="$(ps eww -axo pid=,command= 2>/dev/null || true)"
-  awk -v marker="${marker}" '$0 ~ marker && $0 ~ /channels run/ {print $1}' <<<"${processes}"
+  awk \
+    -v go_marker="GO_E2E_CHANNEL_ACCOUNT_ID=${GO_E2E_CHANNEL_ACCOUNT_ID}" \
+    -v legacy_marker="GOLANG_CC_CHANNEL_ACCOUNT_ID=${GO_E2E_CHANNEL_ACCOUNT_ID}" \
+    '$0 ~ /channels run/ && ($0 ~ go_marker || $0 ~ legacy_marker) {print $1}' <<<"${processes}"
 }
 
 kill_account_processes() {

@@ -119,6 +119,40 @@ env -i "${common_env[@]}" /bin/bash "${SCRIPT}" stop >/dev/null
   exit 1
 }
 
+# Duplicate detection must also find a legacy worker that still exposes the
+# account through the historical environment variable.
+cat >"${FAKE_BIN}/ps" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${FAKE_LEGACY_PROCESS:-}" == "1" ]]; then
+  printf '4242 %s channels run GOLANG_CC_CHANNEL_ACCOUNT_ID=92\n' "${FAKE_WORKER_BINARY}"
+fi
+EOF
+chmod +x "${FAKE_BIN}/ps"
+if env -i "${common_env[@]}" \
+  FAKE_LEGACY_PROCESS=1 \
+  GO_E2E_CHANNEL_WORKER_BINARY="${WORKER_BINARY}" \
+  GO_E2E_MYSQL_DSN='test-dsn' \
+  GO_E2E_FEISHU_CREDENTIAL_FILE='test-credentials.json' \
+  GO_E2E_CHANNEL_TENANT_ID=91 \
+  GO_E2E_CHANNEL_ACCOUNT_ID=92 \
+  GO_E2E_CHANNEL_ACCOUNT_KEY='persistent-worker' \
+  GO_E2E_CHANNEL_USER_ID=93 \
+  GO_E2E_CHANNEL_PAYLOAD_KEY='test-payload-key' \
+  /bin/bash "${SCRIPT}" start >/dev/null 2>&1; then
+  echo "legacy account marker was not detected" >&2
+  exit 1
+fi
+
+cat >"${FAKE_BIN}/ps" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ -f "${FAKE_SCREEN_STATE}" ]]; then
+  printf '4242 %s channels run GO_E2E_CHANNEL_ACCOUNT_ID=92\n' "${FAKE_WORKER_BINARY}"
+fi
+EOF
+chmod +x "${FAKE_BIN}/ps"
+
 # A fresh login shell after reboot has only HOME and the worker name. The
 # launcher must recover every required setting from the durable config.
 env -i "${common_env[@]}" /bin/bash "${SCRIPT}" start >/dev/null
