@@ -4,9 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChatLab } from "./components/ChatLab";
 import { ContextPanel } from "./components/ContextPanel";
 import { GoalWorkbench } from "./components/GoalWorkbench";
-import { AgentProfilesPanel } from "./components/AgentProfilesPanel";
 import { AgentTeamsPanel } from "./components/AgentTeamsPanel";
-import { ProvisioningWizard } from "./components/provisioning/ProvisioningWizard";
 import { InspectorPanels, type InspectorSection } from "./components/InspectorPanels";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { WebAgentPage } from "./components/WebAgentPage";
@@ -19,8 +17,8 @@ import { seedValidationScenario } from "./lib/scenario";
 import type { IdentityConfig, TenantRecord, TenantUserRecord } from "./lib/types";
 import { WebUIV2App } from "./v2/WebUIV2App";
 
-type PrimarySection = "chat" | "knowledge" | "skills" | "goals" | "images" | "observability" | "context" | "config" | "profiles" | "teams";
-type SecondarySection = "conversation" | InspectorSection | "goals" | "images" | "run-context" | "global-config" | "profiles" | "teams" | "team-operations" | "provisioning";
+type PrimarySection = "chat" | "knowledge" | "skills" | "goals" | "images" | "observability" | "context" | "config" | "teams";
+type SecondarySection = "conversation" | InspectorSection | "goals" | "images" | "run-context" | "global-config" | "teams" | "team-operations";
 
 const primarySections: Array<{
   key: PrimarySection;
@@ -36,7 +34,6 @@ const primarySections: Array<{
   { key: "observability", labelKey: "nav.observability", detailKey: "nav.observability.detail", icon: <Activity size={18} /> },
   { key: "context", labelKey: "nav.context", detailKey: "nav.context.detail", icon: <Settings2 size={18} /> },
   { key: "config", labelKey: "nav.config", detailKey: "nav.config.detail", icon: <SlidersHorizontal size={18} /> }
-  ,{ key: "profiles", labelKey: "nav.profiles", detailKey: "nav.profiles.detail", icon: <Sparkles size={18} /> }
   ,{ key: "teams", labelKey: "nav.teams", detailKey: "nav.teams.detail", icon: <Users size={18} /> }
 ];
 
@@ -69,7 +66,6 @@ const secondarySections: Record<
   ],
   context: [{ key: "run-context", labelKey: "tab.runtime", detailKey: "tab.runtime.detail", icon: <Settings2 size={16} /> }],
   config: [{ key: "global-config", labelKey: "tab.globalConfig", detailKey: "tab.globalConfig.detail", icon: <SlidersHorizontal size={16} /> }]
-  ,profiles: [{ key: "profiles", labelKey: "tab.agentProfiles", detailKey: "tab.agentProfiles.detail", icon: <Sparkles size={16} /> }, { key: "provisioning", labelKey: "tab.agentProvisioning", detailKey: "tab.agentProvisioning.detail", icon: <MonitorCog size={16} /> }]
   ,teams: [
     { key: "teams", labelKey: "tab.agentTeamWorkspace", detailKey: "tab.agentTeamWorkspace.detail", icon: <Users size={16} /> },
     { key: "team-operations", labelKey: "tab.agentTeamOperations", detailKey: "tab.agentTeamOperations.detail", icon: <History size={16} /> }
@@ -571,13 +567,13 @@ export function App() {
             <nav className="primary-nav" aria-label={t("app.primaryNav")}>
               {primarySections.map((item) => {
                 const active = !showWelcome && primarySection === item.key;
-                const sidebarGroup = active && (item.key === "profiles" || item.key === "teams");
+                const sidebarGroup = active && item.key === "teams";
                 return <div className={sidebarGroup ? "primary-nav-group expanded" : "primary-nav-group"} key={item.key}>
                   <button
                     type="button"
                     className={active ? "primary-nav-item active" : "primary-nav-item"}
                     onClick={() => switchPrimary(item.key)}
-                    aria-expanded={item.key === "profiles" || item.key === "teams" ? sidebarGroup : undefined}
+                    aria-expanded={item.key === "teams" ? sidebarGroup : undefined}
                   >
                     {item.icon}
                     <span>
@@ -652,7 +648,7 @@ export function App() {
           />
         </aside>
 
-        <main className={!showWelcome && primarySection === "profiles" ? "app-shell profile-app-shell" : !showWelcome && primarySection === "teams" ? "app-shell team-app-shell" : "app-shell"}>
+        <main className={!showWelcome && primarySection === "teams" ? "app-shell team-app-shell" : "app-shell"}>
           {showWelcome ? (
             <section className="welcome-page">
               <div className="welcome-shell">
@@ -686,7 +682,7 @@ export function App() {
             </section>
           ) : (
             <>
-              {primarySection !== "profiles" && primarySection !== "teams" ? <section className="workspace-toolbar">
+              {primarySection !== "teams" ? <section className="workspace-toolbar">
                 <nav className="secondary-tabs" aria-label={t("app.secondaryNav")}>
                   {activeSecondarySections.map((item) => (
                     <button
@@ -727,10 +723,6 @@ export function App() {
                 window.history.replaceState({}, "", `${window.location.pathname}?${params.toString()}`);
               }} /> : null}
 
-              {secondarySection === "profiles" ? <AgentProfilesPanel identity={identity} onStatus={setStatus} onDataChanged={handleDataChanged} onOpenSession={openTenantSession} /> : null}
-
-              {secondarySection === "provisioning" ? <ProvisioningWizard identity={identity} onStatus={setStatus} /> : null}
-
               {secondarySection === "teams" || secondarySection === "team-operations" ? <AgentTeamsPanel identity={identity} onStatus={setStatus} onDataChanged={handleDataChanged} workspace={secondarySection === "team-operations" ? "operations" : "workspace"} onWorkspaceChange={(workspace) => setSecondarySection(workspace === "operations" ? "team-operations" : "teams")} /> : null}
 
               {secondarySection === "conversation" ? (
@@ -752,7 +744,7 @@ export function App() {
                 />
               ) : null}
 
-              {secondarySection !== "conversation" && secondarySection !== "images" && secondarySection !== "run-context" && secondarySection !== "global-config" && secondarySection !== "profiles" && secondarySection !== "provisioning" && secondarySection !== "teams" && secondarySection !== "team-operations" ? (
+              {secondarySection !== "conversation" && secondarySection !== "images" && secondarySection !== "run-context" && secondarySection !== "global-config" && secondarySection !== "teams" && secondarySection !== "team-operations" ? (
                 secondarySection === "goals" ? null : (
                   <InspectorPanels
                     identity={identity}
