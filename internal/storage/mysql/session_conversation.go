@@ -101,7 +101,10 @@ func projectSessionMessages(messages []Message) []AgentTaskEvent {
 		if message.ID == 0 {
 			continue
 		}
-		payload, err := json.Marshal(map[string]any{"content": message.Content})
+		payload, err := json.Marshal(map[string]any{
+			"content": message.Content,
+			"role":    message.Role,
+		})
 		if err != nil {
 			continue
 		}

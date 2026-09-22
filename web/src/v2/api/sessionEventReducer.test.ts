@@ -23,6 +23,18 @@ describe("conversation event projection", () => {
     expect(result.messages[1]?.content).toContain("incompatible");
     expect(result.runs[0]?.status).toBe("failed");
   });
+  it("keeps projected channel roles separate even when event types are shared", () => {
+    const result = applyConversationEvents(session, [
+      event(1, "message", { content: "用户问题", role: "user" }, 101),
+      event(2, "completed", {}, 101),
+      event(3, "message", { content: "Agent 回复", role: "assistant" }, 102),
+      event(4, "completed", {}, 102)
+    ]);
+    expect(result.messages.map((message) => ({ role: message.role, content: message.content }))).toEqual([
+      { role: "user", content: "用户问题" },
+      { role: "assistant", content: "Agent 回复" }
+    ]);
+  });
   it("deduplicates reconnect and snapshot overlap without duplicating text", () => {
     const delta = event(2, "text_delta", { content: "hello" });
     const first = applyConversationEvents(session, [event(1, "message", { content: "hi" }), delta]);

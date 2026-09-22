@@ -56,6 +56,27 @@ describe("ConversationWorkspace", () => {
     expect(getComputedStyle(host.querySelector<HTMLElement>(".webui2-conversation-workspace")!).gridTemplateRows).toBe("minmax(0, 1fr) auto");
   });
 
+  it("keeps user and assistant messages in explicit opposite-side containers", () => {
+    const split: SessionDetail = {
+      ...detail,
+      status: "completed",
+      messages: [
+        { id: "user-1", role: "user", kind: "message", content: "User input", createdAt: "2026-09-05T00:00:00.000Z" },
+        { id: "assistant-1", role: "assistant", kind: "message", content: "Agent answer", createdAt: "2026-09-05T00:00:01.000Z" }
+      ]
+    };
+    act(() => root.render(<I18nProvider><ConversationWorkspace composer={null} detail={split} onOpenInspector={vi.fn()} selectedRef="tenant:alpha" /></I18nProvider>));
+
+    const user = host.querySelector<HTMLElement>('[data-role="user"]');
+    const assistant = host.querySelector<HTMLElement>('[data-role="assistant"]');
+    expect(user).not.toBeNull();
+    expect(assistant).not.toBeNull();
+    expect(user?.querySelector(".webui2-user-surface")?.textContent).toContain("User input");
+    expect(assistant?.textContent).toContain("Agent answer");
+    expect(getComputedStyle(user!).alignItems).toBe("flex-end");
+    expect(getComputedStyle(assistant!).marginRight).toBe("auto");
+  });
+
   it("opens Inspector only from the compact conversation affordance", () => {
     const onOpenInspector = vi.fn();
     act(() => root.render(<I18nProvider><ConversationWorkspace composer={null} detail={detail} onOpenInspector={onOpenInspector} selectedRef="tenant:alpha" /></I18nProvider>));

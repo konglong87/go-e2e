@@ -63,8 +63,9 @@ export function applyConversationEvents(detail: SessionDetail, incoming: Convers
       buffer.thinkingStatus = terminal && bufferTask === event.task_id ? (type === CONVERSATION_EVENT.completed ? "completed" : type === CONVERSATION_EVENT.cancelled ? "stopped" : "failed") : "completed";
       buffer = undefined;
     }
-    if (type === CONVERSATION_EVENT.text || type === CONVERSATION_EVENT.thinking) {
-      const kind = type === CONVERSATION_EVENT.text ? "message" : "thinking";
+    const eventRole = conversationEventRole(type, payload);
+    if (type === CONVERSATION_EVENT.text || type === CONVERSATION_EVENT.thinking || (type === CONVERSATION_EVENT.user && eventRole === "assistant")) {
+      const kind = type === CONVERSATION_EVENT.thinking ? "thinking" : "message";
       const content = text(payload.content) || text(payload.text) || text(payload.thinking);
       if (!buffer || bufferTask !== event.task_id || buffer.kind !== kind) {
         const phase = kind === "thinking" ? (phases.get(event.task_id) ?? 0) + 1 : undefined;
@@ -77,7 +78,7 @@ export function applyConversationEvents(detail: SessionDetail, incoming: Convers
       if (liveIDs.has(event.id)) buffer.liveRevision = event.id;
       continue;
     }
-    if (type === CONVERSATION_EVENT.user) {
+    if (type === CONVERSATION_EVENT.user && eventRole === "user") {
       buffer = undefined;
       messages.push({ id, taskID: event.task_id, role: "user", kind: "message", content: text(payload.content), createdAt: time, attachments: attachments(payload.attachments) });
     } else if (type === CONVERSATION_EVENT.tool || type === CONVERSATION_EVENT.toolCall || type === CONVERSATION_EVENT.toolResult) {
@@ -207,6 +208,10 @@ export function applyConversationEvents(detail: SessionDetail, incoming: Convers
 
 function eventPayload(raw?: string): Record<string, unknown> {
   try { const value: unknown = JSON.parse(raw || "{}"); return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; } catch { return {}; }
+}
+function conversationEventRole(type: string | undefined, payload: Record<string, unknown>): "user" | "assistant" {
+  if (payload.role === "user" || payload.role === "assistant") return payload.role;
+  return type === CONVERSATION_EVENT.user ? "user" : "assistant";
 }
 function text(value: unknown): string { return typeof value === "string" ? value : ""; }
 function object(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }

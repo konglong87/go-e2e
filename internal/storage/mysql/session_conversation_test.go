@@ -1,6 +1,7 @@
 package mysql
 
 import (
+	"encoding/json"
 	"errors"
 	"regexp"
 	"testing"
@@ -9,6 +10,29 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/konglong87/go-e2e/internal/agenttasks"
 )
+
+func TestProjectSessionMessagesCarriesMessageRoles(t *testing.T) {
+	events := projectSessionMessages([]Message{
+		{ID: 7, Role: "user", Content: "question"},
+		{ID: 8, Role: "assistant", Content: "answer"},
+	})
+	if len(events) != 4 {
+		t.Fatalf("projected event count = %d, want 4", len(events))
+	}
+	var userPayload, assistantPayload map[string]any
+	if err := json.Unmarshal([]byte(events[0].PayloadJSON), &userPayload); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(events[2].PayloadJSON), &assistantPayload); err != nil {
+		t.Fatal(err)
+	}
+	if userPayload["role"] != "user" || assistantPayload["role"] != "assistant" {
+		t.Fatalf("projected roles = %#v, %#v", userPayload["role"], assistantPayload["role"])
+	}
+	if events[0].EventType != agenttasks.EventMessage || events[2].EventType != agenttasks.EventTextDelta {
+		t.Fatalf("projected event types = %q, %q", events[0].EventType, events[2].EventType)
+	}
+}
 
 func TestWebConversationTasksScopeLegacyMembershipBeforeApplyingLimit(t *testing.T) {
 	repo, mock, closeDB := newMockGormRepository(t)

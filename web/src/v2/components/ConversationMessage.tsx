@@ -54,7 +54,7 @@ export function ConversationMessage({ identity, message, thinkingMode = "summary
   if (message.kind === "tool") {
     return <FoldedMessage content={message.content} label={t(foldedMessageLabels[message.kind])} />;
   }
-  return <article className={`webui2-conversation-message webui2-conversation-message--${message.role}`}>
+  return <article className={`webui2-conversation-message webui2-conversation-message--${message.role}`} data-role={message.role}>
     {message.role === "user" ? <><div className="webui2-user-surface"><MarkdownLite content={message.content} /><MessageAttachments message={message} identity={identity} /></div><footer className="webui2-message-footer webui2-message-footer--user"><MessageTimestamp value={message.createdAt} /></footer></> : <>
       <StreamingAssistantContent content={message.content} animate={animate} live={live} final={!live} onComplete={onDisplayComplete} />
       <MessageAttachments message={message} identity={identity} />
