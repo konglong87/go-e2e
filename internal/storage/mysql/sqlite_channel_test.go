@@ -183,6 +183,62 @@ func TestSQLiteDesktopRepositorySupportsChannelClaims(t *testing.T) {
 	}
 }
 
+func TestSQLiteDesktopRepositoryExpiresPendingInteractionsWithoutLocking(t *testing.T) {
+	ctx := context.Background()
+	repo, err := OpenSQLiteGormRepository(ctx, filepath.Join(t.TempDir(), "channel-interactions.sqlite"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repo.Close()
+
+	tenantID, err := repo.UpsertTenant(ctx, TenantInput{TenantKey: "interaction-tenant", Name: "Interactions"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	userID, err := repo.EnsureUser(ctx, tenantID, "interaction-user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	accountID, err := repo.EnsureChannelAccount(ctx, tenantID, ChannelProviderFeishu, "interaction-account", "app", "credential")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope, err := channelcontract.NewScope(channelcontract.ProviderFeishu, "interaction-account", "interaction-chat", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation, err := repo.GetOrCreateChannelConversation(ctx, ChannelConversationInput{
+		TenantID: tenantID, AccountID: accountID, ExternalChatID: "interaction-chat",
+		ScopeKey: scope.Key, ScopeHash: scope.Hash[:], ExternalUserID: "interaction-user",
+		ChatType: ChannelChatTypeP2P, SessionID: userID, RuntimeFingerprint: channelruntimeFingerprintForSQLiteTest,
+		RuntimeFingerprintVersion: 1, Status: ChannelConversationStatusActive,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	if _, err := repo.CreateChannelInteraction(ctx, ChannelInteractionInput{
+		ID: "expired-interaction", TenantID: tenantID, AccountID: accountID,
+		ConversationID: conversation.ID, RunID: "interaction-run", SessionID: userID,
+		Kind: "question", Status: ChannelInteractionStatusPending,
+		ExternalChatID: "interaction-chat", ExternalUserID: "interaction-user",
+		ScopeHash: scope.Hash[:], AllowedUserID: userID,
+		QuestionCiphertext: []byte("question"), ResumeCheckpointCiphertext: []byte("resume"),
+		NonceHash: []byte("nonce"), RuntimeFingerprint: channelruntimeFingerprintForSQLiteTest,
+		RuntimeFingerprintVersion: 1, ExpiresAt: now.Add(-time.Minute),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	expired, err := repo.ExpirePendingChannelInteractions(ctx, tenantID, accountID, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(expired) != 1 || expired[0].ID != "expired-interaction" || expired[0].Status != ChannelInteractionStatusExpired {
+		t.Fatalf("expired interactions = %+v", expired)
+	}
+}
+
 const channelruntimeFingerprintForSQLiteTest = "sqlite-test-runtime"
 
 func ptrTimeForSQLiteTest(value time.Time) *time.Time { return &value }

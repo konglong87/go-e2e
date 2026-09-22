@@ -935,23 +935,33 @@ func (r *GormRepository) ExpirePendingChannelInteractions(ctx context.Context, t
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var expired []ChannelInteraction
+	pending := make([]gormChannelInteraction, 0, 100)
 	for rows.Next() {
 		var row gormChannelInteraction
 		if err := r.with(ctx).ScanRows(rows, &row); err != nil {
+			_ = rows.Close()
 			return nil, err
 		}
+		pending = append(pending, row)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+
+	expired := make([]ChannelInteraction, 0, len(pending))
+	for _, row := range pending {
 		updated := r.with(ctx).Table("channel_interactions").Where("tenant_id = ? AND account_id = ? AND id = ? AND status = ?", tenantID, accountID, row.ID, ChannelInteractionStatusPending).Updates(map[string]any{"status": ChannelInteractionStatusExpired})
 		if updated.Error != nil {
 			return nil, updated.Error
 		}
 		if updated.RowsAffected == 1 {
+			row.Status = ChannelInteractionStatusExpired
 			expired = append(expired, channelInteractionFromRow(row))
 		}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
 	}
 	return expired, nil
 }
