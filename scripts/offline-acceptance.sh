@@ -17,6 +17,16 @@ source "$SCRIPTS_DIR/lib/product-env.sh"
 failures=0
 checks=0
 
+maintain_go_cache() {
+  if [[ "${GO_E2E_GO_CACHE_MAINTENANCE:-1}" == "0" ]]; then
+    return 0
+  fi
+  if ! bash "$SCRIPTS_DIR/go-cache-maintenance.sh" --check; then
+    echo "WARNING: Go cache maintenance failed" >&2
+  fi
+}
+trap maintain_go_cache EXIT
+
 fail() {
   echo "FAIL: $*" >&2
   failures=$((failures + 1))
@@ -143,6 +153,14 @@ if output="$(node --test "$SCRIPTS_DIR/upstream-agent-lifecycle-capture.test.cjs
   pass
 else
   fail "capture lookup regression:"
+  printf '%s\n' "$output" >&2
+fi
+
+echo "== Go cache maintenance"
+if output="$(bash "$SCRIPTS_DIR/go-cache-maintenance_test.sh" 2>&1)"; then
+  pass
+else
+  fail "Go cache maintenance regression:"
   printf '%s\n' "$output" >&2
 fi
 

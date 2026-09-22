@@ -44,3 +44,7 @@ go build \
   "$PACKAGE"
 
 printf 'built %s (%s)\n' "$OUTPUT" "$VERSION"
+
+if [[ "${GO_E2E_GO_CACHE_MAINTENANCE:-1}" != "0" ]]; then
+  bash "$ROOT_DIR/scripts/go-cache-maintenance.sh" --check
+fi

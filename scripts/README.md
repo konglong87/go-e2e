@@ -10,6 +10,7 @@ directory this size ended up with scripts nobody could tell were alive
 ```bash
 scripts/offline-acceptance.sh                # everything checkable without a key — this is what CI runs
 scripts/offline-acceptance.sh --static-only  # skip the scenarios, just the static checks
+scripts/go-cache-maintenance.sh --status     # inspect the shared Go build cache
 go run ./scripts/runtime-topology-check       # topology registry, anchors and rendered artifacts
 ```
 
@@ -29,6 +30,12 @@ chain into siblings reference files that exist, that the release gate refuses
 cleanly when its prerequisites are absent, and that no script has regressed to a
 hardcoded home directory. Then it runs the scenarios that need neither a key nor a
 companion checkout.
+
+Project-owned build and offline-acceptance entrypoints automatically run
+`go-cache-maintenance.sh` after their work. The shared Go build cache is cleaned
+when it exceeds 6 GB by default; override the limit with
+`GO_E2E_GO_CACHE_MAX_GB`, or set `GO_E2E_GO_CACHE_MAINTENANCE=0` to disable the
+automatic check for one invocation. This does not clear the module cache.
 
 It also runs `python3 scripts/release_test.py` (real tar/zip packaging with a
 fake compiler), `node scripts/test-release-assets.mjs` (release asset names,

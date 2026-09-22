@@ -41,6 +41,10 @@ pathlib.Path(sys.argv[sys.argv.index('-o') + 1]).write_text('synthetic binary')
             env = dict(os.environ, PATH=str(root / "tools") + os.pathsep + os.environ["PATH"],
                        VERSION=VERSION, REVISION="fixture", DIRTY="false",
                        SOURCE_DATE_EPOCH="1", DIST_DIR="dist",
+                       # The fixture copies only the packaging scripts and uses
+                       # a fake Go compiler, so skip the repository-level cache
+                       # maintenance hook in this isolated test.
+                       GO_E2E_GO_CACHE_MAINTENANCE="0",
                        TARGETS=" ".join(t.replace("_", "/") for t in TARGETS), LC_ALL="C")
             # The test must challenge the script's own metadata defaults.
             env.pop("COPYFILE_DISABLE", None)
