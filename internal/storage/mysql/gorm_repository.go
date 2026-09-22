@@ -32,6 +32,13 @@ func isSQLite(db *gorm.DB) bool {
 	return db != nil && db.Dialector.Name() == "sqlite"
 }
 
+func channelTimeColumn(db *gorm.DB, column string) string {
+	if isSQLite(db) {
+		return "datetime(" + column + ")"
+	}
+	return column
+}
+
 // IsSQLite reports whether this repository uses the desktop SQLite dialect.
 // Callers use this to avoid wiring MySQL-only background workers onto the
 // local desktop queue.

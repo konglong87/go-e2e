@@ -139,6 +139,17 @@ func TestSQLiteDesktopRepositorySupportsChannelClaims(t *testing.T) {
 	if err != nil || len(reclaimed) != 1 || reclaimed[0].Status != ChannelInboxStatusProcessing {
 		t.Fatalf("reclaim queued inbox = %+v err=%v", reclaimed, err)
 	}
+	if err := repo.MarkInboxQueued(ctx, tenantID, reclaimed[0].ID, conversation.ID, scope.Hash[:]); err != nil {
+		t.Fatal(err)
+	}
+	localExpiredLease := time.Now().Add(-time.Minute)
+	if _, err := repo.ClaimDueInbox(ctx, tenantID, accountID, "worker-local-time", 10, localExpiredLease); err != nil {
+		t.Fatal(err)
+	}
+	localReclaimed, err := repo.ClaimDueInbox(ctx, tenantID, accountID, "worker-local-time-reclaimed", 10, time.Now().UTC().Add(time.Minute))
+	if err != nil || len(localReclaimed) != 1 || localReclaimed[0].Status != ChannelInboxStatusProcessing {
+		t.Fatalf("reclaim local-time lease = %+v err=%v", localReclaimed, err)
+	}
 
 	message, err := repo.CreateChannelMessage(ctx, ChannelMessageInput{
 		TenantID: tenantID, AccountID: accountID, ConversationID: conversation.ID,

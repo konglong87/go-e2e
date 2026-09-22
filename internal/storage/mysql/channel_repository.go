@@ -559,7 +559,8 @@ func (r *GormRepository) MarkInboxProcessing(ctx context.Context, tenantID, even
 	if tenantID == 0 || eventID == 0 || workerID == "" {
 		return ErrInvalidInput
 	}
-	res := r.with(ctx).Table("channel_inbox_events").Where("tenant_id = ? AND id = ? AND status IN (?, ?, ?) AND (lease_until IS NULL OR lease_until < ?)", tenantID, eventID, ChannelInboxStatusQueued, ChannelInboxStatusRetry, ChannelInboxStatusProcessing, time.Now().UTC()).Updates(map[string]any{"status": ChannelInboxStatusProcessing, "lease_owner": workerID, "lease_until": leaseUntil})
+	leaseColumn := channelTimeColumn(r.db, "lease_until")
+	res := r.with(ctx).Table("channel_inbox_events").Where("tenant_id = ? AND id = ? AND status IN (?, ?, ?) AND (lease_until IS NULL OR "+leaseColumn+" < ?)", tenantID, eventID, ChannelInboxStatusQueued, ChannelInboxStatusRetry, ChannelInboxStatusProcessing, time.Now().UTC()).Updates(map[string]any{"status": ChannelInboxStatusProcessing, "lease_owner": workerID, "lease_until": leaseUntil})
 	if res.Error != nil {
 		return res.Error
 	}
@@ -593,8 +594,10 @@ func (r *GormRepository) ClaimDueInbox(ctx context.Context, tenantID, accountID 
 	}
 	var rows []gormChannelInboxEvent
 	now := time.Now().UTC()
+	availableColumn := channelTimeColumn(tx, "available_at")
+	leaseColumn := channelTimeColumn(tx, "lease_until")
 	q := channelForUpdate(tx.Table("channel_inbox_events").Select(channelInboxSelect).
-		Where("tenant_id = ? AND account_id = ? AND status IN (?, ?, ?) AND available_at <= ? AND (lease_until IS NULL OR lease_until < ?)", tenantID, accountID, ChannelInboxStatusQueued, ChannelInboxStatusRetry, ChannelInboxStatusProcessing, now, now).
+		Where("tenant_id = ? AND account_id = ? AND status IN (?, ?, ?) AND "+availableColumn+" <= ? AND (lease_until IS NULL OR "+leaseColumn+" < ?)", tenantID, accountID, ChannelInboxStatusQueued, ChannelInboxStatusRetry, ChannelInboxStatusProcessing, now, now).
 		Order("available_at ASC, id ASC").Limit(limit)).Find(&rows)
 	if q.Error != nil {
 		_ = tx.Rollback()
@@ -849,7 +852,8 @@ func (r *GormRepository) AnswerChannelInteraction(ctx context.Context, tenantID,
 	if tenantID == 0 || accountID == 0 || interactionID == "" || len(nonceHash) == 0 || allowedUserID == 0 || runtimeFingerprint == "" || runtimeFingerprintVersion == 0 || len(answerCiphertext) == 0 || now.IsZero() {
 		return ErrInvalidInput
 	}
-	res := r.with(ctx).Table("channel_interactions").Where("tenant_id = ? AND account_id = ? AND id = ? AND nonce_hash = ? AND allowed_user_id = ? AND runtime_fingerprint = ? AND runtime_fingerprint_version = ? AND status = ? AND expires_at > ?", tenantID, accountID, interactionID, nonceHash, allowedUserID, runtimeFingerprint, runtimeFingerprintVersion, ChannelInteractionStatusPending, now).Updates(map[string]any{
+	expiresColumn := channelTimeColumn(r.db, "expires_at")
+	res := r.with(ctx).Table("channel_interactions").Where("tenant_id = ? AND account_id = ? AND id = ? AND nonce_hash = ? AND allowed_user_id = ? AND runtime_fingerprint = ? AND runtime_fingerprint_version = ? AND status = ? AND "+expiresColumn+" > ?", tenantID, accountID, interactionID, nonceHash, allowedUserID, runtimeFingerprint, runtimeFingerprintVersion, ChannelInteractionStatusPending, now).Updates(map[string]any{
 		"status":            ChannelInteractionStatusAnswered,
 		"answer_ciphertext": answerCiphertext,
 		"answered_at":       now,
@@ -898,7 +902,8 @@ func (r *GormRepository) FindPendingChannelInteraction(ctx context.Context, tena
 		return ChannelInteraction{}, ErrInvalidInput
 	}
 	var row gormChannelInteraction
-	err := r.with(ctx).Table("channel_interactions").Select(channelInteractionSelect).Where("tenant_id = ? AND account_id = ? AND conversation_id = ? AND allowed_user_id = ? AND external_chat_id = ? AND status = ? AND expires_at > ?", tenantID, accountID, conversationID, allowedUserID, externalChatID, ChannelInteractionStatusPending, now).Order("created_at ASC, id ASC").Limit(1).Take(&row).Error
+	expiresColumn := channelTimeColumn(r.db, "expires_at")
+	err := r.with(ctx).Table("channel_interactions").Select(channelInteractionSelect).Where("tenant_id = ? AND account_id = ? AND conversation_id = ? AND allowed_user_id = ? AND external_chat_id = ? AND status = ? AND "+expiresColumn+" > ?", tenantID, accountID, conversationID, allowedUserID, externalChatID, ChannelInteractionStatusPending, now).Order("created_at ASC, id ASC").Limit(1).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return ChannelInteraction{}, ErrNotFound
 	}
@@ -938,7 +943,8 @@ func (r *GormRepository) ExpirePendingChannelInteractions(ctx context.Context, t
 	if tenantID == 0 || accountID == 0 || now.IsZero() {
 		return nil, ErrInvalidInput
 	}
-	rows, err := r.with(ctx).Table("channel_interactions").Select(channelInteractionSelect).Where("tenant_id = ? AND account_id = ? AND status = ? AND expires_at <= ?", tenantID, accountID, ChannelInteractionStatusPending, now).Order("expires_at ASC, id ASC").Limit(100).Rows()
+	expiresColumn := channelTimeColumn(r.db, "expires_at")
+	rows, err := r.with(ctx).Table("channel_interactions").Select(channelInteractionSelect).Where("tenant_id = ? AND account_id = ? AND status = ? AND "+expiresColumn+" <= ?", tenantID, accountID, ChannelInteractionStatusPending, now).Order("expires_at ASC, id ASC").Limit(100).Rows()
 	if err != nil {
 		return nil, err
 	}
@@ -1004,6 +1010,7 @@ func (r *GormRepository) ClaimConversationRun(ctx context.Context, tenantID, acc
 		}
 	}()
 	now := time.Now().UTC()
+	expiresColumn := channelTimeColumn(tx, "interactions.expires_at")
 	var existing gormChannelRun
 	err := channelForUpdate(
 		tx.Table("channel_runs").Select(channelRunSelect).
@@ -1015,7 +1022,7 @@ func (r *GormRepository) ClaimConversationRun(ctx context.Context, tenantID, acc
 						AND interactions.account_id = ?
 						AND interactions.run_id = channel_runs.id
 						AND (
-							(interactions.status = ? AND interactions.expires_at > ?)
+							(interactions.status = ? AND `+expiresColumn+` > ?)
 							OR interactions.status = ?
 						)
 				))
@@ -1198,7 +1205,7 @@ func (r *GormRepository) ClaimDueChannelReactions(ctx context.Context, tenantID,
 	var rows []gormChannelReaction
 	now := time.Now().UTC()
 	query := channelForUpdateSkipLocked(tx.Table("channel_reactions").Select(channelReactionSelect).
-		Where("tenant_id = ? AND account_id = ? AND ((status IN (?, ?) AND next_attempt_at <= ? AND (lease_until IS NULL OR lease_until < ?)) OR (status = ? AND lease_until < ?))", tenantID, accountID, ChannelReactionStatusPending, ChannelReactionStatusRetry, now, now, ChannelReactionStatusReconciling, now).
+		Where("tenant_id = ? AND account_id = ? AND ((status IN (?, ?) AND "+channelTimeColumn(r.db, "next_attempt_at")+" <= ? AND (lease_until IS NULL OR "+channelTimeColumn(r.db, "lease_until")+" < ?)) OR (status = ? AND "+channelTimeColumn(r.db, "lease_until")+" < ?))", tenantID, accountID, ChannelReactionStatusPending, ChannelReactionStatusRetry, now, now, ChannelReactionStatusReconciling, now).
 		Order("next_attempt_at ASC, id ASC").Limit(normalizeLimit(limit)))
 	err := query.Find(&rows).Error
 	if err != nil {
@@ -1772,7 +1779,10 @@ func (r *GormRepository) ClaimDueOutbox(ctx context.Context, tenantID, accountID
 		return nil, tx.Error
 	}
 	var rows []gormChannelOutbox
-	if err := channelForUpdate(tx.Table("channel_outbox").Select(channelOutboxSelect).Where("tenant_id = ? AND account_id = ? AND status IN (?, ?) AND next_attempt_at <= ? AND (lease_until IS NULL OR lease_until < ?)", tenantID, accountID, ChannelOutboxStatusPending, ChannelOutboxStatusRetry, time.Now().UTC(), time.Now().UTC()).Order("next_attempt_at ASC, id ASC").Limit(limit)).Find(&rows).Error; err != nil {
+	now := time.Now().UTC()
+	nextAttemptColumn := channelTimeColumn(tx, "next_attempt_at")
+	leaseColumn := channelTimeColumn(tx, "lease_until")
+	if err := channelForUpdate(tx.Table("channel_outbox").Select(channelOutboxSelect).Where("tenant_id = ? AND account_id = ? AND status IN (?, ?) AND "+nextAttemptColumn+" <= ? AND (lease_until IS NULL OR "+leaseColumn+" < ?)", tenantID, accountID, ChannelOutboxStatusPending, ChannelOutboxStatusRetry, now, now).Order("next_attempt_at ASC, id ASC").Limit(limit)).Find(&rows).Error; err != nil {
 		tx.Rollback()
 		return nil, err
 	}
