@@ -13,6 +13,7 @@ func TestParseRef(t *testing.T) {
 		ok   bool
 	}{
 		{raw: "tenant:webui-v2", want: SourceTenant, key: "webui-v2", ok: true},
+		{raw: "tenant:channel:abc123", want: SourceTenant, key: "channel:abc123", ok: true},
 		{raw: "local:019a-e74", want: SourceLocal, key: "019a-e74", ok: true},
 		{raw: "webui-v2"}, {raw: "tenant:"}, {raw: "remote:abc"},
 		{raw: "tenant:bad/key"}, {raw: "tenant:bad key"},

@@ -50,7 +50,7 @@ func ParseRef(raw string) (SessionRef, error) {
 		return SessionRef{}, invalidRef("unknown session ref namespace")
 	}
 	for _, r := range key {
-		if unicode.IsSpace(r) || unicode.IsControl(r) || r == '/' || r == '\\' || r == ':' {
+		if unicode.IsSpace(r) || unicode.IsControl(r) || r == '/' || r == '\\' || (r == ':' && !strings.HasPrefix(key, "channel:")) {
 			return SessionRef{}, invalidRef("session ref key contains an invalid character")
 		}
 	}
