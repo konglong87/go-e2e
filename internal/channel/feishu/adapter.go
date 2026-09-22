@@ -8,6 +8,7 @@ import (
 	"path"
 	"reflect"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -533,7 +534,65 @@ func normalizeMessageWithIdentity(accountID, appID, botOpenID string, msg *larkt
 		createdAt = time.UnixMilli(msg.CreateTimeMs)
 	}
 	threadID := extractThreadID(msg.RawEvent)
-	return channelcontract.InboundMessage{Provider: channelcontract.ProviderFeishu, AccountID: accountID, EventID: msg.EventID, ExternalMessageID: msg.MessageID, ExternalConversationID: msg.ChatID, ExternalThreadID: threadID, ExternalUserID: msg.UserID, ChatType: chatType, Text: msg.Content, Mentions: mentions, MentionedBot: mentionedBot, CreatedAt: createdAt, RawMetadata: raw}, nil
+	return channelcontract.InboundMessage{Provider: channelcontract.ProviderFeishu, AccountID: accountID, EventID: msg.EventID, ExternalMessageID: msg.MessageID, ExternalConversationID: msg.ChatID, ExternalThreadID: threadID, ExternalUserID: msg.UserID, ChatType: chatType, Text: normalizedMessageText(msg), Mentions: mentions, MentionedBot: mentionedBot, CreatedAt: createdAt, RawMetadata: raw}, nil
+}
+
+const richTextMessagePlaceholder = "[rich text message]"
+
+func normalizedMessageText(msg *larktypes.NormalizedMessage) string {
+	if msg == nil {
+		return ""
+	}
+	if strings.TrimSpace(msg.Content) != richTextMessagePlaceholder {
+		return msg.Content
+	}
+	raw, ok := msg.RawEvent.(*larkim.P2MessageReceiveV1)
+	if !ok || raw == nil || raw.Event == nil || raw.Event.Message == nil || raw.Event.Message.Content == nil || raw.Event.Message.MessageType == nil {
+		return msg.Content
+	}
+	content, _ := larknormalize.ParseContent(*raw.Event.Message.MessageType, *raw.Event.Message.Content)
+	if strings.TrimSpace(content) != richTextMessagePlaceholder && strings.TrimSpace(content) != "" {
+		return content
+	}
+	return extractRichTextContent(*raw.Event.Message.Content)
+}
+
+func extractRichTextContent(raw string) string {
+	var value any
+	if json.Unmarshal([]byte(raw), &value) != nil {
+		return ""
+	}
+	parts := make([]string, 0, 4)
+	var visit func(any)
+	visit = func(node any) {
+		switch current := node.(type) {
+		case []any:
+			for _, child := range current {
+				visit(child)
+			}
+		case map[string]any:
+			for _, key := range []string{"title", "text"} {
+				if text, ok := current[key].(string); ok && strings.TrimSpace(text) != "" {
+					parts = append(parts, strings.TrimSpace(text))
+				}
+			}
+			keys := make([]string, 0, len(current))
+			for key := range current {
+				if key != "title" && key != "text" {
+					keys = append(keys, key)
+				}
+			}
+			sort.Strings(keys)
+			for _, key := range keys {
+				visit(current[key])
+			}
+		}
+	}
+	visit(value)
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, "\n")
 }
 
 func (a *Adapter) resolveBotOpenID(ctx context.Context) string {

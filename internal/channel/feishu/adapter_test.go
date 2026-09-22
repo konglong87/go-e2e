@@ -112,6 +112,26 @@ func TestNormalizeMessagePreservesProviderFields(t *testing.T) {
 	}
 }
 
+func TestNormalizeMessageRecoversRichTextFromRawFeishuEvent(t *testing.T) {
+	messageType := "post"
+	content := `{"zh_cn":{"title":"桌面验收","content":[[{"tag":"text","text":"桌面飞书闭环验收 2026-09-22"}]]}}`
+	raw := &larkim.P2MessageReceiveV1{
+		Event: &larkim.P2MessageReceiveV1Data{
+			Message: &larkim.EventMessage{MessageType: &messageType, Content: &content},
+		},
+	}
+	got, err := normalizeMessage("acct", &larktypes.NormalizedMessage{
+		EventID: "evt_rich", MessageID: "om_rich", ChatID: "oc_rich", ChatType: "p2p",
+		UserID: "ou_rich", Content: richTextMessagePlaceholder, RawContentType: messageType, RawEvent: raw,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Text != "**桌面验收**\n\n桌面飞书闭环验收 2026-09-22" {
+		t.Fatalf("recovered text = %q", got.Text)
+	}
+}
+
 func TestNormalizeMessageRecognizesAppIDMentionFromRawEvent(t *testing.T) {
 	raw := &larkim.P2MessageReceiveV1{EventReq: &larkevent.EventReq{Body: []byte(`{"event":{"message":{"chat_type":"group","mentions":[{"key":"@_user_1","id":{"app_id":"cli_target"},"id_type":"app_id","name":"golang-cc-e2e-002"}]}}}`)}}
 	normalized := &larktypes.NormalizedMessage{EventID: "evt_group", MessageID: "om_group", ChatID: "oc_group", ChatType: "group", UserID: "ou_user", Content: "hello", RawEvent: raw}
