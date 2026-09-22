@@ -7,6 +7,7 @@ export type SessionMessageKind = "message" | "thinking" | "tool" | "handoff" | "
 export type OperationKind = "create" | "send" | "compact" | "stop" | "attach" | "archive" | "profile_draft";
 export type SessionControlErrorCode = "forbidden" | "not_found" | "invalid_request" | "service_unavailable" | "workspace_unavailable" | "provider_route_invalid" | "invalid_state" | "local_read_only" | "idempotency_conflict" | "budget_exceeded" | "network_unavailable" | "stream_disconnected";
 export type SessionRunConfig = { provider?: string; model?: string; permissionMode?: string; effort?: string; promptMode?: string };
+export type SessionChannel = { provider: string; accountKey?: string };
 
 export type SessionSummary = {
   id?: number;
@@ -20,6 +21,7 @@ export type SessionSummary = {
   profileLabel?: string;
   model?: string;
   provider?: string;
+  channel?: SessionChannel;
   permissionMode?: string;
   effort?: string;
   promptMode?: string;

@@ -32,6 +32,23 @@ type sessionControlServiceFake struct {
 	calls          []string
 }
 
+func TestNewSessionControlSessionDTOIncludesChannel(t *testing.T) {
+	item := sessioncontrol.SessionSnapshot{
+		ID:      41,
+		Ref:     sessioncontrol.SessionRef{Source: sessioncontrol.SourceTenant, Key: "feishu-session"},
+		Title:   "Feishu conversation",
+		Channel: &sessioncontrol.SessionChannel{Provider: "feishu", AccountKey: "feishu-primary"},
+	}
+
+	payload, err := json.Marshal(newSessionControlSessionDTO(item))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(payload), `"channel":{"provider":"feishu","account_key":"feishu-primary"}`) {
+		t.Fatalf("channel missing from session DTO: %s", payload)
+	}
+}
+
 func (f *sessionControlServiceFake) Create(_ context.Context, request sessioncontrol.CreateRequest) (sessioncontrol.OperationResult, error) {
 	f.calls = append(f.calls, "create")
 	f.createRequest = request

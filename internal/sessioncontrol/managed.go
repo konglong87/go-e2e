@@ -49,6 +49,10 @@ type ManagedStore interface {
 	ListSessionLinks(context.Context, RequestContext, uint64, int) ([]mysqlstore.SessionLink, error)
 }
 
+type ManagedChannelStore interface {
+	ListSessionChannels(context.Context, RequestContext, []uint64) (map[uint64]mysqlstore.SessionChannel, error)
+}
+
 // ManagedEventStore is an optional read projection for high-frequency session
 // events. The control-plane ManagedStore remains the fallback for SQLite mode.
 type ManagedEventStore interface {
@@ -170,8 +174,14 @@ func (a *ManagedAdapter) List(ctx context.Context, request ListRequest) ([]Sessi
 		return nil, normalizeManagedError(err)
 	}
 	sessions := make([]mysqlstore.Session, 0, len(stored))
+	sessionIDs := make([]uint64, 0, len(stored))
 	for _, item := range stored {
 		sessions = append(sessions, item.Session)
+		sessionIDs = append(sessionIDs, item.ID)
+	}
+	channels, err := a.listSessionChannels(ctx, request.Context, sessionIDs)
+	if err != nil {
+		return nil, normalizeManagedError(err)
 	}
 	tasks, err := a.listLatestTasks(ctx, request.Context, sessions)
 	if err != nil {
@@ -193,6 +203,7 @@ func (a *ManagedAdapter) List(ctx context.Context, request ListRequest) ([]Sessi
 		if err != nil {
 			return nil, err
 		}
+		applySessionChannel(&snapshot, channels[item.ID])
 		out = append(out, snapshot)
 	}
 	return out, nil
@@ -659,8 +670,28 @@ func (a *ManagedAdapter) loadManagedDetail(ctx context.Context, requestContext R
 	if err != nil {
 		return managedDetail{}, err
 	}
+	channels, err := a.listSessionChannels(ctx, requestContext, []uint64{item.ID})
+	if err != nil {
+		return managedDetail{}, normalizeManagedError(err)
+	}
+	applySessionChannel(&snapshot, channels[item.ID])
 	snapshot.Links = links
 	return managedDetail{session: item.Session, snapshot: snapshot, latest: selected, pendingBaseTaskID: pendingBaseTaskID}, nil
+}
+
+func (a *ManagedAdapter) listSessionChannels(ctx context.Context, requestContext RequestContext, sessionIDs []uint64) (map[uint64]mysqlstore.SessionChannel, error) {
+	store, ok := a.store.(ManagedChannelStore)
+	if !ok {
+		return map[uint64]mysqlstore.SessionChannel{}, nil
+	}
+	return store.ListSessionChannels(ctx, requestContext, sessionIDs)
+}
+
+func applySessionChannel(snapshot *SessionSnapshot, channel mysqlstore.SessionChannel) {
+	if snapshot == nil || channel.Provider == "" {
+		return
+	}
+	snapshot.Channel = &SessionChannel{Provider: channel.Provider, AccountKey: channel.AccountKey}
 }
 
 func (a *ManagedAdapter) pendingState(ctx context.Context, requestContext RequestContext, sessionID uint64) (int, uint64, error) {

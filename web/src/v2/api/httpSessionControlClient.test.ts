@@ -131,6 +131,16 @@ describe("HTTP session control client", () => {
     expect(headers.has("Idempotency-Key")).toBe(false);
   });
 
+  it("parses the optional channel association on session summaries", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ data: [{ ...summary, channel: { provider: "feishu", account_key: "feishu-primary" } }] }))
+      .mockResolvedValueOnce(jsonResponse({ data: [] })));
+
+    const sessions = await createHTTPSessionControlClient().list(identity, { query: "", statuses: [] });
+
+    expect(sessions[0]?.channel).toEqual({ provider: "feishu", accountKey: "feishu-primary" });
+  });
+
   it("encodes source and ID path segments independently", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ data: conversation }));
     vi.stubGlobal("fetch", fetchMock);

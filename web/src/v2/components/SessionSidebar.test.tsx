@@ -221,7 +221,16 @@ describe("SessionSidebar", () => {
     expect(host.querySelector(".webui2-session-row")?.getAttribute("data-selected")).toBe("true");
     expect(host.querySelector('[data-status="running"]')?.getAttribute("data-motion")).toBe("spin");
     expect(host.querySelector('[data-status="completed"]')?.getAttribute("data-motion")).toBeNull();
-    expect(host.querySelector(".webui2-session-title")?.nextElementSibling?.classList.contains("webui2-session-status-icon")).toBe(true);
+    expect(host.querySelector(".webui2-session-title-wrap")?.nextElementSibling?.classList.contains("webui2-session-status-icon")).toBe(true);
+  });
+
+  it("labels Feishu sessions without changing their selection behavior", () => {
+    render([{ ...sessions[0], channel: { provider: "feishu", accountKey: "feishu-primary" } }]);
+    const label = host.querySelector(".webui2-session-channel");
+    expect(label?.textContent).toBe("Feishu");
+    expect(label?.getAttribute("data-provider")).toBe("feishu");
+    act(() => host.querySelector<HTMLButtonElement>(".webui2-session-select")?.click());
+    expect(select).toHaveBeenCalledWith("tenant:alpha");
   });
 
   it("moves settings into the account menu without adding a fixed-height launcher", () => {

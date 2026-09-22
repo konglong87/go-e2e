@@ -56,6 +56,35 @@ func (r *GormRepository) ListSessionControlSessions(ctx context.Context, tenantI
 	return items, rows.Err()
 }
 
+func (r *GormRepository) ListSessionChannels(ctx context.Context, tenantID, userID uint64, sessionIDs []uint64) (map[uint64]SessionChannel, error) {
+	result := make(map[uint64]SessionChannel)
+	if tenantID == 0 || userID == 0 || len(sessionIDs) == 0 {
+		return result, nil
+	}
+	rows, err := r.with(ctx).Table("channel_conversations AS conversations").
+		Select("conversations.session_id, accounts.provider, accounts.account_key").
+		Joins("JOIN channel_accounts AS accounts ON accounts.tenant_id = conversations.tenant_id AND accounts.id = conversations.account_id AND accounts.archived_at IS NULL").
+		Joins("JOIN tenant_sessions AS sessions ON sessions.id = conversations.session_id").
+		Where("sessions.tenant_id = ? AND sessions.user_id = ? AND sessions.archived_at IS NULL AND conversations.tenant_id = ? AND conversations.session_id IN ? AND conversations.archived_at IS NULL", tenantID, userID, tenantID, sessionIDs).
+		Order("conversations.updated_at DESC, conversations.id DESC").Rows()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var sessionID uint64
+		var provider, accountKey sql.NullString
+		if err := rows.Scan(&sessionID, &provider, &accountKey); err != nil {
+			return nil, err
+		}
+		if _, exists := result[sessionID]; exists {
+			continue
+		}
+		result[sessionID] = SessionChannel{Provider: provider.String, AccountKey: accountKey.String}
+	}
+	return result, rows.Err()
+}
+
 // CreateSessionControlRun serializes on the parent Session so only one ready
 // or running Run can exist, and commits the task plus its initial message event
 // together. The task idempotency key remains the replay anchor.

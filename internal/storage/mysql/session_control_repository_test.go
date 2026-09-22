@@ -393,6 +393,29 @@ func TestListSessionControlSessionsReadsScopedPrivateConfigInOneQuery(t *testing
 	assertExpectations(t, mock)
 }
 
+func TestListSessionChannelsReturnsLatestChannelPerSession(t *testing.T) {
+	repo, mock, closeDB := newMockGormRepository(t)
+	defer closeDB()
+	mock.ExpectQuery("SELECT .*conversations\\.session_id.*accounts\\.provider.*accounts\\.account_key.*FROM .*channel_conversations AS conversations.*JOIN channel_accounts AS accounts.*JOIN tenant_sessions AS sessions.*WHERE .*sessions\\.tenant_id = \\?.*sessions\\.user_id = \\?.*conversations\\.tenant_id = \\?.*conversations\\.session_id IN \\(\\?,\\?\\).*ORDER BY conversations\\.updated_at DESC, conversations\\.id DESC").
+		WithArgs(uint64(7), uint64(11), uint64(7), uint64(41), uint64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"session_id", "provider", "account_key"}).
+			AddRow(41, ChannelProviderFeishu, "feishu-primary").
+			AddRow(42, "dingtalk", "dingtalk-primary").
+			AddRow(41, "feishu", "feishu-older"))
+
+	channels, err := repo.ListSessionChannels(testContext(), 7, 11, []uint64{41, 42})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if channels[41].Provider != ChannelProviderFeishu || channels[41].AccountKey != "feishu-primary" {
+		t.Fatalf("session 41 channel = %+v", channels[41])
+	}
+	if channels[42].Provider != "dingtalk" || channels[42].AccountKey != "dingtalk-primary" {
+		t.Fatalf("session 42 channel = %+v", channels[42])
+	}
+	assertExpectations(t, mock)
+}
+
 func TestStartSessionControlRunClaimsReadyTaskOnce(t *testing.T) {
 	repo, mock, closeDB := newMockGormRepository(t)
 	defer closeDB()

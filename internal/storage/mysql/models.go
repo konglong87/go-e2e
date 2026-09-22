@@ -276,6 +276,11 @@ type SessionControlSession struct {
 	MetadataJSON string `json:"-"`
 }
 
+type SessionChannel struct {
+	Provider   string
+	AccountKey string
+}
+
 type SessionControlCreateInput struct {
 	Session SessionInput
 }

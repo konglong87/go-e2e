@@ -73,22 +73,23 @@ type sessionControlLinkDTO struct {
 }
 
 type sessionControlSessionDTO struct {
-	ID             uint64                       `json:"id,omitempty"`
-	Provider       string                       `json:"provider,omitempty"`
-	PermissionMode string                       `json:"permission_mode,omitempty"`
-	Effort         string                       `json:"effort,omitempty"`
-	PromptMode     string                       `json:"prompt_mode,omitempty"`
-	Ref            string                       `json:"ref"`
-	Source         sessioncontrol.Source        `json:"source"`
-	Title          string                       `json:"title"`
-	Status         sessioncontrol.SessionStatus `json:"status"`
-	UpdatedAt      time.Time                    `json:"updated_at"`
-	ShortID        string                       `json:"short_id"`
-	Model          string                       `json:"model,omitempty"`
-	CWD            string                       `json:"cwd,omitempty"`
-	ActiveRunID    uint64                       `json:"active_run_id,omitempty"`
-	ReadOnly       bool                         `json:"read_only,omitempty"`
-	Links          []sessionControlLinkDTO      `json:"links,omitempty"`
+	ID             uint64                         `json:"id,omitempty"`
+	Provider       string                         `json:"provider,omitempty"`
+	Channel        *sessioncontrol.SessionChannel `json:"channel,omitempty"`
+	PermissionMode string                         `json:"permission_mode,omitempty"`
+	Effort         string                         `json:"effort,omitempty"`
+	PromptMode     string                         `json:"prompt_mode,omitempty"`
+	Ref            string                         `json:"ref"`
+	Source         sessioncontrol.Source          `json:"source"`
+	Title          string                         `json:"title"`
+	Status         sessioncontrol.SessionStatus   `json:"status"`
+	UpdatedAt      time.Time                      `json:"updated_at"`
+	ShortID        string                         `json:"short_id"`
+	Model          string                         `json:"model,omitempty"`
+	CWD            string                         `json:"cwd,omitempty"`
+	ActiveRunID    uint64                         `json:"active_run_id,omitempty"`
+	ReadOnly       bool                           `json:"read_only,omitempty"`
+	Links          []sessionControlLinkDTO        `json:"links,omitempty"`
 }
 
 type sessionControlHandoffSourceDTO struct {
@@ -478,6 +479,7 @@ func newSessionControlSessionDTO(item sessioncontrol.SessionSnapshot) sessionCon
 	}
 	return sessionControlSessionDTO{
 		ID: item.ID, Provider: item.Provider,
+		Channel:        item.Channel,
 		PermissionMode: item.PermissionMode, Effort: item.Effort, PromptMode: item.PromptMode,
 		Ref: item.Ref.String(), Source: item.Ref.Source, Title: item.Title, Status: item.Status,
 		UpdatedAt: item.UpdatedAt, ShortID: sessionControlShortID(item.Ref.Key), Model: item.Model,

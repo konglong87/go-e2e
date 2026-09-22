@@ -207,6 +207,11 @@ type MonitorRequest struct {
 // near-identical transport payload.
 type SessionSnapshot = LocalSnapshot
 
+type SessionChannel struct {
+	Provider   string `json:"provider"`
+	AccountKey string `json:"account_key,omitempty"`
+}
+
 type OperationResult struct {
 	OperationID string          `json:"operation_id,omitempty"`
 	Replayed    bool            `json:"replayed"`

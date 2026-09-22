@@ -1,4 +1,4 @@
-import { GripVertical, Pencil } from "lucide-react";
+import { GripVertical, MessageSquareText, Pencil } from "lucide-react";
 import { useEffect, useId, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useI18n } from "../../lib/i18n";
@@ -36,6 +36,8 @@ export function SessionRow({ session, selected, onSelect, onContextDragStart, on
   const [editing, setEditing] = useState(false);
   const previewID = useId();
   const canRename = session.source === "tenant" && (session.id ?? 0) > 0 && Boolean(onRename);
+  const channelProvider = session.channel?.provider.trim().toLowerCase();
+  const channelLabel = channelProvider === "feishu" ? t("webui2.channel.feishu") : session.channel?.provider;
   function clearTimer() { clearTimeout(timer.current); }
   function closePreview() { clearTimer(); setPreviewOpen(false); }
   function showPreview() { clearTimer(); if (!editing && !contextMenu) setPreviewOpen(true); }
@@ -141,7 +143,13 @@ export function SessionRow({ session, selected, onSelect, onContextDragStart, on
         dragged.current = false;
         lastPointerType.current = null;
       }} type="button">
-      <span className="webui2-session-title">{session.title}</span>
+      <span className="webui2-session-title-wrap">
+        <span className="webui2-session-title">{session.title}</span>
+        {channelLabel ? <span className="webui2-session-channel" title={channelLabel} data-provider={channelProvider} aria-label={channelLabel}>
+          <MessageSquareText aria-hidden="true" size={12} />
+          <span>{channelLabel}</span>
+        </span> : null}
+      </span>
       <SessionStatusIcon status={session.status} />
     </button>}
     {!editing ? <div className="webui2-session-action-slot" onPointerEnter={closePreview} onFocusCapture={closePreview}>

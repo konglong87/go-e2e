@@ -47,6 +47,7 @@ type LocalSnapshot struct {
 	ActiveRunID    uint64
 	Links          []SessionLink
 	ReadOnly       bool
+	Channel        *SessionChannel
 }
 
 type LocalDetail struct {

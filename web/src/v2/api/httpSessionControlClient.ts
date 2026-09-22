@@ -1,6 +1,6 @@
 import { makeHeaders, streamSSEEndpoint } from "../../lib/api";
 import type { IdentityConfig } from "../../lib/types";
-import type { OperationKind, OperationResult, SendSessionInput, SessionDetail, SessionListFilters, SessionRef, SessionRunConfig, SessionSource, SessionStatus, SessionSummary } from "../types";
+import type { OperationKind, OperationResult, SendSessionInput, SessionChannel, SessionDetail, SessionListFilters, SessionRef, SessionRunConfig, SessionSource, SessionStatus, SessionSummary } from "../types";
 import { SessionControlError, type SessionControlClient } from "./sessionControlClient";
 import { applyConversationEvents } from "./sessionEventReducer";
 
@@ -17,6 +17,7 @@ type SessionWire = {
   short_id?: string;
   model?: string;
   provider?: string;
+  channel?: { provider?: string; account_key?: string };
   permission_mode?: string;
   effort?: string;
   prompt_mode?: string;
@@ -192,6 +193,7 @@ function sessionPath(ref: SessionRef): string {
 function sessionSummary(value: unknown): SessionSummary {
   const wire = sessionWire(value);
   const { source, id } = sessionRef(wire);
+  const channel = sessionChannel(wire.channel);
   return {
     ref: `${source}:${id}`,
     source,
@@ -202,7 +204,16 @@ function sessionSummary(value: unknown): SessionSummary {
     ...(wire.id ? { id: wire.id } : {}),
     ...(wire.active_run_id ? { activeRunID: wire.active_run_id } : {}),
     permissionMode: wire.permission_mode, effort: wire.effort, promptMode: wire.prompt_mode,
-    ...(wire.model ? { model: wire.model } : {}), ...(wire.provider ? { provider: wire.provider } : {}), ...(wire.cwd ? { cwd: wire.cwd } : {})
+    ...(wire.model ? { model: wire.model } : {}), ...(wire.provider ? { provider: wire.provider } : {}), ...(wire.cwd ? { cwd: wire.cwd } : {}),
+    ...(channel ? { channel } : {})
+  };
+}
+
+function sessionChannel(value: SessionWire["channel"]): SessionChannel | undefined {
+  if (!value || typeof value.provider !== "string" || value.provider.trim() === "") return undefined;
+  return {
+    provider: value.provider.trim(),
+    ...(typeof value.account_key === "string" && value.account_key.trim() !== "" ? { accountKey: value.account_key.trim() } : {})
   };
 }
 

@@ -1311,6 +1311,19 @@ func (s *Service) ListSessionControlSessions(ctx context.Context, limit int) ([]
 	return s.repo.ListSessionControlSessions(ctx, resolved.TenantID, resolved.UserID, limit)
 }
 
+func (s *Service) ListSessionChannels(ctx context.Context, tenantID, userID uint64, sessionIDs []uint64) (map[uint64]mysqlstore.SessionChannel, error) {
+	if len(sessionIDs) == 0 {
+		return map[uint64]mysqlstore.SessionChannel{}, nil
+	}
+	lister, ok := s.repo.(interface {
+		ListSessionChannels(context.Context, uint64, uint64, []uint64) (map[uint64]mysqlstore.SessionChannel, error)
+	})
+	if !ok {
+		return map[uint64]mysqlstore.SessionChannel{}, nil
+	}
+	return lister.ListSessionChannels(ctx, tenantID, userID, sessionIDs)
+}
+
 type sessionControlOperationLockRepository interface {
 	AcquireSessionControlOperationLock(context.Context, string) (func(context.Context) error, error)
 }

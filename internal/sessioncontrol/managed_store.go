@@ -82,6 +82,19 @@ func (s *TenantManagedStore) ListSessions(ctx context.Context, scope RequestCont
 	return s.service.ListSessionControlSessions(ctx, limit)
 }
 
+func (s *TenantManagedStore) ListSessionChannels(ctx context.Context, scope RequestContext, sessionIDs []uint64) (map[uint64]mysql.SessionChannel, error) {
+	if _, err := s.resolveScope(ctx, scope); err != nil {
+		return nil, err
+	}
+	lister, ok := s.service.(interface {
+		ListSessionChannels(context.Context, uint64, uint64, []uint64) (map[uint64]mysql.SessionChannel, error)
+	})
+	if !ok {
+		return map[uint64]mysql.SessionChannel{}, nil
+	}
+	return lister.ListSessionChannels(ctx, scope.TenantID, scope.UserID, sessionIDs)
+}
+
 func (s *TenantManagedStore) GetSessionControlSessionByKey(ctx context.Context, scope RequestContext, key string) (mysql.SessionControlSession, error) {
 	if _, err := s.resolveScope(ctx, scope); err != nil {
 		return mysql.SessionControlSession{}, err
