@@ -39,7 +39,7 @@ export const SETTINGS_NAV_GROUPS: readonly SettingsNavGroup[] = [
     items: [
       item("models", Cpu, "大模型设置", "Models", ["配置供应商、默认模型与备用路由。", "Configure providers, default models and fallback routes."]),
       item("observability", Activity, "可观测性", "Observability", ["读取服务健康、遥测和实际用量记录。", "Read service health, telemetry and recorded usage."]),
-      item("profiles", Layers, "Profile 管理", "Profiles", ["管理智能体定义、能力边界与发布版本。", "Manage agent definitions, capabilities and published versions."]),
+      item("profiles", Layers, "智能体配置", "Profiles", ["管理智能体定义、能力边界与发布版本。", "Manage agent definitions, capabilities and published versions."]),
       item("feishu", WandSparkles, "飞书", "Feishu", ["配置飞书账号、Profile 绑定和渠道 Worker。", "Configure Feishu accounts, profile bindings and channel workers."]),
       item("teams", Users, "Teams 管理", "Teams", ["编排多个 Profile 的协作团队。", "Compose collaborative teams from profiles."])
     ]

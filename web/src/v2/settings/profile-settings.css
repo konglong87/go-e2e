@@ -3,17 +3,26 @@
 .webui2-settings-center .settings-profile-workbench { display: block; border: 0; border-radius: 0; box-shadow: none; background: transparent; overflow: visible; }
 .webui2-settings-center .settings-profile-workbench [hidden] { display: none; }
 .webui2-settings-center .settings-profile-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
+.webui2-settings-center .settings-profile-heading { min-width: 0; }
 .webui2-settings-center .settings-profile-toolbar h2 { margin: 0; font-size: 15px; font-weight: 600; }
 .webui2-settings-center .settings-profile-toolbar h2 span { color: var(--webui2-text-muted); margin-left: 8px; font-size: 12px; font-weight: 400; }
+.webui2-settings-center .settings-profile-heading p { margin: 6px 0 0; color: var(--webui2-text-muted); font-size: 12px; line-height: 1.6; }
 .webui2-settings-center .settings-profile-catalog { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 27px; }
 .webui2-settings-center .settings-profile-catalog > button { display: flex; flex-direction: column; align-items: flex-start; text-align: left; min-width: 0; min-height: 142px; padding: 17px; gap: 10px; border: 1px solid var(--webui2-border); border-radius: 7px; background: var(--webui2-surface); color: var(--webui2-text); }
 .webui2-settings-center .settings-profile-catalog > button.selected { background: var(--webui2-surface-muted); border-color: var(--webui2-accent); }
 .webui2-settings-center .settings-profile-catalog > button strong { font-size: 14px; overflow-wrap: anywhere; }
 .webui2-settings-center .settings-profile-catalog p { margin: 0; color: var(--webui2-text-muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .webui2-settings-center .settings-profile-catalog footer { display: flex; justify-content: space-between; width: 100%; margin-top: auto; color: var(--webui2-text-muted); font-size: 11px; }
+.webui2-settings-center .settings-profile-empty { display: grid; justify-items: start; gap: 9px; grid-column: 1 / -1; padding: 28px 22px; border: 1px dashed var(--webui2-border); color: var(--webui2-text-muted); }
+.webui2-settings-center .settings-profile-empty svg { color: var(--webui2-accent); }
+.webui2-settings-center .settings-profile-empty strong { color: var(--webui2-text); font-size: 14px; }
+.webui2-settings-center .settings-profile-empty p { margin: 0; max-width: 520px; }
+.webui2-settings-center .settings-profile-empty button { margin-top: 4px; }
+.webui2-settings-center .settings-profile-workarea { display: grid; grid-template-columns: 152px minmax(0, 1fr); gap: 24px; align-items: start; min-width: 0; }
 .webui2-settings-center .settings-profile-workbench .agent-workbench-tabs { background: transparent; border-top: 0; padding: 0; gap: 16px; }
-.webui2-settings-center .settings-profile-workbench .agent-workbench-tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 10px 0; font-size: 12px; font-weight: 500; }
-.webui2-settings-center .settings-profile-workbench .agent-workbench-tabs button.active { background: transparent; color: var(--webui2-text); border-bottom-color: var(--webui2-accent); }
+.webui2-settings-center .settings-profile-workarea .agent-workbench-tabs { display: grid; align-content: start; gap: 3px; position: sticky; top: 16px; }
+.webui2-settings-center .settings-profile-workarea .agent-workbench-tabs button { justify-content: flex-start; border: 0; border-left: 2px solid transparent; border-radius: 4px; padding: 10px 9px; font-size: 12px; font-weight: 500; text-align: left; }
+.webui2-settings-center .settings-profile-workarea .agent-workbench-tabs button.active { background: var(--webui2-surface-muted); color: var(--webui2-text); border-left-color: var(--webui2-accent); }
 .webui2-settings-center .settings-profile-workbench .agent-workbench-body { display: block; min-height: 0; }
 .webui2-settings-center .settings-profile-workbench .agent-workbench-main { background: var(--webui2-surface); }
 .webui2-settings-center .settings-profile-workbench .agent-workbench-tabs button { color: var(--webui2-text-muted); }
@@ -61,6 +70,7 @@
 @media (max-width: 760px) {
   .webui2-settings-center .settings-profile-catalog { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .webui2-settings-center .settings-profile-toolbar { flex-wrap: wrap; }
+  .webui2-settings-center .settings-profile-workarea { grid-template-columns: 132px minmax(0, 1fr); gap: 16px; }
   .webui2-settings-center .settings-profile-workbench .profile-form-grid,
   .webui2-settings-center .settings-profile-workbench .profile-source-card,
   .webui2-settings-center .settings-profile-workbench .preview-columns { grid-template-columns: minmax(0, 1fr); }
