@@ -303,7 +303,12 @@ start_worker() {
   cat >"${RUNNER_FILE}" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-unset GOLANG_CC_SQLITE_PATH
+inherited_keys="\$(compgen -v GOLANG_CC_ || true)"
+while IFS= read -r inherited_key; do
+  case "\${inherited_key}" in
+    *_SQLITE_PATH) unset "\${inherited_key}" ;;
+  esac
+done <<<"\${inherited_keys}"
 set -a
 . '${ENV_FILE}'
 set +a
