@@ -195,6 +195,7 @@ describe("SessionSidebar", () => {
     act(() => button?.focus());
     const preview = document.querySelector('[role="tooltip"]');
     expect(preview?.textContent).toContain("Release coordination");
+    expect(preview?.textContent).toContain("Source: desktop session");
     expect(preview?.querySelector("code")?.textContent).toBe(sessions[0].ref);
     expect(preview?.querySelector("time")?.dateTime).toBe(sessions[0].updatedAt);
     expect(button?.getAttribute("aria-describedby")).toBe(preview?.id);
@@ -229,6 +230,8 @@ describe("SessionSidebar", () => {
     const label = host.querySelector(".webui2-session-channel");
     expect(label?.textContent).toBe("Feishu");
     expect(label?.getAttribute("data-provider")).toBe("feishu");
+    act(() => host.querySelector<HTMLButtonElement>(".webui2-session-select")?.focus());
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toContain("Source: Feishu channel");
     act(() => host.querySelector<HTMLButtonElement>(".webui2-session-select")?.click());
     expect(select).toHaveBeenCalledWith("tenant:alpha");
   });

@@ -6,6 +6,7 @@ import type { SessionRef, SessionSummary } from "../types";
 import { SessionHoverPreview } from "./SessionHoverPreview";
 import { SessionStatusIcon } from "./SessionStatusIcon";
 import { SessionTitleEditor } from "./SessionTitleEditor";
+import { getSessionChannelLabel, normalizeSessionProvider } from "./sessionSource";
 import "./sessionSidebarExperience.css";
 
 const PREVIEW_OPEN_DELAY = 450;
@@ -36,8 +37,8 @@ export function SessionRow({ session, selected, onSelect, onContextDragStart, on
   const [editing, setEditing] = useState(false);
   const previewID = useId();
   const canRename = session.source === "tenant" && (session.id ?? 0) > 0 && Boolean(onRename);
-  const channelProvider = session.channel?.provider.trim().toLowerCase();
-  const channelLabel = channelProvider === "feishu" ? t("webui2.channel.feishu") : session.channel?.provider;
+  const channelProvider = normalizeSessionProvider(session.channel?.provider);
+  const channelLabel = getSessionChannelLabel(session.channel?.provider, t);
   function clearTimer() { clearTimeout(timer.current); }
   function closePreview() { clearTimer(); setPreviewOpen(false); }
   function showPreview() { clearTimer(); if (!editing && !contextMenu) setPreviewOpen(true); }

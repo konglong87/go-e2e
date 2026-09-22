@@ -1,9 +1,10 @@
-import { Clock3, Folder } from "lucide-react";
+import { Clock3, Folder, MessageSquareText } from "lucide-react";
 import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useI18n } from "../../lib/i18n";
 import type { SessionSummary } from "../types";
 import { SessionStatusIcon } from "./SessionStatusIcon";
+import { getSessionSourceLabel } from "./sessionSource";
 
 const PREVIEW_WIDTH = 340;
 const VIEWPORT_MARGIN = 12;
@@ -36,6 +37,7 @@ export function SessionHoverPreview({ id, session, anchor, onEnter, onLeave }: P
   const date = new Date(session.updatedAt);
   const time = Number.isNaN(date.getTime()) ? session.updatedAt : date.toLocaleString(language === "zh" ? "zh-CN" : "en-US");
   const workspace = session.cwd?.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || t("webui2.unknownWorkspace");
+  const sourceLabel = getSessionSourceLabel(session.source, session.channel?.provider, t);
   // Keep theme tokens, but escape the sidebar's scrolling/clipping container.
   const portalRoot = anchor.current?.closest(".webui2-page") ?? document.body;
   return createPortal(<div ref={preview} id={id} role="tooltip" className="webui2-session-preview"
@@ -43,6 +45,7 @@ export function SessionHoverPreview({ id, session, anchor, onEnter, onLeave }: P
     <strong className="webui2-session-preview-title">{session.title}</strong>
     <div className="webui2-session-preview-workspace" title={session.cwd}><Folder aria-hidden="true" size={16} /><span>{workspace}</span></div>
     <div className="webui2-session-preview-details">
+      <span><MessageSquareText aria-hidden="true" size={14} />{sourceLabel}</span>
       <span><SessionStatusIcon status={session.status} />{t(`webui2.status.${session.status}`)}</span>
       <span><Clock3 aria-hidden="true" size={14} />{t("webui2.updatedAt")} <time dateTime={session.updatedAt}>{time}</time></span>
       <code>{session.ref}</code>
