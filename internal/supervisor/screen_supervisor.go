@@ -168,7 +168,7 @@ func mergeEnvironment(base []string, worker map[string]string) []string {
 
 func isPinnedRuntimeEnvironment(key string) bool {
 	switch strings.TrimSpace(key) {
-	case "GO_E2E_SQLITE_PATH", "GO_E2E_MYSQL_DSN", "GO_E2E_FEISHU_CREDENTIAL_FILE":
+	case "GO_E2E_SQLITE_PATH", "GO_E2E_MYSQL_DSN":
 		return true
 	default:
 		return false

@@ -108,7 +108,7 @@ func TestScreenSupervisorPinsDesktopRuntimeEnvironment(t *testing.T) {
 	if strings.Contains(joined, "stale.sqlite") || !strings.Contains(joined, "GO_E2E_SQLITE_PATH=/desktop/current.sqlite") {
 		t.Fatalf("sqlite environment was not pinned: %s", joined)
 	}
-	if strings.Contains(joined, "stale-credentials.json") || !strings.Contains(joined, "GO_E2E_FEISHU_CREDENTIAL_FILE=/desktop/credentials.json") {
-		t.Fatalf("credential environment was not pinned: %s", joined)
+	if !strings.Contains(joined, "GO_E2E_FEISHU_CREDENTIAL_FILE=/worker/stale-credentials.json") {
+		t.Fatalf("worker credential environment was not preserved: %s", joined)
 	}
 }
