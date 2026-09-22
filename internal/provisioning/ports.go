@@ -43,6 +43,12 @@ type WorkerInventory interface {
 	List(context.Context) ([]WorkerStatus, error)
 }
 
+// WorkerSpecInventory exposes non-secret persisted worker wiring so a
+// provisioning service can reconcile workers created outside the UI.
+type WorkerSpecInventory interface {
+	ListWorkerSpecs(context.Context) ([]WorkerSpec, error)
+}
+
 type AuditRecorder interface {
 	Record(ctx context.Context, event string, session ProvisioningSession) error
 }

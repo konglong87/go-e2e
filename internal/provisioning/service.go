@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+const discoveredCredentialRef = "feishu-default"
+
 type RecordInput struct {
 	ID                                                        uint64
 	TenantID                                                  uint64
@@ -102,7 +104,71 @@ func (s *Service) Overview(ctx context.Context, tenantID uint64, limit int) (Ove
 			}
 		}
 	}
+	if inventory, ok := s.Inventory.(WorkerSpecInventory); ok {
+		specs, inventoryErr := inventory.ListWorkerSpecs(ctx)
+		if inventoryErr != nil {
+			return Overview{}, inventoryErr
+		}
+		records, err = s.reconcileDiscoveredWorkers(ctx, tenantID, records, workers, specs)
+		if err != nil {
+			return Overview{}, err
+		}
+	}
 	return Overview{Records: records, Workers: workers}, nil
+}
+
+func (s *Service) reconcileDiscoveredWorkers(ctx context.Context, tenantID uint64, records []Record, workers []WorkerStatus, specs []WorkerSpec) ([]Record, error) {
+	known := make(map[string]bool, len(records))
+	for _, record := range records {
+		known[record.AccountKey] = true
+	}
+	for _, spec := range specs {
+		if strings.TrimSpace(spec.AccountKey) == "" || known[spec.AccountKey] {
+			continue
+		}
+		observed := observedWorkerForSpec(spec, workers)
+		status := statusForWorker(observed.State)
+		record, err := s.Repo.UpsertAgentProvisioning(ctx, RecordInput{
+			TenantID:      tenantID,
+			ProfileKey:    spec.WorkerName,
+			AccountKey:    spec.AccountKey,
+			CredentialRef: discoveredCredentialRef,
+			Supervisor:    spec.Supervisor,
+			Status:        string(status),
+			WorkerSpec:    spec,
+			WorkerStatus:  observed,
+		})
+		if err != nil {
+			return nil, err
+		}
+		known[record.AccountKey] = true
+		records = append(records, record)
+	}
+	return records, nil
+}
+
+func observedWorkerForSpec(spec WorkerSpec, workers []WorkerStatus) WorkerStatus {
+	for _, worker := range workers {
+		if worker.AccountKey == spec.AccountKey {
+			return worker
+		}
+	}
+	return WorkerStatus{AccountKey: spec.AccountKey, State: WorkerStateUnknown}
+}
+
+func statusForWorker(state WorkerState) Status {
+	switch state {
+	case WorkerStateRunning:
+		return StatusRunning
+	case WorkerStateDegraded:
+		return StatusDegraded
+	case WorkerStateStopped:
+		return StatusStopped
+	case WorkerStateFailed:
+		return StatusFailed
+	default:
+		return StatusDraft
+	}
 }
 func (s *Service) Get(ctx context.Context, tenantID, id uint64, key string) (Record, error) {
 	return s.Repo.GetAgentProvisioning(ctx, tenantID, id, key)

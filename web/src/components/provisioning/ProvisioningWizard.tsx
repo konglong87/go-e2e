@@ -54,7 +54,17 @@ export function ProvisioningWizard({ identity, onStatus }: { identity: IdentityC
         if (cancelled) return;
         setRecords(overview.records); setWorkers(overview.workers); setProfiles(nextProfiles); setAccounts(nextAccounts); setProviders(nextProviders);
         const first = overview.records[0];
-        if (first) { setSelected(first); setProfileKey(first.profile_key); setAccountKey(first.account_key); setProvider(first.worker?.provider || ""); setModel(first.worker?.model || ""); }
+        if (first) {
+          setSelected(first);
+          setProfileKey(first.profile_key);
+          setAccountKey(first.account_key);
+          setProvider(first.worker?.provider || "");
+          setModel(first.worker?.model || "");
+          // A discovered/running worker already passed profile creation,
+          // validation, and publishing. Land on step 04 so an existing
+          // Feishu account can be inspected and operated immediately.
+          setStep(first.observed_worker?.state ? 3 : 0);
+        }
       })
       .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : String(err)); });
     return () => { cancelled = true; };

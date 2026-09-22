@@ -117,10 +117,7 @@ func (s ScreenSupervisor) run(ctx context.Context, action string, spec provision
 	if script == "" {
 		script = "scripts/channel-worker-screen.sh"
 	}
-	env := append([]string{}, s.BaseEnv...)
-	for key, value := range spec.Environment {
-		env = append(env, key+"="+value)
-	}
+	env := mergeEnvironment(s.BaseEnv, spec.Environment)
 	workerName := spec.WorkerName
 	if workerName == "" {
 		workerName = spec.AccountKey
@@ -136,6 +133,105 @@ func (s ScreenSupervisor) run(ctx context.Context, action string, spec provision
 	}
 	return status, nil
 }
+
+func mergeEnvironment(base []string, worker map[string]string) []string {
+	values := make(map[string]string, len(base)+len(worker))
+	order := make([]string, 0, len(base)+len(worker))
+	add := func(key, value string) {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			return
+		}
+		if _, exists := values[key]; !exists {
+			order = append(order, key)
+		}
+		values[key] = value
+	}
+	for _, item := range base {
+		parts := strings.SplitN(item, "=", 2)
+		if len(parts) == 2 {
+			add(parts[0], parts[1])
+		}
+	}
+	for key, value := range worker {
+		if isPinnedRuntimeEnvironment(key) {
+			continue
+		}
+		add(key, value)
+	}
+	out := make([]string, 0, len(order))
+	for _, key := range order {
+		out = append(out, key+"="+values[key])
+	}
+	return out
+}
+
+func isPinnedRuntimeEnvironment(key string) bool {
+	switch strings.TrimSpace(key) {
+	case "GO_E2E_SQLITE_PATH", "GO_E2E_MYSQL_DSN", "GO_E2E_FEISHU_CREDENTIAL_FILE":
+		return true
+	default:
+		return false
+	}
+}
+
+func (s ScreenSupervisor) ListWorkerSpecs(ctx context.Context) ([]provisioning.WorkerSpec, error) {
+	stateDir := s.StateDir
+	if stateDir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("resolve channel worker state directory: %w", err)
+		}
+		stateDir = provisioning.DefaultChannelWorkerStateDir(home)
+	}
+	entries, err := os.ReadDir(stateDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []provisioning.WorkerSpec{}, nil
+		}
+		return nil, err
+	}
+	specs := make([]provisioning.WorkerSpec, 0)
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".env") {
+			continue
+		}
+		values, parseErr := readWorkerEnv(filepath.Join(stateDir, entry.Name()))
+		if parseErr != nil {
+			continue
+		}
+		workerName := strings.TrimSuffix(entry.Name(), ".env")
+		specs = append(specs, provisioning.WorkerSpec{
+			Supervisor:     "screen",
+			WorkerName:     workerName,
+			AccountKey:     workerEnvValue(values, "CHANNEL_ACCOUNT_KEY"),
+			Provider:       workerEnvValue(values, "CHANNEL_MODEL_PROVIDER"),
+			Model:          workerEnvValue(values, "CHANNEL_MODEL"),
+			SettingsRef:    workerEnvValue(values, "CHANNEL_SETTINGS_FILE"),
+			Streaming:      workerEnvValue(values, "CHANNEL_STREAMING"),
+			Reactions:      workerEnvValue(values, "CHANNEL_REACTIONS"),
+			PermissionMode: workerEnvValue(values, "CHANNEL_PERMISSION_MODE"),
+			Environment:    safeWorkerEnvironment(values),
+		})
+	}
+	return specs, nil
+}
+
+func safeWorkerEnvironment(values map[string]string) map[string]string {
+	safe := make(map[string]string, len(values))
+	for key, value := range values {
+		switch strings.TrimSpace(key) {
+		case "GO_E2E_CHANNEL_PAYLOAD_KEY", "GOLANG_CC_CHANNEL_PAYLOAD_KEY",
+			"GO_E2E_MYSQL_DSN", "GOLANG_CC_MYSQL_DSN":
+			continue
+		default:
+			safe[key] = value
+		}
+	}
+	return safe
+}
+
+var _ provisioning.WorkerSpecInventory = ScreenSupervisor{}
 
 func parseStatus(output string, spec provisioning.WorkerSpec) provisioning.WorkerStatus {
 	status := provisioning.WorkerStatus{State: provisioning.WorkerStateUnknown, Provider: spec.Provider, Model: spec.Model, AccountKey: spec.AccountKey, ObservedAt: time.Now().UTC(), Screen: "golang-cc-channel-" + spec.WorkerName}

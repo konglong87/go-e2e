@@ -21,6 +21,9 @@ func (m *memoryRepo) GetAgentProvisioning(_ context.Context, tenantID, _ uint64,
 	return m.item, nil
 }
 func (m *memoryRepo) ListAgentProvisionings(context.Context, uint64, int) ([]Record, error) {
+	if m.item.ID == 0 {
+		return nil, nil
+	}
 	return []Record{m.item}, nil
 }
 
@@ -66,5 +69,43 @@ func TestServiceOverviewIncludesUnmanagedWorkers(t *testing.T) {
 	result, err := service.Overview(context.Background(), 9, 100)
 	if err != nil || len(result.Workers) != 1 || result.Workers[0].AccountID != 2 {
 		t.Fatalf("result=%#v err=%v", result, err)
+	}
+}
+
+type discoveringInventory struct{}
+
+func (discoveringInventory) List(context.Context) ([]WorkerStatus, error) {
+	return []WorkerStatus{{TenantID: 9, AccountID: 2, AccountKey: "code", State: WorkerStateRunning, PID: 22}}, nil
+}
+
+func (discoveringInventory) ListWorkerSpecs(context.Context) ([]WorkerSpec, error) {
+	return []WorkerSpec{
+		{
+			Supervisor:  "screen",
+			WorkerName:  "code",
+			AccountKey:  "code",
+			Provider:    "provider-a",
+			Model:       "model-a",
+			Environment: map[string]string{"GO_E2E_FEISHU_CREDENTIAL_FILE": "/home/user/feishu-credentials.json"},
+		},
+	}, nil
+}
+
+func TestServiceOverviewReconcilesDiscoveredWorker(t *testing.T) {
+	repo := &memoryRepo{}
+	service := &Service{Repo: repo, Inventory: discoveringInventory{}}
+	result, err := service.Overview(context.Background(), 9, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Records) != 1 {
+		t.Fatalf("records=%#v", result.Records)
+	}
+	record := result.Records[0]
+	if record.ProfileKey != "code" || record.AccountKey != "code" || record.Status != StatusRunning {
+		t.Fatalf("record=%#v", record)
+	}
+	if record.CredentialRef != discoveredCredentialRef {
+		t.Fatalf("credential ref=%q, want %q", record.CredentialRef, discoveredCredentialRef)
 	}
 }

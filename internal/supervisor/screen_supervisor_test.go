@@ -86,3 +86,29 @@ func TestScreenSupervisorMapsStatusAndStructuredEnv(t *testing.T) {
 		t.Fatalf("env=%s", joined)
 	}
 }
+
+func TestScreenSupervisorPinsDesktopRuntimeEnvironment(t *testing.T) {
+	fake := &fakeRunner{output: []byte("stopped: golang-cc-channel-writer")}
+	s := ScreenSupervisor{
+		Runner:  fake,
+		BaseEnv: []string{"GO_E2E_SQLITE_PATH=/desktop/current.sqlite", "GO_E2E_FEISHU_CREDENTIAL_FILE=/desktop/credentials.json"},
+	}
+	_, err := s.Start(context.Background(), provisioning.WorkerSpec{
+		AccountKey: "writer",
+		Environment: map[string]string{
+			"GO_E2E_SQLITE_PATH":            "/worker/stale.sqlite",
+			"GO_E2E_FEISHU_CREDENTIAL_FILE": "/worker/stale-credentials.json",
+			"GO_E2E_CHANNEL_STREAMING":      "on",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(fake.env, "\n")
+	if strings.Contains(joined, "stale.sqlite") || !strings.Contains(joined, "GO_E2E_SQLITE_PATH=/desktop/current.sqlite") {
+		t.Fatalf("sqlite environment was not pinned: %s", joined)
+	}
+	if strings.Contains(joined, "stale-credentials.json") || !strings.Contains(joined, "GO_E2E_FEISHU_CREDENTIAL_FILE=/desktop/credentials.json") {
+		t.Fatalf("credential environment was not pinned: %s", joined)
+	}
+}
