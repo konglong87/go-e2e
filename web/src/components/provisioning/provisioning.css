@@ -15,7 +15,7 @@
 
 .webui2-settings-center .connection-progress .provisioning-steps {
   --step-marker-size: 30px;
-  --step-padding-block: 8px;
+  --step-padding-block: 6px;
   display: grid;
   grid-template-columns: none;
   grid-auto-columns: minmax(0, 1fr);
@@ -31,7 +31,7 @@
   background: transparent;
   display: flex;
   min-width: 0;
-  min-height: 72px;
+  min-height: 62px;
   position: relative;
 }
 
@@ -59,24 +59,19 @@
   cursor: default;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 7px;
   justify-content: flex-start;
-  min-height: 72px;
+  min-height: 62px;
   min-width: 0;
-  padding: var(--step-padding-block) 8px;
+  padding: var(--step-padding-block) 8px 4px;
   position: relative;
   text-align: left;
   width: 100%;
   z-index: auto;
 }
 
-.webui2-settings-center .connection-progress .provisioning-steps li.active .provisioning-step-button {
-  background: var(--webui2-accent-surface);
-  border-radius: 8px;
-}
-
 .webui2-settings-center .connection-progress .provisioning-step-button:not(:disabled) { cursor: pointer; }
-.webui2-settings-center .connection-progress .provisioning-step-button:not(:disabled):hover { background: var(--webui2-surface-muted); }
+.webui2-settings-center .connection-progress .provisioning-step-button:not(:disabled):hover .provisioning-step-label { color: var(--worker-accent); }
 .webui2-settings-center .connection-progress .provisioning-step-button:disabled { opacity: 1; }
 .webui2-settings-center .connection-progress .provisioning-step-button:focus-visible { outline: 2px solid var(--worker-accent); outline-offset: 3px; }
 .webui2-settings-center .connection-progress .provisioning-step-visual { align-items: center; display: flex; height: var(--step-marker-size); justify-content: center; width: 100%; }
@@ -97,12 +92,14 @@
 
 .webui2-settings-center .connection-progress .provisioning-step-label {
   color: var(--worker-muted);
-  display: block;
+  display: inline-block;
   font-size: 12px;
   font-weight: 550;
   line-height: 1.35;
   max-width: 100%;
   overflow-wrap: anywhere;
+  padding-bottom: 4px;
+  position: relative;
   text-align: center;
   white-space: normal;
 }
@@ -120,6 +117,18 @@
 
 .webui2-settings-center .connection-progress .provisioning-steps li.active .provisioning-step-label,
 .webui2-settings-center .connection-progress .provisioning-steps li.complete .provisioning-step-label { color: var(--worker-text); }
+
+.webui2-settings-center .connection-progress .provisioning-steps li.active .provisioning-step-label::after {
+  background: var(--worker-accent);
+  border-radius: 999px;
+  bottom: 0;
+  content: "";
+  height: 2px;
+  left: 50%;
+  position: absolute;
+  transform: translateX(-50%);
+  width: 22px;
+}
 
 .webui2-settings-center .connection-panel,
 .webui2-settings-center .runtime-detail {
