@@ -274,6 +274,10 @@ test("connects a Feishu draft and operates it from the separate Worker runtime p
   await page.evaluate(() => localStorage.setItem("golang-cc-webui.language.v1", "zh"));
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/webui/v2/settings/feishu");
+  const selectedNavItem = page.locator('.settings-navigation nav button[aria-current="page"]');
+  await selectedNavItem.focus();
+  await expect(selectedNavItem).toHaveCSS("outline-style", "none");
+  await expect(selectedNavItem).toHaveCSS("box-shadow", /inset/);
   await expect(page.locator(".worker-settings-account")).toBeVisible();
   await expect(page.locator("h1")).toHaveCount(1);
   await expect(page.getByRole("heading", { name: "飞书连接", exact: true })).toBeVisible();
