@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo.png" alt="go-e2e logo" width="160">
+  <img src="web/src/v2/assets/go-e2e-mark.svg" alt="go-e2e logo" width="160">
 </p>
 
 <p align="center">
