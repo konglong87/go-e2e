@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -187,6 +188,41 @@ func TestLocalSkillsEndpointUsesWorkspaceDiscovery(t *testing.T) {
 		}
 	}
 	t.Fatalf("workspace skill not discovered in %+v", response.Data)
+}
+
+func TestLocalSkillDetailEndpointLoadsByDiscoveredNameOnly(t *testing.T) {
+	workspace := t.TempDir()
+	skillDir := filepath.Join(workspace, ".claude", "skills", "workspace-skill")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	skillPath := filepath.Join(skillDir, "SKILL.md")
+	content := "---\nname: workspace-skill\ndescription: Workspace discovery fixture.\n---\n\n# Workspace skill\n"
+	if err := os.WriteFile(skillPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write skill: %v", err)
+	}
+
+	handler := NewHandler(Options{Workspace: workspace}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/local/skills?name=workspace-skill", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var response skills.Skill
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Name != "workspace-skill" || response.Path != skillPath || response.Content != content {
+		t.Fatalf("skill = %+v", response)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/local/skills?name="+url.QueryEscape(skillPath), nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("path lookup status = %d body=%s", rec.Code, rec.Body.String())
+	}
 }
 
 func TestHandlerQueryPersistsTenantSession(t *testing.T) {

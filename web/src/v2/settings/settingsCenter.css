@@ -198,8 +198,23 @@
 .p2-management-group-heading { align-items: start; border-bottom: 1px solid var(--webui2-border); display: flex; gap: 16px; justify-content: space-between; padding-bottom: 12px; }
 .p2-management-group-heading h3 { font-size: 14px; margin: 0 0 5px; }
 .p2-management-group-heading > span { color: var(--webui2-text-muted); font-size: 12px; white-space: nowrap; }
+.p2-management-help { color: var(--webui2-text-muted); font-size: 12px; line-height: 1.5; margin: 0; max-width: 720px; }
 .p2-skill-meta { font-size: 12px; }
 .p2-skill-path { color: var(--webui2-text-muted); display: block; font-size: 11px; margin-top: 8px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.p2-skill-card-heading { align-items: flex-start; display: flex; gap: 14px; justify-content: space-between; }
+.p2-skill-card-heading > div { min-width: 0; }
+.p2-skill-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.settings-inline-button { align-items: center; background: transparent; border: 1px solid var(--webui2-border); border-radius: 6px; color: var(--webui2-text); cursor: pointer; display: inline-flex; font: inherit; gap: 6px; padding: 6px 9px; }
+.settings-inline-button:disabled { cursor: wait; opacity: .6; }
+.p2-skill-state { align-items: center; display: inline-flex; flex-shrink: 0; font-size: 12px; gap: 5px; white-space: nowrap; }
+.p2-skill-state.is-enabled { color: var(--webui2-accent); }
+.p2-skill-state.is-disabled { color: var(--webui2-text-muted); }
+.p2-skill-detail { border-left: 2px solid var(--webui2-border); margin-top: 14px; padding: 2px 0 2px 14px; }
+.p2-skill-detail-grid { display: flex; flex-wrap: wrap; gap: 14px 28px; margin: 0 0 12px; }
+.p2-skill-detail-grid div { min-width: 120px; }
+.p2-skill-detail-grid dt { color: var(--webui2-text-muted); font-size: 11px; margin-bottom: 3px; }
+.p2-skill-detail-grid dd { margin: 0; overflow-wrap: anywhere; }
+.p2-skill-content { background: var(--webui2-surface-muted); border: 1px solid var(--webui2-border); border-radius: 6px; display: block; font: 12px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; margin: 0; max-height: 360px; overflow: auto; padding: 12px; white-space: pre-wrap; }
 @media(max-width: 1050px) { .webui2-settings-center { grid-template-columns: 207px minmax(0, 1fr); } .webui2-settings-center .settings-content { padding: 28px 25px 50px; } .webui2-settings-center .settings-topbar { padding: 12px 25px; } }
 @media(max-width: 700px) { .webui2-settings-center { display: block; } .webui2-settings-center .settings-main { height: 100%; } .webui2-settings-center .settings-navigation { display: none; position: fixed; inset: 0 auto 0 0; width: 232px; max-width: calc(100vw - 40px); z-index: 52; } .webui2-settings-center .settings-navigation[data-open="true"] { display: flex; } .webui2-settings-center .settings-nav-backdrop { background: var(--webui2-overlay); border: 0; border-radius: 0; inset: 0; position: fixed; z-index: 51; } .webui2-settings-center .settings-mobile-nav-open, .webui2-settings-center .settings-mobile-nav-close { display: inline-flex; background: transparent; border: 0; } .webui2-settings-center .settings-mobile-nav-close { margin-left: auto; } .webui2-settings-center .settings-brand { padding: 0; } .webui2-settings-center .settings-content { padding: 25px 19px 50px; } .webui2-settings-center .settings-topbar { min-height: 58px; padding: 10px 13px; } .webui2-settings-center .settings-scope { display: none; } .webui2-settings-center .settings-breadcrumb { gap: 8px; } .webui2-settings-center .settings-page-heading { align-items: flex-start; flex-direction: column; gap: 12px; } .webui2-settings-center h1 { font-size: 22px; } .webui2-settings-center .settings-form-grid { grid-template-columns: 1fr; } .webui2-settings-center .settings-identity-fields { grid-template-columns: 1fr; gap: 17px; } .webui2-settings-center .settings-preference-row { align-items: flex-start; flex-direction: column; gap: 10px; } .webui2-settings-center .settings-preference-select { flex-basis: auto; width: 100%; } .p2-management-create { grid-template-columns: minmax(0, 1fr); } .p2-management-create label.full { grid-column: auto; } }
 .webui2-settings-center .settings-nav-group { display: grid; }

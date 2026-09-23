@@ -918,6 +918,10 @@ export async function listLocalSkills(identity: IdentityConfig): Promise<LocalSk
   return unwrapData<LocalSkillRecord[]>(value, []);
 }
 
+export async function getLocalSkill(identity: IdentityConfig, name: string): Promise<LocalSkillRecord> {
+  return apiRequest<LocalSkillRecord>(identity, `/local/skills?name=${encodeURIComponent(name)}`);
+}
+
 export async function saveSkill(identity: IdentityConfig, request: { skill_key: string; name: string; content_md: string; version?: number; enabled?: boolean }): Promise<void> {
   await apiRequest(identity, "/tenant/skills", { method: "POST", body: request });
 }

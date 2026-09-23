@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/konglong87/go-e2e/internal/skills"
 )
@@ -21,6 +22,20 @@ func localSkillsHandler(opts Options) http.HandlerFunc {
 		if r.Method != http.MethodGet {
 			w.Header().Set("Allow", http.MethodGet)
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		if name := strings.TrimSpace(r.URL.Query().Get("name")); name != "" {
+			item, found, err := skills.Load(opts.Workspace, name)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if !found {
+				http.Error(w, "skill not found", http.StatusNotFound)
+				return
+			}
+			writeJSON(w, item)
 			return
 		}
 
