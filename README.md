@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <a href="#社区与反馈">飞书社群（链接待补）</a> ·
+  <a href="https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=55aq8d1d-7586-46cf-8635-a8c321ad284d">加入飞书社群</a> ·
   <a href="docs/README.md">文档</a> ·
   <a href="https://github.com/konglong87/go-e2e/issues">问题反馈</a>
 </p>
@@ -311,7 +311,7 @@ go-e2e 不只是一个聊天界面，而是一套可以执行任务、连接外�
 
 ## 社区与反馈
 
-- **飞书社群**：链接待补，后续替换为真实群链接。
+- **飞书社群**：[点击加入 go-e2e 中文社区](https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=55aq8d1d-7586-46cf-8635-a8c321ad284d)，具体加入资格以飞书页面提示为准。
 - **问题反馈**：通过 [GitHub Issues](https://github.com/konglong87/go-e2e/issues) 提交 Bug 和功能建议。
 - **安全问题**：请阅读 [安全策略](SECURITY.md)，不要在公开 Issue 中提交敏感细节。
 - **贡献代码**：请先阅读 [贡献指南](CONTRIBUTING.md)。
