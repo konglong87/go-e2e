@@ -41,6 +41,7 @@ describe("ProvisioningWizard views", () => {
     vi.mocked(api.listChannelAccounts).mockResolvedValue([{ id: 4, account_key: "support-bot", provider: "feishu", app_id: "cli_test", mode: "websocket", enabled: true, status: "active" }]);
     vi.mocked(api.listProviders).mockResolvedValue([{ name: "openai", model: "gpt-5" }]);
     vi.mocked(api.preflightProvisioning).mockResolvedValue({ ...record, status: "preflight", observed_worker: { state: "preflight" } });
+    vi.mocked(api.createProvisioning).mockResolvedValue(record);
     host = document.createElement("div");
     document.body.replaceChildren(host);
     root = createRoot(host);
@@ -51,10 +52,11 @@ describe("ProvisioningWizard views", () => {
     vi.restoreAllMocks();
   });
 
-  async function mount(view: "account" | "lifecycle") {
+  async function mount(view: "account" | "lifecycle", onNavigate = vi.fn()) {
     await act(async () => {
-      root.render(<I18nProvider><ProvisioningWizard identity={identity} onStatus={vi.fn()} view={view} /></I18nProvider>);
+      root.render(<I18nProvider><ProvisioningWizard identity={identity} onStatus={vi.fn()} onNavigate={onNavigate} view={view} /></I18nProvider>);
     });
+    return onNavigate;
   }
 
   async function click(label: string) {
@@ -63,25 +65,42 @@ describe("ProvisioningWizard views", () => {
     await act(async () => button?.click());
   }
 
-  it("keeps Feishu connection setup separate from Worker lifecycle actions", async () => {
-    await mount("account");
-    expect(host.textContent).toContain("Feishu connection");
-    expect(host.textContent).toContain("Existing account");
+  it("keeps Feishu setup focused and routes the saved draft to Worker runtime", async () => {
+    const onNavigate = await mount("account");
+    expect(host.textContent).toContain("Connect Feishu");
+    expect(host.textContent).toContain("Saved account");
     expect(host.textContent).not.toContain("Start Worker");
     expect(host.textContent).not.toContain("Run preflight");
     expect(host.querySelector('input[type="password"]')).toBeNull();
+
+    await click("Save connection draft");
+    expect(host.textContent).toContain("Connection draft saved");
+    expect(host.textContent).toContain("Worker has not been started");
+    await click("Go to Worker runtime");
+    expect(onNavigate).toHaveBeenCalledWith("lifecycle");
   });
 
-  it("keeps Worker runtime focused on saved drafts and lifecycle controls", async () => {
+  it("shows Worker selection, state and lifecycle actions together", async () => {
     await mount("lifecycle");
-    expect(host.textContent).toContain("Worker runtime");
-    expect(host.textContent).toContain("Select Worker");
+    expect(host.textContent).toContain("Workers");
+    expect(host.textContent).toContain("support-agent");
+    expect(host.textContent).toContain("Preflight");
+    expect(host.textContent).toContain("Start");
+    expect(host.textContent).toContain("Restart");
+    expect(host.textContent).toContain("Stop");
+    expect(host.textContent).not.toContain("Preflight settings");
     expect(host.textContent).not.toContain("App Secret");
     expect(host.textContent).not.toContain("Connect a new bot");
 
-    await click("Continue");
-    expect(host.textContent).toContain("Preflight settings");
-    await click("Run preflight");
+    await click("Preflight");
     expect(api.preflightProvisioning).toHaveBeenCalledWith(identity, record.id);
+  });
+
+  it("offers a direct Feishu connection entry when no Worker exists", async () => {
+    vi.mocked(api.getProvisioningOverview).mockResolvedValue({ records: [], workers: [] });
+    const onNavigate = vi.fn();
+    await mount("lifecycle", onNavigate);
+    await click("Connect Feishu");
+    expect(onNavigate).toHaveBeenCalledWith("account");
   });
 });

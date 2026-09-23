@@ -31,6 +31,7 @@ import (
 	"github.com/konglong87/go-e2e/internal/observability"
 	"github.com/konglong87/go-e2e/internal/pendinginput"
 	"github.com/konglong87/go-e2e/internal/prompttemplate"
+	"github.com/konglong87/go-e2e/internal/provisioning"
 	"github.com/konglong87/go-e2e/internal/query"
 	"github.com/konglong87/go-e2e/internal/quota"
 	"github.com/konglong87/go-e2e/internal/scheduler"
@@ -110,6 +111,7 @@ type Options struct {
 	GoalEvaluator         string
 	StructuredSkillRoutes []StructuredSkillRoute
 	ProvisioningService   ProvisioningService
+	FeishuOnboarding      FeishuOnboardingService
 
 	// AgentTaskMaxConcurrentRuns 限制 detached agent runner 的并发数（<=0 用默认值）。
 	AgentTaskMaxConcurrentRuns int
@@ -160,6 +162,16 @@ type SessionControlService interface {
 
 type SessionControlCompactService interface {
 	Compact(context.Context, sessioncontrol.CompactRequest) (sessioncontrol.OperationResult, error)
+}
+
+// FeishuOnboardingService is the transport-neutral boundary for the desktop
+// QR onboarding flow. The HTTP layer exposes only redacted session state.
+type FeishuOnboardingService interface {
+	Start(context.Context, uint64, uint64, FeishuOnboardingRequest) (FeishuOnboardingSession, error)
+	Get(context.Context, uint64, string) (FeishuOnboardingSession, error)
+	Cancel(context.Context, uint64, string) error
+	CLIStatus(context.Context) (provisioning.CLIAvailability, error)
+	InstallCLI(context.Context) (provisioning.CLIAvailability, error)
 }
 
 type SessionControlEventService interface {
@@ -514,6 +526,11 @@ func newRouter(opts Options, queryFn QueryFunc) *gin.Engine {
 	router.Any("/tenant/agent-teams/:key/runs/:run_id", gin.WrapF(tenantAgentTeamRunHandler(opts)))
 	router.Any("/tenant/agent-teams/:key/runs/:run_id/cancel", gin.WrapF(tenantAgentTeamRunHandler(opts)))
 	router.Any("/tenant/channel-accounts", gin.WrapF(tenantChannelAccountsHandler(opts)))
+	router.Any("/tenant/feishu/onboarding", gin.WrapF(tenantFeishuOnboardingHandler(opts)))
+	router.Any("/tenant/feishu/onboarding/cli", gin.WrapF(tenantFeishuOnboardingCLISHandler(opts)))
+	router.Any("/tenant/feishu/onboarding/cli/install", gin.WrapF(tenantFeishuOnboardingCLIInstallHandler(opts)))
+	router.Any("/tenant/feishu/onboarding/:id", gin.WrapF(tenantFeishuOnboardingSessionHandler(opts)))
+	router.Any("/tenant/feishu/onboarding/:id/cancel", gin.WrapF(tenantFeishuOnboardingSessionHandler(opts)))
 	router.Any("/tenant/agent-provisionings", gin.WrapF(tenantAgentProvisioningsHandler(opts)))
 	router.Any("/tenant/agent-provisionings/overview", gin.WrapF(tenantAgentProvisioningOverviewHandler(opts)))
 	router.Any("/tenant/agent-provisionings/:id", gin.WrapF(tenantAgentProvisioningHandler(opts)))

@@ -59,6 +59,21 @@ export type ProvisioningHealthCheck = { name: string; status: string; message?: 
 export type ProvisioningWorkerStatus = { state: string; pid?: number; screen?: string; log_path?: string; provider?: string; model?: string; observed_at?: string; message?: string };
 export type ProvisioningRecord = { id: number; tenant_id?: number; profile_key: string; account_key: string; credential_ref?: string; supervisor?: string; status: string; worker?: { supervisor?: string; account_key?: string; workspace?: string; settings_ref?: string; provider?: string; model?: string; streaming?: string; reactions?: string; permission_mode?: string; payload_key_ref?: string }; observed_worker?: ProvisioningWorkerStatus; checks?: ProvisioningHealthCheck[]; last_error?: { code: string; message: string; retryable?: boolean }; created_at?: string; updated_at?: string };
 export type ProvisioningOverview = { records: ProvisioningRecord[]; workers: ProvisioningWorkerStatus[] };
+export type FeishuCLIAvailability = { project_cli: boolean; lark_cli: boolean; message?: string };
+export type FeishuOnboardingSession = {
+  id: string;
+  status: "starting" | "waiting_for_scan" | "created" | "failed" | "canceled" | string;
+  profile_key: string;
+  account_key: string;
+  app_id?: string;
+  verification_url?: string;
+  verification_qr_code?: string;
+  verification_expires_in?: number;
+  record?: ProvisioningRecord;
+  error?: string;
+  created_at?: string;
+  updated_at?: string;
+};
 
 export type TenantRecord = OpenAPISchema<"github_com_konglong87_go-e2e_internal_storage_mysql.Tenant"> & {
   tenant_key?: string;

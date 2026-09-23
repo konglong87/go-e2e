@@ -6,17 +6,17 @@
 
 ## 使用步骤
 
-1. 打开 WebUI，进入 **Agent Profiles -> Provisioning**。
+1. 打开桌面端设置，进入 **飞书连接**；Profile 定义仍在 **Agent Profiles**（智能体定义）中维护。
 2. 在 Profile basics 填写稳定的 `profile_key`、显示名称、描述和 persona，保存草稿。
 3. 在 Runtime policy 选择全局 settings 解析出的 provider/model，点击 Validate。
 4. 发布已验证版本。只有 published Profile 才能被 worker/Team 使用。
-5. 选择已有 Feishu account，或填写新 Bot 的 account key、App ID 和 App Secret。App Secret 只写入受保护凭据文件，页面不会回显。
-6. 选择 streaming 和 reactions，运行 Preflight。token、机器人身份、能力检查会分项显示。
-7. 启动 worker，在 Feishu DM 或群内 `@` Bot 发一条测试消息；回到向导点击 Refresh readback，确认 screen、PID、Inbox/Outbox 和最终状态。
+5. 在 **飞书连接** 中选择已有账号，或选择 **连接新机器人**。桌面端会按需安装官方 `lark-cli`，然后启动与 TUI 共用的官方 Feishu 设备授权注册流程并显示二维码；用户扫码确认后，App ID 与 App Secret 由后端直接写入受保护凭据存储，浏览器不会看到 Secret。
+6. 扫码完成后保存连接草稿；进入 **Worker 运行**，先运行预检，再启动 Worker。
+7. 在 Feishu DM 或群内 `@` Bot 发一条测试消息；回到 **Worker 运行** 刷新状态，确认 screen、PID、Inbox/Outbox 和最终状态。
 
 ## CLI 与账号选择
 
-向导优先复用已有 `golang-cc channels onboard feishu` 和本机 `lark-cli` 能力；CLI 不存在时仍可选择已有 channel account 或由管理员手动录入凭据。向导不会自动创建第二个同账号 worker，worker 生命周期按 `(tenant_id, account_id)` 加锁。
+桌面端只在用户点击自动创建时安装官方 `lark-cli`，不会在打开设置时执行安装命令。扫码会话是租户隔离的异步会话，取消后会中止注册等待；已有账号和手动 App ID/Secret 仍可作为兜底。向导不会自动创建第二个同账号 worker，worker 生命周期按 `(tenant_id, account_id)` 加锁。
 
 ## Provider 选择
 

@@ -908,6 +908,26 @@ export async function getProvisioningLogs(identity: IdentityConfig, id: number, 
   return unwrapData<string>(await apiRequest<unknown>(identity, `/tenant/agent-provisionings/${id}/logs?tail=${tail}`), "");
 }
 
+export async function getFeishuCLIAvailability(identity: IdentityConfig): Promise<import("./types").FeishuCLIAvailability> {
+  return apiRequest(identity, "/tenant/feishu/onboarding/cli");
+}
+
+export async function installFeishuCLI(identity: IdentityConfig): Promise<import("./types").FeishuCLIAvailability> {
+  return apiRequest(identity, "/tenant/feishu/onboarding/cli/install", { method: "POST" });
+}
+
+export async function startFeishuOnboarding(identity: IdentityConfig, body: { profile_key: string; account_key: string; app_name?: string; app_description?: string; provider?: string; model?: string; streaming?: string; reactions?: string }): Promise<import("./types").FeishuOnboardingSession> {
+  return apiRequest(identity, "/tenant/feishu/onboarding", { method: "POST", body });
+}
+
+export async function getFeishuOnboarding(identity: IdentityConfig, id: string): Promise<import("./types").FeishuOnboardingSession> {
+  return apiRequest(identity, `/tenant/feishu/onboarding/${encodeURIComponent(id)}`);
+}
+
+export async function cancelFeishuOnboarding(identity: IdentityConfig, id: string): Promise<void> {
+  await apiRequest(identity, `/tenant/feishu/onboarding/${encodeURIComponent(id)}/cancel`, { method: "POST" });
+}
+
 export async function listEffectiveSkills(identity: IdentityConfig): Promise<SkillRecord[]> {
   const value = await apiRequest<unknown>(identity, "/tenant/effective-skills?enabled=true&limit=50");
   return unwrapData<SkillRecord[]>(value, []);

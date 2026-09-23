@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import { mkdir } from "node:fs/promises";
+import { resolve } from "node:path";
 import { installWebUIV2Sessions } from "./fixtures/webuiV2Sessions";
 
 const settingsDoc = {
@@ -235,6 +237,69 @@ test("promotes a selected fallback model, saves it, and confirms the new primary
   await expect(page.locator(".global-settings-provider-list").getByText("glm-5.2", { exact: true }).first()).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await page.screenshot({ path: testInfo.outputPath("settings-v2-promote-primary.png"), fullPage: false });
+});
+
+test("connects a Feishu draft and operates it from the separate Worker runtime page", async ({ page }) => {
+  const worker = {
+    id: 7,
+    profile_key: "support-agent",
+    account_key: "support-bot",
+    supervisor: "screen",
+    status: "running",
+    worker: { supervisor: "screen", account_key: "support-bot", provider: "openai", model: "fixture-model", streaming: "on", reactions: "on" },
+    observed_worker: { state: "running", pid: 2341, screen: "support-agent", observed_at: "2026-09-23T02:15:00Z" },
+    checks: [{ name: "Feishu credentials", status: "passed", message: "Credential is available." }]
+  };
+  const records = [worker];
+  await page.route("**/tenant/agent-provisionings/overview", (route) => route.fulfill({ json: { records, workers: [worker.observed_worker] } }));
+  await page.route("**/tenant/agent-profiles?limit=100", (route) => route.fulfill({ json: { data: [{ id: 3, profile_key: "support-agent", profile_version: 1, status: "published", scope: "tenant_shared", display_name: "Support agent", description: "Support", config_json: "{}" }] } }));
+  await page.route("**/tenant/channel-accounts?limit=100", (route) => route.fulfill({ json: { data: [{ id: 4, account_key: "support-bot", provider: "feishu", app_id: "cli_fixture", mode: "websocket", enabled: true, status: "active" }] } }));
+  await page.route("**/tenant/agent-provisionings", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    const draft = { ...worker, id: 8, status: "draft", observed_worker: { state: "stopped", pid: 0, screen: "support-agent", observed_at: "2026-09-23T02:15:00Z" }, checks: [] };
+    records.unshift(draft);
+    return route.fulfill({ json: draft });
+  });
+  await page.route(/\/tenant\/agent-provisionings\/\d+\/(preflight|start|restart|stop|status)$/, async (route) => {
+    const action = new URL(route.request().url()).pathname.split("/").at(-1)!;
+    const id = Number(new URL(route.request().url()).pathname.split("/").at(-2));
+    const record = records.find((item) => item.id === id);
+    if (!record) return route.fulfill({ status: 404, json: { error: "not found" } });
+    const state = action === "start" || action === "restart" ? "running" : action === "preflight" ? "preflight" : action === "stop" ? "stopped" : record.observed_worker.state;
+    Object.assign(record, { status: state, observed_worker: { ...record.observed_worker, state } });
+    return route.fulfill({ json: record });
+  });
+
+  await page.evaluate(() => localStorage.setItem("golang-cc-webui.language.v1", "zh"));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/webui/v2/settings/feishu");
+  await expect(page.locator(".worker-settings-account")).toBeVisible();
+  await expect(page.locator("h1")).toHaveCount(1);
+  await expect(page.locator(".provisioning-hero, .provisioning-scope-note")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "保存连接草稿", exact: true })).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+
+  const evidenceDir = resolve(process.cwd(), "../desktop-v2/build/validation/20260923");
+  await mkdir(evidenceDir, { recursive: true });
+  await page.screenshot({ path: resolve(evidenceDir, "feishu-connection.png"), fullPage: false });
+  await page.getByRole("button", { name: "保存连接草稿", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("连接草稿已保存");
+  await page.getByRole("button", { name: "前往 Worker 运行", exact: true }).click();
+
+  await expect(page.getByRole("heading", { name: "Worker 运行", exact: true })).toBeVisible();
+  await expect(page.locator(".runtime-layout")).toBeVisible();
+  await expect(page.getByText("support-agent", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "运行预检", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "启动", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "停止", exact: true })).toBeDisabled();
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({ path: resolve(evidenceDir, "worker-runtime.png"), fullPage: false });
+
+  await page.getByRole("button", { name: "启动", exact: true }).click();
+  await expect(page.locator(".runtime-state-large")).toContainText("running");
+  await expect(page.getByRole("button", { name: "停止", exact: true })).toBeEnabled();
+  await page.setViewportSize({ width: 1024, height: 700 });
+  await expectNoHorizontalOverflow(page);
 });
 
 async function expectNoHorizontalOverflow(page: import("@playwright/test").Page): Promise<void> {

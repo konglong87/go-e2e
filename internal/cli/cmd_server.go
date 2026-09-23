@@ -185,6 +185,7 @@ func serverCommand(ctx context.Context, args []string, opts options, stdout io.W
 			return fmt.Errorf("reconcile desktop channel accounts: %w", err)
 		}
 		serverOpts.ProvisioningService = provisioningService
+		serverOpts.FeishuOnboarding = server.NewFeishuOnboardingManager(provisioningService)
 		tenantStorageMode = "sqlite"
 		if err := configureServerImageRuntime(serverOpts.Workspace, opts.settingsInputs, repo, &serverOpts); err != nil {
 			return err
@@ -232,6 +233,7 @@ func serverCommand(ctx context.Context, args []string, opts options, stdout io.W
 			return fmt.Errorf("reconcile tenant channel accounts: %w", err)
 		}
 		serverOpts.ProvisioningService = provisioningService
+		serverOpts.FeishuOnboarding = server.NewFeishuOnboardingManager(provisioningService)
 		serverOpts.AgentTaskStore = tenantSvc
 		serverOpts.PendingInputQueue = repo
 		serverOpts.SessionControlEvents = tenantSvc

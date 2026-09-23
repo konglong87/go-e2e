@@ -411,6 +411,19 @@ func swaggerAgentProviders() {}
 // @Router /tenant/agent-provisionings/{id}/{action} [post]
 func swaggerAgentProvisionings() {}
 
+// swaggerFeishuOnboarding godoc
+// @Summary Create a Feishu bot through device authorization
+// @Description Starts the shared Feishu onboarding flow, exposes a redacted QR session, and persists the protected credentials after approval.
+// @Tags Feishu Onboarding
+// @Security ApiKeyAuth
+// @Produce json
+// @Router /tenant/feishu/onboarding [post]
+// @Router /tenant/feishu/onboarding/cli [get]
+// @Router /tenant/feishu/onboarding/cli/install [post]
+// @Router /tenant/feishu/onboarding/{id} [get]
+// @Router /tenant/feishu/onboarding/{id}/cancel [post]
+func swaggerFeishuOnboarding() {}
+
 // swaggerAgentProfileConversations godoc
 // @Summary List conversations for an Agent Profile
 // @Description Returns safe DM/group conversation summaries and Team links for a tenant-visible profile.

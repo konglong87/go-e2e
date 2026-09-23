@@ -5490,6 +5490,96 @@ const docTemplate = `{
                 }
             }
         },
+        "/tenant/feishu/onboarding": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Starts the shared Feishu onboarding flow, exposes a redacted QR session, and persists the protected credentials after approval.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Feishu Onboarding"
+                ],
+                "summary": "Create a Feishu bot through device authorization",
+                "responses": {}
+            }
+        },
+        "/tenant/feishu/onboarding/cli": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Starts the shared Feishu onboarding flow, exposes a redacted QR session, and persists the protected credentials after approval.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Feishu Onboarding"
+                ],
+                "summary": "Create a Feishu bot through device authorization",
+                "responses": {}
+            }
+        },
+        "/tenant/feishu/onboarding/cli/install": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Starts the shared Feishu onboarding flow, exposes a redacted QR session, and persists the protected credentials after approval.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Feishu Onboarding"
+                ],
+                "summary": "Create a Feishu bot through device authorization",
+                "responses": {}
+            }
+        },
+        "/tenant/feishu/onboarding/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Starts the shared Feishu onboarding flow, exposes a redacted QR session, and persists the protected credentials after approval.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Feishu Onboarding"
+                ],
+                "summary": "Create a Feishu bot through device authorization",
+                "responses": {}
+            }
+        },
+        "/tenant/feishu/onboarding/{id}/cancel": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Starts the shared Feishu onboarding flow, exposes a redacted QR session, and persists the protected credentials after approval.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Feishu Onboarding"
+                ],
+                "summary": "Create a Feishu bot through device authorization",
+                "responses": {}
+            }
+        },
         "/tenant/goals": {
             "get": {
                 "security": [
@@ -12702,6 +12792,17 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_konglong87_go-e2e_internal_sessioncontrol.SessionChannel": {
+            "type": "object",
+            "properties": {
+                "account_key": {
+                    "type": "string"
+                },
+                "provider": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_konglong87_go-e2e_internal_sessioncontrol.SessionStatus": {
             "type": "string",
             "enum": [
@@ -18665,6 +18766,9 @@ const docTemplate = `{
             "properties": {
                 "active_run_id": {
                     "type": "integer"
+                },
+                "channel": {
+                    "$ref": "#/definitions/github_com_konglong87_go-e2e_internal_sessioncontrol.SessionChannel"
                 },
                 "cwd": {
                     "type": "string"

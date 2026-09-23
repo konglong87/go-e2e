@@ -1115,6 +1115,13 @@ definitions:
       estimated_tokens:
         type: integer
     type: object
+  github_com_konglong87_go-e2e_internal_sessioncontrol.SessionChannel:
+    properties:
+      account_key:
+        type: string
+      provider:
+        type: string
+    type: object
   github_com_konglong87_go-e2e_internal_sessioncontrol.SessionStatus:
     enum:
     - idle
@@ -5080,6 +5087,8 @@ definitions:
     properties:
       active_run_id:
         type: integer
+      channel:
+        $ref: '#/definitions/github_com_konglong87_go-e2e_internal_sessioncontrol.SessionChannel'
       cwd:
         type: string
       effort:
@@ -8973,6 +8982,66 @@ paths:
       summary: List effective tenant skills
       tags:
       - Tenant Skills
+  /tenant/feishu/onboarding:
+    post:
+      description: Starts the shared Feishu onboarding flow, exposes a redacted QR
+        session, and persists the protected credentials after approval.
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - ApiKeyAuth: []
+      summary: Create a Feishu bot through device authorization
+      tags:
+      - Feishu Onboarding
+  /tenant/feishu/onboarding/{id}:
+    get:
+      description: Starts the shared Feishu onboarding flow, exposes a redacted QR
+        session, and persists the protected credentials after approval.
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - ApiKeyAuth: []
+      summary: Create a Feishu bot through device authorization
+      tags:
+      - Feishu Onboarding
+  /tenant/feishu/onboarding/{id}/cancel:
+    post:
+      description: Starts the shared Feishu onboarding flow, exposes a redacted QR
+        session, and persists the protected credentials after approval.
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - ApiKeyAuth: []
+      summary: Create a Feishu bot through device authorization
+      tags:
+      - Feishu Onboarding
+  /tenant/feishu/onboarding/cli:
+    get:
+      description: Starts the shared Feishu onboarding flow, exposes a redacted QR
+        session, and persists the protected credentials after approval.
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - ApiKeyAuth: []
+      summary: Create a Feishu bot through device authorization
+      tags:
+      - Feishu Onboarding
+  /tenant/feishu/onboarding/cli/install:
+    post:
+      description: Starts the shared Feishu onboarding flow, exposes a redacted QR
+        session, and persists the protected credentials after approval.
+      produces:
+      - application/json
+      responses: {}
+      security:
+      - ApiKeyAuth: []
+      summary: Create a Feishu bot through device authorization
+      tags:
+      - Feishu Onboarding
   /tenant/goals:
     get:
       parameters:

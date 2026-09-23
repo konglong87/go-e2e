@@ -22,7 +22,10 @@ export async function installWebUIV2Sessions(page: Page): Promise<void> {
   append(completed.ref, 21, "session_handoff", { package_id: "fixture-beta-package", package_sha256: "beta123fixture", package: { source: { ref: managed.ref }, stage_summary: "Fixture handoff payload" } });
   append(completed.ref, 21, "completed", { response: "The responsive review is complete.", model: "fixture-model" });
   const conversation = (session: FixtureSession) => ({ schema_version: "golang-cc.session-conversation.v1", session, events: events.get(session.ref) ?? [], cursor: String(events.get(session.ref)?.at(-1)?.id ?? 0), has_more: false });
-  await page.addInitScript(() => localStorage.setItem("golang-cc-webui.language.v1", "en"));
+  await page.addInitScript(() => {
+    const key = "golang-cc-webui.language.v1";
+    if (!localStorage.getItem(key)) localStorage.setItem(key, "en");
+  });
   await page.route((url) => /^(?:\/api)?\/(?:tenant|v1|agent|health)(?:\/|$)/.test(url.pathname), async (route) => {
     const request = route.request();
     const url = new URL(request.url());
