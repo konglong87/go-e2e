@@ -7,6 +7,7 @@ import { mergeSessionDetail } from "./sessionDetailMerge";
 type CreateSessionMutationInput = Omit<CreateSessionInput, "idempotencyKey"> & { idempotencyKey?: string };
 type SendSessionMutationInput = Omit<SendSessionInput, "idempotencyKey"> & { idempotencyKey?: string };
 type SessionRefMutationInput = { ref: SessionRef };
+type ReadbackOptions = { background?: boolean };
 
 export function useSessionList(identity: IdentityConfig, filters: SessionListFilters, enabled = true) {
   const client = useSessionControlClient();
@@ -29,15 +30,21 @@ export function useSessionDetail(identity: IdentityConfig, ref: SessionRef, enab
   });
 }
 
-function useReadback(identity: IdentityConfig) {
+function useReadback(identity: IdentityConfig, options: ReadbackOptions = {}) {
   const queryClient = useQueryClient();
-  return async (result: OperationResult): Promise<void> => {
+  const applyReadback = async (result: OperationResult): Promise<void> => {
     const detailKey = sessionControlQueryKeys.detail(identity, result.session.ref);
     const readback = sessionWithOperationReplay(result.session, result);
     queryClient.setQueryData<SessionDetail>(detailKey, (current) => current?.events ? { ...current, status: readback.status } : readback);
     await queryClient.invalidateQueries({ queryKey: detailKey });
     queryClient.setQueryData<SessionDetail>(detailKey, (current) => current ? sessionWithOperationReplay(current, result) : readback);
     await queryClient.invalidateQueries({ queryKey: ["session-control", "list", identity.tenantKey, identity.userId] });
+  };
+  if (!options.background) return applyReadback;
+  return (result: OperationResult): void => {
+    // The mutation response is the acceptance boundary for the composer. A
+    // slow readback must not keep an accepted draft visible in the input box.
+    void applyReadback(result).catch(() => undefined);
   };
 }
 
@@ -65,7 +72,7 @@ export function useCreateSession(identity: IdentityConfig) {
 
 export function useSendSession(identity: IdentityConfig) {
   const client = useSessionControlClient();
-  const applyReadback = useReadback(identity);
+  const applyReadback = useReadback(identity, { background: true });
   return useMutation({
     mutationFn: (input: SendSessionMutationInput) => client.send(identity, { ...input, idempotencyKey: input.idempotencyKey ?? crypto.randomUUID() }),
     onSuccess: applyReadback

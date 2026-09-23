@@ -307,6 +307,26 @@ describe("Composer", () => {
     await act(async () => resolve?.({ operation: { id: "operation-1", kind: "send", status: "completed", title: "", detail: "", createdAt: "" }, session: target, replayed: false }));
   });
 
+  it("deduplicates a rapid double Enter before the first send settles", async () => {
+    let resolve: ((value: OperationResult) => void) | undefined;
+    const send = vi.fn<(input: SendSessionInput) => Promise<OperationResult>>().mockImplementation(() => new Promise((done) => { resolve = done; }));
+    render({ onSend: send, sessionStatus: "idle" });
+    setText("001test");
+
+    await act(async () => {
+      keyDown("Enter");
+      keyDown("Enter");
+      await Promise.resolve();
+    });
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send.mock.calls[0][0].text).toBe("001test");
+    expect(host.querySelector<HTMLTextAreaElement>("textarea")?.value).toBe("001test");
+
+    await act(async () => resolve?.({ operation: { id: "operation-1", kind: "send", status: "completed", title: "", detail: "", createdAt: "" }, session: target, replayed: false }));
+    expect(host.querySelector<HTMLTextAreaElement>("textarea")?.value).toBe("");
+  });
+
   it.each(["idle", "running"] as const)("keeps a %s local composer read only without invoking send", (sessionStatus) => {
     const { send } = render({ sessionStatus, targetRef: "local:workspace" });
     const textarea = host.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]');

@@ -181,8 +181,36 @@ describe("session control query hooks", () => {
     });
 
     expect(queryClient.getQueryData(sessionControlQueryKeys.detail(identity, "tenant:alpha"))).toEqual(sentDetail);
-    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: sessionControlQueryKeys.detail(identity, "tenant:alpha") });
-    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["session-control", "list", "tenant-a", "user-a"] });
+    await vi.waitFor(() => {
+      expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: sessionControlQueryKeys.detail(identity, "tenant:alpha") });
+      expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["session-control", "list", "tenant-a", "user-a"] });
+    });
+  });
+
+  it("resolves an accepted send before a slow readback finishes", async () => {
+    const client = fakeClient();
+    let releaseDetail!: () => void;
+    const detailReadback = new Promise<void>((resolve) => { releaseDetail = resolve; });
+    let invalidationCount = 0;
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries").mockImplementation(() => {
+      invalidationCount += 1;
+      return invalidationCount === 1 ? detailReadback : Promise.resolve();
+    });
+    let send: ReturnType<typeof useSendSession> | undefined;
+
+    function Harness() {
+      send = useSendSession(identity);
+      return null;
+    }
+
+    act(() => root.render(<QueryClientProvider client={queryClient}><SessionControlClientProvider client={client}><Harness /></SessionControlClientProvider></QueryClientProvider>));
+    const accepted = send!.mutateAsync({ ref: "tenant:alpha", text: "Immediate clear", attachments: [], sourceRefs: [] });
+    await vi.waitFor(() => expect(invalidationCount).toBe(1));
+    await expect(accepted).resolves.toMatchObject({ operation: { id: "operation-send" } });
+    expect(invalidationCount).toBe(1);
+
+    releaseDetail();
+    await vi.waitFor(() => expect(invalidationCount).toBe(2));
   });
 
   it("preserves replay metadata in create, send, stop, and archive readbacks", async () => {
