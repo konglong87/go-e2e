@@ -149,7 +149,7 @@ export function TaskFirstHomePage({
     <div className="webui2-task-first-composer">
       <Composer
         availableSources={availableSources}
-        cwd={defaultWorkspace}
+        cwd={workspace}
         disabled={disabled}
         drafts={new Map()}
         identity={identity}
@@ -165,7 +165,7 @@ export function TaskFirstHomePage({
           className="webui2-task-first-context-item"
           disabled={!onSelectWorkspace || disabled}
           onClick={() => void chooseWorkspace()}
-          title={defaultWorkspace}
+          title={workspace}
           type="button"
         >
           <FolderOpen aria-hidden="true" size={16} />
