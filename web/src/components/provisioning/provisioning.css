@@ -4,7 +4,7 @@
   --worker-text: var(--webui2-text);
   --worker-accent: var(--webui2-accent);
   color: var(--worker-text);
-  margin-top: -12px;
+  margin-top: 0;
   min-width: 0;
 }
 
@@ -99,7 +99,6 @@
 .webui2-settings-center .connection-progress .provisioning-steps li.complete .provisioning-step-button > span:last-child { color: var(--worker-text); }
 
 .webui2-settings-center .connection-panel,
-.webui2-settings-center .runtime-list,
 .webui2-settings-center .runtime-detail {
   background: var(--webui2-surface);
   border: 1px solid var(--worker-border);
@@ -131,24 +130,24 @@
   line-height: 1.4;
 }
 
-.webui2-settings-center .connection-panel-head h2,
+.webui2-settings-center .connection-panel-head h1,
 .webui2-settings-center .runtime-detail-head h2 {
   color: var(--worker-text);
-  font-size: 19px;
+  font-size: 20px;
   font-weight: 650;
   line-height: 1.3;
   margin: 4px 0 0;
 }
 
 .webui2-settings-center .runtime-heading {
-  align-items: flex-end;
+  align-items: flex-start;
   display: flex;
-  gap: 16px;
+  gap: 24px;
   justify-content: space-between;
-  margin-bottom: 18px;
+  margin-bottom: 20px;
 }
 
-.webui2-settings-center .runtime-heading h2 {
+.webui2-settings-center .runtime-heading h1 {
   color: var(--worker-text);
   font-size: 22px;
   font-weight: 650;
@@ -162,6 +161,115 @@
   line-height: 1.5;
   margin: 5px 0 0;
 }
+
+.webui2-settings-center .runtime-heading-tools {
+  align-items: flex-end;
+  display: flex;
+  flex: 0 1 440px;
+  gap: 9px;
+  justify-content: flex-end;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.webui2-settings-center .worker-selector {
+  flex: 1 1 280px;
+  min-width: 0;
+  position: relative;
+}
+
+.webui2-settings-center .worker-selector-trigger {
+  align-items: center;
+  background: var(--webui2-surface);
+  border: 1px solid var(--worker-border);
+  color: var(--worker-text);
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-start;
+  min-height: 48px;
+  padding: 6px 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.webui2-settings-center .worker-selector-trigger:hover:not(:disabled),
+.webui2-settings-center .worker-selector-trigger[aria-expanded="true"] {
+  border-color: var(--worker-accent);
+}
+
+.webui2-settings-center .worker-selector-trigger:disabled { cursor: not-allowed; opacity: .65; }
+.webui2-settings-center .worker-selector-trigger > svg { color: var(--worker-muted); margin-left: auto; transition: transform 150ms ease; }
+.webui2-settings-center .worker-selector-trigger > svg.is-open { transform: rotate(180deg); }
+.webui2-settings-center .worker-selector-copy { display: grid; flex: 1 1 auto; gap: 3px; min-width: 0; }
+.webui2-settings-center .worker-selector-copy small { color: var(--worker-muted); font-size: 10px; line-height: 1.25; }
+.webui2-settings-center .worker-selector-copy strong { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.webui2-settings-center .worker-selector-count { color: var(--worker-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+
+.webui2-settings-center .worker-selector-popover {
+  background: var(--webui2-surface);
+  border: 1px solid var(--worker-border);
+  border-radius: 7px;
+  box-shadow: 0 12px 28px rgb(20 30 40 / 16%);
+  left: 0;
+  min-width: min(360px, calc(100vw - 32px));
+  overflow: hidden;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 20;
+}
+
+.webui2-settings-center .worker-selector-search {
+  align-items: center;
+  border-bottom: 1px solid var(--worker-border);
+  color: var(--worker-muted);
+  display: flex;
+  gap: 8px;
+  min-height: 48px;
+  padding: 4px 11px;
+}
+
+.webui2-settings-center .worker-selector-search input {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  flex: 1 1 auto;
+  min-height: 38px;
+  outline: 0;
+  padding: 7px 0;
+  width: 100%;
+}
+
+.webui2-settings-center .worker-selector-search input:focus { border: 0; box-shadow: none; outline: 0; }
+.webui2-settings-center .worker-selector-search button { background: transparent; border: 0; color: var(--worker-muted); min-height: 30px; padding: 0; width: 30px; }
+.webui2-settings-center .worker-selector-options { display: grid; gap: 2px; max-height: min(340px, 55vh); overflow: auto; padding: 6px; }
+
+.webui2-settings-center .worker-selector-option {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--worker-text);
+  cursor: pointer;
+  display: grid;
+  gap: 9px;
+  grid-template-columns: 8px minmax(0, 1fr) auto auto;
+  justify-content: stretch;
+  min-height: 54px;
+  padding: 7px 9px;
+  text-align: left;
+  width: 100%;
+}
+
+.webui2-settings-center .worker-selector-option:hover,
+.webui2-settings-center .worker-selector-option.is-selected { background: var(--webui2-accent-surface); }
+.webui2-settings-center .worker-selector-option.is-selected { border-color: color-mix(in srgb, var(--worker-accent) 42%, var(--worker-border)); }
+.webui2-settings-center .worker-selector-option > svg { color: var(--worker-accent); }
+.webui2-settings-center .worker-selector-option-copy { display: grid; gap: 3px; min-width: 0; }
+.webui2-settings-center .worker-selector-option-copy strong { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.webui2-settings-center .worker-selector-option-copy small { color: var(--worker-muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.webui2-settings-center .worker-selector-empty { color: var(--worker-muted); font-size: 12px; padding: 15px 12px; text-align: center; }
 
 .webui2-settings-center .connection-security {
   align-items: center;
@@ -177,7 +285,6 @@
   gap: 17px 18px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   max-width: 650px;
-  min-height: 190px;
 }
 
 .webui2-settings-center .connection-field {
@@ -320,7 +427,7 @@
   border-radius: 6px;
   font-size: 12px;
   font-weight: 600;
-  min-height: 36px;
+  min-height: 40px;
 }
 
 .webui2-settings-center .worker-button-primary {
@@ -378,42 +485,6 @@
   padding: 0;
 }
 
-.webui2-settings-center .runtime-layout {
-  align-items: stretch;
-  display: grid;
-  gap: 15px;
-  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
-  min-height: 410px;
-}
-
-.webui2-settings-center .runtime-list { align-self: start; overflow: hidden; }
-.webui2-settings-center .runtime-list-head { align-items: center; border-bottom: 1px solid var(--worker-border); display: flex; justify-content: space-between; padding: 15px 16px; }
-.webui2-settings-center .runtime-list-head h2 { font-size: 13px; font-weight: 650; margin: 0; }
-.webui2-settings-center .runtime-list-head > span { color: var(--worker-muted); font-size: 11px; }
-.webui2-settings-center .runtime-list-items { display: grid; gap: 2px; max-height: min(64vh, 620px); overflow: auto; padding: 7px; }
-
-.webui2-settings-center .runtime-list-item {
-  align-items: center;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  color: var(--worker-text);
-  display: grid;
-  gap: 9px;
-  grid-template-columns: 8px minmax(0, 1fr);
-  justify-content: stretch;
-  min-height: 62px;
-  padding: 8px 9px;
-  text-align: left;
-  width: 100%;
-}
-
-.webui2-settings-center .runtime-list-item:hover { background: var(--webui2-surface-muted); }
-.webui2-settings-center .runtime-list-item.is-selected { background: var(--webui2-accent-surface); border-color: color-mix(in srgb, var(--worker-accent) 48%, var(--worker-border)); }
-.webui2-settings-center .runtime-list-copy { display: grid; gap: 4px; min-width: 0; }
-.webui2-settings-center .runtime-list-copy strong { font-size: 12px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.webui2-settings-center .runtime-list-copy small { color: var(--worker-muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
 .webui2-settings-center .runtime-state-dot {
   background: #9aa5ae;
   border-radius: 50%;
@@ -448,7 +519,7 @@
 .webui2-settings-center .runtime-state-label.preflight { color: var(--webui2-warning, #8b611b); }
 .webui2-settings-center .runtime-state-label .runtime-state-dot { display: none; }
 
-.webui2-settings-center .runtime-detail { display: flex; flex-direction: column; min-width: 0; padding: 21px 23px 0; }
+.webui2-settings-center .runtime-detail { display: flex; flex-direction: column; min-width: 0; padding: 24px 26px 0; }
 .webui2-settings-center .runtime-detail-head { align-items: flex-start; display: flex; gap: 14px; justify-content: space-between; }
 .webui2-settings-center .runtime-detail-head h2 { font-size: 20px; overflow-wrap: anywhere; }
 .webui2-settings-center .runtime-detail-head p { color: var(--worker-muted); font-size: 12px; margin: 5px 0 0; overflow-wrap: anywhere; }
@@ -473,7 +544,7 @@
 .webui2-settings-center .worker-status-summary.failed .worker-status-icon,
 .webui2-settings-center .worker-status-summary.degraded .worker-status-icon { color: var(--webui2-danger, #a34343); }
 
-.webui2-settings-center .runtime-facts { display: grid; gap: 0 22px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 5px 0 12px; }
+.webui2-settings-center .runtime-facts { display: grid; gap: 0 24px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 14px 0 18px; }
 .webui2-settings-center .runtime-facts > div { border-bottom: 1px solid var(--worker-border); min-width: 0; padding: 13px 0; }
 .webui2-settings-center .runtime-facts dt { color: var(--worker-muted); font-size: 10px; margin-bottom: 5px; }
 .webui2-settings-center .runtime-facts dd { color: var(--worker-text); font-size: 12px; margin: 0; overflow-wrap: anywhere; }
@@ -495,19 +566,16 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin: auto -23px 0;
-  padding: 13px 23px;
+  margin: auto -26px 0;
+  padding: 13px 26px;
 }
 
 .webui2-settings-center .runtime-actions > div { display: grid; flex: 1 1 130px; gap: 3px; min-width: 100px; }
 .webui2-settings-center .runtime-actions > div span { font-size: 11px; font-weight: 650; }
 .webui2-settings-center .runtime-actions > div small { color: var(--worker-muted); font-size: 9px; }
 .webui2-settings-center .runtime-actions .worker-icon-button { min-width: 36px; padding: 0; }
-.webui2-settings-center .runtime-list-empty,
-.webui2-settings-center .runtime-detail-empty { align-items: center; color: var(--worker-muted); display: flex; flex-direction: column; gap: 12px; justify-content: center; min-height: 265px; padding: 28px; text-align: center; }
-.webui2-settings-center .runtime-list-empty { min-height: 190px; }
-.webui2-settings-center .runtime-list-empty > span,
-.webui2-settings-center .runtime-detail-empty > span { font-size: 12px; line-height: 1.6; max-width: 280px; }
+.webui2-settings-center .runtime-detail-empty { align-items: center; color: var(--worker-muted); display: flex; flex-direction: column; gap: 12px; justify-content: center; min-height: 360px; padding: 28px; text-align: center; }
+.webui2-settings-center .runtime-detail-empty > span { font-size: 12px; line-height: 1.6; max-width: 340px; }
 .webui2-settings-center .runtime-detail-empty > strong { color: var(--worker-text); font-size: 14px; }
 
 .webui2-settings-center .worker-settings-alert.worker-settings-alert-success {
@@ -517,13 +585,13 @@
 }
 
 @media (max-width: 900px) {
-  .webui2-settings-center .runtime-layout { grid-template-columns: minmax(190px, 230px) minmax(0, 1fr); }
-  .webui2-settings-center .runtime-detail { padding-inline: 17px; }
-  .webui2-settings-center .runtime-actions { margin-inline: -17px; padding-inline: 17px; }
+  .webui2-settings-center .runtime-heading-tools { flex-basis: 400px; }
+  .webui2-settings-center .runtime-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .webui2-settings-center .runtime-detail { padding-inline: 20px; }
+  .webui2-settings-center .runtime-actions { margin-inline: -20px; padding-inline: 20px; }
 }
 
 @media (max-width: 700px) {
-  .webui2-settings-center .worker-settings { margin-top: -9px; }
   .webui2-settings-center .connection-progress { margin-bottom: 12px; }
   .webui2-settings-center .connection-progress .provisioning-step-button { align-items: flex-start; flex-direction: column; gap: 5px; }
   .webui2-settings-center .connection-progress .provisioning-steps li:not(:last-child)::after { left: 31px; right: 6px; top: 15px; }
@@ -534,16 +602,21 @@
   .webui2-settings-center .connection-field-wide { grid-column: auto; }
   .webui2-settings-center .connection-mode { grid-template-columns: 1fr; }
   .webui2-settings-center .runtime-heading { align-items: flex-start; flex-direction: column; }
+  .webui2-settings-center .runtime-heading-tools { align-items: stretch; flex-basis: auto; width: 100%; }
+  .webui2-settings-center .worker-selector { flex-basis: 0; }
+  .webui2-settings-center .worker-selector-popover { left: 0; right: auto; width: min(420px, calc(100vw - 32px)); }
+  .webui2-settings-center .connection-actions > button,
+  .webui2-settings-center .runtime-actions > button { min-height: 44px; }
   .webui2-settings-center .connection-footer { align-items: flex-start; flex-direction: column; }
   .webui2-settings-center .connection-actions { justify-content: flex-start; }
   .webui2-settings-center .connection-qr { grid-template-columns: 1fr; }
   .webui2-settings-center .connection-qr img { justify-self: start; }
   .webui2-settings-center .connection-saved { grid-template-columns: auto minmax(0, 1fr); }
   .webui2-settings-center .connection-saved .worker-button-primary { grid-column: 1 / -1; justify-self: start; }
-  .webui2-settings-center .runtime-layout { grid-template-columns: 1fr; }
-  .webui2-settings-center .runtime-list-items { max-height: 230px; }
-  .webui2-settings-center .runtime-list-item { min-height: 55px; }
-  .webui2-settings-center .runtime-detail { min-height: 360px; padding: 17px 16px 0; }
+  .webui2-settings-center .runtime-heading-tools { align-items: stretch; flex-direction: column; }
+  .webui2-settings-center .runtime-heading-tools > button { justify-content: center; }
+  .webui2-settings-center .runtime-detail { min-height: 320px; padding: 17px 16px 0; }
+  .webui2-settings-center .runtime-facts { gap: 0 14px; }
   .webui2-settings-center .runtime-actions { margin-inline: -16px; padding-inline: 16px; }
 }
 

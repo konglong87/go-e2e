@@ -239,7 +239,7 @@ test("promotes a selected fallback model, saves it, and confirms the new primary
   await page.screenshot({ path: testInfo.outputPath("settings-v2-promote-primary.png"), fullPage: false });
 });
 
-test("connects a Feishu draft and operates it from the separate Worker runtime page", async ({ page }) => {
+test("connects a Feishu draft and operates it from the separate Worker runtime page", async ({ page }, testInfo) => {
   const worker = {
     id: 7,
     profile_key: "support-agent",
@@ -250,8 +250,9 @@ test("connects a Feishu draft and operates it from the separate Worker runtime p
     observed_worker: { state: "running", pid: 2341, screen: "support-agent", observed_at: "2026-09-23T02:15:00Z" },
     checks: [{ name: "Feishu credentials", status: "passed", message: "Credential is available." }]
   };
-  const records = [worker];
-  await page.route("**/tenant/agent-provisionings/overview", (route) => route.fulfill({ json: { records, workers: [worker.observed_worker] } }));
+  const otherWorker = { ...worker, id: 6, profile_key: "ops-agent", account_key: "ops-bot", worker: { ...worker.worker, account_key: "ops-bot" }, observed_worker: { ...worker.observed_worker, screen: "ops-agent" } };
+  const records = [worker, otherWorker];
+  await page.route("**/tenant/agent-provisionings/overview", (route) => route.fulfill({ json: { records, workers: records.map((record) => record.observed_worker) } }));
   await page.route("**/tenant/agent-profiles?limit=100", (route) => route.fulfill({ json: { data: [{ id: 3, profile_key: "support-agent", profile_version: 1, status: "published", scope: "tenant_shared", display_name: "Support agent", description: "Support", config_json: "{}" }] } }));
   await page.route("**/tenant/channel-accounts?limit=100", (route) => route.fulfill({ json: { data: [{ id: 4, account_key: "support-bot", provider: "feishu", app_id: "cli_fixture", mode: "websocket", enabled: true, status: "active" }] } }));
   await page.route("**/tenant/agent-provisionings", async (route) => {
@@ -275,26 +276,48 @@ test("connects a Feishu draft and operates it from the separate Worker runtime p
   await page.goto("/webui/v2/settings/feishu");
   await expect(page.locator(".worker-settings-account")).toBeVisible();
   await expect(page.locator("h1")).toHaveCount(1);
+  await expect(page.getByRole("heading", { name: "飞书连接", exact: true })).toBeVisible();
+  await expect(page.locator(".settings-page-heading")).toHaveCount(0);
   await expect(page.locator(".provisioning-hero, .provisioning-scope-note")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "保存连接草稿", exact: true })).toBeVisible();
   await expectNoHorizontalOverflow(page);
 
+  const saveDesktopEvidence = testInfo.project.name === "chromium-webui-v2-desktop";
   const evidenceDir = resolve(process.cwd(), "../desktop-v2/build/validation/20260923");
-  await mkdir(evidenceDir, { recursive: true });
-  await page.screenshot({ path: resolve(evidenceDir, "feishu-connection.png"), fullPage: false });
+  if (saveDesktopEvidence) {
+    await mkdir(evidenceDir, { recursive: true });
+    await page.screenshot({ path: resolve(evidenceDir, "feishu-connection.png"), fullPage: false });
+  }
   await page.getByRole("button", { name: "保存连接草稿", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("连接草稿已保存");
   await page.getByRole("button", { name: "前往 Worker 运行", exact: true }).click();
 
   await expect(page.getByRole("heading", { name: "Worker 运行", exact: true })).toBeVisible();
-  await expect(page.locator(".runtime-layout")).toBeVisible();
+  await expect(page.locator("h1")).toHaveCount(1);
+  await expect(page.locator(".settings-page-heading")).toHaveCount(0);
+  await expect(page.locator(".worker-selector-trigger")).toBeVisible();
+  await expect(page.locator(".runtime-detail")).toBeVisible();
   await expect(page.getByText("support-agent", { exact: true }).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "运行预检", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "启动", exact: true })).toBeEnabled();
   await expect(page.getByRole("button", { name: "停止", exact: true })).toBeDisabled();
   await expectNoHorizontalOverflow(page);
-  await page.screenshot({ path: resolve(evidenceDir, "worker-runtime.png"), fullPage: false });
+  if (saveDesktopEvidence) await page.screenshot({ path: resolve(evidenceDir, "worker-runtime.png"), fullPage: false });
 
+  await page.locator(".worker-selector-trigger").click();
+  await page.getByRole("searchbox", { name: "筛选 Worker" }).fill("ops-agent");
+  await expectNoHorizontalOverflow(page);
+  if (saveDesktopEvidence) await page.screenshot({ path: resolve(evidenceDir, "worker-runtime-filter.png"), fullPage: false });
+  await page.getByRole("option", { name: /ops-agent/ }).click();
+  await expect(page.locator(".runtime-detail-head h2")).toHaveText("ops-agent");
+  await expect(page.locator(".runtime-state-large")).toContainText("running");
+  await expect(page.getByRole("button", { name: "停止", exact: true })).toBeEnabled();
+
+  await page.locator(".worker-selector-trigger").click();
+  await page.getByRole("searchbox", { name: "筛选 Worker" }).fill("support-agent");
+  await page.getByRole("option", { name: /support-agent.*stopped/i }).click();
+  await expect(page.locator(".runtime-detail-head h2")).toHaveText("support-agent");
+  await expect(page.getByRole("button", { name: "停止", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "启动", exact: true }).click();
   await expect(page.locator(".runtime-state-large")).toContainText("running");
   await expect(page.getByRole("button", { name: "停止", exact: true })).toBeEnabled();

@@ -82,7 +82,7 @@ describe("ProvisioningWizard views", () => {
 
   it("shows Worker selection, state and lifecycle actions together", async () => {
     await mount("lifecycle");
-    expect(host.textContent).toContain("Workers");
+    expect(host.querySelector(".worker-selector-trigger")).not.toBeNull();
     expect(host.textContent).toContain("support-agent");
     expect(host.textContent).toContain("Preflight");
     expect(host.textContent).toContain("Start");
@@ -91,6 +91,13 @@ describe("ProvisioningWizard views", () => {
     expect(host.textContent).not.toContain("Preflight settings");
     expect(host.textContent).not.toContain("App Secret");
     expect(host.textContent).not.toContain("Connect a new bot");
+
+    const trigger = host.querySelector<HTMLButtonElement>(".worker-selector-trigger");
+    await act(async () => trigger?.click());
+    expect(host.querySelector(".worker-selector-popover")).not.toBeNull();
+    expect(host.querySelector('[role="option"]')?.textContent).toContain("support-agent");
+    const option = host.querySelector<HTMLButtonElement>('[role="option"]');
+    await act(async () => option?.click());
 
     await click("Preflight");
     expect(api.preflightProvisioning).toHaveBeenCalledWith(identity, record.id);
