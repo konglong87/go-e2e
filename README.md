@@ -1,11 +1,23 @@
-<h1 align="center">go-e2e</h1>
+<p align="center">
+  <img src="logo.png" alt="go-e2e logo" width="160">
+</p>
 
 <p align="center">
-  开源桌面级 Agent，覆盖 Desktop / TUI / CLI / WebUI
+  <strong>go-e2e</strong>
+</p>
+
+<p align="center">
+  开源桌面级 AI Agent，覆盖 Desktop / TUI / CLI / WebUI
 </p>
 
 <p align="center">
   本地优先 · 开放扩展 · 一句话驱动 · 端到端交付
+</p>
+
+<p align="center">
+  <a href="#社区与反馈">飞书社群（链接待补）</a> ·
+  <a href="docs/README.md">文档</a> ·
+  <a href="https://github.com/konglong87/go-e2e/issues">问题反馈</a>
 </p>
 
 <p align="center">
@@ -22,8 +34,24 @@
 </p>
 
 <p align="center">
+  Desktop · TUI · CLI · WebUI · Feishu
+</p>
+
+<p align="center">
   <img src="docs/web_agent/images/go-e2e-desktop-v2.png" alt="go-e2e desktop-v2 最新桌面端界面" width="900">
 </p>
+
+## 先从这里开始
+
+go-e2e 是一套可以执行任务、连接外部工具、保留上下文并持续交付结果的开源 Agent 工作台。
+你可以按使用场景选择入口：
+
+| 入口 | 适合场景 | 快速入口 |
+| --- | --- | --- |
+| **Desktop** | 日常使用、模型配置、会话和设置管理 | `scripts/build-desktop-v2.sh` |
+| **TUI / CLI** | 终端交互、脚本调用、一次性任务 | `go run ./cmd/go-e2e` |
+| **WebUI** | 浏览器工作台、服务端运行和团队部署 | `scripts/webui-dev.sh` |
+| **Feishu** | 飞书机器人、渠道会话和持续在线 Worker | 见[飞书渠道文档](docs/README.md) |
 
 ## 六大核心亮点
 
@@ -38,7 +66,7 @@
 
 ## 简单说
 
-开源桌面级 Agent，覆盖 Desktop、TUI、CLI 和 WebUI；本地优先、支持私有化部署，
+开源桌面级 AI Agent，覆盖 Desktop、TUI、CLI 和 WebUI；本地优先、支持私有化部署，
 能够从一句话需求出发完成任务执行与结果交付，并通过自定义 Provider 接入不同模型。
 
 ## 产品闭环
@@ -280,6 +308,13 @@ go-e2e 不只是一个聊天界面，而是一套可以执行任务、连接外�
 
 - [产品架构总览](docs/architecture/agent_platform_architecture.md)
 - [Mermaid 架构图源文件](diagrams/agent-platform-architecture.mmd)
+
+## 社区与反馈
+
+- **飞书社群**：链接待补，后续替换为真实群链接。
+- **问题反馈**：通过 [GitHub Issues](https://github.com/konglong87/go-e2e/issues) 提交 Bug 和功能建议。
+- **安全问题**：请阅读 [安全策略](SECURITY.md)，不要在公开 Issue 中提交敏感细节。
+- **贡献代码**：请先阅读 [贡献指南](CONTRIBUTING.md)。
 
 ## 文档
 
