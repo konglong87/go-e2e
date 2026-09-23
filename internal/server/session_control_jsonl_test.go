@@ -32,11 +32,12 @@ func TestSessionControlJSONLCompositionPersistsConversationOutsideSQLiteEvents(t
 		t.Fatal(err)
 	}
 	tenantSvc := tenantservice.NewService(repo, nil)
+	countingTenantSvc := &countingAgentTaskTenantService{Service: tenantSvc}
 	transcriptStore := session.Store{TranscriptProjectsRoot: t.TempDir()}
 	opts := Options{
 		AuthToken:           "test-token",
 		Workspace:           t.TempDir(),
-		TenantService:       tenantSvc,
+		TenantService:       countingTenantSvc,
 		AgentTaskStore:      tenantSvc,
 		PendingInputQueue:   repo,
 		AgentTaskController: agenttasks.NewController(),
@@ -84,6 +85,12 @@ func TestSessionControlJSONLCompositionPersistsConversationOutsideSQLiteEvents(t
 	}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := opts.SessionEvents.AppendTaskEvent(ctx, task, agenttasks.EventInput{
+		TenantID: tenantID, UserID: userID, TaskID: taskID, EventType: agenttasks.EventPermissionRequest,
+		PayloadJSON: `{}`, TraceID: task.TraceID,
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	dbEvents, err := repo.ListAgentTaskEvents(ctx, tenantID, userID, taskID, 20)
 	if err != nil {
@@ -91,6 +98,17 @@ func TestSessionControlJSONLCompositionPersistsConversationOutsideSQLiteEvents(t
 	}
 	if len(dbEvents) != 0 {
 		t.Fatalf("SQLite event rows = %d, want 0 in JSONL mode", len(dbEvents))
+	}
+
+	listed, err := service.List(ctx, sessioncontrol.ListRequest{Context: scope, Source: sessioncontrol.SourceTenant})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 1 || listed[0].Status != sessioncontrol.StatusWaitingPermission {
+		t.Fatalf("session summaries = %+v", listed)
+	}
+	if countingTenantSvc.getAgentTaskCalls != 0 {
+		t.Fatalf("session list performed %d per-task lookups, want 0", countingTenantSvc.getAgentTaskCalls)
 	}
 
 	handler := NewHandler(opts, nil)
@@ -112,14 +130,24 @@ func TestSessionControlJSONLCompositionPersistsConversationOutsideSQLiteEvents(t
 	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
 		t.Fatal(err)
 	}
-	if len(envelope.Data.Events) != 1 || envelope.Data.Events[0].PayloadJSON != `{"content":"persisted in transcript"}` {
+	if len(envelope.Data.Events) != 2 || envelope.Data.Events[0].PayloadJSON != `{"content":"persisted in transcript"}` || envelope.Data.Events[1].EventType != agenttasks.EventPermissionRequest {
 		t.Fatalf("conversation events = %+v", envelope.Data.Events)
 	}
 	event := envelope.Data.Events[0]
 	if event.Source != "desktop" || event.Surface != "wails" || event.Channel != "desktop" {
 		t.Fatalf("conversation provenance = %+v", event)
 	}
-	if envelope.Data.Cursor != "1" {
-		t.Fatalf("conversation cursor = %q, want 1", envelope.Data.Cursor)
+	if envelope.Data.Cursor != "2" {
+		t.Fatalf("conversation cursor = %q, want 2", envelope.Data.Cursor)
 	}
+}
+
+type countingAgentTaskTenantService struct {
+	*tenantservice.Service
+	getAgentTaskCalls int
+}
+
+func (s *countingAgentTaskTenantService) GetAgentTask(ctx context.Context, taskID uint64) (mysqlstore.AgentTask, error) {
+	s.getAgentTaskCalls++
+	return s.Service.GetAgentTask(ctx, taskID)
 }

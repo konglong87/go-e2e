@@ -59,6 +59,12 @@ type ManagedEventStore interface {
 	ListAgentTaskEventsForTasksComplete(context.Context, RequestContext, []uint64) ([]mysqlstore.AgentTaskEvent, error)
 }
 
+// ManagedTaskEventStore projects events for task rows already loaded in the
+// current tenant scope, avoiding a second task lookup for each row.
+type ManagedTaskEventStore interface {
+	ListAgentTaskEventsForTaskRecords(context.Context, RequestContext, []mysqlstore.AgentTask) ([]mysqlstore.AgentTaskEvent, error)
+}
+
 // ManagedEventAppender is the write side of the optional high-frequency event
 // projection. JSONL mode implements it by appending to the session transcript;
 // SQLite mode intentionally leaves it unset and uses ManagedStore instead.
@@ -188,7 +194,7 @@ func (a *ManagedAdapter) List(ctx context.Context, request ListRequest) ([]Sessi
 		return nil, err
 	}
 	latest := latestTasksBySession(tasks)
-	events, err := a.listEvents(ctx, request.Context, tasks)
+	events, err := a.listEvents(ctx, request.Context, activeSummaryTasks(tasks))
 	if err != nil {
 		return nil, err
 	}
@@ -207,6 +213,16 @@ func (a *ManagedAdapter) List(ctx context.Context, request ListRequest) ([]Sessi
 		out = append(out, snapshot)
 	}
 	return out, nil
+}
+
+func activeSummaryTasks(tasks []mysqlstore.AgentTask) []mysqlstore.AgentTask {
+	active := make([]mysqlstore.AgentTask, 0, len(tasks))
+	for _, task := range tasks {
+		if task.Status == agenttasks.StatusReady || task.Status == agenttasks.StatusRunning {
+			active = append(active, task)
+		}
+	}
+	return active
 }
 
 func (a *ManagedAdapter) Get(ctx context.Context, request GetRequest) (SessionSnapshot, error) {
@@ -442,15 +458,7 @@ func (a *ManagedAdapter) Compact(ctx context.Context, request CompactRequest) (O
 	if err != nil {
 		return errorResult(err), normalizeManagedError(err)
 	}
-	taskIDs := make([]uint64, 0, len(tasks))
-	for _, task := range tasks {
-		taskIDs = append(taskIDs, task.ID)
-	}
-	var eventReader ManagedEventStore = a.store
-	if a.eventStore != nil {
-		eventReader = a.eventStore
-	}
-	events, err := eventReader.ListAgentTaskEventsForTasksComplete(ctx, request.Context, taskIDs)
+	events, err := a.listEvents(ctx, request.Context, tasks)
 	if err != nil {
 		return errorResult(err), normalizeManagedError(err)
 	}
@@ -741,15 +749,19 @@ func (a *ManagedAdapter) listEvents(ctx context.Context, requestContext RequestC
 	if len(tasks) == 0 {
 		return nil, nil
 	}
+	if reader, ok := a.eventStore.(ManagedTaskEventStore); ok {
+		events, err := reader.ListAgentTaskEventsForTaskRecords(ctx, requestContext, tasks)
+		return events, normalizeManagedError(err)
+	}
 	taskIDs := make([]uint64, 0, len(tasks))
 	for _, task := range tasks {
 		taskIDs = append(taskIDs, task.ID)
 	}
-	eventStore := a.eventStore
-	if eventStore == nil {
-		eventStore = a.store
+	if a.eventStore != nil {
+		events, err := a.eventStore.ListAgentTaskEventsForTasksComplete(ctx, requestContext, taskIDs)
+		return events, normalizeManagedError(err)
 	}
-	events, err := eventStore.ListAgentTaskEventsForTasksComplete(ctx, requestContext, taskIDs)
+	events, err := a.store.ListAgentTaskEventsForTasksComplete(ctx, requestContext, taskIDs)
 	return events, normalizeManagedError(err)
 }
 

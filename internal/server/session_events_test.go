@@ -84,6 +84,30 @@ func TestJSONLSessionEventStoreAppendsAndReadsScopedEvents(t *testing.T) {
 	}
 }
 
+func TestJSONLSessionEventStoreFallsBackWhenTaskWorkspaceChanged(t *testing.T) {
+	store := session.Store{TranscriptProjectsRoot: t.TempDir()}
+	events := NewJSONLSessionEventStore(store)
+	original := mysqlstore.AgentTask{
+		ID: 41, TenantID: 7, UserID: 11, ParentSessionID: 99,
+		MetadataJSON: fmt.Sprintf(`{"cwd":%q}`, filepath.Join(t.TempDir(), "original")),
+	}
+	if _, err := events.AppendTaskEvent(context.Background(), original, agenttasks.EventInput{
+		TaskID: original.ID, EventType: agenttasks.EventMessage, PayloadJSON: `{"content":"kept"}`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	latest := original
+	latest.MetadataJSON = fmt.Sprintf(`{"cwd":%q}`, filepath.Join(t.TempDir(), "changed"))
+	got, err := events.ListTaskEvents(context.Background(), latest, 0, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].TaskID != original.ID || got[0].PayloadJSON != `{"content":"kept"}` {
+		t.Fatalf("events after workspace change = %+v", got)
+	}
+}
+
 func TestJSONLSessionEventStoreConcurrentSessionsStayIsolated(t *testing.T) {
 	store := session.Store{TranscriptProjectsRoot: t.TempDir()}
 	events := NewJSONLSessionEventStore(store)

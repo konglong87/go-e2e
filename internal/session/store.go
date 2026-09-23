@@ -866,6 +866,36 @@ func (s Store) Locate(sessionID string) (Summary, bool, error) {
 	return found, found.Path != "", nil
 }
 
+// LocateInProject checks the known project path before callers fall back to a
+// global transcript search. Session event reads usually know the task's cwd,
+// so this avoids walking every transcript directory for each active session.
+func (s Store) LocateInProject(cwd, sessionID string) (Summary, bool, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if !IsValidID(sessionID) {
+		return Summary{}, false, fmt.Errorf("invalid session id: %s", sessionID)
+	}
+	var found Summary
+	name := sessionID + ".jsonl"
+	for _, root := range s.readProjectsRoots() {
+		path := filepath.Join(root, ProjectSlug(cwd), name)
+		info, err := os.Stat(path)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return Summary{}, false, err
+		}
+		if info.IsDir() {
+			continue
+		}
+		candidate := Summary{SessionID: sessionID, Path: path, ModTime: info.ModTime()}
+		if found.Path == "" || candidate.ModTime.After(found.ModTime) {
+			found = candidate
+		}
+	}
+	return found, found.Path != "", nil
+}
+
 // LatestForProject returns the most recently modified transcript of the
 // project that owns cwd. It backs `session locate` without an id, so an agent
 // or script inside a project can resolve "the current session" cheaply.

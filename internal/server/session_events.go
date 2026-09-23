@@ -124,7 +124,11 @@ func (s *JSONLSessionEventStore) loadTaskEvents(task mysqlstore.AgentTask, after
 	if s == nil {
 		return nil, fmt.Errorf("JSONL session event store is nil")
 	}
-	summary, ok, err := s.store.Find(transcriptIDForSession(task.TenantID, task.UserID, taskSessionID(task)))
+	transcriptID := transcriptIDForSession(task.TenantID, task.UserID, taskSessionID(task))
+	summary, ok, err := s.store.LocateInProject(taskCWD(task), transcriptID)
+	if err == nil && !ok {
+		summary, ok, err = s.store.Locate(transcriptID)
+	}
 	if err != nil || !ok {
 		return nil, err
 	}
@@ -325,6 +329,33 @@ func (s sessionControlManagedEventStore) ListAgentTaskEventsForTasksComplete(ctx
 		task, err := s.opts.TenantService.GetAgentTask(ctx, taskID)
 		if err != nil {
 			return nil, err
+		}
+		events, err := s.opts.SessionEvents.ListTaskEvents(ctx, task, 0, 10000)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, events...)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].ID == out[j].ID {
+			return out[i].CreatedAt.Before(out[j].CreatedAt)
+		}
+		return out[i].ID < out[j].ID
+	})
+	return out, nil
+}
+
+func (s sessionControlManagedEventStore) ListAgentTaskEventsForTaskRecords(ctx context.Context, scope sessioncontrol.RequestContext, tasks []mysqlstore.AgentTask) ([]mysqlstore.AgentTaskEvent, error) {
+	if s.opts.TenantService == nil || s.opts.SessionEvents == nil {
+		return nil, fmt.Errorf("session event projection is unavailable")
+	}
+	out := make([]mysqlstore.AgentTaskEvent, 0)
+	for _, task := range tasks {
+		if task.ID == 0 {
+			continue
+		}
+		if task.TenantID != scope.TenantID || task.UserID != scope.UserID {
+			return nil, mysqlstore.ErrNotFound
 		}
 		events, err := s.opts.SessionEvents.ListTaskEvents(ctx, task, 0, 10000)
 		if err != nil {

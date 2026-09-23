@@ -63,10 +63,17 @@ function sessionWithOperationReplay(session: SessionDetail, result: OperationRes
 
 export function useCreateSession(identity: IdentityConfig) {
   const client = useSessionControlClient();
-  const applyReadback = useReadback(identity);
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: CreateSessionMutationInput) => client.create(identity, { ...input, idempotencyKey: input.idempotencyKey ?? crypto.randomUUID() }),
-    onSuccess: applyReadback
+    onSuccess: (result) => {
+      const detailKey = sessionControlQueryKeys.detail(identity, result.session.ref);
+      const readback = sessionWithOperationReplay(result.session, result);
+      queryClient.setQueryData<SessionDetail>(detailKey, (current) => current?.events
+        ? sessionWithOperationReplay({ ...current, status: readback.status, updatedAt: readback.updatedAt, activeRunID: readback.activeRunID }, result)
+        : readback);
+      void queryClient.invalidateQueries({ queryKey: ["session-control", "list", identity.tenantKey, identity.userId] }).catch(() => undefined);
+    }
   });
 }
 

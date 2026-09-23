@@ -167,6 +167,25 @@ func TestManagedListBatchesPendingStateAcrossSessions(t *testing.T) {
 	}
 }
 
+func TestManagedListSkipsEventHistoryForTerminalTaskSummaries(t *testing.T) {
+	store := &managedStoreFake{
+		sessions: []mysqlstore.Session{{ID: 7, SessionKey: "alpha", Status: managedLifecycleIdle}},
+		tasks:    []mysqlstore.AgentTask{{ID: 12, ParentSessionID: 7, Status: agenttasks.StatusCompleted}},
+	}
+	items, err := NewManagedAdapter(store, &managedDispatcherFake{}).List(context.Background(), ListRequest{
+		Context: managedRequestContext(), Source: SourceTenant,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].Status != StatusCompleted {
+		t.Fatalf("summaries = %+v, want one completed session", items)
+	}
+	if store.listEventsCalls != 0 {
+		t.Fatalf("terminal summary loaded event history %d times, want 0", store.listEventsCalls)
+	}
+}
+
 func TestManagedSnapshotProjectsOutstandingUserQuestionsByRequestID(t *testing.T) {
 	task := &mysqlstore.AgentTask{ID: 12, ParentSessionID: 7, Status: agenttasks.StatusRunning}
 	events := map[uint64][]mysqlstore.AgentTaskEvent{12: {
