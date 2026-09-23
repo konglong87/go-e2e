@@ -1,9 +1,9 @@
 import { Bot, RefreshCcw, Save } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { ApiError, getAgentProfileAssignment, getAgentProfileBinding, listAgentProfiles, saveAgentProfileAssignment } from "../../lib/api";
+import { ApiError, getAgentProfileAssignment, listAgentProfiles, saveAgentProfileAssignment } from "../../lib/api";
 import { parseAgentProfileJSON, profileCapabilitySummary } from "../../lib/agentProfiles";
 import { useI18n } from "../../lib/i18n";
-import type { AgentProfileAssignment, AgentProfileChannelBinding, AgentProfileRecord } from "../../lib/types";
+import type { AgentProfileAssignment, AgentProfileRecord } from "../../lib/types";
 import type { ProfileSettingsPanelProps } from "./ProfileSettingsPanel";
 import "./profile-settings.css";
 
@@ -33,9 +33,6 @@ export function AgentSettingsPanel({ identity, onDirtyChange, onBusyChange, refr
   const [reload, setReload] = useState(0);
   const [stale, setStale] = useState(false);
   const seenRefreshVersion = useRef(refreshVersion);
-  const [binding, setBinding] = useState<AgentProfileChannelBinding | null>(null);
-  const [bindingError, setBindingError] = useState("");
-  const [bindingLoading, setBindingLoading] = useState(false);
   const dirtyCallback = useRef(onDirtyChange);
   dirtyCallback.current = onDirtyChange;
   const changed = SURFACES.filter(({ key }) => edits[key] !== undefined && edits[key] !== (assignments[key]?.profile_id || 0));
@@ -81,18 +78,6 @@ export function AgentSettingsPanel({ identity, onDirtyChange, onBusyChange, refr
     return () => { active = false; };
   }, [identity.apiBase, identity.apiToken, identity.tenantKey, identity.userId, reload]);
 
-  useEffect(() => {
-    let active = true;
-    setBinding(null); setBindingError("");
-    if (!current) { setBindingLoading(false); return; }
-    setBindingLoading(true);
-    void getAgentProfileBinding(identity, current.profile_key, current.profile_version)
-      .then((value) => { if (active) setBinding(value); })
-      .catch((reason) => { if (active && !(reason instanceof ApiError && reason.status === 404)) setBindingError(errorMessage(reason)); })
-      .finally(() => { if (active) setBindingLoading(false); });
-    return () => { active = false; };
-  }, [identity.apiBase, identity.apiToken, identity.tenantKey, identity.userId, current?.id, current?.profile_key, current?.profile_version]);
-
   async function save() {
     if (saving || !dirty) return;
     setSaving(true); setError(""); setStatus("");
@@ -136,10 +121,8 @@ export function AgentSettingsPanel({ identity, onDirtyChange, onBusyChange, refr
       {current ? <dl className="settings-agent-facts">
         <div><dt>{zh ? "工具策略" : "Tool policy"}</dt><dd>{summary?.tools || (zh ? "配置不可读" : "Configuration unavailable")}</dd></div>
         <div><dt>{zh ? "技能" : "Skills"}</dt><dd>{summary?.skills ?? "-"}</dd></div>
-        <div><dt>{zh ? "渠道绑定" : "Channel binding"}</dt><dd>{bindingLoading ? (zh ? "读取中..." : "Loading...") : bindingError ? (zh ? "读取失败" : "Unavailable") : binding ? `${binding.binding_key} · ${binding.provider}` : (zh ? "未绑定" : "Not bound")}</dd></div>
       </dl> : null}
-      {bindingError ? <p role="alert" className="settings-profile-error">{bindingError}</p> : null}
-      <p className="settings-profile-boundary">{zh ? "分配仅用于已接入 Profile 的入口。WebUI v2 托管会话暂不读取这些分配，当前 Run 不受影响。" : "Assignments apply to Profile-aware entrypoints. WebUI v2 managed sessions do not consume these assignments; current Runs are unchanged."}</p>
+      <p className="settings-profile-boundary">{zh ? "这里仅决定入口使用哪个已发布智能体定义，不会修改定义本身。注意：WebUI v2 托管会话当前暂不读取这些分配；保存后，现有托管会话和当前 Run 都不会改变。" : "This page only chooses which published agent definition an entry point uses. It does not edit the definition. Important: WebUI v2 managed sessions currently do not consume these assignments, so saving here does not change existing managed sessions or current Runs."}</p>
       <div className="settings-assignment-list">
         {SURFACES.map(({ key, en, zh: label }) => {
           const assignedId = assignments[key]?.profile_id || 0;

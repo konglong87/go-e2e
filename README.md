@@ -51,6 +51,33 @@
   从需求输入到工具执行、上下文延续和结果交付，形成可持续的 Agent 工作闭环。
 </p>
 
+## 架构总览
+
+go-e2e 的不同入口共享同一套运行时核心：先完成鉴权、租户隔离和入口路由，
+再由 Runtime Core 组合 Profile、Agent Loop、Skills、MCP、Tools、Memory、Image Tool
+和 Provider，最后把结果适配回终端、桌面、WebUI、API 或飞书。
+
+```mermaid
+flowchart TB
+  A["CLI / TUI / Desktop / WebUI / Feishu Worker"] --> B["鉴权 / 租户 / 路由"]
+  B --> C["Runtime Core"]
+  C --> D["Profile / Team"]
+  C --> E["Agent Loop"]
+  C --> F["Skills / MCP / Tools"]
+  C --> G["Memory / Image Tool"]
+  C --> H["Provider"]
+  C --> I["Session / Goal"]
+  C --> J["权限 / 预算 / 完成检查"]
+  C --> K["SQLite / MySQL / Inbox / Outbox"]
+  C --> L["Telemetry / Audit / Quota"]
+  J --> M["输出适配<br/>CLI / Desktop / WebUI / Feishu / API"]
+```
+
+小白可以这样理解：**Profile** 定义“智能体怎么工作”，**Assignment** 决定“哪个入口使用
+哪个 Profile”，**Feishu** 表示连接哪个飞书机器人，**Worker** 则是让这个机器人持续在线的进程。
+它们不是重复设置。完整图例、分层说明和设置项边界见
+[产品架构总览](docs/architecture/agent_platform_architecture.md)。
+
 ## 快速开始
 
 ### 工具链要求
@@ -157,6 +184,20 @@ go-e2e 不只是一个聊天界面，而是一套可以执行任务、连接外�
 
 > 部分能力需要用户配置 Provider、MCP Server、外部凭据或数据库；这里列出的是系统支持范围，不代表所有扩展默认启用。
 
+### Skills 设置怎么用
+
+桌面端和 WebUI 的 `设置 → Skills 管理` 会把两类 Skill 分开显示：
+
+| 类型 | 设置页支持 | 安全边界 |
+| --- | --- | --- |
+| **本机 Skills** | 查看来源、路径和 `SKILL.md` 详情 | 只读，不直接删除项目、用户或插件目录中的文件 |
+| **租户 Skills** | 新建/更新、查看内容、启用/停用、查看历史版本和回滚 | 只影响当前租户，历史版本保留 |
+
+因此，“查看”在设置页内完成；租户 Skill 的“安装/更新”就是保存一份租户版本，
+“卸载”对应停用。Marketplace Skill 或 Plugin 的本机文件安装/卸载仍使用 CLI，
+例如 `skills install`、`plugins install` 和 `plugins remove`，避免桌面端误删用户文件。
+这不是两个重复的 Skills 目录：**本机 Skill 是电脑上的文件，租户 Skill 是服务端运行时使用的版本**。
+
 ## 多端体验
 
 ### WebUI 2.0
@@ -234,20 +275,11 @@ go-e2e 不只是一个聊天界面，而是一套可以执行任务、连接外�
 
 截图展示了桌面端会话列表中的飞书渠道标签；后续新增渠道可以沿用同一来源标识方式。
 
-```mermaid
-flowchart LR
-    A[一句话需求] --> B[Agent Runtime]
-    B --> C[Tools]
-    B --> D[Skills]
-    B --> E[MCP]
-    B --> F[Memory]
-    B --> G[Session / Goal]
-    C --> H[结果交付]
-    D --> H
-    E --> H
-    F --> H
-    G --> H
-```
+完整的产品级架构图（含渠道、租户、Runtime Core、Agent Loop、能力插件、持久化、
+遥测审计和输出适配）见：
+
+- [产品架构总览](docs/architecture/agent_platform_architecture.md)
+- [Mermaid 架构图源文件](diagrams/agent-platform-architecture.mmd)
 
 ## 文档
 

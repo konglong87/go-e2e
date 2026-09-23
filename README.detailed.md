@@ -3,6 +3,51 @@
 go-e2e 是用 Go 实现的 Agent runtime，以可持续会话把需求、执行和验证连成端到端语义闭环。
 产品概览、动态图与界面截图见 [README](README.md)；完整专题索引见 [docs/README.md](docs/README.md)。
 
+## 产品架构
+
+所有入口最终汇入同一套 Runtime Core。入口层负责接收请求，接入与治理层负责鉴权、
+租户隔离和路由，Runtime Core 负责装配 Profile 和上下文，驱动 Agent Loop 调用
+Provider、Skills、MCP、Tools、Memory 与 Image Tool，并通过权限、预算和完成检查决定
+继续执行还是输出结果。Session、Goal、Transcript、Inbox、Outbox 等状态进入持久化，
+Telemetry、Audit 和 Quota 记录运行过程与资源使用。
+
+```mermaid
+flowchart LR
+  A["CLI / TUI / Desktop / WebUI / Feishu Worker"]
+  B["鉴权 / 租户 / 路由"]
+  C["Runtime Core<br/>Profile / Team · Context · Agent Loop"]
+  D["Skills · MCP · Tools<br/>Memory · Image Tool · Provider"]
+  E["Session / Goal<br/>Persistence"]
+  F["Telemetry / Audit / Quota"]
+  G["CLI / TUI / Desktop / WebUI<br/>API / Feishu 输出"]
+  A --> B --> C --> D --> C
+  C --> E
+  C -.-> F
+  C --> G
+```
+
+设置项的边界也按这条架构链划分：
+
+| 对象 | 作用 |
+| --- | --- |
+| `Profile` | 定义一个智能体的身份、提示词、模型、工具、Skills、Memory、预算和权限 |
+| `Team` | 定义多个 Profile 如何分工协作 |
+| `Assignment` | 把租户、用户或入口映射到一个已发布的 Profile 版本 |
+| `Feishu` | 管理外部飞书 Bot Account、群聊/私聊和消息适配 |
+| `Worker` | 管理承载 Feishu 长连接的常驻进程，包括启停、健康和日志 |
+
+因此，Profile 页面解决“智能体是什么”，Assignment 解决“谁使用它”，Feishu 解决“连接谁”，
+Worker 解决“进程是否在线”。完整的分层图、小白解释和边界说明见
+[产品架构总览](docs/architecture/agent_platform_architecture.md)；更细的渠道术语见
+[Profile 与渠道术语](docs/architecture/agent_profile_channel_glossary.md)。
+
+### Skills 管理边界
+
+设置中心将 Skills 分成两层：本机 Skills 来自当前电脑、项目、插件、Marketplace
+或 MCP 目录，提供发现和 `SKILL.md` 详情查看；租户 Skills 存在服务端租户数据中，
+支持保存新版本、启用/停用、历史版本查看和回滚。本机目录可能属于用户项目或插件，
+所以 WebUI 不提供任意文件删除；Marketplace/Plugin 的安装和卸载继续使用 CLI。
+
 ## 构建与安装
 
 ```bash

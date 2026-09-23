@@ -143,7 +143,8 @@ function SettingsEnvironmentContent(props: Props & { globalIdentity: IdentityCon
         {sectionAvailable && section === "prompts" ? <PromptManager identity={identity} /> : null}
         {sectionAvailable && (section === "memory" || section === "skills") ? <P2ManagementPanel identity={identity} section={section} /> : null}
         {sectionAvailable && section === "teams" ? <AgentTeamsPanel identity={identity} onStatus={setNavigationError} onDataChanged={profilesChanged} /> : null}
-        {sectionAvailable && (section === "feishu" || section === "provisioning") ? <ProvisioningWizard identity={identity} onStatus={setNavigationError} /> : null}
+        {sectionAvailable && section === "feishu" ? <ProvisioningWizard identity={identity} onStatus={setNavigationError} view="account" /> : null}
+        {sectionAvailable && section === "provisioning" ? <ProvisioningWizard identity={identity} onStatus={setNavigationError} view="lifecycle" /> : null}
         {sectionAvailable && section === "observability" ? <ObservabilityPanel identity={identity} /> : null}
         {section === "session-backend" ? <SessionBackendSettingsPanel bridge={desktopBridge} onDirtyChange={props.onDirtyChange} onBusyChange={props.onBusyChange} /> : null}
         {section === "models" || section === "json" ? <SettingsDocumentPanel draft={draft} view={section} /> : null}

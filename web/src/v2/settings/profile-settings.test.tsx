@@ -181,6 +181,12 @@ describe("v2 profile settings API workflows", () => {
     expect(dirty).toHaveBeenLastCalledWith(false);
   });
 
+  it("explains that assignments choose an entry point and do not affect managed sessions", async () => {
+    await mount("agent");
+    expect(host.textContent).toContain("This page only chooses which published agent definition an entry point uses.");
+    expect(host.textContent).toContain("WebUI v2 managed sessions currently do not consume these assignments");
+  });
+
   it("refreshes the assignment catalog when profile publication changes", async () => {
     const render = async (refreshVersion: number) => act(async () => { root.render(<I18nProvider><AgentSettingsPanel identity={identity} refreshVersion={refreshVersion} /></I18nProvider>); });
     await render(0);

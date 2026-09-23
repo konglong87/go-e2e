@@ -309,7 +309,7 @@ describe("WebUIV2App", () => {
     };
     const nav = (label: string) => act(() => Array.from(host.querySelectorAll<HTMLButtonElement>(".settings-navigation nav button")).find((button) => button.textContent === label)?.click());
     switchTo("channel");
-    nav("Profiles");
+    nav("Agent definitions");
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
     const calls = fetchMock.mock.calls as unknown as Array<[string, RequestInit]>;
     const profileCall = calls.find(([url]) => url.startsWith(`${prefix}/channel/tenant/agent-profiles`));
@@ -354,7 +354,7 @@ describe("WebUIV2App", () => {
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
     act(() => { host.querySelector<HTMLButtonElement>('button[aria-label="Settings environment"]')?.click(); });
     act(() => { host.querySelector<HTMLButtonElement>('[role="option"][data-value="channel"]')?.click(); });
-    const unsupported = ["Common prompts", "Memory", "Skills", "Teams", "Channel workers"];
+    const unsupported = ["Common prompts", "Memory", "Skills", "Teams", "Worker runtime"];
     for (const button of host.querySelectorAll<HTMLButtonElement>(".settings-navigation nav button")) {
       expect(button.disabled).toBe(unsupported.includes(button.textContent!));
     }

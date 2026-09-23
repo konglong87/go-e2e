@@ -39,8 +39,8 @@ export const SETTINGS_NAV_GROUPS: readonly SettingsNavGroup[] = [
     items: [
       item("models", Cpu, "大模型设置", "Models", ["配置供应商、默认模型与备用路由。", "Configure providers, default models and fallback routes."]),
       item("observability", Activity, "可观测性", "Observability", ["读取服务健康、遥测和实际用量记录。", "Read service health, telemetry and recorded usage."]),
-      item("profiles", Layers, "智能体配置", "Profiles", ["管理智能体定义、能力边界与发布版本。", "Manage agent definitions, capabilities and published versions."]),
-      item("feishu", WandSparkles, "飞书", "Feishu", ["配置飞书账号、Profile 绑定和渠道 Worker。", "Configure Feishu accounts, profile bindings and channel workers."]),
+      item("profiles", Layers, "智能体定义", "Agent definitions", ["定义智能体的身份、能力、权限和发布版本。", "Define an agent's identity, capabilities, permissions and published versions."]),
+      item("feishu", WandSparkles, "飞书连接", "Feishu connections", ["连接飞书账号并准备机器人绑定，不负责 Worker 启停。", "Connect Feishu accounts and prepare bot bindings; Worker controls live elsewhere."]),
       item("teams", Users, "Teams 管理", "Teams", ["编排多个 Profile 的协作团队。", "Compose collaborative teams from profiles."])
     ]
   },
@@ -59,8 +59,8 @@ export const SETTINGS_NAV_GROUPS: readonly SettingsNavGroup[] = [
     zh: "高级",
     en: "Advanced",
     items: [
-      item("agent", Bot, "智能体设置", "Agents", ["为不同入口选择已发布的智能体配置。", "Assign published agent profiles to your surfaces."], true),
-      item("provisioning", Monitor, "渠道 Worker", "Channel workers", ["查看渠道账号和 Worker 运行状态。", "Inspect channel accounts and worker runtime status."], true),
+      item("agent", Bot, "入口分配", "Entry assignments", ["选择 Web、移动端和渠道入口使用哪个已发布智能体定义。", "Choose which published agent definition each entry point uses."], true),
+      item("provisioning", Monitor, "Worker 运行", "Worker runtime", ["预检、启动、重启、停止并查看渠道 Worker 状态。", "Preflight, start, restart, stop and inspect channel Worker status."], true),
       item("session-backend", Database, "会话存储", "Session storage", ["选择桌面端聊天事件的权威存储，并在切换后重启本地服务。", "Choose the desktop chat event store; the local service restarts after switching."], true, true),
       item("json", FileJson2, "全局 Settings JSON", "Settings JSON", ["编辑全局配置文档，与模型表单保持同步。", "Edit the global settings document, synchronized with the model form."], true),
       item("effective", ListChecks, "生效配置", "Effective configuration", ["核对文件解析结果、服务启动快照及会话运行配置。", "Compare resolved files, server startup defaults and session configuration."], true)
