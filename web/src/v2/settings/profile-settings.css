@@ -11,7 +11,7 @@
 .webui2-settings-center .settings-profile-heading p { margin: 6px 0 0; color: var(--webui2-text-muted); font-size: 12px; line-height: 1.6; }
 .webui2-settings-center .settings-profile-catalog { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 27px; }
 .webui2-settings-center .settings-profile-catalog > button { display: flex; flex-direction: column; align-items: flex-start; text-align: left; min-width: 0; min-height: 142px; padding: 17px; gap: 10px; border: 1px solid var(--webui2-border); border-radius: 7px; background: var(--webui2-surface); color: var(--webui2-text); }
-.webui2-settings-center .settings-profile-catalog > button.selected { background: var(--webui2-surface-muted); border-color: var(--webui2-accent); }
+.webui2-settings-center .settings-profile-catalog > button.selected { background: var(--webui2-surface-muted); border-color: transparent; }
 .webui2-settings-center .settings-profile-catalog > button strong { font-size: 14px; overflow-wrap: anywhere; }
 .webui2-settings-center .settings-profile-catalog p { margin: 0; color: var(--webui2-text-muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .webui2-settings-center .settings-profile-catalog footer { display: flex; justify-content: space-between; width: 100%; margin-top: auto; color: var(--webui2-text-muted); font-size: 11px; }
@@ -24,7 +24,7 @@
 .webui2-settings-center .settings-profile-workbench .agent-workbench-tabs { background: transparent; border-top: 0; padding: 0; gap: 16px; }
 .webui2-settings-center .settings-profile-workarea .agent-workbench-tabs { display: grid; align-content: start; gap: 3px; position: sticky; top: 16px; }
 .webui2-settings-center .settings-profile-workarea .agent-workbench-tabs button { justify-content: flex-start; border: 0; border-left: 2px solid transparent; border-radius: 4px; padding: 10px 9px; font-size: 12px; font-weight: 500; text-align: left; }
-.webui2-settings-center .settings-profile-workarea .agent-workbench-tabs button.active { background: var(--webui2-surface-muted); color: var(--webui2-text); border-left-color: var(--webui2-accent); }
+.webui2-settings-center .settings-profile-workarea .agent-workbench-tabs button.active { background: var(--webui2-surface-muted); color: var(--webui2-text); border-left-color: transparent; }
 .webui2-settings-center .settings-profile-workbench .agent-workbench-body { display: block; min-height: 0; }
 .webui2-settings-center .settings-profile-workbench .agent-workbench-main { background: var(--webui2-surface); }
 .webui2-settings-center .settings-profile-workbench .agent-workbench-tabs button { color: var(--webui2-text-muted); }

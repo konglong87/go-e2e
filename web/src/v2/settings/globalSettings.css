@@ -10,7 +10,7 @@
 .global-settings-provider-layout { display: grid; gap: 24px; grid-template-columns: 176px minmax(0, 1fr); }
 .global-settings-provider-list { align-self: start; display: grid; gap: 5px; min-width: 0; }
 .global-settings-provider-list button { background: transparent; border-color: transparent; gap: 10px; justify-content: flex-start; min-width: 0; padding: 11px 9px; text-align: left; width: 100%; }
-.global-settings-provider-list button.selected { background: var(--webui2-surface-muted); border-color: var(--webui2-border); }
+.global-settings-provider-list button.selected { background: var(--webui2-surface-muted); border-color: transparent; }
 .global-settings-provider-list button span { display: grid; gap: 4px; min-width: 0; }
 .global-settings-provider-list strong, .global-settings-provider-list small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .global-settings-provider-list strong { font-size: 13px; font-weight: 550; }

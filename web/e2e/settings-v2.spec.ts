@@ -277,7 +277,8 @@ test("connects a Feishu draft and operates it from the separate Worker runtime p
   const selectedNavItem = page.locator('.settings-navigation nav button[aria-current="page"]');
   await selectedNavItem.focus();
   await expect(selectedNavItem).toHaveCSS("outline-style", "none");
-  await expect(selectedNavItem).toHaveCSS("box-shadow", /inset/);
+  await expect(selectedNavItem).toHaveCSS("box-shadow", "none");
+  await expect(page.locator(".connection-mode button.is-selected")).toHaveCSS("border-top-color", "rgba(0, 0, 0, 0)");
   await expect(page.locator(".worker-settings-account")).toBeVisible();
   await expect(page.locator("h1")).toHaveCount(1);
   await expect(page.getByRole("heading", { name: "飞书连接", exact: true })).toBeVisible();

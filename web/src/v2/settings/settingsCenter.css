@@ -30,7 +30,7 @@
 .webui2-settings-center nav { display: block; flex: 1; min-height: 0; overflow-y: auto; }
 .webui2-settings-center nav button { background: transparent; border: 0; color: var(--webui2-text-muted); gap: 11px; justify-content: flex-start; min-height: 42px; text-align: left; }
 .webui2-settings-center nav button[aria-current="page"] { background: var(--webui2-surface-muted); color: var(--webui2-text); font-weight: 600; }
-.webui2-settings-center nav button:focus-visible { box-shadow: inset 3px 0 0 var(--webui2-text-muted); outline: 0; }
+.webui2-settings-center nav button:focus-visible { box-shadow: none; outline: 0; }
 .webui2-settings-center nav button.settings-nav-advanced { margin-top: 23px; }
 .webui2-settings-center .settings-identity { align-items: center; border-top: 1px solid var(--webui2-border); display: flex; flex-shrink: 0; gap: 10px; margin-top: 16px; padding: 18px 10px 0; }
 .webui2-settings-center .settings-nav-group + .settings-nav-group { margin-top: 17px; }
@@ -59,7 +59,7 @@
 .webui2-settings-center .settings-form-grid label { color: var(--webui2-text-muted); display: flex; flex-direction: column; gap: 8px; font-size: 12px; }
 .webui2-settings-center .settings-theme-options { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; gap: 10px; }
 .webui2-settings-center .settings-theme-options button { display: block; padding: 10px; text-align: left; width: 114px; }
-.webui2-settings-center .settings-theme-options button[aria-pressed="true"] { border-color: #758da5; box-shadow: 0 0 0 1px #758da5; }
+.webui2-settings-center .settings-theme-options button[aria-pressed="true"] { background: var(--webui2-accent-surface); border-color: transparent; box-shadow: none; color: var(--webui2-accent); }
 .webui2-settings-center .settings-theme-sample { background: #fff; border: 1px solid #e1e5eb; border-radius: 4px; display: flex; height: 45px; margin-bottom: 9px; overflow: hidden; }
 .webui2-settings-center .settings-theme-sample::before { content: ""; width: 25%; height: 100%; background: #edf0f4; border-right: 1px solid #e1e5eb; }
 .webui2-settings-center .settings-theme-sample span { background: #e1e5eb; box-shadow: 0 10px 0 #edf0f4; height: 5px; margin: 12px 8px; width: 48%; }
@@ -134,7 +134,7 @@
 .webui2-settings-center .visual-settings-source-options { display: flex; flex-wrap: wrap; gap: 8px; }
 .webui2-settings-center .visual-settings-source-options button,
 .webui2-settings-center .visual-settings-local-background-actions button { align-items: center; background: var(--webui2-surface); border: 1px solid var(--webui2-border); border-radius: 6px; color: var(--webui2-text); display: inline-flex; font: inherit; font-size: 12px; gap: 6px; min-height: 34px; padding: 0 10px; }
-.webui2-settings-center .visual-settings-source-options button[aria-pressed="true"] { background: var(--webui2-accent-surface); border-color: var(--webui2-accent); color: var(--webui2-accent); }
+.webui2-settings-center .visual-settings-source-options button[aria-pressed="true"] { background: var(--webui2-accent-surface); border-color: transparent; color: var(--webui2-accent); }
 .webui2-settings-center .visual-settings-source-options button:hover:not(:disabled),
 .webui2-settings-center .visual-settings-local-background-actions button:hover:not(:disabled) { background: var(--webui2-surface-muted); }
 .webui2-settings-center .visual-settings-local-background { grid-column: 1 / -1; }

@@ -264,7 +264,7 @@
 
 .webui2-settings-center .worker-selector-option:hover,
 .webui2-settings-center .worker-selector-option.is-selected { background: var(--webui2-accent-surface); }
-.webui2-settings-center .worker-selector-option.is-selected { border-color: color-mix(in srgb, var(--worker-accent) 42%, var(--worker-border)); }
+.webui2-settings-center .worker-selector-option.is-selected { border-color: transparent; }
 .webui2-settings-center .worker-selector-option > svg { color: var(--worker-accent); }
 .webui2-settings-center .worker-selector-option-copy { display: grid; gap: 3px; min-width: 0; }
 .webui2-settings-center .worker-selector-option-copy strong { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -322,7 +322,7 @@
 
 .webui2-settings-center .connection-mode button:hover:not(:disabled) { border-color: var(--worker-accent); }
 .webui2-settings-center .connection-mode button:disabled { cursor: not-allowed; opacity: .55; }
-.webui2-settings-center .connection-mode button.is-selected { background: var(--webui2-accent-surface); border-color: var(--worker-accent); color: var(--worker-text); }
+.webui2-settings-center .connection-mode button.is-selected { background: var(--webui2-accent-surface); border-color: transparent; color: var(--worker-text); }
 .webui2-settings-center .connection-mode button > span { display: grid; gap: 4px; min-width: 0; }
 .webui2-settings-center .connection-mode strong { font-size: 12px; font-weight: 650; }
 .webui2-settings-center .connection-mode small { color: var(--worker-muted); font-size: 10px; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
