@@ -267,6 +267,7 @@ describe("SessionSidebar", () => {
     const items = sessions.map((session, index) => ({ ...session, cwd: index === 0 ? "/work/service" : "/other/service" }));
     render(items);
     expect(host.querySelectorAll('.webui2-workspace-toggle[title="/work/service"]')).toHaveLength(1);
+    expect(host.querySelector('.webui2-workspace-path[title="/work/service"]')?.textContent).toBe("/work/service");
     filters = { query: "/work/", statuses: [] };
     render(items);
     expect(host.querySelectorAll(".webui2-session-row")).toHaveLength(1);

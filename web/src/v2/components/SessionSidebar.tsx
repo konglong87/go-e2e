@@ -244,7 +244,10 @@ function SessionGroup({ sessions, title, subtitle, hideTitle, source, selectedRe
           <button aria-controls={workspaceContentID} aria-expanded={!collapsed} aria-label={t(collapsed ? "webui2.expandWorkspace" : "webui2.collapseWorkspace", { name: workspaceName })} className="webui2-workspace-toggle" onClick={() => toggleWorkspace(cwd)} title={cwd || workspaceName} type="button">
             {collapsed ? <ChevronRight aria-hidden="true" size={15} /> : <ChevronDown aria-hidden="true" size={15} />}
             <Folder aria-hidden="true" size={16} />
-            <span className="webui2-workspace-name">{workspaceName}</span>
+            <span className="webui2-workspace-copy">
+              <span className="webui2-workspace-name">{workspaceName}</span>
+              {cwd ? <span className="webui2-workspace-path" title={cwd}>{cwd}</span> : null}
+            </span>
           </button>
           {source === "tenant" && onCreateSessionInWorkspace ? <button aria-label={t("webui2.newSessionInWorkspace", { name: workspaceName })} className="webui2-workspace-new" disabled={createDisabled} onClick={(event) => { event.stopPropagation(); onCreateSessionInWorkspace(cwd); }} title={t("webui2.newSessionInWorkspace", { name: workspaceName })} type="button"><Plus aria-hidden="true" size={15} /></button> : null}
           <span className="webui2-workspace-count">{items.length}</span>
