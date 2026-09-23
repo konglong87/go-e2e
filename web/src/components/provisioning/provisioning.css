@@ -17,6 +17,7 @@
   --step-marker-size: 30px;
   --step-padding-block: 8px;
   display: grid;
+  grid-template-columns: none;
   grid-auto-columns: minmax(0, 1fr);
   grid-auto-flow: column;
   isolation: isolate;

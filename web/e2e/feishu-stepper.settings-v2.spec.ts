@@ -46,6 +46,7 @@ for (const [language, copy] of Object.entries(languages)) {
 async function assertStepGeometry(page: Page): Promise<void> {
   const geometry = await page.locator(".provisioning-steps").evaluate((list) => {
     const items = Array.from(list.querySelectorAll("li"));
+    const listBounds = list.getBoundingClientRect();
     return {
       overflow: document.documentElement.scrollWidth > window.innerWidth,
       steps: items.map((item, index) => {
@@ -57,6 +58,7 @@ async function assertStepGeometry(page: Page): Promise<void> {
         const next = items[index + 1]?.querySelector(".provisioning-step-marker")?.getBoundingClientRect();
         return {
           labelGap: label.top - marker.bottom,
+          widthOffset: Math.abs(bounds.width - listBounds.width / items.length),
           labelFits: label.left >= bounds.left && label.right <= bounds.right && labelNode.scrollWidth <= labelNode.clientWidth,
           centerOffset: Math.abs(marker.x + marker.width / 2 - (bounds.x + bounds.width / 2)),
           connector: next ? {
@@ -72,6 +74,7 @@ async function assertStepGeometry(page: Page): Promise<void> {
   expect(geometry.overflow).toBe(false);
   for (const step of geometry.steps) {
     expect(step.labelFits).toBe(true);
+    expect(step.widthOffset).toBeLessThan(1);
     expect(step.labelGap).toBeGreaterThanOrEqual(5);
     expect(step.centerOffset).toBeLessThan(1);
     if (!step.connector) continue;
