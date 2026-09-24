@@ -67,11 +67,11 @@ WebUI 2.0 设置中心沿 RT-OUTPUT 消费 RT-BOUNDARY 的 `/runtime/settings` �
 
 ### 1.2.1 Computer Use 第一阶段落点
 
-Computer Use 已注册为独立能力链，不扩展 `WebBrowser`：
+Computer Use 的目录已登记为独立能力；下面是已实现的本地控制面，不扩展 `WebBrowser`：
 
 ```text
 Desktop-v2 Computer Workspace
-  -> ComputerSession / ComputerUse
+  -> ComputerSession / Controller
   -> macOS Backend Adapter
   -> stdio length-prefixed native protocol
   -> macOS helper
@@ -81,7 +81,10 @@ Desktop-v2 Computer Workspace
 
 公共合同位于 `internal/computeruse/`，只表达平台中立的 capabilities/readiness、坐标空间、Observation、Action 和 Receipt；`internal/computerbackend/macos/` 负责进程/IPC 适配，`native/macos/` 才包含 macOS API。Computer tool 默认不注册，必须同时满足显式 Computer capability、可信租户身份和 provider image input capability。`unknown` 结果不自动重放输入，Stop 后不自动恢复。
 
-第一阶段仍有一个未闭合的真实验收门：当前执行环境的 macOS 在 **2026 年 9 月 24 日** 被锁定，无法通过原生窗口点击完成 `.app` 的 Start/Approve/Observe/Pause/Stop 像素验收；代码构建、签名和协议/Go/Web 测试已通过，解锁后必须补齐仓库内 `desktop-v2/build/validation/20260924/` 的原生截图证据。
+`ComputerUse` tool 虽有注册 gate 和可信 context port，但尚未与 Wails Controller 共享实例；
+本地 server 的生产请求没有设置这个 capability。provider/model/fallback 图片输入能力、
+共享服务身份绑定、MediaAsset 失败保留与模型 E2E 均是未闭合项，不能归因于只有锁屏。
+具体测试和原生窗口验收见 [实施与验收记录](computer_use_implementation_status.md)。
 
 ### 1.2 因果关系语义
 

@@ -142,24 +142,25 @@ func EffectiveMaxParallelReadOnlyTools(configured int) (workers int, enabled boo
 }
 
 type Session struct {
-	client                 MessageStreamer
-	registry               *tools.Registry
-	options                Options
-	activeSkill            *tools.SkillRuntime
-	sessionAllow           []string
-	sessionDeny            []string
-	cacheTracker           promptcache.Tracker
-	requestCacheTracker    promptcache.RequestTracker
-	sectionCache           map[string]*string
-	agentMessagesMu        sync.Mutex
-	toolStateMu            sync.Mutex
-	deliveredAgentMessages map[uint64]map[uint64]bool
-	compactor              *compact.Compactor
-	toolResultReplacements map[string]string
-	toolResultSeenIDs      map[string]bool
-	activeSkillMessages    []anthropic.MessageParam
-	acknowledgedAgentTasks map[uint64]bool
-	recentAgentEvidence    []capabilityloop.DecisionContext
+	client                  MessageStreamer
+	registry                *tools.Registry
+	options                 Options
+	activeSkill             *tools.SkillRuntime
+	sessionAllow            []string
+	sessionDeny             []string
+	cacheTracker            promptcache.Tracker
+	requestCacheTracker     promptcache.RequestTracker
+	sectionCache            map[string]*string
+	agentMessagesMu         sync.Mutex
+	toolStateMu             sync.Mutex
+	transientComputerImages map[[sha256.Size]byte]struct{}
+	deliveredAgentMessages  map[uint64]map[uint64]bool
+	compactor               *compact.Compactor
+	toolResultReplacements  map[string]string
+	toolResultSeenIDs       map[string]bool
+	activeSkillMessages     []anthropic.MessageParam
+	acknowledgedAgentTasks  map[uint64]bool
+	recentAgentEvidence     []capabilityloop.DecisionContext
 	// turnFileChangeSeen tracks which paths already have a recoverable
 	// file_change in the current turn, so later edits of the same file within the
 	// turn are recorded as lite (non-recoverable) entries. Reset at each turn start.
@@ -934,15 +935,16 @@ func (s *Session) RunStreamJSON(ctx context.Context, prompt string, stdout io.Wr
 				connectorBlockOpen = false
 				index = connectorIndex + 1
 			}
-			contentBlock := &streamContentBlock{Type: blockTypeToolUse, Name: block.Name, ID: block.ID, Input: block.Input}
-			if err := emit(streamEvent{Type: streamEventContentBlockStart, Index: intPtr(index), Name: block.Name, ID: block.ID, Input: block.Input, ContentBlock: contentBlock}); err != nil {
+			publicBlock := redactComputerToolCall(block)
+			contentBlock := &streamContentBlock{Type: blockTypeToolUse, Name: publicBlock.Name, ID: publicBlock.ID, Input: publicBlock.Input}
+			if err := emit(streamEvent{Type: streamEventContentBlockStart, Index: intPtr(index), Name: publicBlock.Name, ID: publicBlock.ID, Input: publicBlock.Input, ContentBlock: contentBlock}); err != nil {
 				return err
 			}
 			if err := emitStreamEvent(currentTurn, map[string]any{"type": streamEventContentBlockStart, "index": index, "content_block": contentBlock}); err != nil {
 				return err
 			}
-			if len(block.Input) > 0 {
-				for _, chunk := range splitJSONDelta(string(block.Input)) {
+			if len(publicBlock.Input) > 0 {
+				for _, chunk := range splitJSONDelta(string(publicBlock.Input)) {
 					delta := &streamDelta{Type: "input_json_delta", PartialJSON: chunk}
 					if err := emit(streamEvent{Type: "input_json_delta", Index: intPtr(index), ID: block.ID, Delta: delta}); err != nil {
 						return err
@@ -958,7 +960,7 @@ func (s *Session) RunStreamJSON(ctx context.Context, prompt string, stdout io.Wr
 			if err := emitStreamEvent(currentTurn, map[string]any{"type": streamEventContentBlockStop, "index": index}); err != nil {
 				return err
 			}
-			return emit(streamEvent{Type: "tool_call", Name: block.Name, ID: block.ID, Input: block.Input})
+			return emit(streamEvent{Type: "tool_call", Name: publicBlock.Name, ID: publicBlock.ID, Input: publicBlock.Input})
 		},
 		onToolResult: func(trace ToolTrace) error {
 			if err := emit(streamEvent{Type: blockTypeToolResult, ID: trace.ID, Name: trace.Name, IsError: trace.IsError, Output: trace.Output}); err != nil {
@@ -1392,10 +1394,13 @@ func (s *Session) run(ctx context.Context, prompt string, cb runCallbacks) (resu
 	continuation := resolveContinuationIntent(prompt, s.options.InitialMessages)
 	continuationAuthorization := newContinuationAuthorizationGrant(continuation.SharedStateEffects)
 	messages := append([]anthropic.MessageParam(nil), s.options.InitialMessages...)
+	for i := range messages {
+		messages[i] = redactComputerAssistant(messages[i])
+	}
 	assembly := s.assembleContextMessages(ctx, prompt)
 	userRecordContent := ""
 	if resuming {
-		messages = append(messages, s.resumeInput.AssistantMessage)
+		messages = append(messages, redactComputerAssistant(s.resumeInput.AssistantMessage))
 		messages = append(messages, anthropic.MessageParam{Role: "user", Content: []anthropic.ContentBlock{s.resumeInput.ToolResult}})
 	} else {
 		userMessage, recordContent := userMessageWithAttachments(prompt, s.options.Attachments)
@@ -1867,7 +1872,7 @@ func (s *Session) run(ctx context.Context, prompt string, cb runCallbacks) (resu
 		// draftIndex marks where this turn's assistant message starts, so the
 		// completion gate below can retract the whole turn if it rejects the draft.
 		draftIndex := len(messages)
-		messages = append(messages, stream.Message)
+		messages = append(messages, redactComputerAssistant(stream.Message))
 
 		turnResponse := assistantText(stream.Message.Content)
 		for _, block := range stream.Message.Content {
@@ -2042,7 +2047,7 @@ func (s *Session) run(ctx context.Context, prompt string, cb runCallbacks) (resu
 					return result, appendCancelled(toolUses[blockIndex:], 0, contextErr)
 				}
 				if cb.onToolCall != nil {
-					if err := cb.onToolCall(block); err != nil {
+					if err := cb.onToolCall(redactComputerToolCall(block)); err != nil {
 						return result, err
 					}
 				}
@@ -2190,7 +2195,7 @@ func (s *Session) run(ctx context.Context, prompt string, cb runCallbacks) (resu
 				pending.ToolUseID = block.ID
 				pending.ToolName = block.Name
 				pending.ToolInput = append([]byte(nil), block.Input...)
-				pending.AssistantMessage = stream.Message
+				pending.AssistantMessage = redactComputerAssistant(stream.Message)
 				result.PendingInteraction = &pending
 				result.StopReason = "waiting_input"
 				return result, nil
@@ -2210,7 +2215,10 @@ func (s *Session) run(ctx context.Context, prompt string, cb runCallbacks) (resu
 				Content:   trace.Output,
 				IsError:   trace.IsError,
 			})
-			if !trace.IsError && len(trace.contextMessages) > 0 {
+			if (!trace.IsError || tools.IsComputerUseTool(trace.Name)) && len(trace.contextMessages) > 0 {
+				if tools.IsComputerUseTool(trace.Name) {
+					s.rememberTransientComputerImages(trace.contextMessages)
+				}
 				toolContextMessages = append(toolContextMessages, trace.contextMessages...)
 			}
 			if contextErrAfterTrace != nil {
@@ -2631,7 +2639,7 @@ func (s *Session) recordAssistant(blocks []anthropic.ContentBlock) {
 				_ = session.AppendProviderContinuation(s.options.Recorder, *block.Continuation)
 			}
 		case blockTypeToolUse:
-			_ = s.options.Recorder.Append(session.Entry{Type: "tool_call", ToolID: block.ID, ToolName: block.Name, Content: string(block.Input)})
+			_ = s.options.Recorder.Append(session.Entry{Type: "tool_call", ToolID: block.ID, ToolName: block.Name, Content: string(tools.RedactToolInput(block.Name, block.Input))})
 		}
 	}
 }
@@ -2791,6 +2799,9 @@ func (s *Session) recordUserContentBlock(block anthropic.ContentBlock) {
 // 落盘失败不算致命：本轮图片已经在消息序列里送给模型了，这里只影响 resume。
 // 退化成记下解释性占位文本，即 TODO-061 之前的行为，而不是丢掉整块。
 func (s *Session) recordImageBlock(block anthropic.ContentBlock) {
+	if s.isTransientComputerImage(block) {
+		return
+	}
 	if block.Source == nil || block.Source.Data == "" {
 		if block.Text != "" {
 			_ = s.options.Recorder.Append(session.Entry{Type: "message", Role: "user", Content: block.Text})
@@ -3120,7 +3131,7 @@ func (s *Session) runParallelReadOnlyToolTurn(
 			return cancelledToolTraces(blocks, contextErr), true, announced, nil
 		}
 		if cb.onToolCall != nil {
-			if err := cb.onToolCall(block); err != nil {
+			if err := cb.onToolCall(redactComputerToolCall(block)); err != nil {
 				announced++
 				if contextErr := ctx.Err(); contextErr != nil {
 					return cancelledToolTraces(blocks, contextErr), true, announced, nil
@@ -3162,7 +3173,7 @@ func (s *Session) runParallelReadOnlyToolTurn(
 			case semaphore <- struct{}{}:
 				defer func() { <-semaphore }()
 			case <-ctx.Done():
-				traces[index] = ToolTrace{ID: blocks[index].ID, Name: blocks[index].Name, Input: string(blocks[index].Input), Output: ctx.Err().Error(), IsError: true}
+				traces[index] = ToolTrace{ID: blocks[index].ID, Name: blocks[index].Name, Input: string(tools.RedactToolInput(blocks[index].Name, blocks[index].Input)), Output: ctx.Err().Error(), IsError: true}
 				return
 			}
 			if contextErr := ctx.Err(); contextErr != nil {
@@ -3185,7 +3196,7 @@ func (s *Session) runTool(ctx context.Context, registry *tools.Registry, block a
 func (s *Session) runToolWithAuthorization(ctx context.Context, registry *tools.Registry, block anthropic.ContentBlock, cb runCallbacks, sharedStateAuthorization gitpolicy.Authorization) ToolTrace {
 	runID, err := newExecutionRunID(s.options.RunID)
 	if err != nil {
-		return ToolTrace{ID: block.ID, Name: block.Name, Input: string(block.Input), Output: err.Error(), IsError: true}
+		return ToolTrace{ID: block.ID, Name: block.Name, Input: string(tools.RedactToolInput(block.Name, block.Input)), Output: err.Error(), IsError: true}
 	}
 	return s.runToolWithInvocation(ctx, registry, block, cb, sharedStateAuthorization, tools.Invocation{RunID: runID, ToolUseID: block.ID})
 }
@@ -3194,7 +3205,7 @@ func (s *Session) runToolWithInvocation(ctx context.Context, registry *tools.Reg
 	trace := ToolTrace{
 		ID:    block.ID,
 		Name:  block.Name,
-		Input: string(block.Input),
+		Input: string(tools.RedactToolInput(block.Name, block.Input)),
 	}
 	if contextErr := ctx.Err(); contextErr != nil {
 		return cancelledToolTrace(block, contextErr)
@@ -3273,7 +3284,7 @@ func (s *Session) runToolWithInvocation(ctx context.Context, registry *tools.Reg
 			if contextErr := ctx.Err(); contextErr != nil {
 				return cancelledToolTrace(block, contextErr)
 			}
-			return ToolTrace{ID: block.ID, Name: block.Name, Input: string(block.Input), Output: err.Error(), IsError: true}
+			return ToolTrace{ID: block.ID, Name: block.Name, Input: string(tools.RedactToolInput(block.Name, block.Input)), Output: err.Error(), IsError: true}
 		}
 	}
 	if contextErr := ctx.Err(); contextErr != nil {
@@ -3288,7 +3299,7 @@ func (s *Session) runToolWithInvocation(ctx context.Context, registry *tools.Reg
 			if contextErr := ctx.Err(); contextErr != nil {
 				return cancelledToolTrace(block, contextErr)
 			}
-			return ToolTrace{ID: block.ID, Name: block.Name, Input: string(block.Input), Output: callbackErr.Error(), IsError: true}
+			return ToolTrace{ID: block.ID, Name: block.Name, Input: string(tools.RedactToolInput(block.Name, block.Input)), Output: callbackErr.Error(), IsError: true}
 		}
 	}
 	if contextErr := ctx.Err(); contextErr != nil {
@@ -3309,7 +3320,7 @@ func (s *Session) runToolWithInvocation(ctx context.Context, registry *tools.Reg
 		trace.Output = firstNonEmpty(hookResult.PermissionDecisionReason, hookResult.Message, "tool denied by PreToolUse hook")
 		return trace
 	}
-	if len(hookResult.UpdatedInput) > 0 {
+	if len(hookResult.UpdatedInput) > 0 && !tools.IsComputerUseTool(block.Name) {
 		input = hookResult.UpdatedInput
 		trace.Input = string(input)
 	}
@@ -3379,6 +3390,11 @@ func (s *Session) runToolWithInvocation(ctx context.Context, registry *tools.Reg
 			}
 		},
 	})
+	if tools.IsComputerUseTool(block.Name) && res.Interaction != nil {
+		res.Interaction = nil
+		res.IsError = true
+		res.Content = "ComputerUse cannot create a resumable interaction"
+	}
 	if contextErr := ctx.Err(); contextErr != nil {
 		bindToolResult(&trace, res, fileChanges)
 		if res.IsError {
@@ -3393,7 +3409,7 @@ func (s *Session) runToolWithInvocation(ctx context.Context, registry *tools.Reg
 	}
 	if cb.onHookStart != nil {
 		if err := cb.onHookStart(event, block.Name); err != nil {
-			res = tools.Result{Content: err.Error(), IsError: true}
+			res = toolHookFailure(block.Name, res, err)
 		}
 	}
 	if contextErr := ctx.Err(); contextErr != nil {
@@ -3415,7 +3431,7 @@ func (s *Session) runToolWithInvocation(ctx context.Context, registry *tools.Reg
 		return trace
 	}
 	if postErr != nil && !res.IsError {
-		res = tools.Result{Content: postErr.Error(), IsError: true}
+		res = toolHookFailure(block.Name, res, postErr)
 		observability.Error(ctx, nil, "tool.hook.post_error", "query.Session.runTool", "post tool hook failed",
 			"tool_id", block.ID,
 			"tool_name", block.Name,
@@ -3808,7 +3824,11 @@ func (s *Session) runHookSpan(ctx context.Context, event string, payload hooks.P
 	var result hooks.Result
 	err := hookCtx.Err()
 	if err == nil {
-		result, err = s.hookRunner().RunWithPayload(hookCtx, event, s.options.CWD, payload)
+		if tools.IsComputerUseTool(payload.ToolName) {
+			result, err = runComputerHooks(hookCtx, s.hookRunner(), event, s.options.CWD, payload)
+		} else {
+			result, err = s.hookRunner().RunWithPayload(hookCtx, event, s.options.CWD, payload)
+		}
 	}
 	status := telemetry.StatusOK
 	if err != nil {
@@ -4050,7 +4070,9 @@ func (s *Session) loadSkillRuntime(ctx context.Context, name string) (skills.Ski
 	return skill, s.options.SkillProvider != nil && ok, ok, err
 }
 
-func (s *Session) runPermissionPrompt(ctx context.Context, req tools.PermissionPromptRequest) tools.PermissionPromptResponse {
+func (s *Session) runPermissionPrompt(ctx context.Context, req tools.PermissionPromptRequest) (response tools.PermissionPromptResponse) {
+	req = tools.RedactPermissionPromptRequest(req)
+	defer func() { response = tools.RedactPermissionPromptResponse(req.ToolName, response) }()
 	permissionCtx, span := telemetry.StartSpan(ctx, telemetry.Event{
 		Name:      telemetry.EventPermissionWait,
 		Category:  telemetry.CategoryPermission,
@@ -4058,7 +4080,6 @@ func (s *Session) runPermissionPrompt(ctx context.Context, req tools.PermissionP
 		SessionID: s.options.TenantSessionID,
 		ToolName:  req.ToolName,
 	})
-	var response tools.PermissionPromptResponse
 	defer func() {
 		status := telemetry.StatusDenied
 		if response.Allowed {
@@ -4198,6 +4219,7 @@ func splitJSONDelta(value string) []string {
 }
 
 func (s *Session) applyPermissionUpdate(update tools.PermissionUpdate) error {
+	update = tools.RedactPermissionUpdate(update)
 	rule := strings.TrimSpace(update.Rule)
 	if rule == "" {
 		rule = permissionRule(update.ToolName, update.Request)
@@ -4306,6 +4328,7 @@ func firstNonEmpty(values ...string) string {
 }
 
 func (s *Session) recordPermission(ctx context.Context, audit tools.PermissionAudit) {
+	audit = tools.RedactPermissionAudit(audit)
 	status := telemetry.StatusOK
 	if !audit.Allowed {
 		status = telemetry.StatusDenied
@@ -4485,7 +4508,7 @@ func blockedToolTrace(block anthropic.ContentBlock, reason string) ToolTrace {
 	return ToolTrace{
 		ID:      block.ID,
 		Name:    block.Name,
-		Input:   string(block.Input),
+		Input:   string(tools.RedactToolInput(block.Name, block.Input)),
 		Output:  reason,
 		IsError: true,
 	}
@@ -4496,7 +4519,7 @@ func cancelledToolTrace(block anthropic.ContentBlock, err error) ToolTrace {
 	if err != nil {
 		reason = err.Error()
 	}
-	return ToolTrace{ID: block.ID, Name: block.Name, Input: string(block.Input), Output: reason, IsError: true}
+	return ToolTrace{ID: block.ID, Name: block.Name, Input: string(tools.RedactToolInput(block.Name, block.Input)), Output: reason, IsError: true}
 }
 
 func cancelledToolTraces(blocks []anthropic.ContentBlock, err error) []ToolTrace {

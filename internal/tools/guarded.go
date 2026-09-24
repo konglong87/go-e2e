@@ -61,6 +61,7 @@ func (g guardedTool) SkipToolResultBudget() bool {
 	return false
 }
 func (g guardedTool) Run(ctx context.Context, input json.RawMessage, toolContext Context) Result {
+	toolContext = redactComputerPermissionContext(g.inner.Name(), toolContext)
 	if result, cancelled := cancelledContextResult(ctx); cancelled {
 		return result
 	}

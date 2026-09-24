@@ -99,15 +99,13 @@ tenant pending-input API、WebUI composer 和 TUI PTY 回归，真实 MySQL 恢�
 - Extend stdout/stderr/exit-code split checks only as new command families are added.
 - Add cross-check golden fixtures only as newly discovered upstream-exact stream-json edge cases are identified.
 - Keep Playwright real-browser golden enabled in CI images that provide Node dependencies and a Chromium/Chrome executable; otherwise the test skips with an explicit runtime-unavailable reason.
-- Computer Use Phase 1 code is present behind an explicit capability gate: the provider-neutral
-  `ComputerSession`/`Action`/`Observation`/`ActionReceipt` contract, structured `ComputerUse`
-  tool, macOS native helper protocol/backend, and Desktop-v2 Computer Workspace are implemented.
-  This is **not yet a complete compatibility claim** because real native-window pixel acceptance
-  is blocked until the macOS host is unlocked. After unlock, Phase 1 must still prove Start/
-  approval/real screenshot/click/input/receipt/Pause/Stop through the signed `.app`. Windows Host
-  remains Phase 2 and reuses the same upper-layer contract; Linux virtual_x11 and TUI Computer
-  Use are later phases. `PyAutoGUI`, `pynput` and a Python helper are not part of the Phase 1 or
-  Phase 2 primary path.
+- Computer Use has domain/controller, tool, macOS backend/helper and a Desktop-v2 control
+  surface, but **Phase 1 is incomplete**. The Wails controller is not shared with server Query;
+  production requests do not enable the Computer tool. Provider/model/fallback image capability
+  resolution, media failure retention, and real model-driven input E2E are still missing.
+  Native UI progress is tracked in `docs/architecture/computer_use_implementation_status.md`;
+  this is not a cross-platform or completed macOS compatibility claim. Windows remains Phase 2;
+  Linux, TUI Computer Use, PyAutoGUI, Python helpers, Code Execution and Replay remain out of scope.
 
 ## P0/P1 Backlog
 

@@ -109,8 +109,9 @@ desktop-v2 现在提供独立的 Computer Workspace 控制面，不修改 WebBro
 - `GetComputerActionReceipt`：读取结构化 action receipt 和 before/after observation 引用。
 
 helper 位于 `.app/Contents/Helpers/computer-helper-macos`，使用平台无关的长度前缀 JSON
-协议与 Go backend 通信。helper 不接收 prompt、provider key、Token 或原始凭据；敏感
-`type/key/hotkey` 只以脱敏摘要进入 timeline。第一阶段只支持 macOS Host，不实现
+协议与 Go backend 通信。helper 环境采用白名单，不继承 provider key；协议只接收经校验的结构化动作。
+不得要求模型输入密码、Token、OTP 等凭据；`type` 的普通输入在执行时仍需传给 helper，
+不能把脱敏摘要误认为已有凭据识别/安全输入能力。第一阶段只支持 macOS Host，不实现
 Windows/Linux/TUI/Code Execution/Replay。
 
 真实验收命令：
@@ -120,8 +121,11 @@ bash scripts/build-desktop-v2.sh
 open desktop-v2/build/bin/go-e2e.app
 ```
 
-原生窗口截图证据应保存到 `desktop-v2/build/validation/YYYYMMDD/`。**截至 2026 年 9 月 24 日，
-当前验收环境处于锁屏状态，尚未完成原生点击证据；不能以 Playwright/DOM 截图替代。**
+**当前仍是受限控制面，不是可用的模型自动操作闭环。** Wails 中的 Controller 尚未与
+本地 server 的 Query 共享，生产请求没有设置 Computer profile/service/image capability，
+因此普通聊天不会注册 ComputerUse。provider/model/fallback 图片能力解析、MediaAsset
+失败保留策略和模型真实像素 E2E 仍待实现。验收状态与证据路径见
+[实施与验收记录](../docs/architecture/computer_use_implementation_status.md)。
 
 ## 原生窗口控制
 
