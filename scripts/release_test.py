@@ -35,6 +35,8 @@ class ReleaseArchiveTest(unittest.TestCase):
 import pathlib, sys
 assert sys.argv[1] == 'build'
 assert '-trimpath' in sys.argv
+ldflags = sys.argv[sys.argv.index('-ldflags') + 1]
+assert '-s' in ldflags and '-w' in ldflags
 pathlib.Path(sys.argv[sys.argv.index('-o') + 1]).write_text('synthetic binary')
 """)
             compiler.chmod(0o755)

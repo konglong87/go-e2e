@@ -65,6 +65,10 @@ export DIRTY
 # epoch-to-RFC3339 conversion; release.sh only freezes the input once.
 SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(date +%s)}"
 export SOURCE_DATE_EPOCH
+# Release builds should be small by default. Local development builds keep
+# their normal symbols unless the caller opts into the same flags explicitly.
+LDFLAGS="${LDFLAGS:--s -w}"
+export LDFLAGS
 
 sha256() {
   if command -v sha256sum >/dev/null 2>&1; then
@@ -120,7 +124,10 @@ for target in $TARGETS; do
   mkdir -p "$DIST_DIR/$stage"
   # CGO off: no package in this module imports "C", and a static binary is what
   # makes the archive usable on a host that does not have this checkout.
-  CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
+  # Defer cache maintenance until every target has been built. Cleaning a
+  # shared cache in the middle of a multi-target release forces later targets
+  # to compile the same dependency graph again.
+  GO_E2E_GO_CACHE_MAINTENANCE=0 CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
     OUTPUT="$DIST_DIR/$stage/$binary" "$ROOT_DIR/scripts/build.sh" >/dev/null
   cp README.md "$DIST_DIR/$stage/README.md"
   cp LICENSE "$DIST_DIR/$stage/LICENSE"
@@ -146,4 +153,9 @@ if [ "${#archives[@]}" -eq 0 ]; then
 fi
 
 (cd "$DIST_DIR" && sha256 "${archives[@]}" >SHA256SUMS)
+# One maintenance pass after the complete release is safe: no later target
+# needs the cache, and local callers can still opt out with the usual env var.
+if [[ "${GO_E2E_GO_CACHE_MAINTENANCE:-1}" != "0" ]]; then
+  bash "$ROOT_DIR/scripts/go-cache-maintenance.sh" --check
+fi
 printf 'wrote %s/SHA256SUMS (%s archives, version %s)\n' "$DIST_DIR" "${#archives[@]}" "$VERSION"

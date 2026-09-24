@@ -245,7 +245,9 @@ jobs:
       - run: npm run typecheck
         working-directory: web
 
-      - run: npm run build
+      # typecheck above already covers src; bundle directly here to avoid
+      # compiling the same TypeScript project a second time in build.
+      - run: npm run build:bundle
         working-directory: web
       - run: npm run test
         working-directory: web

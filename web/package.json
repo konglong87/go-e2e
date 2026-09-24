@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -p tsconfig.app.json && vite build",
+    "build:bundle": "vite build",
     "typecheck": "tsc -b --force",
     "lint": "biome lint src e2e scripts vite.config.ts playwright.config.ts",
     "lint:fix": "biome lint --write --only=correctness/noUnusedImports --only=correctness/noUnusedVariables --only=correctness/noUnusedFunctionParameters src e2e scripts vite.config.ts playwright.config.ts",
