@@ -264,6 +264,14 @@ nodes:
       - go test ./internal/imagegen ./internal/cli -count=1
 
 views:
+  - id: agent-platform-architecture
+    source: diagrams/agent-platform-architecture.mmd
+    artifacts:
+      - diagrams/agent-platform-architecture.svg
+      - diagrams/agent-platform-architecture.png
+      - diagrams/agent-platform-architecture.excalidraw
+    covers: [RT-ENTRY, RT-BOUNDARY, RT-WIRING, RT-PROMPT, RT-CACHE, RT-MODEL, RT-PRETOOL, RT-TOOLS, RT-SUBAGENT, RT-EVIDENCE, RT-COMPLETION, RT-GOAL, RT-SCHEDULER, RT-PERSIST, RT-SESSION-CONTROL, RT-OUTPUT, RT-OBSERVE, RT-COST]
+
   - id: global-runtime
     source: diagrams/global-runtime-topology.mmd
     artifacts:

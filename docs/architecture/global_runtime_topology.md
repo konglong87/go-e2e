@@ -55,10 +55,11 @@ WebUI 2.0 设置中心沿 RT-OUTPUT 消费 RT-BOUNDARY 的 `/runtime/settings` �
 
 ### 1.1 一张总览，多张专题图
 
-不存在一张既完整又可读的万能图。本堪舆图采用同一组因果语义，维护四个视图：
+不存在一张既完整又可读的万能图。本堪舆图采用同一组因果语义，维护一个平台架构总览和四个运行时专题视图：
 
 | 视图 | 回答的问题 | Mermaid 源 |
 | --- | --- | --- |
+| 平台架构总览 | 用户入口、接入治理、Runtime Core、可插拔能力、状态可靠性和输出适配如何组成完整 Agent 平台 | [agent-platform-architecture.mmd](../../diagrams/agent-platform-architecture.mmd) |
 | 全局运行时总览 | 一次请求如何穿过边界、prompt、模型、工具、gate、输出和持久化 | [global-runtime-topology.mmd](../../diagrams/global-runtime-topology.mmd) |
 | Finding / Evidence | 工具与 subagent 事实如何成为 final/Goal 的可用证据 | [evidence-finding-topology.mmd](../../diagrams/evidence-finding-topology.mmd) |
 | Prompt 爆炸半径 | 偏僻场景修复为何可能影响所有主流任务，以及如何控制作用域 | [prompt-blast-radius.mmd](../../diagrams/prompt-blast-radius.mmd) |
