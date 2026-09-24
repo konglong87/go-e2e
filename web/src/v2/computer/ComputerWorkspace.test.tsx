@@ -51,6 +51,21 @@ describe("ComputerWorkspace", () => {
     expect(document.body.querySelector('[aria-label="Collapse Computer Use workspace"]')).not.toBeNull();
   });
 
+  it("opens the matching macOS permission page and refreshes readiness after returning", async () => {
+    const client = createTestClient();
+    client.getCapabilities = vi.fn()
+      .mockResolvedValueOnce({ available: true, capabilities: { ...capabilities, input_readiness: "permission_required", permission_state: "required" } })
+      .mockResolvedValue({ available: true, capabilities });
+    await act(async () => root.render(<ComputerWorkspace client={client} />));
+    expect(document.body.textContent).toContain("Open Accessibility settings");
+    await click("Open Accessibility settings");
+    expect(client.openPermissionSettings).toHaveBeenCalledWith("accessibility");
+    await act(async () => { window.dispatchEvent(new Event("focus")); });
+    expect(client.getCapabilities).toHaveBeenCalledTimes(2);
+    expect(document.body.textContent).not.toContain("Open Accessibility settings");
+    expect(button("Start session").disabled).toBe(false);
+  });
+
   it("handles the actual start → observe DTO under StrictMode without resetting on rerender", async () => {
     const client = createTestClient();
     const render = () => <StrictMode><ComputerWorkspace client={client} /></StrictMode>;

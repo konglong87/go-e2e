@@ -72,6 +72,21 @@ export function useComputerSession(client: ComputerClient | null) {
     }));
   }, [client, run]);
 
+  useEffect(() => {
+    const refresh = (): void => {
+      if (document.visibilityState === "hidden") return;
+      void loadCapabilities().catch(() => undefined);
+    };
+    window.addEventListener("focus", refresh);
+    window.addEventListener("go-e2e:computer-permission-recheck", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("go-e2e:computer-permission-recheck", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [loadCapabilities]);
+
   const start = useCallback(async (input: StartComputerSessionInput = { approved: false }) => {
     const state = current.current;
     if (!client) return fail("Computer Use is unavailable");

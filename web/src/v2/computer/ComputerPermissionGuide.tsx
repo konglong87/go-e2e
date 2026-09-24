@@ -1,3 +1,4 @@
+import "./ComputerPermissionGuide.css";
 import { useState, type ReactElement } from "react";
 import type { ComputerClient } from "./client";
 import { computerPermissionGuideActions } from "./readiness";

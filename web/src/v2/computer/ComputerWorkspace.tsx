@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type { ReactElement, PointerEvent as ReactPointerEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ComputerApprovalDialog } from "./ComputerApprovalDialog";
+import { ComputerPermissionGuide } from "./ComputerPermissionGuide";
 import type { ComputerClient } from "./client";
 import { ComputerPreview } from "./ComputerPreview";
 import { ComputerTimeline } from "./ComputerTimeline";
@@ -188,6 +189,12 @@ export function ComputerWorkspace({ client }: { client: ComputerClient | null })
         onResume={() => action(computer.resume)}
         onStop={() => action(computer.stop)}
       />
+      {!computer.session || computer.session.state === "stopped" ? <ComputerPermissionGuide
+        available={computer.available}
+        capabilities={computer.capabilities}
+        client={client}
+        onRecheck={async () => { await computer.loadCapabilities(); }}
+      /> : null}
       {!computer.error && readiness ? <p className="webui2-computer-error" role="status">{readiness}</p> : null}
       {computer.error ? <p className="webui2-computer-error" role="alert">{computer.error}</p> : null}
       <ComputerPreview observation={computer.observation} capabilities={computer.capabilities} />
