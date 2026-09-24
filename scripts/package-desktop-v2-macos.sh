@@ -38,6 +38,8 @@ if [[ "${REQUIRE_NOTARIZATION}" == "1" ]]; then
   codesign --force --options runtime --timestamp --sign "${APPLE_SIGNING_IDENTITY}" \
     "${APP_PATH}/Contents/MacOS/go-e2e"
   codesign --force --options runtime --timestamp --sign "${APPLE_SIGNING_IDENTITY}" \
+    "${APP_PATH}/Contents/Helpers/computer-helper-macos"
+  codesign --force --options runtime --timestamp --sign "${APPLE_SIGNING_IDENTITY}" \
     "${APP_PATH}"
   codesign --verify --deep --strict --verbose=2 "${APP_PATH}"
 fi

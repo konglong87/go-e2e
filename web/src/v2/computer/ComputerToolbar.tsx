@@ -1,0 +1,7 @@
+import type { ReactElement } from "react";
+import type { ComputerCapabilities, ComputerSessionState } from "./types";
+
+export function ComputerToolbar({ state, capabilities, busy, onStart, onObserve, onPause, onResume, onStop }: { state: ComputerSessionState | null; capabilities: ComputerCapabilities | null; busy: boolean; onStart: () => void; onObserve: () => void; onPause: () => void; onResume: () => void; onStop: () => void }): ReactElement {
+  const active = Boolean(state && !["stopped", "failed"].includes(state));
+  return <div className="webui2-computer-toolbar"><span className="webui2-computer-state">{state || "idle"}</span>{!active ? <button className="webui2-computer-button" disabled={busy || !capabilities} onClick={onStart} type="button">Start session</button> : null}{active ? <button className="webui2-computer-button webui2-computer-button--quiet" disabled={busy} onClick={onObserve} type="button">Refresh screenshot</button> : null}{state === "ready" ? <button className="webui2-computer-button webui2-computer-button--quiet" disabled={busy || !capabilities?.supports_pause} onClick={onPause} type="button">Pause</button> : null}{state === "paused" ? <button className="webui2-computer-button webui2-computer-button--quiet" disabled={busy} onClick={onResume} type="button">Resume</button> : null}{active ? <button className="webui2-computer-button webui2-computer-button--danger" disabled={busy || !capabilities?.supports_stop} onClick={onStop} type="button">Stop</button> : null}</div>;
+}

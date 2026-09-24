@@ -32,9 +32,19 @@ if [[ -d "${APP_BIN}" ]]; then
   rm -f "${APP_BIN}/golang-cc"
 
   if [[ "$(uname -s)" == "Darwin" ]]; then
-    # The service binary is embedded after Wails creates its app signature.
-    # Sign the nested binary first, then seal the outer app bundle again.
+    helper_arch="$(uname -m)"
+    for arg in "$@"; do
+      case "${arg}" in
+        darwin/arm64|darwin/amd64) helper_arch="${arg#darwin/}" ;;
+      esac
+    done
+    helper_dir="${APP_PATH}/Contents/Helpers"
+    mkdir -p "${helper_dir}"
+    MACOS_ARCH="${helper_arch}" bash "${ROOT}/scripts/build-computer-helper-macos.sh" "${helper_dir}/computer-helper-macos" >/dev/null
+    # The service/helper binaries are embedded after Wails creates its app signature.
+    # Sign nested binaries first, then seal the outer app bundle again.
     codesign --force --sign - --timestamp=none "${APP_BIN}/go-e2e"
+    codesign --force --sign - --timestamp=none "${helper_dir}/computer-helper-macos"
     codesign --force --deep --sign - --timestamp=none "${APP_PATH}"
     codesign --verify --deep --strict --verbose=2 "${APP_PATH}"
   fi

@@ -33,6 +33,8 @@ import { parseWebUIV2Route, settingsReturnSession, webUIV2SettingsPath, webUIV2S
 import type { OperationResult, SessionListFilters, SessionMessage, SessionStatus, SessionSummary } from "./types";
 import { DesktopPet } from "./components/DesktopPet";
 import { getDesktopServiceBridge } from "./desktopServiceBridge";
+import { createComputerClient, getComputerBridge } from "./computer/client";
+import { ComputerWorkspace } from "./computer/ComputerWorkspace";
 import { useDesktopReadiness } from "./useDesktopReadiness";
 import { UnsavedChangesDialog } from "./components/UnsavedChangesDialog";
 import { GLOBAL_SETTINGS_QUERY_KEY, useGlobalVisualSettings } from "./settings/useGlobalVisualSettings";
@@ -93,6 +95,8 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
   const desktop = useDesktopReadiness({ enabled: isDesktop, apiBase: identity.apiBase, apiToken: identity.apiToken, onReady: refreshDesktopData });
   const desktopReady = desktop.ready;
   const desktopServiceBridge = isDesktop ? getDesktopServiceBridge() : null;
+  const computerBridge = isDesktop ? getComputerBridge() : null;
+  const computerClient = computerBridge ? createComputerClient(computerBridge) : null;
   const refSearch = completeSessionRef(filters.query);
   const sessionList = useSessionList(identity, refSearch ? { ...filters, query: "" } : filters, desktopReady);
   const create = useCreateSession(identity);
@@ -364,6 +368,7 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
     {sidebarOpen ? <button aria-label={t("webui2.closeSessions")} className="webui2-mobile-sidebar-backdrop" onClick={() => setSidebarOpen(false)} tabIndex={-1} type="button" /> : null}
     <button aria-controls="webui2-session-sidebar" aria-expanded={sidebarOpen} aria-label={t("webui2.openSessions")} className="webui2-mobile-sidebar-open" onClick={() => setSidebarOpen(true)} title={t("webui2.openSessions")} type="button"><PanelLeftOpen aria-hidden="true" size={18} /></button>
     <div className="webui2-content">
+      <ComputerWorkspace client={computerClient} />
       <section className="webui2-workspace">
         {state.route.kind === "invalid" ? <div className="webui2-route-error" role="alert"><p>{t("webui2.invalidRoute")}</p><button onClick={recoverToIndex} type="button">{t("webui2.backToSessions")}</button></div> : null}
         {state.route.kind === "index" && !sessionList.isLoading && !sessionList.isError ? !showTaskFirstHome

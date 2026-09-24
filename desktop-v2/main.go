@@ -29,13 +29,14 @@ import (
 var bundledAssets embed.FS
 
 type app struct {
-	mu         sync.Mutex
-	config     desktopConfig
-	port       int
-	token      string
-	service    *localServiceController
-	windowCtx  context.Context
-	windowDone chan struct{}
+	mu              sync.Mutex
+	config          desktopConfig
+	port            int
+	token           string
+	service         *localServiceController
+	computerManager *computerManager
+	windowCtx       context.Context
+	windowDone      chan struct{}
 }
 
 func main() {
@@ -266,13 +267,19 @@ func (a *app) shutdown(ctx context.Context) {
 	a.stopWindowStateWatcher()
 	a.mu.Lock()
 	service := a.service
+	computer := a.computerManager
 	a.service = nil
+	a.computerManager = nil
 	a.mu.Unlock()
-	if service == nil {
-		return
+	if computer != nil {
+		if err := computer.close(ctx); err != nil {
+			wailsruntime.LogErrorf(ctx, "stop computer helper: %v", err)
+		}
 	}
-	if err := service.stop(ctx); err != nil {
-		wailsruntime.LogErrorf(ctx, "stop local go-e2e server: %v", err)
+	if service != nil {
+		if err := service.stop(ctx); err != nil {
+			wailsruntime.LogErrorf(ctx, "stop local go-e2e server: %v", err)
+		}
 	}
 }
 
