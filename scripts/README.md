@@ -11,8 +11,15 @@ directory this size ended up with scripts nobody could tell were alive
 scripts/offline-acceptance.sh                # everything checkable without a key — this is what CI runs
 scripts/offline-acceptance.sh --static-only  # skip the scenarios, just the static checks
 scripts/go-cache-maintenance.sh --status     # inspect the shared Go build cache
+scripts/race-impacted.sh <base-sha>          # race-test changed Go packages and reverse dependents
 go run ./scripts/runtime-topology-check       # topology registry, anchors and rendered artifacts
 ```
+
+The normal CI race job runs the full suite on `main`, tags, and manual runs. Pull
+requests and feature-branch pushes use `race-impacted.sh`, which maps changed
+Go files to packages and expands the selection through reverse imports. Changes
+to `go.mod`, `go.sum`, `vendor/`, or `third_party/` conservatively fall back to
+the full suite; documentation-only changes skip race tests.
 
 `runtime-topology-check` keeps the global runtime map tied to the code. Static
 mode verifies that every tracked runtime file maps to an `RT-*` node, registered
