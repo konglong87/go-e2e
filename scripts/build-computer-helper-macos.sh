@@ -4,8 +4,14 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUTPUT="${1:-$ROOT_DIR/desktop-v2/build/bin/computer-helper-macos}"
 mkdir -p "$(dirname "$OUTPUT")"
+case "${MACOS_ARCH:-$(uname -m)}" in
+  amd64) SWIFT_ARCH="x86_64" ;;
+  arm64) SWIFT_ARCH="arm64" ;;
+  x86_64) SWIFT_ARCH="x86_64" ;;
+  *) SWIFT_ARCH="${MACOS_ARCH:-$(uname -m)}" ;;
+esac
 swiftc -O \
-  -target "${MACOS_ARCH:-$(uname -m)}-apple-macosx${MACOSX_DEPLOYMENT_TARGET:-14.0}" \
+  -target "${SWIFT_ARCH}-apple-macosx${MACOSX_DEPLOYMENT_TARGET:-14.0}" \
   -framework AppKit \
   -framework ApplicationServices \
   -framework CoreGraphics \
