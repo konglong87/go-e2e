@@ -36,6 +36,7 @@ import (
 	"github.com/konglong87/go-e2e/internal/tools/askuserquestion"
 	"github.com/konglong87/go-e2e/internal/tools/bash"
 	"github.com/konglong87/go-e2e/internal/tools/bashoutput"
+	computerusetool "github.com/konglong87/go-e2e/internal/tools/computeruse"
 	"github.com/konglong87/go-e2e/internal/tools/fileedit"
 	"github.com/konglong87/go-e2e/internal/tools/fileread"
 	"github.com/konglong87/go-e2e/internal/tools/filewrite"
@@ -1003,12 +1004,22 @@ func coreRuntimeToolsWithOptions(settings config.Settings, client skill.MessageS
 		toolList = append(toolList, imagegentool.NewGenerate(runtimeOptions.imageGenerator, preview), imagegentool.NewEdit(runtimeOptions.imageGenerator, preview))
 	}
 	toolList = append(toolList, sessionControlToolsForOptions(runtimeOptions)...)
+	toolList = append(toolList, computerUseToolsForOptions(runtimeOptions)...)
 	return toolList
 }
 
 // sessionControlToolsForOptions is the runtime-side profile gate. It protects
 // normal CLI/TUI/chat/channel/coding prompts from both the capability and the
 // seven tool-definition prompt-cost additions.
+func computerUseToolsForOptions(runtimeOptions options) []tools.Tool {
+	if !runtimeOptions.computerUseProfile || runtimeOptions.runtimeProfile.IsBare() ||
+		runtimeOptions.computerUseService == nil || !runtimeOptions.computerUseImageSupported ||
+		runtimeOptions.tenantID == 0 || runtimeOptions.tenantUserID == 0 {
+		return nil
+	}
+	return []tools.Tool{computerusetool.New(runtimeOptions.computerUseService)}
+}
+
 func sessionControlToolsForOptions(runtimeOptions options) []tools.Tool {
 	if !runtimeOptions.sessionControlProfile || runtimeOptions.sessionControlService == nil || runtimeOptions.tenantID == 0 || runtimeOptions.tenantUserID == 0 {
 		return nil

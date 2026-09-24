@@ -26,6 +26,7 @@ import (
 	"github.com/konglong87/go-e2e/internal/background"
 	"github.com/konglong87/go-e2e/internal/buildinfo"
 	"github.com/konglong87/go-e2e/internal/compact"
+	"github.com/konglong87/go-e2e/internal/computeruse"
 	"github.com/konglong87/go-e2e/internal/config"
 	"github.com/konglong87/go-e2e/internal/defaults"
 	"github.com/konglong87/go-e2e/internal/gitutil"
@@ -152,6 +153,10 @@ type options struct {
 	inlineTenantSkills            []string
 	inlineTenantSkillSource       string
 	responseFormat                *anthropic.ResponseFormat
+	computerUseProfile            bool
+	computerUseService            computeruse.Service
+	computerUseImageSupported     bool
+
 	// Session Control is a v2 Orchestrator-only capability. The profile gate
 	// and concrete service are both required before tools are registered.
 	sessionControlProfile  bool
@@ -858,6 +863,8 @@ func newQuerySession(ctx context.Context, opts options, initial []anthropic.Mess
 		TraceID:                       opts.traceID,
 		RunID:                         opts.runID,
 		ImageGenerator:                opts.imageGenerator,
+		ComputerUse:                   opts.computerUseService,
+		ComputerUseImageSupported:     opts.computerUseImageSupported,
 		IncludeHookEvents:             opts.includeHookEvents,
 		IncludePartialMessages:        opts.includePartialMessages,
 		IncludeStreamEvents:           opts.includeStreamEvents,

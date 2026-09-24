@@ -24,6 +24,7 @@ import (
 	"github.com/konglong87/go-e2e/internal/anthropic"
 	"github.com/konglong87/go-e2e/internal/capabilityloop"
 	"github.com/konglong87/go-e2e/internal/compact"
+	"github.com/konglong87/go-e2e/internal/computeruse"
 	"github.com/konglong87/go-e2e/internal/config"
 	"github.com/konglong87/go-e2e/internal/defaults"
 	"github.com/konglong87/go-e2e/internal/files"
@@ -97,6 +98,8 @@ type Options struct {
 	// ImageGenerator is the optional tenant-scoped image service. Keeping it
 	// injectable preserves the disabled/bare runtime behavior by default.
 	ImageGenerator               imagegensvc.Generator
+	ComputerUse                  computeruse.Service
+	ComputerUseImageSupported    bool
 	QuerySource                  string
 	PromptMode                   string
 	AgentProfileKey              string
@@ -3333,14 +3336,16 @@ func (s *Session) runToolWithInvocation(ctx context.Context, registry *tools.Reg
 		AgentMessages: func(taskID uint64) []agenttasks.MessageInput {
 			return s.pendingAgentMessages(context.WithoutCancel(ctx), taskID)
 		},
-		TenantID:                 s.options.TenantID,
-		UserID:                   s.options.UserID,
-		SessionID:                s.options.TenantSessionID,
-		TraceID:                  s.options.TraceID,
-		Invocation:               invocation,
-		ImageGenerator:           s.options.ImageGenerator,
-		AgentBudget:              s.agentBudget,
-		SharedStateAuthorization: sharedStateAuthorization,
+		TenantID:                  s.options.TenantID,
+		UserID:                    s.options.UserID,
+		SessionID:                 s.options.TenantSessionID,
+		TraceID:                   s.options.TraceID,
+		Invocation:                invocation,
+		ImageGenerator:            s.options.ImageGenerator,
+		ComputerUse:               s.options.ComputerUse,
+		ComputerUseImageSupported: s.options.ComputerUseImageSupported,
+		AgentBudget:               s.agentBudget,
+		SharedStateAuthorization:  sharedStateAuthorization,
 		PermissionPrompt: func(promptCtx context.Context, req tools.PermissionPromptRequest) tools.PermissionPromptResponse {
 			if contextErr := promptCtx.Err(); contextErr != nil {
 				return tools.PermissionPromptResponse{Allowed: false, Reason: contextErr.Error()}

@@ -8,6 +8,7 @@ import (
 	"github.com/konglong87/go-e2e/internal/agentbudget"
 	"github.com/konglong87/go-e2e/internal/agenttasks"
 	"github.com/konglong87/go-e2e/internal/anthropic"
+	"github.com/konglong87/go-e2e/internal/computeruse"
 	"github.com/konglong87/go-e2e/internal/config"
 	"github.com/konglong87/go-e2e/internal/files"
 	"github.com/konglong87/go-e2e/internal/gitpolicy"
@@ -59,7 +60,9 @@ type Context struct {
 	// ImageGenerator is the tenant-scoped image service exposed to image tools.
 	// The runtime owns construction and credentials; tools only receive this
 	// capability and the tenant/user/session context above.
-	ImageGenerator imagegen.Generator
+	ImageGenerator            imagegen.Generator
+	ComputerUse               computeruse.Service
+	ComputerUseImageSupported bool
 }
 
 type Invocation struct {
