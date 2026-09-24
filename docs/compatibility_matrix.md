@@ -101,10 +101,10 @@ tenant pending-input API、WebUI composer 和 TUI PTY 回归，真实 MySQL 恢�
 - Keep Playwright real-browser golden enabled in CI images that provide Node dependencies and a Chromium/Chrome executable; otherwise the test skips with an explicit runtime-unavailable reason.
 - Computer Use is currently a planned capability, not an implemented compatibility claim. The
   architecture baseline is documented in
-  `docs/architecture/computer_use_integration_plan.md`; implementation must first prove
-  isolated X11 real-pixel click/input/receipt E2E, then TUI PTY and Desktop-v2 native-window
-  acceptance. `PyAutoGUI` is optional behind the isolated adapter; `pynput` is not the
-  primary executor.
+  `docs/architecture/computer_use_integration_plan.md`; Phase 1 must first prove macOS Host
+  real-pixel screenshot/click/input/receipt E2E through Desktop-v2 with explicit session approval,
+  then native-window acceptance. Linux virtual_x11, TUI Computer Use and Windows Host are later
+  phases. `PyAutoGUI`, `pynput` and a Python helper are not part of the Phase 1 primary path.
 
 ## P0/P1 Backlog
 

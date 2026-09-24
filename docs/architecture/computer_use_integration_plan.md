@@ -6,21 +6,17 @@
 
 ## 0. 架构复核结论
 
-本方案是当前项目最适合的接入方向，但有一处需要明确收敛：
+本方案的总体分层适合 go-e2e，但第一期必须按产品目标收敛为 macOS Host Desktop：
 
 - `ComputerUse` 必须是独立的 Surface、Session 和 Backend，不应作为
   `WebBrowser` 或 Query Loop 的平台输入扩展。
-- `isolated_x11` 是第一阶段的主验收后端；其统一合同优先对接
-  XTest/xdotool 或 Go/X11 helper。
-- `PyAutoGUI` 只作为 isolated X11 的可选 adapter/fallback，以及后续
-  isolated Code Execution 的脚本能力，不是 Go 项目的必选运行时依赖。
-- `pynput` 不进入主 ComputerUse executor，只保留给测试辅助或明确的补充
-  adapter。
-- macOS/Windows Host Desktop 继续使用平台 native helper；不能用 Python
-  库掩盖系统权限、窗口焦点和截图事实来源。
+- 第一阶段只支持 macOS 当前用户桌面，由 Desktop-v2 发起并监督真实 screenshot、click、type、key 和 scroll 闭环。
+- macOS Host Desktop 使用独立 Swift/Objective-C native helper，负责 Screen Capture、CGEvent、Accessibility readiness 和焦点状态。
+- 第一阶段权限简化为 session-level explicit approval；保留 Pause/Stop 和凭据不落盘等硬约束，不实现完整 action risk classifier。
+- Linux `isolated_x11`、Windows Host、TUI Computer Use、Code Execution 和 Replay 均后置，不作为第一期交付范围。
+- `PyAutoGUI` 和 `pynput` 不进入第一期主执行链，也不是跨平台核心抽象。
 
-因此，当前文档可以作为实现基线；后续代码实现时仍需根据真实平台验收结果
-调整 backend capability，而不是把某个 Python 库写成跨平台承诺。
+因此，本文件是“macOS Host MVP 实施基线”；后续仍需根据真实 `.app`、系统权限和像素 E2E 结果调整 capability，而不是把未来平台能力写成当前承诺。
 
 ## 1. 结论摘要
 
@@ -59,9 +55,9 @@ Isolated VM / Sandbox
 | 参考 | 可复用经验 | 对 go-e2e 的适配 |
 | --- | --- | --- |
 | [AI Agent Book Computer Use](https://github.com/bojieli/ai-agent-book/tree/main/chapter6/claude-computer-use-native) | 截图、结构化动作、真实环境执行、动作后再次截图 | 建立 provider-neutral `Observation -> Action -> Receipt` 协议 |
-| [AI Agent Book Virtual Desktop](https://github.com/bojieli/ai-agent-book/blob/main/chapter4/execution-tools/extended_tools.py) | Xvfb、headful Chromium、xdotool、真实 framebuffer 截图 | 作为第一阶段 Linux/CI backend |
-| [OpenAI Computer Use](https://developers.openai.com/api/docs/guides/tools-computer-use) | Structured Computer Tool 与 Code Execution 两种路径 | 同时支持结构化动作和隔离桌面代码执行 |
-| [Codex App](https://openai.com/index/codex-for-almost-everything/) | Browser、Code、Desktop、Skills、Record/Replay 分层 | 保持 Browser 与 ComputerUse 分离，后续增加录制回放 |
+| [AI Agent Book Virtual Desktop](https://github.com/bojieli/ai-agent-book/blob/main/chapter4/execution-tools/extended_tools.py) | Xvfb、headful Chromium、xdotool、真实 framebuffer 截图 | 作为后续 Linux/CI backend 参考，不进入第一期 |
+| [OpenAI Computer Use](https://developers.openai.com/api/docs/guides/tools-computer-use) | Structured Computer Tool 与 Code Execution 两种路径 | 第一阶段只采用 Structured Action；Code Execution 后置 |
+| [Codex App](https://openai.com/index/codex-for-almost-everything/) | Browser、Code、Desktop、Skills、Record/Replay 分层 | 第一阶段以 Desktop-v2 + Host Desktop 闭环为目标，其他层后置 |
 | [Anthropic Computer Use](https://www.anthropic.com/news/developing-computer-use) | screenshot-only 视觉闭环和动作限制 | 支持无 DOM 的真实点击和键盘输入 |
 | [Claude Cowork 隔离模型](https://www.anthropic.com/engineering/how-we-contain-claude) | 默认使用隔离 VM，仅挂载选定 workspace | `isolated` 默认模式，`host` 必须显式授权 |
 
@@ -71,7 +67,8 @@ Isolated VM / Sandbox
 2. Codex 的产品分层不能简化成一个万能 `computer` 函数。
 3. Claude 的 VM 隔离和“不把宿主凭据交给模型”必须成为安全基线。
 4. `WebBrowser` 继续用于高效网页语义操作，Computer Use 用于无法通过 DOM、
-   API 或专用工具完成的真实桌面操作。
+   API 或专用工具完成的真实桌面操作。第一阶段只支持 macOS Host Desktop，
+   不把 Browser mode 作为 ComputerUse 的第三种模式。
 
 ## 3. 当前实现基线
 
@@ -112,22 +109,23 @@ Isolated VM / Sandbox
 ### 4.1 本方案目标
 
 1. 建立 provider-neutral 的 Computer Use domain contract。
-2. 支持真实 screenshot、mouse、keyboard、scroll、drag 和 wait。
-3. 让 TUI 和 Desktop-v2 共享同一 ComputerSession。
-4. 默认运行在隔离桌面，Host Desktop 只在显式模式下启用。
-5. 复用现有权限、沙箱、审计、Transcript、Media 和取消机制。
-6. 支持 Structured Action 和 Code Execution 两种模型接入路径。
-7. 以真实像素截图和动作回执完成端到端验收。
-8. 为后续 Record/Replay、Computer Skill 和多 Agent Surface 留出扩展位。
+2. 第一阶段支持 macOS Host Desktop 的真实 screenshot、mouse、keyboard、scroll 和 wait。
+3. 让 Desktop-v2 先共享同一 ComputerSession；TUI 后续接入同一控制面。
+4. Host Desktop 只有在用户显式启动并批准本次 session 后才可用。
+5. 复用现有 Permission、Transcript、Media 和取消机制，但第一阶段采用简单 session-level approval。
+6. 第一阶段只支持 Structured Action；Code Execution 后置。
+7. 以真实 macOS `.app`、真实截图和动作回执完成端到端验收。
+8. 为后续 Linux isolated、Windows Host、Record/Replay 和 Computer Skill 留出扩展位。
 
 ### 4.2 第一阶段非目标
 
 - 不实现通用 OCR 或通用视觉定位模型。
 - 不把 Computer Use 默认开放给所有 runtime profile。
-- 不默认控制用户当前登录桌面。
+- 不在用户未显式启动和批准 session 时控制当前登录桌面。
 - 不把密码、Token、Keychain 内容发送到模型。
 - 不把所有浏览器动作迁移到 Computer Use。
-- 不在第一阶段承诺 Windows、Wayland 和所有 Linux 桌面环境等价。
+- 第一阶段不承诺 Linux、Windows、Wayland、VM 或跨平台等价能力。
+- 第一阶段不实现完整 action risk classifier、Code Execution、Replay 和 TUI Computer Use。
 - 不把宿主 OS 输入 API 直接写进 Query Loop。
 
 ## 5. Surface 分层
@@ -158,15 +156,15 @@ const (
 type ComputerMode string
 
 const (
-    ComputerModeIsolated ComputerMode = "isolated"
     ComputerModeHost     ComputerMode = "host"
-    ComputerModeBrowser  ComputerMode = "browser"
+    ComputerModeIsolated ComputerMode = "isolated"
 )
 ```
 
-- `isolated`：默认模式，使用 Xvfb、容器、VM 或平台隔离桌面。
-- `host`：操作当前 OS 桌面，必须显式启用，必须具备系统授权。
-- `browser`：只允许操作专用浏览器窗口，不拥有完整桌面权限。
+- `host`：第一阶段唯一实现，操作 macOS 当前 OS 桌面，必须由 Desktop-v2 显式启动并获得本次 session 授权。
+- `isolated`：后续实现，用于 Linux virtual_x11、容器或 VM，不属于第一期。
+
+`Browser` 保持独立 Surface，不定义 `ComputerModeBrowser`，避免与 `WebBrowser` 的 DOM/Playwright 能力重叠。
 
 ## 6. 总体架构
 
@@ -225,7 +223,7 @@ internal/computerbackend/
 
 | 依赖 | 允许用途 | 不允许用途 |
 | --- | --- | --- |
-| `PyAutoGUI` | Phase 1 isolated X11 的可选鼠标/键盘 adapter 或 fallback；isolated Code Execution 中的受控输入 | Go 项目的必选运行时依赖；macOS/Windows Host 的统一核心；多显示器和窗口状态事实来源 |
+| `PyAutoGUI` | 后续 isolated Code Execution 中的受控输入；不属于 Phase 1 | Go 项目的必选运行时依赖；macOS/Windows Host 的统一核心；多显示器和窗口状态事实来源 |
 | `pynput` | 可选测试辅助或平台补充输入 | 主 ComputerUse executor；截图、窗口管理、Host 权限抽象 |
 | `xdotool`/XTest | isolated X11 的低层输入 fallback 或对照实现 | 跨平台抽象 |
 | macOS native helper | CGEvent、Quartz/ScreenCapture、Accessibility readiness | 在 Go 主进程中直接散落 cgo/UI 平台逻辑 |
@@ -234,16 +232,19 @@ internal/computerbackend/
 第一阶段默认组合为：
 
 ```text
-Go ComputerSession
-  -> isolated_x11 helper
-  -> XTest/xdotool 或 Go/X11 input adapter
-  -> 独立 X11 screenshot adapter
+Desktop-v2
+  -> Wails control bridge
+  -> Go ComputerSessionService
+  -> macOS native helper
+  -> Screen Capture / CGEvent / Accessibility readiness
   -> ActionReceipt
 ```
 
-如果目标环境已有 Python 运行时，也可以把 `PyAutoGUI` 挂到同一个
-`isolated_x11` contract 作为 fallback；该选择不能改变上层协议，也不能静默
-切换到 Host Desktop。
+Linux `isolated_x11` 使用独立 backend contract 后置实现，不进入第一期主执行路径。
+
+第一阶段不引入 Python runtime，也不把 `PyAutoGUI` 或 `pynput` 挂到 macOS Host 主链。
+后续如果实现 isolated Code Execution，才允许在独立受控 runtime 中评估 PyAutoGUI adapter；
+该选择不能改变上层协议，也不能静默切换到 Host Desktop。
 
 截图、输入注入、窗口焦点和 session 状态必须是四个独立职责。即使
 `PyAutoGUI` 自带截图能力，也不能把它作为截图事实来源；截图必须带宽高、
@@ -258,8 +259,8 @@ Python helper 通过 stdio 或 Unix socket 与 Go 通信，必须满足：
 - 不把 Python 异常直接暴露为模型可执行指令；
 - 运行结果统一转换为 `ActionReceipt`。
 
-Host Desktop 的正式实现必须使用平台 native helper；`PyAutoGUI/pynput` 不能
-作为 macOS、Windows 或 Wayland 的兼容性承诺。
+Host Desktop 的正式实现必须使用平台 native helper；第一阶段只实现 macOS helper。
+`PyAutoGUI/pynput` 不能作为 macOS、Windows、Linux 或 Wayland 的兼容性承诺。
 
 ## 7. Domain Contract
 
@@ -524,7 +525,8 @@ mark outcome_unknown
 
 ### 12.1 TUI 的职责
 
-TUI 是 Computer Use 的监督控制面，不负责实现平台输入。
+TUI 是后续 Computer Use 的监督控制面，不负责实现平台输入。第一期不接入 TUI，
+避免在 Desktop-v2 主流程尚未通过真实 `.app` 验收前扩散控制面。
 
 需要新增：
 
@@ -556,23 +558,23 @@ TUI 终端支持图片协议时可直接显示截图；不支持时只显示图�
 
 ### 12.2 TUI 入口
 
-第一阶段建议：
+TUI 后续建议：
 
 ```text
 /computer status
-/computer start [isolated|host|browser]
+/computer start isolated
 /computer pause
 /computer resume
 /computer stop
 ```
 
-模型侧通过 `ComputerUse` 工具工作，用户侧通过 slash command 和快捷键监督。
+第一期用户侧控制只通过 Desktop-v2 完成；模型侧通过 `ComputerUse` 工具工作。
 
 ## 13. Desktop-v2 适配
 
 ### 13.1 Desktop 角色
 
-Desktop-v2 增加 Computer Workspace：
+Desktop-v2 是第一期唯一用户入口，增加 Computer Workspace：
 
 ```text
 会话聊天
@@ -583,7 +585,8 @@ Desktop-v2 增加 Computer Workspace：
   + Pause / Stop
 ```
 
-Preview 默认展示隔离 desktop，而不是用户屏幕全量直播。
+第一期 Preview 展示用户明确授权的 macOS Host Desktop 截图；后续 isolated backend
+接入后再增加 isolated preview。截图只按 retention 策略保存，不做未经授权的持续直播。
 
 ### 13.2 Wails Bridge
 
@@ -604,17 +607,19 @@ sidecar 或平台 helper 管理。
 
 ### 13.3 Desktop 权限体验
 
-启动 Host backend 前必须展示：
+启动第一期 macOS Host backend 前必须展示：
 
-- 当前模式：Isolated / Browser / Host。
+- 当前模式：macOS Host。
 - 当前 display/window。
-- 需要的 macOS/Windows/Linux 系统权限。
-- 是否允许操作当前用户桌面。
+- Screen Recording 权限状态。
+- Accessibility 权限状态。
+- 是否允许本次 session 操作当前用户桌面。
 - 截图保留策略。
 - 最大动作数和超时时间。
 
-没有 readiness 的 Host backend 不得进入 `ready`，不能让模型先发动作再返回
-权限错误。
+第一期采用 session-level approval，不做每个 click/type 的二次确认；Pause/Stop
+必须始终可用。没有 readiness 的 Host backend 不得进入 `ready`，不能让模型先发动作
+再返回权限错误。
 
 ## 14. Backend 分阶段设计
 
@@ -632,60 +637,74 @@ sidecar 或平台 helper 管理。
 - 单元测试可以完整模拟 observe/action/receipt/unknown outcome/cancel。
 - 普通 runtime profile 的 tool definition 不增加。
 
-### Phase 1：Virtual Desktop
+### Phase 1：macOS Host + Desktop-v2
+
+第一期唯一产品目标：像 Codex App 一样，通过 Desktop-v2 真实观察并操作当前 macOS 桌面。
+
+目标：
+
+- Swift/Objective-C native helper。
+- Screen Capture / Quartz 或 ScreenCaptureKit 截图。
+- CGEvent 鼠标键盘输入。
+- Screen Recording / Accessibility readiness。
+- session-level explicit approval。
+- Pause/Stop。
+- click、type、key、scroll、wait。
+- 前后截图、截图 hash、ActionReceipt、失败 readback。
+- 真实 Wails `.app`、真实点击和原生窗口截图验收。
+
+第一期不实现 Windows、Linux、TUI Computer Use、Code Execution、Replay、Channel
+和多级 action risk classifier。
+
+### Phase 2：Runtime + Desktop 完整控制面
+
+目标：
+
+- `ComputerUse` tool 条件注册。
+- provider image capability gate。
+- ComputerSession 状态机。
+- Wails bridge 和 backend supervisor。
+- Computer Preview、Action Timeline、Permission Banner。
+- screenshot 临时资产与 receipt readback。
+
+### Phase 3：TUI 控制面
+
+目标：
+
+- TUI Computer timeline 和 permission prompt。
+- pause/resume/stop。
+- screenshot metadata fallback。
+- 真实 PTY acceptance。
+
+### Phase 4：Linux virtual_x11
 
 目标：
 
 - Linux Xvfb。
 - Headful Chromium 或固定 GUI fixture。
-- XTest/xdotool 或 Go/X11 input adapter；PyAutoGUI 作为可选 fallback。
-- 独立 X11 screenshot adapter，可使用 Pillow/mss 或等价实现。
+- Go X11 helper + XTest input。
+- 独立 X11 screenshot adapter。
 - 单 display、固定分辨率、固定 scale factor。
 - 真实点击、输入、滚动、截图 hash、状态验证。
 
-这是第一阶段真实 Computer Use 验收环境，也是 CI 的主要 backend。
+Linux 只是后续 isolated backend，不是第一期目标。第一期不使用 Linux runner 作为
+产品验收前置条件。
 
-Phase 1 不使用 `pynput` 作为主执行路径。`pynput` 如需保留，只能用于测试
-辅助或显式的 Linux X11 补充 adapter，并且不能改变统一 backend contract。
-
-### Phase 2：TUI + Desktop-v2 控制面
+### Phase 5：Windows Host
 
 目标：
 
-- TUI Computer timeline 和 permission prompt。
-- Desktop-v2 Computer Preview。
-- Wails bridge 和 sidecar 生命周期。
-- 截图临时资产与 receipt readback。
+- Windows Capture/SendInput/UI Automation。
+- foreground/UIPI readiness。
+- native permission flow。
 
-### Phase 3：macOS Host Backend
-
-目标：
-
-- Screen Capture / Quartz 截图。
-- CGEvent 鼠标键盘输入。
-- Accessibility readiness 和应用 allowlist。
-- Host 模式原生权限向导。
-
-平台代码建议使用独立 Swift/Objective-C helper，通过 stdio 或 Unix socket
-与 Go 通信，不把 cgo 和平台 UI 细节塞入 Query Loop。
-
-本阶段不以 `PyAutoGUI` 或 `pynput` 作为 macOS Host 的正式输入实现。
-
-### Phase 4：Code Execution
+### Phase 6：Code Execution and Replay
 
 目标：
 
 - 在 isolated desktop 中执行受限 Playwright/PyAutoGUI。
 - 复用 workspace、sandbox、timeout、stdout/stderr 和 file tracking。
-- 增加脚本动作 receipt 和失败后 fresh observation。
-
-### Phase 5：Windows、Wayland、Record/Replay
-
-目标：
-
-- Windows Capture/SendInput/UI Automation。
-- Wayland portal 或受支持 compositor backend。
-- action trajectory 录制、脱敏、回放和 Computer Skill 生成。
+- trajectory 录制、脱敏、回放 validation 和 Computer Skill generation。
 
 Windows Host 不通过 `PyAutoGUI/pynput` 宣称跨平台兼容；Wayland 需要单独的
 compositor/portal capability probe，不能把 X11 adapter 直接复用为兼容实现。
@@ -747,25 +766,26 @@ probe backend，再产生新的 observation。
 ```yaml
 computerUse:
   enabled: false
-  defaultMode: isolated
-  backend: auto
+  mode: host
+  backend: macos_native
+  requireSessionApproval: true
   maxActions: 30
   maxDurationMs: 300000
   actionTimeoutMs: 15000
   screenshotRetention: failure
   allowHostControl: false
-  allowedApplications: []
   allowCodeExecution: false
 ```
 
 配置规则：
 
 1. `enabled=false` 时不注册 `ComputerUse` tool。
-2. `allowHostControl=false` 时拒绝 Host backend。
-3. `allowCodeExecution=false` 时拒绝 Code Execution backend。
-4. profile、session 和一次性运行参数只能收紧权限，不能扩大宿主上限。
-5. tenant/channel 默认不开放 Host Computer Use。
-6. `--bare` 默认不包含 ComputerUse，必须显式开启。
+2. 第一阶段只允许 `mode=host`、`backend=macos_native`，不探测或切换 Linux/Windows backend。
+3. `allowHostControl=false` 时拒绝创建 Host session；用户点击 Start 并批准后只授予当前 session。
+4. `requireSessionApproval=true` 时必须先完成 Desktop-v2 session approval。
+5. profile、session 和一次性运行参数只能收紧权限，不能扩大宿主上限。
+6. tenant/channel 默认不开放 Host Computer Use。
+7. `--bare` 默认不包含 ComputerUse，必须显式开启。
 
 ## 17. 全局拓扑影响
 
@@ -823,22 +843,23 @@ Fake Backend、Virtual Desktop、macOS Host Backend 必须共享同一 backend c
 - screenshot failure；
 - focus changed。
 
-### 18.3 真实 Virtual Desktop E2E
+### 18.3 真实 macOS Host E2E
 
-固定本地 fixture：
+第一期固定真实 macOS 应用/窗口验收：
 
-1. 启动 isolated display。
-2. 打开固定 HTML/GUI 页面。
-3. 模型或测试 driver 读取截图。
-4. 点击输入框。
-5. 输入固定文本。
-6. 点击提交。
-7. 获取新截图。
-8. 读取页面状态并验证结果。
-9. 校验截图 PNG、尺寸和 hash。
-10. 校验完整 action receipt。
+1. 构建并启动真实 Wails `.app`。
+2. 用户点击 Start Computer Use。
+3. 用户完成 session-level approval。
+4. 模型或测试 driver 读取截图。
+5. 点击输入框。
+6. 输入固定文本。
+7. 点击提交或触发固定 GUI 状态变化。
+8. 获取新截图。
+9. 读取窗口/应用状态并验证结果。
+10. 校验截图 PNG、尺寸和 hash。
+11. 校验完整 action receipt。
 
-### 18.4 TUI 验收
+### 18.4 TUI 验收（后续阶段）
 
 - 使用真实 PTY。
 - 真实启动 TUI。
@@ -852,7 +873,7 @@ Fake Backend、Virtual Desktop、macOS Host Backend 必须共享同一 backend c
 - 构建真实 Wails `.app`。
 - 启动真实 Desktop-v2。
 - 通过真实点击进入 Computer Workspace。
-- 启动 isolated session。
+- 启动 macOS Host session。
 - 观察实时 preview。
 - 点击 Pause、Resume、Stop。
 - 验证权限拒绝和失败 readback。
@@ -917,7 +938,7 @@ Computer Use 必须由独立 feature flag 和独立 tool registration 控制。�
 | 故障 | 降级 |
 | --- | --- |
 | isolated backend 不可用 | 明确报错，不静默切到 Host |
-| Host permission 不完整 | 回退到 isolated 或拒绝 |
+| Host permission 不完整 | 明确报错并停留在 `permission_required`，不自动切换 backend |
 | screenshot 失败 | 暂停，不继续动作 |
 | action unknown | 重新观察，不重放输入 |
 | provider 不支持图片 | ComputerUse 不注册或返回 capability unavailable |
@@ -941,12 +962,15 @@ Computer Use 必须由独立 feature flag 和独立 tool registration 控制。�
 - Permission/AgentPolicy/allowedTools 集成。
 - profile 和 config flag。
 
-### Slice C：Virtual Desktop
+### Slice C：Desktop-v2 MVP
 
-- Linux Xvfb backend。
-- screenshot、input、window readiness。
-- local fixture。
-- real E2E receipt。
+- sidecar/backend lifecycle。
+- Wails control bridge。
+- Computer Preview。
+- Action Timeline。
+- session-level approval。
+- Pause/Stop。
+- native screenshot acceptance。
 
 ### Slice D：TUI
 
@@ -956,18 +980,18 @@ Computer Use 必须由独立 feature flag 和独立 tool registration 控制。�
 - pause/resume/stop。
 - PTY screenshot acceptance。
 
-### Slice E：Desktop-v2
+### Slice E：Linux virtual_x11
 
-- sidecar/backend lifecycle。
-- Wails bindings。
-- preview 和 action timeline。
-- native screenshot acceptance。
+- Linux Xvfb backend。
+- Go X11 helper + XTest input。
+- screenshot、input、window readiness。
+- local fixture。
+- real E2E receipt。
 
-### Slice F：macOS Host
+### Slice F：Windows Host
 
-- Swift/Objective-C helper。
-- Screen Recording/Accessibility readiness。
-- CGEvent input。
+- Windows native helper。
+- Capture/SendInput/UI Automation readiness。
 - Host permission flow。
 
 ### Slice G：Code Execution and Replay
@@ -979,48 +1003,49 @@ Computer Use 必须由独立 feature flag 和独立 tool registration 控制。�
 
 ## 22. 实施前必须确认的决策
 
-1. 第一阶段确认以 Linux Virtual Desktop 作为 CI 和真实闭环基线。
-2. macOS Host Backend 只允许 Desktop-v2 显式开启，TUI 默认只允许 isolated。
+1. 第一阶段只支持 macOS Host Desktop，不考虑 Linux 电脑。
+2. 第一阶段唯一用户入口是 Desktop-v2；TUI Computer Use 后置。
 3. `ComputerUse` 只面向本地交互 session，暂不开放 Feishu/channel。
-4. 截图默认采用 `failure` retention。
-5. 第一版先走统一 JSON schema，provider-native adapter 后置。
-6. isolated backend 先用 Xvfb 进程，不直接引入完整 VM。
-7. Computer Profile 作为独立 runtime profile，不作为普通 code/chat 的隐式 tool。
-8. Phase 1 以 XTest/xdotool 或 Go/X11 helper 为默认 isolated input adapter；
-   PyAutoGUI 只作为可选 fallback，不使用 pynput 作为主执行器。
-9. Host Desktop 使用平台 native helper，不以 Python 库承诺跨平台兼容。
+4. 第一阶段权限采用 session-level explicit approval，不实现逐 action 审批。
+5. 截图默认采用 `failure` retention，优先保存临时 evidence。
+6. 第一版先走统一 JSON schema，provider-native adapter 后置。
+7. 第一阶段只使用 macOS native helper，不引入 PyAutoGUI、pynput 或 Python helper。
+8. Host permission 不完整时明确失败，不自动切换到 Linux/isolated backend。
+9. Linux virtual_x11、Windows Host、Code Execution 和 Replay 后置。
 
 推荐默认答案：
 
 ```text
-Linux Xvfb first
-Desktop-v2 host control only
-TUI supports isolated only
+macOS Host first
+Desktop-v2 first
+Session-level approval
+Pause/Stop always available
 Channel disabled
 Screenshot retention=failure
 Unified JSON schema first
-Xvfb process first, VM later
-Computer Profile isolated from ordinary code/chat
-XTest/xdotool or Go/X11 first
-PyAutoGUI optional behind isolated adapter
-Pynput not in the primary executor path
-Native helper for Host Desktop
+Native Swift/Objective-C helper
+No PyAutoGUI in the primary path
+No pynput
+No Python helper in Phase 1
+Linux virtual_x11 later
+Windows Host later
 ```
 
 ## 23. 完成定义
 
 Computer Use 第一阶段只有同时满足以下条件才算完成：
 
-1. Virtual Desktop 中能真实点击、输入、滚动并获得新截图。
-2. 模型上下文收到真实 PNG，而非合成图片或 DOM 文本冒充截图。
-3. 每次动作都有 receipt、前后截图引用和 verification。
-4. unknown outcome 不会盲目重放输入动作。
-5. TUI 能真实批准、拒绝、暂停和停止。
-6. Desktop-v2 能真实显示 isolated preview 并控制 session。
-7. Host 权限未准备时不会误操作用户桌面。
+1. 真实 macOS `.app` 能启动 Computer Workspace。
+2. 用户显式批准后，模型上下文收到真实桌面 PNG，而非合成图片或 DOM 文本冒充截图。
+3. 能真实执行 click、type、key、scroll、wait，并获得 after screenshot。
+4. 每次动作都有 receipt、前后截图引用和 verification。
+5. unknown outcome 不会盲目重放输入动作。
+6. 用户可以在 Desktop-v2 中 Pause 和 Stop，Stop 后模型不能自动 Resume。
+7. Screen Recording 或 Accessibility 权限未准备时不会误操作用户桌面。
 8. 普通 code/chat/TUI profile 无新增 ComputerUse prompt/tool 成本。
-9. transcript、media、audit、resume 和失败 readback 有测试覆盖。
-10. 真实 PTY、真实 Wails 窗口和真实截图验收通过。
+9. 密码、Token 和敏感输入不进入 receipt/transcript。
+10. 真实 Wails `.app`、真实点击、真实截图和失败 readback 验收通过。
 
-在这些条件满足之前，项目只能称为“具有浏览器自动化或截图能力”，不能称为
-“具备 Computer Use”。
+Linux virtual_x11、TUI Computer Use、Windows Host、Code Execution 和 Replay 不属于第一期
+完成条件。第一期完成前，项目只能称为“具备 macOS Host Computer Use MVP”，不能宣称
+具备跨平台或完整隔离的 Computer Use。
