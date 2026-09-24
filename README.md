@@ -213,6 +213,33 @@ go-e2e 不只是一个聊天界面，而是一套可以执行任务、连接外�
 
 > 部分能力需要用户配置 Provider、MCP Server、外部凭据或数据库；这里列出的是系统支持范围，不代表所有扩展默认启用。
 
+## 模块能力实现进度
+
+下面的表格是基于当前代码、测试和架构文档整理的能力快照，帮助读者区分“已经具备的基础能力”和“仍需要真实环境验收的部分”。
+
+审查快照：**2026-09-24** · 代码基线：`fdc3497`
+
+| 模块 | 进度 | 已经实现 | 当前边界 | 主要代码入口 |
+| --- | --- | --- | --- | --- |
+| Agent 主循环 | ✅ 已实现 | 多轮对话、工具调用、结果回灌、上下文压缩、取消和预算控制 | 不同入口下的长任务仍需要持续做真实验收 | `internal/query/`、`internal/agentruntime/` |
+| 上下文管理 | ✅ 较完整 | 项目规则、运行状态、工具结果、记忆、摘要和历史会话可以组合进模型上下文 | 超长任务的上下文质量仍需要更多回归样本 | `internal/query/`、`internal/memory/`、`internal/compact/` |
+| Tool 工具体系 | ✅ 已实现 | 统一工具接口、工具注册、参数校验、并发边界、结果大小限制和动态工具接入 | 工具数量增加后，还需要继续优化发现和上下文成本 | `internal/tools/`、`internal/toolpolicy/` |
+| Skill 技能 | ✅ 较完整 | 支持项目、用户、插件、Marketplace、MCP 和租户 Skill；支持按需加载、工具限制、独立上下文、Hooks 和路径匹配 | 需要继续补充跨 CLI、TUI、WebUI 和租户场景的真实验收 | `internal/skills/`、`internal/tools/skill/`、`internal/plugins/` |
+| MCP 外部工具协议 | ✅ 较完整 | 支持 stdio 和 Streamable HTTP，可发现并调用工具、读取资源、加载提示模板，也支持回调和权限确认 | 旧版 HTTP+SSE 尚未支持；外部真实 MCP Server 的完整 E2E 仍需补充 | `internal/mcp/`、`internal/tools/mcpresources/` |
+| Memory 记忆 | ✅ 已实现 | 项目规则、用户偏好、团队记忆、自动记忆和项目记忆召回，并带有范围和大小限制 | 当前重点是文档型记忆，不等同于完整的向量知识库 | `internal/memory/`、`internal/session/` |
+| Planning / Goal 任务规划 | ✅ 已实现 | 目标、步骤、依赖、风险、验收条件、预算、暂停、恢复和阻塞状态 | 更复杂的跨系统计划仍需要更多真实任务样本 | `internal/goal/`、`internal/tools/planmode/`、`internal/tools/todowrite/` |
+| Evidence 结果证据 | 🟡 基础能力已实现 | 保存工具轨迹、测试、命令、Git、API、数据库和产物证据，并用验收条件阻止无证据完成 | 工具成功不一定代表业务目标成功；还需要证据可信等级和更强的独立验证器 | `internal/goal/evidence.go`、`internal/goal/evaluator.go` |
+| Reflection 复盘与纠错 | 🟡 部分实现 | 有结果评估、失败重试、阻塞判断、能力跟进和压缩后恢复 | 普通对话并不是每一轮都经过独立的“检查—修复—再验证”循环 | `internal/goal/evaluator.go`、`internal/repair/` |
+| Multi-Agent / A2A 多智能体协作 | ✅ 较完整 | 支持创建、查询、停止和互相发消息，具备任务存储、事件、取消、进度和预算边界 | 跨组织 A2A 协议仍不是当前主路径 | `internal/agentruntime/`、`internal/agenttasks/`、`internal/tools/agent/` |
+| 人机协作 | ✅ 已实现 | 用户提问、权限确认、暂停等待、恢复和交互结果回传 | 高风险动作仍需要结合具体入口做真实交互验收 | `internal/tools/askuserquestion/`、`internal/permissions/`、`internal/pendinginput/` |
+| 权限与安全边界 | ✅ 较完整 | 工具审批、危险命令识别、目录和敏感路径限制、网络策略、沙箱和审计 | 安全能力的最终效果还需要持续做攻击性回归测试 | `internal/permissions/`、`internal/sandbox/`、`internal/tools/guarded.go` |
+| 评测与运行观测 | 🟡 基础能力已实现 | 有测试、Golden、运行轨迹、Trace、Telemetry、行为评测和能力评分脚本 | 还需要稳定的任务集、独立验证器、Pass@k / Pass^k 和失败首因分析 | `internal/agenteval/`、`internal/observability/`、`scripts/` |
+| Computer Use 电脑操作 | 🟡 架构和后端基础已实现 | 有会话状态、截图观察、动作回执、权限门控、Fake Backend、macOS 原生助手和 Go 侧适配层 | 上层会话服务装配、桌面入口、真实点击/截图和完整证据闭环仍需端到端验收 | `internal/computeruse/`、`internal/computerbackend/`、`internal/tools/computeruse/`、`native/macos/` |
+| RAG / 知识检索 | 🟡 部分实现 | 支持文件、网页和项目上下文检索，并能把结果带回 Agent | 目前还不是完整的“向量索引—语义检索—重排—来源引用”体系 | `internal/memory/`、`internal/tools/websearch/`、`internal/tools/webfetch/` |
+| 持续进化 | 🟡 部分实现 | 可以沉淀项目记忆、运行经验、Skills 和评测结果 | 尚未形成自动从轨迹生成知识、程序或模型更新的完整闭环 | `internal/memory/`、`internal/skills/`、`internal/agenteval/` |
+
+> 表中的“已实现”表示代码和测试中已经具备对应能力，不代表所有外部 Provider、MCP Server、数据库或桌面权限默认已经配置完成。
+
 ### Skills 设置怎么用
 
 桌面端和 WebUI 的 `设置 → Skills 管理` 会把两类 Skill 分开显示：
