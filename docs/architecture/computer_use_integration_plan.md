@@ -4,6 +4,24 @@
 
 文档状态：实施前架构基线，尚未进入代码实现。
 
+## 0. 架构复核结论
+
+本方案是当前项目最适合的接入方向，但有一处需要明确收敛：
+
+- `ComputerUse` 必须是独立的 Surface、Session 和 Backend，不应作为
+  `WebBrowser` 或 Query Loop 的平台输入扩展。
+- `isolated_x11` 是第一阶段的主验收后端；其统一合同优先对接
+  XTest/xdotool 或 Go/X11 helper。
+- `PyAutoGUI` 只作为 isolated X11 的可选 adapter/fallback，以及后续
+  isolated Code Execution 的脚本能力，不是 Go 项目的必选运行时依赖。
+- `pynput` 不进入主 ComputerUse executor，只保留给测试辅助或明确的补充
+  adapter。
+- macOS/Windows Host Desktop 继续使用平台 native helper；不能用 Python
+  库掩盖系统权限、窗口焦点和截图事实来源。
+
+因此，当前文档可以作为实现基线；后续代码实现时仍需根据真实平台验收结果
+调整 backend capability，而不是把某个 Python 库写成跨平台承诺。
+
 ## 1. 结论摘要
 
 go-e2e 当前具备 `WebBrowser`、Bash、文件、MCP、TUI、WebUI 和
@@ -207,7 +225,7 @@ internal/computerbackend/
 
 | 依赖 | 允许用途 | 不允许用途 |
 | --- | --- | --- |
-| `PyAutoGUI` | Phase 1 isolated X11 的鼠标/键盘 adapter；isolated Code Execution 中的受控输入 | macOS/Windows Host 的统一核心；多显示器和窗口状态事实来源 |
+| `PyAutoGUI` | Phase 1 isolated X11 的可选鼠标/键盘 adapter 或 fallback；isolated Code Execution 中的受控输入 | Go 项目的必选运行时依赖；macOS/Windows Host 的统一核心；多显示器和窗口状态事实来源 |
 | `pynput` | 可选测试辅助或平台补充输入 | 主 ComputerUse executor；截图、窗口管理、Host 权限抽象 |
 | `xdotool`/XTest | isolated X11 的低层输入 fallback 或对照实现 | 跨平台抽象 |
 | macOS native helper | CGEvent、Quartz/ScreenCapture、Accessibility readiness | 在 Go 主进程中直接散落 cgo/UI 平台逻辑 |
@@ -217,11 +235,15 @@ internal/computerbackend/
 
 ```text
 Go ComputerSession
-  -> Python helper 或 X11 helper
-  -> PyAutoGUI input adapter
-  -> 独立 screenshot adapter
+  -> isolated_x11 helper
+  -> XTest/xdotool 或 Go/X11 input adapter
+  -> 独立 X11 screenshot adapter
   -> ActionReceipt
 ```
+
+如果目标环境已有 Python 运行时，也可以把 `PyAutoGUI` 挂到同一个
+`isolated_x11` contract 作为 fallback；该选择不能改变上层协议，也不能静默
+切换到 Host Desktop。
 
 截图、输入注入、窗口焦点和 session 状态必须是四个独立职责。即使
 `PyAutoGUI` 自带截图能力，也不能把它作为截图事实来源；截图必须带宽高、
@@ -616,8 +638,8 @@ sidecar 或平台 helper 管理。
 
 - Linux Xvfb。
 - Headful Chromium 或固定 GUI fixture。
-- PyAutoGUI input adapter，保留 xdotool/XTest 对照或 fallback。
-- 独立 FFmpeg/Pillow/mss screenshot adapter。
+- XTest/xdotool 或 Go/X11 input adapter；PyAutoGUI 作为可选 fallback。
+- 独立 X11 screenshot adapter，可使用 Pillow/mss 或等价实现。
 - 单 display、固定分辨率、固定 scale factor。
 - 真实点击、输入、滚动、截图 hash、状态验证。
 
@@ -964,7 +986,8 @@ Computer Use 必须由独立 feature flag 和独立 tool registration 控制。�
 5. 第一版先走统一 JSON schema，provider-native adapter 后置。
 6. isolated backend 先用 Xvfb 进程，不直接引入完整 VM。
 7. Computer Profile 作为独立 runtime profile，不作为普通 code/chat 的隐式 tool。
-8. Phase 1 使用 PyAutoGUI isolated input adapter，不使用 pynput 作为主执行器。
+8. Phase 1 以 XTest/xdotool 或 Go/X11 helper 为默认 isolated input adapter；
+   PyAutoGUI 只作为可选 fallback，不使用 pynput 作为主执行器。
 9. Host Desktop 使用平台 native helper，不以 Python 库承诺跨平台兼容。
 
 推荐默认答案：
@@ -978,7 +1001,8 @@ Screenshot retention=failure
 Unified JSON schema first
 Xvfb process first, VM later
 Computer Profile isolated from ordinary code/chat
-PyAutoGUI only behind isolated adapter
+XTest/xdotool or Go/X11 first
+PyAutoGUI optional behind isolated adapter
 Pynput not in the primary executor path
 Native helper for Host Desktop
 ```

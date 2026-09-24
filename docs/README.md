@@ -11,7 +11,7 @@
 | 用最小工具和显式上下文运行 CLI/TUI | [usage/bare.md](usage/bare.md) |
 | 装上并跑起来（源码安装 / 预编译产物 / 只构建） | [../README.md#安装](../README.md#安装) |
 | 查会话存档：transcript / checkpoint / resume / inspect | [session_quickstart.md](session_quickstart.md) |
-| 了解 TUI / CLI / API Server 运行方式 | [architecture/runtime_modes.md](architecture/runtime_modes.md)、[architecture/runtime_message_flow_and_closure.md](architecture/runtime_message_flow_and_closure.md)、[architecture/go_claude_agent_capability_boundaries.md](architecture/go_claude_agent_capability_boundaries.md)、[tui/tui_workbench_progress.md](tui/tui_workbench_progress.md)、[tui/tui_display_timeline_architecture_plan.md](tui/tui_display_timeline_architecture_plan.md)、[tui/subagent_progress_ux_fix_plan.md](tui/subagent_progress_ux_fix_plan.md) |
+| 了解 TUI / CLI / API Server 运行方式 | [architecture/runtime_modes.md](architecture/runtime_modes.md)、[architecture/runtime_message_flow_and_closure.md](architecture/runtime_message_flow_and_closure.md)、[architecture/go_claude_agent_capability_boundaries.md](architecture/go_claude_agent_capability_boundaries.md)、[architecture/computer_use_integration_plan.md](architecture/computer_use_integration_plan.md)、[tui/tui_workbench_progress.md](tui/tui_workbench_progress.md)、[tui/tui_display_timeline_architecture_plan.md](tui/tui_display_timeline_architecture_plan.md)、[tui/subagent_progress_ux_fix_plan.md](tui/subagent_progress_ux_fix_plan.md) |
 | 看会话体验、多模态、子代理与 TUI 的统一完善清单 | [architecture/product_experience_completion_checklist.md](architecture/product_experience_completion_checklist.md) |
 | 验收 TUI 显示和工具进度 | [tui/tui_semantic_pty_acceptance_plan.md](tui/tui_semantic_pty_acceptance_plan.md)、[tui/tui_tool_progress_acceptance.md](tui/tui_tool_progress_acceptance.md) |
 | 给前端或 App 调 API | [api_server.md](api_server.md)、[api/mobile_chat_p0_technical_plan.md](api/mobile_chat_p0_technical_plan.md) |
@@ -46,7 +46,7 @@
 | [usage/](usage/) | 分模式（TUI / CLI / agent-webui）、分场景的使用说明，每个场景配命令、界面说明和要点。 |
 | [api/](api/) | 移动端、OpenAI-compatible 调用方和 API 形态专题。主 API 文档仍保留在 [api_server.md](api_server.md)。 |
 | [agentic_patterns_learning/](agentic_patterns_learning/) | 《智能体设计模式（双语版）》与 golang-cc 源码实践的对照学习材料。 |
-| [architecture/](architecture/) | 运行模式、单条消息 runtime flow、闭环 gate、golang-cc agent 能力边界、subagent runtime、Loop scheduler、上游对齐等架构级说明。 |
+| [architecture/](architecture/) | 运行模式、单条消息 runtime flow、闭环 gate、Computer Use、golang-cc agent 能力边界、subagent runtime、Loop scheduler、上游对齐等架构级说明。 |
 | [audit/](audit/) | 全项目独立审计报告与修复 backlog（带 `file:line` 证据、稳定条目 ID、验收标准和已验证/未验证边界）。 |
 | [archive/](archive/) | 已完成的重要发布归档，记录实际范围、提交/tag、验证证据、已知边界和过程复盘。 |
 | [auto_memory_plan/](auto_memory_plan/) | 自动记忆（auto memory）方案。 |

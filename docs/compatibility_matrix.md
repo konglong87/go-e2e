@@ -99,6 +99,12 @@ tenant pending-input API、WebUI composer 和 TUI PTY 回归，真实 MySQL 恢�
 - Extend stdout/stderr/exit-code split checks only as new command families are added.
 - Add cross-check golden fixtures only as newly discovered upstream-exact stream-json edge cases are identified.
 - Keep Playwright real-browser golden enabled in CI images that provide Node dependencies and a Chromium/Chrome executable; otherwise the test skips with an explicit runtime-unavailable reason.
+- Computer Use is currently a planned capability, not an implemented compatibility claim. The
+  architecture baseline is documented in
+  `docs/architecture/computer_use_integration_plan.md`; implementation must first prove
+  isolated X11 real-pixel click/input/receipt E2E, then TUI PTY and Desktop-v2 native-window
+  acceptance. `PyAutoGUI` is optional behind the isolated adapter; `pynput` is not the
+  primary executor.
 
 ## P0/P1 Backlog
 
