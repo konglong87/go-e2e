@@ -17,6 +17,7 @@ func readyCapabilities() Capabilities {
 		FocusState:       FocusFocused,
 		PermissionState:  PermissionApproved,
 		CoordinateSpace:  CoordinateSpace{Origin: OriginTopLeft, Unit: CoordinatePixels, Width: 800, Height: 600, ScaleFactor: 2},
+		Actions:          []ActionKind{ActionClick, ActionType, ActionWait},
 		ImageSupported:   true,
 		SupportsPause:    true,
 		SupportsStop:     true,
@@ -34,9 +35,14 @@ func newTestSession(t *testing.T, requireApproval bool) (*ComputerSession, Sessi
 	t.Helper()
 	now := time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC)
 	owner := SessionOwner{TenantID: 7, UserID: 11}
-	session, err := NewComputerSession(SessionOptions{ID: "computer-1", Owner: owner, Capabilities: readyCapabilities(), RequireApproval: requireApproval, Now: func() time.Time { return now }})
+	session, err := NewComputerSession(SessionOptions{ID: "computer-1", Owner: owner, Capabilities: readyCapabilities(), Now: func() time.Time { return now }})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !requireApproval {
+		if err := session.Approve(owner); err != nil {
+			t.Fatal(err)
+		}
 	}
 	return session, owner, now
 }
@@ -61,6 +67,9 @@ func TestUnknownReceiptRequiresFreshObservationAndNeverReplays(t *testing.T) {
 	if err := session.ValidateAction(action); err != nil {
 		t.Fatal(err)
 	}
+	if err := session.BeginAction(action); err != nil {
+		t.Fatal(err)
+	}
 	if err := session.RecordReceipt(ActionReceipt{ActionID: action.ID, SessionID: session.ID(), Outcome: OutcomeUnknown}); err != nil {
 		t.Fatal(err)
 	}
@@ -70,11 +79,12 @@ func TestUnknownReceiptRequiresFreshObservationAndNeverReplays(t *testing.T) {
 	if err := session.ValidateAction(action); err == nil {
 		t.Fatal("unknown outcome allowed input replay")
 	}
-	fresh := readyObservation(session.ID(), now.Add(time.Second))
+	fresh := readyObservation(session.ID(), now)
 	fresh.ID = "obs-2"
 	if err := session.SetObservation(fresh); err != nil {
 		t.Fatal(err)
 	}
+	action.ID = "action-2"
 	if action.ObservationID = fresh.ID; session.ValidateAction(action) != nil {
 		t.Fatal("fresh observation did not unblock new evaluation")
 	}

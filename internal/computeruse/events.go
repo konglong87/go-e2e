@@ -15,9 +15,9 @@ const (
 )
 
 type Event struct {
-	Kind      EventKind      `json:"kind"`
-	SessionID string         `json:"session_id"`
-	Action    *Action        `json:"action,omitempty"`
-	Receipt   *ActionReceipt `json:"receipt,omitempty"`
-	State     SessionState   `json:"state,omitempty"`
+	Kind          EventKind      `json:"kind"`
+	SessionID     string         `json:"session_id"`
+	ActionSummary string         `json:"redacted_action_summary,omitempty"`
+	Receipt       *ActionReceipt `json:"receipt,omitempty"`
+	State         SessionState   `json:"state,omitempty"`
 }

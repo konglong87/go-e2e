@@ -4,10 +4,9 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
-	runtimepkg "runtime"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -16,263 +15,242 @@ import (
 	cu "github.com/konglong87/go-e2e/internal/computeruse"
 )
 
+const (
+	computerHelperName     = "computer-helper-macos"
+	computerHelperEnv      = "GO_E2E_COMPUTER_HELPER"
+	computerRequestTimeout = 10 * time.Second
+	// This identity is local to the Wails-only control surface. It is NOT a
+	// tenant runtime credential and must never be injected into a model Query.
+	localComputerTenantID uint64 = 1
+	localComputerUserID   uint64 = 1
+)
+
 type ComputerSessionStartInput struct {
 	Approved bool `json:"approved"`
 }
-
 type ComputerCapabilitiesDTO struct {
 	Capabilities cu.Capabilities `json:"capabilities"`
 	Available    bool            `json:"available"`
 	ErrorCode    string          `json:"error_code,omitempty"`
 	ErrorMessage string          `json:"error_message,omitempty"`
 }
-
 type ComputerObservationDTO struct {
 	Observation cu.Observation `json:"observation"`
 	ImageData   string         `json:"image_data,omitempty"`
 	MediaType   string         `json:"media_type,omitempty"`
 }
-
 type ComputerSessionDTO struct {
-	ID           string            `json:"id"`
+	ID           string            `json:"session_id"`
 	State        cu.SessionState   `json:"state"`
 	Capabilities cu.Capabilities   `json:"capabilities"`
 	Observation  *cu.Observation   `json:"observation,omitempty"`
 	LastReceipt  *cu.ActionReceipt `json:"last_receipt,omitempty"`
-	ErrorCode    string            `json:"error_code,omitempty"`
-	ErrorMessage string            `json:"error_message,omitempty"`
 }
 
+type computerBackendFactory func(context.Context) (cu.Backend, error)
+
+// Platform construction is injected; control/snapshot logic depends only on
+// the domain controller. Windows will supply a factory, not a second manager.
 type computerManager struct {
-	mu      sync.Mutex
-	backend *macbackend.Backend
-	session *cu.ComputerSession
-	owner   cu.SessionOwner
+	mu         sync.Mutex
+	backend    cu.Backend
+	controller *cu.Controller
+	owner      cu.SessionOwner
+	factory    computerBackendFactory
 }
 
 func newComputerManager() *computerManager {
-	return &computerManager{owner: cu.SessionOwner{TenantID: 1, UserID: 1}}
+	return &computerManager{owner: cu.SessionOwner{TenantID: localComputerTenantID, UserID: localComputerUserID}, factory: newComputerBackend}
 }
-
-func (m *computerManager) helperPath() (string, error) {
-	if value := strings.TrimSpace(os.Getenv("GO_E2E_COMPUTER_HELPER")); value != "" {
+func newComputerBackend(ctx context.Context) (cu.Backend, error) {
+	if runtime.GOOS != "darwin" {
+		return nil, errors.New("Computer Use backend is unavailable on this platform")
+	}
+	path, err := locateComputerHelper()
+	if err != nil {
+		return nil, err
+	}
+	return macbackend.New(ctx, macbackend.Config{HelperPath: path, RequestTimeout: computerRequestTimeout})
+}
+func locateComputerHelper() (string, error) {
+	if value := strings.TrimSpace(os.Getenv(computerHelperEnv)); value != "" {
+		if !filepath.IsAbs(value) {
+			return "", errors.New("computer helper path must be absolute")
+		}
 		return value, nil
 	}
 	executable, err := os.Executable()
-	if err == nil {
-		candidates := []string{
-			filepath.Join(filepath.Dir(executable), "..", "Helpers", "computer-helper-macos"),
-			filepath.Join(filepath.Dir(executable), "computer-helper-macos"),
-		}
-		for _, candidate := range candidates {
-			if _, statErr := os.Stat(candidate); statErr == nil {
-				return candidate, nil
-			}
-		}
+	if err != nil {
+		return "", err
 	}
-	if runtimepkg.GOOS != "darwin" {
-		return "", errors.New("macOS Host Computer Use is only available on macOS")
+	path := filepath.Join(filepath.Dir(executable), "..", "Helpers", computerHelperName)
+	if stat, err := os.Stat(path); err == nil && !stat.IsDir() {
+		return path, nil
 	}
-	return "", errors.New("computer helper is not bundled; set GO_E2E_COMPUTER_HELPER")
+	return "", errors.New("computer helper is not bundled")
 }
-
-func (m *computerManager) ensureBackend(ctx context.Context) (*macbackend.Backend, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+func (m *computerManager) ensureBackendLocked(ctx context.Context) (cu.Backend, error) {
 	if m.backend != nil {
 		return m.backend, nil
 	}
-	path, err := m.helperPath()
+	b, err := m.factory(ctx)
 	if err != nil {
 		return nil, err
 	}
-	backend, err := macbackend.New(ctx, macbackend.Config{HelperPath: path, RequestTimeout: 10 * time.Second})
-	if err != nil {
-		return nil, err
-	}
-	m.backend = backend
-	return backend, nil
+	m.backend = b
+	return b, nil
 }
-
 func (m *computerManager) capabilities(ctx context.Context) (cu.Capabilities, error) {
-	backend, err := m.ensureBackend(ctx)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	b, err := m.ensureBackendLocked(ctx)
 	if err != nil {
 		return cu.Capabilities{}, err
 	}
-	return backend.Capabilities(ctx)
+	return b.Capabilities(ctx)
 }
-
-func (m *computerManager) start(ctx context.Context, input ComputerSessionStartInput) (ComputerSessionDTO, error) {
-	caps, err := m.capabilities(ctx)
-	if err != nil {
-		return ComputerSessionDTO{}, err
-	}
+func (m *computerManager) start(ctx context.Context, in ComputerSessionStartInput) (ComputerSessionDTO, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.session != nil && m.session.State() != cu.SessionStopped {
-		return m.snapshotLocked(), nil
+	if m.controller != nil {
+		s := m.controller.Session()
+		if s.State() != cu.SessionStopped && s.State() != cu.SessionFailed {
+			if in.Approved && s.State() == cu.SessionPendingApproval {
+				if err := s.Approve(m.owner); err != nil {
+					return ComputerSessionDTO{}, err
+				}
+			}
+			return computerSnapshot(s), nil
+		}
+		// A stopped helper must not be reused for a newly approved session.
+		if err := m.controller.Close(ctx); err != nil {
+			return ComputerSessionDTO{}, err
+		}
+		m.backend = nil
+		m.controller = nil
 	}
-	session, err := cu.NewComputerSession(cu.SessionOptions{Owner: m.owner, Capabilities: caps, RequireApproval: true, MaxActions: 30})
+	b, err := m.ensureBackendLocked(ctx)
 	if err != nil {
 		return ComputerSessionDTO{}, err
 	}
-	m.session = session
-	if input.Approved {
-		if err := m.session.Approve(m.owner); err != nil {
+	caps, err := b.Capabilities(ctx)
+	if err != nil {
+		return ComputerSessionDTO{}, err
+	}
+	s, err := cu.NewComputerSession(cu.SessionOptions{Owner: m.owner, Capabilities: caps})
+	if err != nil {
+		return ComputerSessionDTO{}, err
+	}
+	c, err := cu.NewController(s, b)
+	if err != nil {
+		return ComputerSessionDTO{}, err
+	}
+	m.controller = c
+	if in.Approved {
+		if err := s.Approve(m.owner); err != nil {
 			return ComputerSessionDTO{}, err
 		}
 	}
-	return m.snapshotLocked(), nil
+	return computerSnapshot(s), nil
 }
-
-func (m *computerManager) observe(ctx context.Context, owner cu.SessionOwner, request cu.ObserveRequest) (cu.Observation, error) {
+func (m *computerManager) active(id string) (*cu.Controller, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if err := m.checkOwnerLocked(owner, request.SessionID); err != nil {
-		return cu.Observation{}, err
+	if m.controller == nil || m.controller.Session().ID() != id {
+		return nil, errors.New("computer session not found")
 	}
-	if m.session.State() != cu.SessionReady {
-		return cu.Observation{}, fmt.Errorf("computer session is not ready: %s", m.session.State())
+	return m.controller, nil
+}
+func computerSnapshot(s *cu.ComputerSession) ComputerSessionDTO {
+	result := ComputerSessionDTO{ID: s.ID(), State: s.State(), Capabilities: s.Capabilities()}
+	if o, ok := s.CurrentObservation(); ok {
+		result.Observation = &o
 	}
-	observation, err := m.backend.Observe(ctx, request)
+	if r, ok := s.LastReceipt(); ok {
+		result.LastReceipt = &r
+	}
+	return result
+}
+func (m *computerManager) observe(ctx context.Context, id string) (ComputerObservationDTO, error) {
+	c, err := m.active(id)
 	if err != nil {
-		return cu.Observation{}, err
+		return ComputerObservationDTO{}, err
 	}
-	if err := m.session.SetObservation(observation); err != nil {
-		return cu.Observation{}, err
+	o, err := c.Observe(ctx, m.owner, cu.ObserveRequest{SessionID: id})
+	if err != nil {
+		return ComputerObservationDTO{}, err
 	}
-	return observation, nil
+	data, mediaType, err := c.ObservationImage(ctx, m.owner, id, o.ID)
+	if err != nil {
+		_ = c.Pause(ctx, m.owner, id)
+		return ComputerObservationDTO{}, err
+	}
+	return ComputerObservationDTO{Observation: o, ImageData: base64.StdEncoding.EncodeToString(data), MediaType: mediaType}, nil
 }
-
-func (m *computerManager) execute(ctx context.Context, owner cu.SessionOwner, action cu.Action) (cu.ActionReceipt, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if err := m.checkOwnerLocked(owner, action.SessionID); err != nil {
-		return cu.ActionReceipt{}, err
+func (m *computerManager) control(ctx context.Context, id string, kind cu.ActionKind) (ComputerSessionDTO, error) {
+	c, err := m.active(id)
+	if err != nil {
+		return ComputerSessionDTO{}, err
 	}
-	if err := m.session.ValidateAction(action); err != nil {
-		return cu.ActionReceipt{ActionID: action.ID, SessionID: action.SessionID, Outcome: cu.OutcomeRejected, Verification: cu.VerificationNotChecked, RedactedActionSummary: action.RedactedSummary(), ErrorMessage: err.Error()}, err
+	switch kind {
+	case cu.ActionPause:
+		err = c.Pause(ctx, m.owner, id)
+	case cu.ActionResume:
+		err = c.Resume(ctx, m.owner, id)
+	case cu.ActionStop:
+		err = c.Stop(ctx, m.owner, id)
+	default:
+		err = errors.New("unsupported computer control")
 	}
-	receipt, err := m.backend.Execute(ctx, action)
-	if recordErr := m.session.RecordReceipt(receipt); recordErr != nil && err == nil {
-		err = recordErr
-	}
-	return receipt, err
+	return computerSnapshot(c.Session()), err
 }
-
-func (m *computerManager) pause(ctx context.Context, owner cu.SessionOwner, id string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if err := m.checkOwnerLocked(owner, id); err != nil {
-		return err
-	}
-	if err := m.session.Pause(); err != nil {
-		return err
-	}
-	return m.backend.Pause(ctx)
-}
-
-func (m *computerManager) resume(ctx context.Context, owner cu.SessionOwner, id string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if err := m.checkOwnerLocked(owner, id); err != nil {
-		return err
-	}
-	if err := m.session.Resume(owner); err != nil {
-		return err
-	}
-	return m.backend.Resume(ctx)
-}
-
-func (m *computerManager) stop(ctx context.Context, owner cu.SessionOwner, id string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if err := m.checkOwnerLocked(owner, id); err != nil {
-		return err
-	}
-	_ = m.backend.Stop(ctx)
-	return m.session.Stop(owner)
-}
-
 func (m *computerManager) close(ctx context.Context) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.backend == nil {
-		return nil
-	}
-	err := m.backend.Close(ctx)
+	c, b := m.controller, m.backend
+	m.controller = nil
 	m.backend = nil
-	return err
-}
-
-func (m *computerManager) checkOwnerLocked(owner cu.SessionOwner, id string) error {
-	if m.session == nil || m.session.ID() != id {
-		return errors.New("computer session not found")
+	m.mu.Unlock()
+	if c != nil {
+		return c.Close(ctx)
 	}
-	if !m.session.Owns(owner) {
-		return errors.New("computer session ownership mismatch")
+	if b != nil {
+		return b.Close(ctx)
 	}
 	return nil
 }
-
-func (m *computerManager) snapshotLocked() ComputerSessionDTO {
-	snapshot := ComputerSessionDTO{Capabilities: m.session.Capabilities(), ID: m.session.ID(), State: m.session.State()}
-	if observation, ok := m.session.CurrentObservation(); ok {
-		snapshot.Observation = &observation
-	}
-	if receipt, ok := m.session.LastReceipt(); ok {
-		snapshot.LastReceipt = &receipt
-	}
-	return snapshot
-}
-
 func (a *app) GetComputerCapabilities() ComputerCapabilitiesDTO {
 	caps, err := a.computer().capabilities(a.windowContext())
 	if err != nil {
-		return ComputerCapabilitiesDTO{Available: false, ErrorCode: "capability_unavailable", ErrorMessage: err.Error()}
+		return ComputerCapabilitiesDTO{ErrorCode: "capability_unavailable", ErrorMessage: err.Error()}
 	}
 	return ComputerCapabilitiesDTO{Capabilities: caps, Available: true}
 }
-
-func (a *app) StartComputerSession(input ComputerSessionStartInput) (ComputerSessionDTO, error) {
-	return a.computer().start(a.windowContext(), input)
+func (a *app) StartComputerSession(in ComputerSessionStartInput) (ComputerSessionDTO, error) {
+	return a.computer().start(a.windowContext(), in)
 }
-
-func (a *app) ObserveComputerSession(sessionID string) (ComputerObservationDTO, error) {
-	observation, err := a.computer().observe(a.windowContext(), a.computer().owner, cu.ObserveRequest{SessionID: sessionID})
+func (a *app) ObserveComputerSession(id string) (ComputerObservationDTO, error) {
+	return a.computer().observe(a.windowContext(), id)
+}
+func (a *app) PauseComputerSession(id string) (ComputerSessionDTO, error) {
+	return a.computer().control(a.windowContext(), id, cu.ActionPause)
+}
+func (a *app) ResumeComputerSession(id string) (ComputerSessionDTO, error) {
+	return a.computer().control(a.windowContext(), id, cu.ActionResume)
+}
+func (a *app) StopComputerSession(id string) (ComputerSessionDTO, error) {
+	return a.computer().control(a.windowContext(), id, cu.ActionStop)
+}
+func (a *app) GetComputerActionReceipt(id, actionID string) (cu.ActionReceipt, error) {
+	c, err := a.computer().active(id)
 	if err != nil {
-		return ComputerObservationDTO{}, err
-	}
-	image, mediaType, err := a.computer().backend.ObservationImage(a.windowContext(), observation.ID)
-	if err != nil {
-		return ComputerObservationDTO{}, err
-	}
-	return ComputerObservationDTO{Observation: observation, ImageData: base64.StdEncoding.EncodeToString(image), MediaType: mediaType}, nil
-}
-
-func (a *app) PauseComputerSession(sessionID string) error {
-	return a.computer().pause(a.windowContext(), a.computer().owner, sessionID)
-}
-func (a *app) ResumeComputerSession(sessionID string) error {
-	return a.computer().resume(a.windowContext(), a.computer().owner, sessionID)
-}
-func (a *app) StopComputerSession(sessionID string) error {
-	return a.computer().stop(a.windowContext(), a.computer().owner, sessionID)
-}
-func (a *app) GetComputerActionReceipt(sessionID, actionID string) (cu.ActionReceipt, error) {
-	m := a.computer()
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if err := m.checkOwnerLocked(m.owner, sessionID); err != nil {
 		return cu.ActionReceipt{}, err
 	}
-	receipt, ok := m.session.LastReceipt()
-	if !ok || receipt.ActionID != actionID {
-		return cu.ActionReceipt{}, errors.New("computer action receipt not found")
+	r, ok := c.Session().Receipt(actionID)
+	if !ok {
+		return cu.ActionReceipt{}, errors.New("computer receipt not found")
 	}
-	return receipt, nil
+	return r, nil
 }
-
 func (a *app) computer() *computerManager {
 	a.mu.Lock()
 	defer a.mu.Unlock()

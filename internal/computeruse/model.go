@@ -8,11 +8,19 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 )
 
-const ProtocolVersion = "computer-use.v1"
+const (
+	ProtocolVersion     = "computer-use.v1"
+	MaxActionDurationMS = 10000
+	MaxInputBytes       = 4096
+	MaxHotkeyKeys       = 5
+	MaxKeyBytes         = 32
+	MaxScrollDelta      = 10000
+)
 
 // Platform identifies the host family without exposing platform implementation
 // details in the public contract.
@@ -148,16 +156,16 @@ func (c Capabilities) Supports(action ActionKind) bool {
 }
 
 func (c Capabilities) Validate() error {
-	if c.ProtocolVersion != "" && c.ProtocolVersion != ProtocolVersion {
+	if c.ProtocolVersion != ProtocolVersion {
 		return fmt.Errorf("unsupported computer use protocol version %q", c.ProtocolVersion)
 	}
-	if c.Platform == PlatformUnknown || c.Backend == BackendUnknown {
+	if c.Platform == "" || c.Backend == "" || c.Platform == PlatformUnknown || c.Backend == BackendUnknown {
 		return errors.New("platform and backend are required")
 	}
 	if c.CoordinateSpace.Origin != OriginTopLeft || c.CoordinateSpace.Unit != CoordinatePixels {
 		return errors.New("coordinate space must use top-left pixel coordinates")
 	}
-	if c.CoordinateSpace.Width < 0 || c.CoordinateSpace.Height < 0 || c.CoordinateSpace.ScaleFactor < 0 {
+	if c.CoordinateSpace.Width < 0 || c.CoordinateSpace.Height < 0 || c.CoordinateSpace.ScaleFactor < 0 || math.IsNaN(c.CoordinateSpace.ScaleFactor) || math.IsInf(c.CoordinateSpace.ScaleFactor, 0) {
 		return errors.New("coordinate space dimensions and scale factor must be non-negative")
 	}
 	return nil
@@ -247,10 +255,10 @@ func (a Action) Validate(now time.Time, observation Observation) error {
 	if observation.SessionID != "" && a.SessionID != observation.SessionID {
 		return errors.New("action session does not match observation session")
 	}
-	if a.Kind == "" {
+	if !a.Kind.IsInput() && !a.Kind.IsControl() {
 		return errors.New("action kind is required")
 	}
-	if a.Kind.IsInput() {
+	if a.Kind.IsInput() || a.Kind == ActionWait {
 		if a.ObservationID == "" {
 			return errors.New("input action must reference an observation")
 		}
@@ -281,8 +289,26 @@ func (a Action) Validate(now time.Time, observation Observation) error {
 	if a.Kind == ActionScroll && a.DeltaX == 0 && a.DeltaY == 0 {
 		return errors.New("scroll requires a non-zero delta")
 	}
-	if a.Kind == ActionWait && a.DurationMS < 0 {
+	if a.DurationMS < 0 || a.DurationMS > MaxActionDurationMS {
 		return errors.New("wait duration must not be negative")
+	}
+
+	if len(a.Text) > MaxInputBytes || len(a.Keys) > MaxHotkeyKeys || len(a.Key) > MaxKeyBytes {
+		return errors.New("action input exceeds bounds")
+	}
+	for _, k := range a.Keys {
+		if strings.TrimSpace(k) == "" || len(k) > MaxKeyBytes {
+			return errors.New("invalid hotkey")
+		}
+	}
+	if a.DeltaX < -MaxScrollDelta || a.DeltaX > MaxScrollDelta || a.DeltaY < -MaxScrollDelta || a.DeltaY > MaxScrollDelta {
+		return errors.New("scroll exceeds bounds")
+	}
+	if a.DisplayID != "" && a.DisplayID != observation.DisplayID {
+		return errors.New("action display mismatch")
+	}
+	if a.WindowID != "" && a.WindowID != observation.WindowID {
+		return errors.New("action window mismatch")
 	}
 	return nil
 }
@@ -347,5 +373,5 @@ type ActionReceipt struct {
 }
 
 func (r ActionReceipt) IsTerminal() bool {
-	return r.Outcome == OutcomeExecuted || r.Outcome == OutcomeRejected || r.Outcome == OutcomeFailed || r.Outcome == OutcomeUnknown
+	return r.Outcome == OutcomeNotStarted || r.Outcome == OutcomeExecuted || r.Outcome == OutcomeRejected || r.Outcome == OutcomeFailed || r.Outcome == OutcomeUnknown
 }

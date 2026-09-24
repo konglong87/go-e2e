@@ -18,26 +18,31 @@ const (
 	SessionNeedsObservation SessionState = "needs_observation"
 	SessionStopped          SessionState = "stopped"
 	SessionFailed           SessionState = "failed"
+	DefaultMaxActions                    = 30
+	DefaultObservationTTL                = 30 * time.Second
 )
 
 type SessionOwner struct {
 	TenantID uint64 `json:"tenant_id"`
 	UserID   uint64 `json:"user_id"`
+	// SessionID binds an agent capability to its conversation, not just its user.
+	SessionID uint64 `json:"session_id"`
 }
 
 type SessionOptions struct {
-	ID              string
-	Owner           SessionOwner
-	Capabilities    Capabilities
-	RequireApproval bool
-	MaxActions      int
-	ObservationTTL  time.Duration
-	Now             func() time.Time
+	ID             string
+	Owner          SessionOwner
+	Capabilities   Capabilities
+	MaxActions     int
+	ObservationTTL time.Duration
+	Now            func() time.Time
 }
 
+// ComputerSession is the authorization/state authority. It never runs native
+// code under its mutex; a Controller serializes dispatch separately so Stop can
+// revoke authorization even while a backend is blocked.
 type ComputerSession struct {
-	mu sync.RWMutex
-
+	mu             sync.RWMutex
 	id             string
 	owner          SessionOwner
 	capabilities   Capabilities
@@ -49,64 +54,50 @@ type ComputerSession struct {
 	now            func() time.Time
 	observation    Observation
 	hasObservation bool
+	observations   map[string]struct{}
+	actions        map[string]struct{}
+	receipts       map[string]ActionReceipt
 	lastReceipt    *ActionReceipt
+	inFlight       string
 }
 
-func NewComputerSession(options SessionOptions) (*ComputerSession, error) {
-	if options.ID == "" {
-		options.ID = uuid.NewString()
+func NewComputerSession(o SessionOptions) (*ComputerSession, error) {
+	if o.Owner.TenantID == 0 || o.Owner.UserID == 0 {
+		return nil, errors.New("computer session owner is required")
 	}
-	if options.Now == nil {
-		options.Now = time.Now
+	if o.ID == "" {
+		o.ID = uuid.NewString()
 	}
-	if options.MaxActions <= 0 {
-		options.MaxActions = 30
+	if o.Now == nil {
+		o.Now = time.Now
 	}
-	if options.ObservationTTL <= 0 {
-		options.ObservationTTL = 30 * time.Second
+	if o.MaxActions <= 0 {
+		o.MaxActions = DefaultMaxActions
 	}
-	if err := options.Capabilities.Validate(); err != nil {
+	if o.ObservationTTL <= 0 {
+		o.ObservationTTL = DefaultObservationTTL
+	}
+	if err := o.Capabilities.Validate(); err != nil {
 		return nil, err
 	}
-	state := SessionReady
-	approved := true
-	if options.RequireApproval || options.Capabilities.PermissionState != PermissionApproved {
-		state = SessionPendingApproval
-		approved = false
-	}
-	return &ComputerSession{
-		id:             options.ID,
-		owner:          options.Owner,
-		capabilities:   options.Capabilities,
-		state:          state,
-		approved:       approved,
-		maxActions:     options.MaxActions,
-		observationTTL: options.ObservationTTL,
-		now:            options.Now,
-	}, nil
+	return &ComputerSession{id: o.ID, owner: o.Owner, capabilities: cloneCapabilities(o.Capabilities), state: SessionPendingApproval,
+		maxActions: o.MaxActions, observationTTL: o.ObservationTTL, now: o.Now, observations: map[string]struct{}{}, actions: map[string]struct{}{}, receipts: map[string]ActionReceipt{}}, nil
 }
-
-func (s *ComputerSession) ID() string          { s.mu.RLock(); defer s.mu.RUnlock(); return s.id }
-func (s *ComputerSession) Owner() SessionOwner { s.mu.RLock(); defer s.mu.RUnlock(); return s.owner }
-func (s *ComputerSession) State() SessionState { s.mu.RLock(); defer s.mu.RUnlock(); return s.state }
+func (s *ComputerSession) ID() string               { return s.id }
+func (s *ComputerSession) Owner() SessionOwner      { return s.owner }
+func (s *ComputerSession) Owns(o SessionOwner) bool { return s.owner == o }
+func (s *ComputerSession) State() SessionState      { s.mu.RLock(); defer s.mu.RUnlock(); return s.state }
+func (s *ComputerSession) Approved() bool           { s.mu.RLock(); defer s.mu.RUnlock(); return s.approved }
+func (s *ComputerSession) ActionCount() int         { s.mu.RLock(); defer s.mu.RUnlock(); return s.actionCount }
 func (s *ComputerSession) Capabilities() Capabilities {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.capabilities
+	return cloneCapabilities(s.capabilities)
 }
-func (s *ComputerSession) ActionCount() int { s.mu.RLock(); defer s.mu.RUnlock(); return s.actionCount }
-func (s *ComputerSession) Approved() bool   { s.mu.RLock(); defer s.mu.RUnlock(); return s.approved }
-
-func (s *ComputerSession) Owns(owner SessionOwner) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.owner == owner
-}
-
-func (s *ComputerSession) Approve(owner SessionOwner) error {
+func (s *ComputerSession) Approve(o SessionOwner) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.owner != owner {
+	if s.owner != o {
 		return errors.New("computer session ownership mismatch")
 	}
 	if s.state != SessionPendingApproval {
@@ -119,129 +110,204 @@ func (s *ComputerSession) Approve(owner SessionOwner) error {
 	s.state = SessionReady
 	return nil
 }
-
 func (s *ComputerSession) Pause() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.state != SessionReady {
-		return fmt.Errorf("cannot pause session in state %q", s.state)
+	if s.state == SessionStopped || s.state == SessionFailed {
+		return errors.New("computer session is terminal")
 	}
 	s.state = SessionPaused
+	s.hasObservation = false
 	return nil
 }
-
-func (s *ComputerSession) Resume(owner SessionOwner) error {
+func (s *ComputerSession) Resume(o SessionOwner) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.owner != owner {
+	if s.owner != o {
 		return errors.New("computer session ownership mismatch")
 	}
-	if s.state != SessionPaused {
-		return fmt.Errorf("cannot resume session in state %q", s.state)
+	if s.state != SessionPaused || !s.approved || !s.capabilities.Ready() {
+		return errors.New("computer session cannot resume")
 	}
-	s.state = SessionReady
+	s.state = SessionNeedsObservation
+	s.hasObservation = false
 	return nil
 }
-
-func (s *ComputerSession) Stop(owner SessionOwner) error {
+func (s *ComputerSession) Stop(o SessionOwner) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.owner != owner {
+	if s.owner != o {
 		return errors.New("computer session ownership mismatch")
-	}
-	if s.state == SessionStopped {
-		return nil
 	}
 	s.state = SessionStopped
 	s.approved = false
+	s.hasObservation = false
 	return nil
 }
-
-func (s *ComputerSession) SetObservation(observation Observation) error {
+func (s *ComputerSession) CanObserve() error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.canObserveLocked()
+}
+func (s *ComputerSession) canObserveLocked() error {
+	if !s.approved || s.state == SessionStopped || s.state == SessionFailed || s.state == SessionPendingApproval {
+		return errors.New("computer observation is not authorized")
+	}
+	if s.inFlight != "" {
+		return errors.New("computer action is in flight")
+	}
+	return nil
+}
+func (s *ComputerSession) SetObservation(o Observation) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if observation.SessionID != s.id {
-		return errors.New("observation session mismatch")
+	if err := s.canObserveLocked(); err != nil {
+		return err
 	}
-	if observation.ID == "" {
-		return errors.New("observation id is required")
+	if o.SessionID != s.id || o.ID == "" {
+		return errors.New("observation identity mismatch")
 	}
-	if observation.Width <= 0 || observation.Height <= 0 {
-		return errors.New("observation dimensions must be positive")
+	if _, seen := s.observations[o.ID]; seen {
+		return errors.New("observation must be fresh")
 	}
-	if !observation.Capabilities.Ready() {
+	if err := o.Capabilities.Validate(); err != nil {
+		return err
+	}
+	if !o.Capabilities.Ready() || o.Width <= 0 || o.Height <= 0 {
 		return errors.New("observation backend is not ready")
 	}
-	if observation.ObservedAt.IsZero() {
-		observation.ObservedAt = s.now()
+	now := s.now()
+	if o.ObservedAt.IsZero() {
+		o.ObservedAt = now
 	}
-	if observation.ExpiresAt.IsZero() {
-		observation.ExpiresAt = observation.ObservedAt.Add(s.observationTTL)
+	if o.ObservedAt.After(now) {
+		return errors.New("observation timestamp is in the future")
 	}
-	s.observation = observation
+	maxExpiry := o.ObservedAt.Add(s.observationTTL)
+	if o.ExpiresAt.IsZero() || o.ExpiresAt.After(maxExpiry) {
+		o.ExpiresAt = maxExpiry
+	}
+	if o.Expired(now) {
+		return errors.New("observation has expired")
+	}
+	s.observations[o.ID] = struct{}{}
+	s.observation = cloneObservation(o)
 	s.hasObservation = true
+	s.capabilities = cloneCapabilities(o.Capabilities)
 	if s.state == SessionNeedsObservation {
 		s.state = SessionReady
 	}
 	return nil
 }
-
 func (s *ComputerSession) CurrentObservation() (Observation, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.observation, s.hasObservation
+	return cloneObservation(s.observation), s.hasObservation
 }
-
-func (s *ComputerSession) ValidateAction(action Action) error {
+func (s *ComputerSession) ValidateAction(a Action) error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if action.SessionID != s.id {
+	return s.validateActionLocked(a)
+}
+func (s *ComputerSession) validateActionLocked(a Action) error {
+	if a.SessionID != s.id {
 		return errors.New("action session mismatch")
 	}
-	if s.state != SessionReady {
-		return fmt.Errorf("session is not ready: %s", s.state)
+	if s.state != SessionReady || !s.approved || !s.capabilities.Ready() {
+		return errors.New("computer session is not ready")
+	}
+	if s.inFlight != "" {
+		return errors.New("computer action is in flight")
+	}
+	if _, seen := s.actions[a.ID]; seen {
+		return errors.New("computer action id already consumed; do not replay")
 	}
 	if s.actionCount >= s.maxActions {
 		return errors.New("computer action budget exceeded")
 	}
-	if !s.hasObservation && action.Kind.IsInput() {
-		return errors.New("input action requires an observation")
+	if !a.Kind.IsInput() && a.Kind != ActionWait {
+		return errors.New("action must use the control plane")
 	}
-	if action.Kind.IsInput() {
-		return action.Validate(s.now(), s.observation)
+	if !s.capabilities.Supports(a.Kind) {
+		return errors.New("computer action is not supported")
 	}
-	return action.Validate(s.now(), s.observation)
+	if !s.hasObservation {
+		return errors.New("action requires a fresh observation")
+	}
+	return a.Validate(s.now(), s.observation)
 }
 
-func (s *ComputerSession) RecordReceipt(receipt ActionReceipt) error {
+// BeginAction atomically consumes the action ID and observation BEFORE dispatch.
+// This reservation also covers unknown outcomes; observing again never resets it.
+func (s *ComputerSession) BeginAction(a Action) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if receipt.SessionID != s.id {
-		return errors.New("receipt session mismatch")
+	if err := s.validateActionLocked(a); err != nil {
+		return err
 	}
-	if !receipt.IsTerminal() {
+	s.actions[a.ID] = struct{}{}
+	s.actionCount++
+	s.inFlight = a.ID
+	s.hasObservation = false
+	return nil
+}
+func (s *ComputerSession) RecordReceipt(r ActionReceipt) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if r.SessionID != s.id || r.ActionID == "" || r.ActionID != s.inFlight {
+		return errors.New("receipt does not match the in-flight action")
+	}
+	if !r.IsTerminal() {
 		return errors.New("receipt outcome is not terminal")
 	}
-	s.lastReceipt = &receipt
-	s.actionCount++
-	switch receipt.Outcome {
-	case OutcomeUnknown:
-		s.state = SessionNeedsObservation
-	case OutcomeFailed:
-		s.state = SessionFailed
-	case OutcomeRejected:
-		if s.state == SessionReady {
-			s.state = SessionReady
-		}
+	r = cloneReceipt(r)
+	s.lastReceipt = &r
+	s.receipts[r.ActionID] = r
+	s.inFlight = ""
+	// Revocation always wins over a late success/failure/unknown response.
+	if s.state == SessionStopped || s.state == SessionFailed || s.state == SessionPaused {
+		return nil
+	}
+	s.state = SessionNeedsObservation
+	if r.Outcome == OutcomeFailed {
+		s.state = SessionPaused
 	}
 	return nil
 }
-
 func (s *ComputerSession) LastReceipt() (ActionReceipt, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.lastReceipt == nil {
 		return ActionReceipt{}, false
 	}
-	return *s.lastReceipt, true
+	return cloneReceipt(*s.lastReceipt), true
+}
+func (s *ComputerSession) Receipt(id string) (ActionReceipt, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	r, ok := s.receipts[id]
+	return cloneReceipt(r), ok
+}
+func cloneCapabilities(c Capabilities) Capabilities {
+	c.Actions = append([]ActionKind(nil), c.Actions...)
+	return c
+}
+func cloneObservation(o Observation) Observation {
+	o.Capabilities = cloneCapabilities(o.Capabilities)
+	return o
+}
+func cloneReceipt(r ActionReceipt) ActionReceipt {
+	if r.Before != nil {
+		v := *r.Before
+		r.Before = &v
+	}
+	if r.After != nil {
+		v := *r.After
+		r.After = &v
+	}
+	if r.ActualPoint != nil {
+		v := *r.ActualPoint
+		r.ActualPoint = &v
+	}
+	return r
 }
