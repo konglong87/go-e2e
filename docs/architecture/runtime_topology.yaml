@@ -132,13 +132,17 @@ nodes:
       - go test ./internal/gitpolicy ./internal/query ./internal/permissions ./internal/sandbox ./internal/shellcmd ./internal/toolpolicy -count=1
 
   - id: RT-TOOLS
-    summary: 文件、Bash、MCP、Skill、Task、Agent、图片工具与 Git 工具执行；七个 narrow Session Control tools 只将可信 tools.Context 交给共享 service；channel 图片异步受理
+    summary: 文件、Bash、MCP、Skill、Task、Agent、图片工具与 Git 工具执行；ComputerUse 只在显式 capability、图片输入和租户身份满足时注册，并通过 ComputerSession 进入平台 backend；七个 narrow Session Control tools 只将可信 tools.Context 交给共享 service；channel 图片异步受理
     paths:
       - internal/files/
       - internal/gitutil/
       - internal/mcp/
       - internal/tools/
       - internal/tools/imagegen/
+      - internal/tools/computeruse/
+      - internal/computeruse/
+      - internal/computerbackend/
+      - native/macos/
     downstream: [RT-SUBAGENT, RT-EVIDENCE, RT-PERSIST, RT-SESSION-CONTROL]
     tests:
       - go test ./internal/tools/... ./internal/mcp ./internal/gitutil -count=1
@@ -219,7 +223,7 @@ nodes:
       - go test ./internal/sessioncontrol ./internal/storage/mysql ./internal/tenant -count=1
 
   - id: RT-OUTPUT
-    summary: TUI、JSON、Session Control SSE、WebSocket、pending-input 脱敏状态事件、独立图片工作台、渠道图片消息及 Feishu 多卡实时 timeline 输出适配；WebUI 2.0 复用打字机、有序思考/工具/图片、命令与待处理队列，生命周期缓存和按会话过滤后限量查询提供实际配置与 Inspector 用量/权限/Trace；全页设置中心共享模型与 JSON 草稿，复用 Profile 定义/分配 API，区分文件解析/启动快照/Run 记录且保持聊天订阅
+    summary: TUI、JSON、Session Control SSE、WebSocket、pending-input 脱敏状态事件、独立图片工作台、渠道图片消息及 Feishu 多卡实时 timeline 输出适配；WebUI 2.0 复用打字机、有序思考/工具/图片、Computer Preview/Timeline/Approval/Pause/Stop 控制面，生命周期缓存和按会话过滤后限量查询提供实际配置与 Inspector 用量/权限/Trace；全页设置中心共享模型与 JSON 草稿，复用 Profile 定义/分配 API，区分文件解析/启动快照/Run 记录且保持聊天订阅
     paths:
       - package.json
       - package-lock.json

@@ -99,13 +99,15 @@ tenant pending-input API、WebUI composer 和 TUI PTY 回归，真实 MySQL 恢�
 - Extend stdout/stderr/exit-code split checks only as new command families are added.
 - Add cross-check golden fixtures only as newly discovered upstream-exact stream-json edge cases are identified.
 - Keep Playwright real-browser golden enabled in CI images that provide Node dependencies and a Chromium/Chrome executable; otherwise the test skips with an explicit runtime-unavailable reason.
-- Computer Use is currently a planned capability, not an implemented compatibility claim. The
-  architecture baseline is documented in
-  `docs/architecture/computer_use_integration_plan.md`; Phase 1 must first prove macOS Host
-  real-pixel screenshot/click/input/receipt E2E through Desktop-v2 with explicit session approval,
-  then native-window acceptance. Windows Host is the Phase 2 target and must reuse the same upper-layer contract; Linux virtual_x11
-  and TUI Computer Use are later phases. `PyAutoGUI`, `pynput` and a Python helper are not part of
-  the Phase 1 or Phase 2 primary path.
+- Computer Use Phase 1 code is present behind an explicit capability gate: the provider-neutral
+  `ComputerSession`/`Action`/`Observation`/`ActionReceipt` contract, structured `ComputerUse`
+  tool, macOS native helper protocol/backend, and Desktop-v2 Computer Workspace are implemented.
+  This is **not yet a complete compatibility claim** because real native-window pixel acceptance
+  is blocked until the macOS host is unlocked. After unlock, Phase 1 must still prove Start/
+  approval/real screenshot/click/input/receipt/Pause/Stop through the signed `.app`. Windows Host
+  remains Phase 2 and reuses the same upper-layer contract; Linux virtual_x11 and TUI Computer
+  Use are later phases. `PyAutoGUI`, `pynput` and a Python helper are not part of the Phase 1 or
+  Phase 2 primary path.
 
 ## P0/P1 Backlog
 

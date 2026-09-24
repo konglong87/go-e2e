@@ -65,6 +65,24 @@ WebUI 2.0 设置中心沿 RT-OUTPUT 消费 RT-BOUNDARY 的 `/runtime/settings` �
 | Prompt 爆炸半径 | 偏僻场景修复为何可能影响所有主流任务，以及如何控制作用域 | [prompt-blast-radius.mmd](../../diagrams/prompt-blast-radius.mmd) |
 | Gate / 共享状态 | gate 如何影响安全、工具序列、恢复、turn、token 和时长 | [gate-shared-state-topology.mmd](../../diagrams/gate-shared-state-topology.mmd) |
 
+### 1.2.1 Computer Use 第一阶段落点
+
+Computer Use 已注册为独立能力链，不扩展 `WebBrowser`：
+
+```text
+Desktop-v2 Computer Workspace
+  -> ComputerSession / ComputerUse
+  -> macOS Backend Adapter
+  -> stdio length-prefixed native protocol
+  -> macOS helper
+  -> screenshot / CGEvent input
+  -> ActionReceipt + before/after observation
+```
+
+公共合同位于 `internal/computeruse/`，只表达平台中立的 capabilities/readiness、坐标空间、Observation、Action 和 Receipt；`internal/computerbackend/macos/` 负责进程/IPC 适配，`native/macos/` 才包含 macOS API。Computer tool 默认不注册，必须同时满足显式 Computer capability、可信租户身份和 provider image input capability。`unknown` 结果不自动重放输入，Stop 后不自动恢复。
+
+第一阶段仍有一个未闭合的真实验收门：当前执行环境的 macOS 在 **2026 年 9 月 24 日** 被锁定，无法通过原生窗口点击完成 `.app` 的 Start/Approve/Observe/Pause/Stop 像素验收；代码构建、签名和协议/Go/Web 测试已通过，解锁后必须补齐仓库内 `desktop-v2/build/validation/20260924/` 的原生截图证据。
+
 ### 1.2 因果关系语义
 
 拓扑中的边只使用下面这些稳定语义。新增关系时优先复用，不创造近义词。

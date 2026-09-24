@@ -27,6 +27,7 @@ flowchart TB
       SKILLS["Skills<br/>专业做法与工作流"]
       MCP["MCP<br/>外部服务工具"]
       TOOLS["Tools<br/>文件、搜索、命令、浏览器"]
+      COMPUTER["Computer Use<br/>截图、结构化动作、真实桌面输入"]
       MEMORY["Memory<br/>长期记忆与项目经验"]
       IMAGE["Image Tool<br/>图片生成、编辑与理解"]
     end
@@ -69,6 +70,7 @@ flowchart TB
   GATE -->|完成| OUTPUTS
   LOOP --> CAPABILITIES
   CAPABILITIES --> LOOP
+  COMPUTER -->|ComputerSession / native helper| OUT_DESKTOP
 
   SESSION --> PERSIST
   LOOP --> PERSIST

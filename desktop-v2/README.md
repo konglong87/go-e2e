@@ -97,6 +97,32 @@ desktop-v2 固定使用用户 home 下的 `.golang-cc` 目录，和平台默认�
 需要隔离验收数据时使用独立 OS 用户，或在 macOS/Linux 为测试进程指定独立 HOME；
 设置 `GOLANG_CC_DESKTOP_CONFIG_DIR` 也会同时隔离 desktop-v2 的配置、SQLite 和日志。
 
+## Computer Use（Phase 1，macOS Host）
+
+desktop-v2 现在提供独立的 Computer Workspace 控制面，不修改 WebBrowser 语义：
+
+- `GetComputerCapabilities`：读取 macOS Host 的 capture/input/focus/permission readiness。
+- `StartComputerSession`：创建 session-level approval 会话；未批准不会进入 ready。
+- `ObserveComputerSession`：从 native helper 获取真实桌面 PNG，并展示 Preview。
+- `PauseComputerSession` / `ResumeComputerSession` / `StopComputerSession`：控制同一
+  session 的输入生命周期；Stop 后不会自动恢复。
+- `GetComputerActionReceipt`：读取结构化 action receipt 和 before/after observation 引用。
+
+helper 位于 `.app/Contents/Helpers/computer-helper-macos`，使用平台无关的长度前缀 JSON
+协议与 Go backend 通信。helper 不接收 prompt、provider key、Token 或原始凭据；敏感
+`type/key/hotkey` 只以脱敏摘要进入 timeline。第一阶段只支持 macOS Host，不实现
+Windows/Linux/TUI/Code Execution/Replay。
+
+真实验收命令：
+
+```bash
+bash scripts/build-desktop-v2.sh
+open desktop-v2/build/bin/go-e2e.app
+```
+
+原生窗口截图证据应保存到 `desktop-v2/build/validation/YYYYMMDD/`。**截至 2026 年 9 月 24 日，
+当前验收环境处于锁屏状态，尚未完成原生点击证据；不能以 Playwright/DOM 截图替代。**
+
 ## 原生窗口控制
 
 desktop-v2 的 host 绑定提供以下 Wails bridge 方法：
