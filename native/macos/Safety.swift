@@ -1,0 +1,141 @@
+import Foundation
+import CoreGraphics
+
+struct DisplayGeometry: Equatable {
+    let id: String
+    let bounds: CGRect // global CG event coordinates (points)
+    let width: Int
+    let height: Int
+    var scale: Double { Double(width) / bounds.width }
+    var valid: Bool {
+        bounds.minX.isFinite && bounds.minY.isFinite && bounds.width.isFinite && bounds.height.isFinite &&
+        width > 0 && height > 0 && width <= maxImageDimension && height <= maxImageDimension &&
+        width * height <= maxImagePixels && bounds.width > 0 && bounds.height > 0 && scale.isFinite && scale > 0 && scale <= 8 &&
+        abs(scale - Double(height) / bounds.height) < 0.01
+    }
+    func point(x: Int, y: Int) throws -> CGPoint {
+        guard valid, x >= 0, y >= 0, x < width, y < height else { throw SafetyError.invalidAction }
+        return CGPoint(x: bounds.minX + Double(x) / scale, y: bounds.minY + Double(y) / scale)
+    }
+    var coordinateSpace: JSONValue {
+        .object(["display_id": .string(id), "origin": .string("top_left"), "unit": .string("pixels"),
+                 "width": .number(Double(width)), "height": .number(Double(height)), "scale_factor": .number(scale)])
+    }
+}
+struct Snapshot {
+    let id: String
+    let session: String
+    let geometry: DisplayGeometry
+    let focus: Int32
+    let expires: Date
+}
+
+// State lock covers only gates and short paired event posts, never screenshot,
+// wait, IPC or PNG encoding. Stop/Pause invalidate queued generations at once.
+final class SafetyState {
+    private let lock = NSLock()
+    private var paused = false
+    private var stopped = false
+    private var generation = 0
+    private var session: String?
+    private var observation: Snapshot?
+    private var requests = Set<String>()
+    private var actions = Set<String>()
+
+    func register(_ request: Envelope) throws {
+        lock.lock(); defer { lock.unlock() }
+        guard request.valid(at: Date()) else { throw SafetyError.invalidEnvelope }
+        guard !requests.contains(request.requestID) else { throw SafetyError.duplicate }
+        guard requests.count < maxRememberedIDs else { stopped = true; throw SafetyError.capacity }
+        requests.insert(request.requestID)
+    }
+    func control(_ command: Command, generation next: Int) throws {
+        lock.lock(); defer { lock.unlock() }
+        if command == .shutdown || command == .stop { stopped = true; paused = true; observation = nil; return }
+        guard !stopped, next > generation else { throw SafetyError.inactive }
+        generation = next; paused = command == .pause; observation = nil
+    }
+    func end() { lock.lock(); stopped = true; paused = true; observation = nil; lock.unlock() }
+    private func check(_ request: Envelope) throws {
+        guard !stopped, !paused, request.payload["generation"]?.integer(in: 0...Int(Int32.max)) == generation else { throw SafetyError.inactive }
+        guard let deadline = request.expires, deadline > Date() else { throw SafetyError.expired }
+        if let session, session != request.sessionID { throw SafetyError.staleObservation }
+    }
+    func gate(_ request: Envelope, body: () throws -> Void = {}) throws {
+        lock.lock(); defer { lock.unlock() }; try check(request); try body()
+    }
+    func save(_ snapshot: Snapshot, for request: Envelope) throws {
+        lock.lock(); defer { lock.unlock() }; try check(request)
+        session = request.sessionID; observation = snapshot
+    }
+    func begin(_ request: Envelope) throws -> Snapshot {
+        lock.lock(); defer { lock.unlock() }; try check(request)
+        guard let snap = observation, snap.id == request.payload["observation_id"]?.string,
+              snap.session == request.sessionID, snap.expires > Date() else { throw SafetyError.staleObservation }
+        guard !actions.contains(request.actionID) else { throw SafetyError.duplicate }
+        guard actions.count < maxRememberedIDs else { stopped = true; throw SafetyError.capacity }
+        actions.insert(request.actionID); observation = nil // consume even if later rejected
+        return snap
+    }
+}
+
+enum InputOperation {
+    case mouse(ActionKind, CGPoint, Int)
+    case unicode([UInt16])
+    case key(CGKeyCode, CGEventFlags)
+    case scroll(Int32, Int32)
+}
+struct KeySpec { let code: CGKeyCode; let flags: CGEventFlags }
+let keyCodes: [String: CGKeyCode] = ["return":36,"enter":36,"tab":48,"space":49,"delete":51,"backspace":51,"escape":53,"esc":53,
+ "left":123,"right":124,"down":125,"up":126,"a":0,"b":11,"c":8,"d":2,"e":14,"f":3,"g":5,"h":4,"i":34,"j":38,"k":40,"l":37,"m":46,
+ "n":45,"o":31,"p":35,"q":12,"r":15,"s":1,"t":17,"u":32,"v":9,"w":13,"x":7,"y":16,"z":6,
+ "0":29,"1":18,"2":19,"3":20,"4":21,"5":23,"6":22,"7":26,"8":28,"9":25]
+let modifierFlags: [String: CGEventFlags] = ["command":.maskCommand,"cmd":.maskCommand,"meta":.maskCommand,
+ "control":.maskControl,"ctrl":.maskControl,"shift":.maskShift,"option":.maskAlternate,"alt":.maskAlternate]
+
+func hotkey(_ values: [JSONValue]) throws -> KeySpec {
+    guard values.count >= 2 && values.count <= 5 else { throw SafetyError.invalidAction }
+    var flags: CGEventFlags = []; var code: CGKeyCode?
+    for value in values {
+        guard let name = value.string?.lowercased() else { throw SafetyError.invalidAction }
+        if let flag = modifierFlags[name] {
+            guard !flags.contains(flag) else { throw SafetyError.invalidAction }; flags.insert(flag)
+        } else {
+            guard code == nil, let key = keyCodes[name] else { throw SafetyError.invalidAction }; code = key
+        }
+    }
+    guard let code, !flags.isEmpty else { throw SafetyError.invalidAction }
+    return KeySpec(code: code, flags: flags)
+}
+
+struct ActionPlan {
+    let operations: [InputOperation]
+    let waitMS: Int
+    let doubleClick: Bool
+    init(_ payload: JSONValue, geometry: DisplayGeometry) throws {
+        guard let raw = payload["kind"]?.string, let kind = ActionKind(rawValue: raw) else { throw SafetyError.invalidAction }
+        var ops: [InputOperation] = []; var wait = 0
+        switch kind {
+        case .click, .doubleClick, .rightClick, .move:
+            guard let x = payload["x"]?.integer(in: 0...maxImageDimension), let y = payload["y"]?.integer(in: 0...maxImageDimension) else { throw SafetyError.invalidAction }
+            let p = try geometry.point(x: x, y: y)
+            ops.append(.mouse(kind, p, 1)); if kind == .doubleClick { ops.append(.mouse(kind, p, 2)) }
+        case .type:
+            guard let text = payload["text"]?.string, !text.isEmpty, text.utf16.count <= maxTextUnits else { throw SafetyError.invalidAction }
+            // One Unicode scalar per down/up pair: no broken surrogate pairs.
+            for scalar in text.unicodeScalars { ops.append(.unicode(Array(String(scalar).utf16))) }
+        case .key:
+            guard let name = payload["key"]?.string?.lowercased(), let code = keyCodes[name] else { throw SafetyError.invalidAction }
+            ops.append(.key(code, []))
+        case .hotkey:
+            guard let values = payload["keys"]?.array else { throw SafetyError.invalidAction }
+            let key = try hotkey(values); ops.append(.key(key.code, key.flags))
+        case .scroll:
+            guard let x = payload["delta_x"]?.integer(in: -maxScrollDelta...maxScrollDelta), let y = payload["delta_y"]?.integer(in: -maxScrollDelta...maxScrollDelta), x != 0 || y != 0 else { throw SafetyError.invalidAction }
+            ops.append(.scroll(Int32(x), Int32(y)))
+        case .wait:
+            guard let duration = payload["duration_ms"]?.integer(in: 0...maxWaitMS) else { throw SafetyError.invalidAction }; wait = duration
+        }
+        operations = ops; waitMS = wait; doubleClick = kind == .doubleClick
+    }
+}

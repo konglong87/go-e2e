@@ -1,0 +1,166 @@
+import Foundation
+import CoreGraphics
+
+// Pure fake platform. This executable never constructs MacDesktop or posts a
+// CGEvent, asks for permissions, focuses apps, or captures the actual desktop.
+final class FakeDesktop: DesktopPlatform {
+    var display = DisplayGeometry(id: "1", bounds: CGRect(x: 100, y: -50, width: 100, height: 50), width: 200, height: 100)
+    var capturePermission = true
+    var inputPermission = true
+    var focused: Int32? = 42
+    var failCapture = false
+    var failGeometry = false
+    var failPost = false
+    var posts: [InputOperation] = []
+    var postHook: (() -> Void)?
+    var captureHook: (() -> Void)?
+    func geometry() throws -> DisplayGeometry { if failGeometry { throw SafetyError.unsupportedDisplay }; return display }
+    func captureAllowed() -> Bool { capturePermission }
+    func inputAllowed() -> Bool { inputPermission }
+    func focus() -> Int32? { focused }
+    func capture(_ g: DisplayGeometry) throws -> Data {
+        if failCapture { throw SafetyError.screenshotFailed }; captureHook?(); return Data([1,2,3])
+    }
+    func post(_ operation: InputOperation) throws {
+        if failPost { throw SafetyError.inputUnavailable }; posts.append(operation); postHook?()
+    }
+}
+var assertions = 0
+func expect(_ value: @autoclosure () -> Bool, _ label: String) {
+    assertions += 1
+    if !value() { fputs("FAIL: \(label)\n", stderr); exit(1) }
+}
+func expectThrows(_ label: String, _ body: () throws -> Void) {
+    do { try body(); expect(false, label) } catch { assertions += 1 }
+}
+func request(_ command: String, payload: [String:JSONValue], session: String = "session", id: String = UUID().uuidString, seconds: Double = 5) -> Envelope {
+    let formatter = ISO8601DateFormatter(); formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    var payload = payload; if payload["generation"] == nil { payload["generation"] = .number(0) }
+    return Envelope(protocolVersion: protocolVersion, requestID: id, sessionID: session, actionID: id,
+                    deadline: formatter.string(from: Date().addingTimeInterval(seconds)), command: command, payload: .object(payload))
+}
+func setup() -> (Engine,FakeDesktop) {
+    let desktop = FakeDesktop(); let engine = Engine(platform: desktop)
+    let observation = request("observe", payload: ["observation_id": .string("obs")])
+    let result = engine.observe(observation)
+    expect(result.outcome == .executed, "fake observation")
+    return (engine,desktop)
+}
+func action(_ kind: String, _ extra: [String:JSONValue] = [:], seconds: Double = 5) -> Envelope {
+    var p = extra; p["kind"] = .string(kind); p["observation_id"] = .string("obs")
+    return request("execute", payload: p, seconds: seconds)
+}
+
+// Safe integer conversion, overflow, bounds, NaN, infinity, fractions.
+for n in [Double.nan, Double.infinity, -Double.infinity, 1e99, -1e99, 1.5, -1, 10001] {
+    expect(JSONValue.number(n).integer(in: 0...10000) == nil, "invalid integer \(n)")
+}
+expect(JSONValue.number(Double(Int.max)).integer(in: 0...Int.max) == nil, "Int boundary rounding")
+expect(JSONValue.number(10000).integer(in: 0...10000) == 10000, "inclusive bound")
+
+let retina = FakeDesktop().display
+let p = try retina.point(x: 198, y: 98)
+expect(p.x == 199 && p.y == -1 && retina.scale == 2, "Retina pixels plus display origin")
+expectThrows("off-display point") { _ = try retina.point(x: 200, y: 0) }
+expectThrows("negative point") { _ = try retina.point(x: -1, y: 0) }
+for payload in [
+    ["kind": JSONValue.string("wait"), "duration_ms": .number(1e99)],
+    ["kind": .string("scroll"), "delta_x": .number(1e99), "delta_y": .number(1)],
+    ["kind": .string("click"), "x": .number(1.5), "y": .number(0)],
+    ["kind": .string("type"), "text": .string(String(repeating: "x", count: maxTextUnits + 1))]
+] { expectThrows("action numeric/text bound") { _ = try ActionPlan(.object(payload), geometry: retina) } }
+
+let combo = try hotkey([.string("cmd"), .string("shift"), .string("c")])
+expect(combo.code == 8 && combo.flags.contains(.maskCommand) && combo.flags.contains(.maskShift), "modifier flags")
+for keys in [["cmd","NOT-A-KEY","c"],["cmd","command","c"],["a","b"],["cmd"],["c"],["cmd","shift"],["cmd","c","d"]] {
+    expectThrows("invalid hotkey must not partially execute") { _ = try hotkey(keys.map{.string($0)}) }
+}
+let unicode = try ActionPlan(.object(["kind":.string("type"),"text":.string("A😀")]), geometry: retina)
+expect(unicode.operations.count == 2, "Unicode scalar grouping")
+if case .unicode(let units) = unicode.operations[1] { expect(units.count == 2, "surrogate pair preserved") } else { expect(false,"Unicode op") }
+let click = try ActionPlan(.object(["kind":.string("double_click"),"x":.number(2),"y":.number(2)]), geometry: retina)
+expect(click.operations.count == 2, "double click pair count")
+if case .mouse(_, _, let count) = click.operations[1] { expect(count == 2, "double click state") }
+
+for reason in ["permission","capture","focus","geometry","noevent","stopped","paused","expired","session","observation","display","window","generation"] {
+    let (engine,desktop) = setup()
+    var req = action("type", ["text":.string("abc")])
+    switch reason {
+    case "permission": desktop.inputPermission = false
+    case "capture": desktop.capturePermission = false
+    case "focus": desktop.focused = 7
+    case "geometry": desktop.failGeometry = true
+    case "noevent": desktop.failPost = true
+    case "stopped": try engine.state.control(.stop, generation: 1)
+    case "paused": try engine.state.control(.pause, generation: 1)
+    case "expired": req = action("type", ["text":.string("abc")], seconds: -1)
+    case "session": req = request("execute", payload:["kind":.string("type"),"text":.string("abc"),"observation_id":.string("obs")], session:"other")
+    case "observation": req = request("execute", payload:["kind":.string("type"),"text":.string("abc"),"observation_id":.string("old")])
+    case "display": req = action("type",["text":.string("abc"),"display_id":.string("2")])
+    case "window": req = action("type",["text":.string("abc"),"window_id":.string("9")])
+    default: req = action("type",["text":.string("abc"),"generation":.number(2)])
+    }
+    let result = engine.execute(req)
+    expect(result.outcome == .rejected && desktop.posts.isEmpty, "pre-input rejection: \(reason)")
+}
+
+for reason in ["permission","focus","screenshot","deadline"] {
+    let (engine,desktop) = setup()
+    desktop.postHook = {
+        switch reason {
+        case "permission": desktop.inputPermission = false
+        case "focus": desktop.focused = 7
+        case "screenshot": desktop.failCapture = true
+        default: Thread.sleep(forTimeInterval: 0.05)
+        }
+    }
+    let result = engine.execute(action("type", ["text":.string(reason == "screenshot" ? "a" : "ab")], seconds: reason == "deadline" ? 0.03 : 5))
+    expect(result.outcome == .unknown && desktop.posts.count == 1, "post-input uncertainty: \(reason)")
+    expectThrows("unknown outcome cannot resume") { try engine.state.control(.resume,generation:1) }
+}
+
+do {
+    let (engine,desktop) = setup()
+    let req = action("hotkey",["keys":.array([.string("command"),.string("c")])])
+    expect(engine.execute(req).outcome == .executed && desktop.posts.count == 1, "hotkey on fake platform")
+    expect(engine.execute(req).outcome == .rejected, "consumed observation cannot replay")
+    expect(engine.observe(request("observe",payload:["observation_id":.string("next")])).outcome == .executed, "fresh observe works")
+    expect(engine.observe(request("observe",payload:["observation_id":.string("other")],session:"other")).outcome == .rejected, "session binding sticky")
+}
+// Pause/Resume invalidate both old observations and queued generation-0 work.
+do {
+    let (engine,desktop) = setup()
+    try engine.state.control(.pause,generation:1); try engine.state.control(.resume,generation:2)
+    expect(engine.execute(action("type",["text":.string("x")])).outcome == .rejected && desktop.posts.isEmpty, "stale queued generation")
+    expect(engine.observe(request("observe",payload:["observation_id":.string("new"),"generation":.number(2)])).outcome == .executed, "observe after resume")
+    expectThrows("out of order control") { try engine.state.control(.pause,generation:1) }
+    try engine.state.control(.stop,generation:3)
+    expectThrows("stop cannot resume") { try engine.state.control(.resume,generation:4) }
+}
+// A stop on the reader thread can interrupt a long wait on the worker.
+do {
+    let (engine,_) = setup()
+    let done = DispatchSemaphore(value:0)
+    let began = DispatchSemaphore(value:0)
+    DispatchQueue.global().async {
+        began.signal()
+        let result = engine.execute(action("wait",["duration_ms":.number(5000)]))
+        expect(result.outcome == .rejected, "interrupted wait never posted input")
+        done.signal()
+    }
+    began.wait(); Thread.sleep(forTimeInterval:0.03)
+    let start = Date(); try engine.state.control(.stop,generation:1)
+    expect(done.wait(timeout:.now()+0.5) == .success && Date().timeIntervalSince(start)<0.5,"Stop not blocked by wait")
+}
+// Envelope deadlines, duplicate request IDs and malformed JSON never input.
+do {
+    let state = SafetyState()
+    let req = request("readiness",payload:[:])
+    try state.register(req)
+    expectThrows("duplicate request ID") { try state.register(req) }
+    expectThrows("expired deadline") { try state.register(request("execute",payload:[:],seconds:-1)) }
+    expectThrows("unbounded deadline") { try state.register(request("execute",payload:[:],seconds:1000)) }
+    let huge = Data("{\"x\":1e999}".utf8)
+    expectThrows("overflow JSON number") { _ = try JSONDecoder().decode(JSONValue.self,from:huge) }
+}
+print("PASS: \(assertions) native safety assertions (fake platform; no real input/capture)")

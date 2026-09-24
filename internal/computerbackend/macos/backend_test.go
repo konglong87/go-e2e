@@ -1,12 +1,17 @@
 package macos
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"image"
+	"image/png"
 	"os"
+	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -14,82 +19,331 @@ import (
 	cu "github.com/konglong87/go-e2e/internal/computeruse"
 )
 
+func testPNG() []byte {
+	var b bytes.Buffer
+	_ = png.Encode(&b, image.NewRGBA(image.Rect(0, 0, 2, 2)))
+	return b.Bytes()
+}
+func imagePayload() map[string]any {
+	return map[string]any{"data": base64.StdEncoding.EncodeToString(testPNG()), "media_type": pngMediaType, "width": float64(2), "height": float64(2), "display_id": "1", "scale_factor": float64(2)}
+}
+
+// No system APIs: every subprocess below is this Go test binary, not the
+// production native helper. Requests/actions never operate the user desktop.
 func TestHelperProcess(t *testing.T) {
-	if os.Getenv("GO_WANT_COMPUTER_HELPER") != "1" {
+	args := os.Args
+	idx := -1
+	for i, a := range args {
+		if a == "computer-test-helper" {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
 		return
 	}
-	defer os.Exit(0)
-	onePixel := base64.StdEncoding.EncodeToString([]byte("png"))
-	codec := native.NewCodec(8 * 1024 * 1024)
+	defer syscall.Exit(0) // bypass race runtime one-second exit delay in fixture child
+	mode := args[idx+1]
+	marker := args[idx+2]
+	codec := native.NewCodec(maxFrameBytes)
 	for {
-		request, err := codec.ReadFrame(os.Stdin)
+		req, err := codec.ReadFrame(os.Stdin)
 		if err != nil {
 			return
 		}
-		if request.Command == commandShutdown {
-			writeTestResponse(codec, request, true, cu.OutcomeExecuted, nil)
-			return
-		}
-		if request.Command == "block" {
-			time.Sleep(time.Second)
+		result := map[string]any{}
+		outcome := cu.OutcomeExecuted
+		switch req.Command {
+		case commandReadiness:
+			result = map[string]any{"capture_readiness": "ready", "input_readiness": "ready", "permission_state": "approved", "focus_state": "focused", "image_supported": true, "supports_pause": true, "supports_stop": true, "coordinate_space": map[string]any{"display_id": "1", "width": 2, "height": 2, "scale_factor": 2}}
+		case commandObserve:
+			result = imagePayload()
+		case commandExecute:
+			if marker != "" {
+				_ = os.WriteFile(marker, []byte("execute"), 0600)
+			}
+			switch mode {
+			case "hang":
+				continue
+			case "exit":
+				return
+			case "reject":
+				outcome = cu.OutcomeRejected
+			case "unknown":
+				outcome = cu.OutcomeUnknown
+			case "failed":
+				outcome = cu.OutcomeFailed
+			case "invalid-image":
+				result = imagePayload()
+				result["data"] = base64.StdEncoding.EncodeToString([]byte("png"))
+			default:
+				result = imagePayload()
+			}
+			switch mode {
+			case "session":
+				req.SessionID = "other"
+			case "action":
+				req.ActionID = "other"
+			case "request":
+				req.RequestID = "other"
+			case "command":
+				req.Command = "other"
+			case "deadline":
+				req.Deadline = req.Deadline.Add(time.Second)
+			}
+		case commandShutdown:
+			if mode == "shutdown-marker" {
+				_ = os.WriteFile(marker, []byte("shutdown"), 0600)
+			}
+			if mode == "ignore-shutdown" {
+				time.Sleep(time.Hour)
+				return
+			}
+		case "environment":
+			result["env"] = os.Environ()
+		case "stderr":
+			_, _ = os.Stderr.WriteString(strings.Repeat("SECRET-CREDENTIAL", 100000))
+		case "block":
 			continue
 		}
-		result := map[string]any{}
-		switch request.Command {
-		case commandReadiness:
-			result = map[string]any{"capture_readiness": "ready", "input_readiness": "ready", "permission_state": "approved", "focus_state": "focused", "image_supported": true, "supports_pause": true, "supports_stop": true}
-		case commandObserve, commandExecute:
-			result = map[string]any{"media_type": "image/png", "data": onePixel, "width": 1, "height": 1}
+		payload, _ := json.Marshal(map[string]any{"ok": outcome == cu.OutcomeExecuted, "outcome": outcome, "result": result, "error_message": "SECRET-CREDENTIAL"})
+		req.Payload = payload
+		_ = codec.WriteFrame(os.Stdout, req)
+		if req.Command == commandShutdown {
+			return
 		}
-		writeTestResponse(codec, request, true, cu.OutcomeExecuted, result)
 	}
 }
-
-func writeTestResponse(codec native.Codec, request native.Envelope, ok bool, outcome cu.Outcome, result map[string]any) {
-	payload, _ := json.Marshal(map[string]any{"ok": ok, "outcome": outcome, "result": result})
-	_ = codec.WriteFrame(os.Stdout, native.Envelope{ProtocolVersion: native.ProtocolVersion, RequestID: request.RequestID, SessionID: request.SessionID, ActionID: request.ActionID, Deadline: time.Now().Add(time.Second), Command: request.Command, Payload: payload})
-}
-
-func helperConfig(t *testing.T, timeout time.Duration) Config {
+func helperConfig(t *testing.T, mode string, timeout time.Duration, marker string) Config {
 	t.Helper()
-	return Config{HelperPath: os.Args[0], HelperArgs: []string{"-test.run=TestHelperProcess"}, HelperEnv: append(os.Environ(), "GO_WANT_COMPUTER_HELPER=1"), RequestTimeout: timeout}
+	return Config{HelperPath: os.Args[0], HelperArgs: []string{"-test.run=^TestHelperProcess$", "--", "computer-test-helper", mode, marker}, RequestTimeout: timeout}
+}
+func newTestBackend(t *testing.T, mode string, timeout time.Duration, marker string) *Backend {
+	t.Helper()
+	b, err := New(context.Background(), helperConfig(t, mode, timeout, marker))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = b.Close(context.Background()) })
+	return b
+}
+func observeTest(t *testing.T, b *Backend) cu.Observation {
+	t.Helper()
+	obs, err := b.Observe(context.Background(), cu.ObserveRequest{SessionID: "session-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return obs
+}
+func waitAction(obs cu.Observation) cu.Action {
+	return cu.Action{ID: "action-1", SessionID: obs.SessionID, ObservationID: obs.ID, Kind: cu.ActionWait, DurationMS: 1}
+}
+func awaitMarker(t *testing.T, path string) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(path); err == nil {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("helper did not receive execute")
 }
 
 func TestBackendObserveExecuteAndStop(t *testing.T) {
-	backend, err := New(context.Background(), helperConfig(t, time.Second))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer backend.Close(context.Background())
-	caps, err := backend.Capabilities(context.Background())
-	if err != nil || !caps.Ready() {
+	b := newTestBackend(t, "", time.Second, "")
+	caps, err := b.Capabilities(context.Background())
+	if err != nil || !caps.Ready() || !caps.Supports(cu.ActionClick) || caps.CoordinateSpace.ScaleFactor != 2 {
 		t.Fatalf("caps=%+v err=%v", caps, err)
 	}
-	observation, err := backend.Observe(context.Background(), cu.ObserveRequest{SessionID: "session-1"})
-	if err != nil || observation.Screenshot.SHA256 == "" {
-		t.Fatalf("observation=%+v err=%v", observation, err)
+	obs := observeTest(t, b)
+	if obs.ScaleFactor != 2 || obs.DisplayID != "1" || obs.Capabilities.CoordinateSpace.Width != 2 {
+		t.Fatalf("bad observation: %+v", obs)
 	}
-	image, mediaType, err := backend.ObservationImage(context.Background(), observation.ID)
-	if err != nil || string(image) != "png" || mediaType != "image/png" {
-		t.Fatalf("image=%q type=%q err=%v", image, mediaType, err)
+	data, media, err := b.ObservationImage(context.Background(), obs.ID)
+	if err != nil || !bytes.Equal(data, testPNG()) || media != pngMediaType {
+		t.Fatalf("image error %v", err)
 	}
-	receipt, err := backend.Execute(context.Background(), cu.Action{ID: "action-1", SessionID: "session-1", ObservationID: observation.ID, Kind: cu.ActionWait, DurationMS: 1})
+	data[0] = 0
+	again, _, _ := b.ObservationImage(context.Background(), obs.ID)
+	if again[0] == 0 {
+		t.Fatal("mutable image escaped")
+	}
+	receipt, err := b.Execute(context.Background(), waitAction(obs))
 	if err != nil || receipt.Outcome != cu.OutcomeExecuted || receipt.After == nil {
 		t.Fatalf("receipt=%+v err=%v", receipt, err)
 	}
-	if err := backend.Stop(context.Background()); err != nil {
+	if _, err = b.Execute(context.Background(), waitAction(obs)); err == nil {
+		t.Fatal("replayed action")
+	}
+	_ = observeTest(t, b)
+	if _, _, err = b.ObservationImage(context.Background(), obs.ID); err == nil {
+		t.Fatal("old PNG retained")
+	}
+	if err = b.Stop(context.Background()); err != nil {
 		t.Fatal(err)
+	}
+	if _, err = b.Observe(context.Background(), cu.ObserveRequest{SessionID: "session-1"}); err == nil {
+		t.Fatal("observe after stop")
+	}
+	if err = b.Resume(context.Background()); err == nil {
+		t.Fatal("resume after stop")
 	}
 }
 
-func TestBackendTimeoutReturnsUnknownOutcome(t *testing.T) {
-	backend, err := New(context.Background(), helperConfig(t, 10*time.Millisecond))
+func TestBackendFailureClassification(t *testing.T) {
+	for _, mode := range []string{"hang", "exit", "session", "action", "request", "command", "deadline", "unknown", "failed", "invalid-image", "reject"} {
+		t.Run(mode, func(t *testing.T) {
+			b := newTestBackend(t, mode, time.Second, "")
+			obs := observeTest(t, b)
+			ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
+			defer cancel()
+			receipt, err := b.Execute(ctx, waitAction(obs))
+			want := cu.OutcomeUnknown
+			if mode == "reject" {
+				want = cu.OutcomeRejected
+			}
+			if err == nil || receipt.Outcome != want {
+				t.Fatalf("outcome=%s want=%s err=%v", receipt.Outcome, want, err)
+			}
+			if strings.Contains(err.Error(), "SECRET") || strings.Contains(receipt.ErrorMessage, "SECRET") {
+				t.Fatal("sensitive helper error escaped")
+			}
+			if mode != "reject" {
+				if _, err = b.Observe(context.Background(), cu.ObserveRequest{SessionID: "session-1"}); err == nil {
+					t.Fatal("uncertain helper reused")
+				}
+			}
+		})
+	}
+}
+
+func TestBackendControlsDoNotWaitForExecute(t *testing.T) {
+	for _, command := range []string{commandStop, commandPause, commandShutdown} {
+		t.Run(command, func(t *testing.T) {
+			marker := filepath.Join(t.TempDir(), "started")
+			b := newTestBackend(t, "hang", 5*time.Second, marker)
+			obs := observeTest(t, b)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			done := make(chan struct{})
+			go func() { _, _ = b.Execute(ctx, waitAction(obs)); close(done) }()
+			awaitMarker(t, marker)
+			start := time.Now()
+			var err error
+			switch command {
+			case commandStop:
+				err = b.Stop(context.Background())
+			case commandPause:
+				err = b.Pause(context.Background())
+			case commandShutdown:
+				err = b.Close(context.Background())
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if time.Since(start) > time.Second {
+				t.Fatal("control blocked by action")
+			}
+			cancel()
+			select {
+			case <-done:
+			case <-time.After(time.Second):
+				t.Fatal("inflight call leaked")
+			}
+		})
+	}
+}
+
+func TestBackendCloseSendsShutdownAndIsBounded(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "closed")
+	b := newTestBackend(t, "shutdown-marker", time.Second, marker)
+	if err := b.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(marker)
+	if err != nil || string(content) != "shutdown" {
+		t.Fatalf("shutdown missing: %v", err)
+	}
+	if err = b.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	b = newTestBackend(t, "ignore-shutdown", time.Second, "")
+	start := time.Now()
+	_ = b.Close(context.Background())
+	if time.Since(start) > 2*time.Second {
+		t.Fatal("close unbounded")
+	}
+}
+
+func TestBackendCallerCancellationAndLocalRejections(t *testing.T) {
+	b := newTestBackend(t, "", time.Second, "")
+	obs := observeTest(t, b)
+	action := waitAction(obs)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	receipt, err := b.Execute(ctx, action)
+	if !errors.Is(err, context.Canceled) || receipt.Outcome != cu.OutcomeRejected {
+		t.Fatalf("receipt=%+v err=%v", receipt, err)
+	}
+	action.SessionID = "other"
+	receipt, err = b.Execute(context.Background(), action)
+	if err == nil || receipt.Outcome != cu.OutcomeRejected {
+		t.Fatal("cross-session input accepted")
+	}
+	action = waitAction(obs)
+	action.DisplayID = "other"
+	if _, err = b.Execute(context.Background(), action); err == nil {
+		t.Fatal("wrong display")
+	}
+	action = waitAction(obs)
+	action.ObservationID = "stale"
+	if _, err = b.Execute(context.Background(), action); err == nil {
+		t.Fatal("stale observation")
+	}
+	if err = b.Pause(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = b.Execute(context.Background(), waitAction(obs)); err == nil {
+		t.Fatal("paused input")
+	}
+	if err = b.Resume(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	_ = observeTest(t, b)
+}
+
+func TestBackendEnvironmentAndStderr(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "SECRET-CREDENTIAL")
+	t.Setenv("CUSTOM_CREDENTIAL", "SECRET-CREDENTIAL")
+	t.Setenv("SSH_AUTH_SOCK", "SECRET-SOCKET")
+	t.Setenv("DYLD_INSERT_LIBRARIES", "")
+	cfg := helperConfig(t, "", time.Second, "")
+	cfg.HelperEnv = []string{"ANTHROPIC_API_KEY=SECRET-CREDENTIAL", "DYLD_LIBRARY_PATH=/unsafe", "HOME=" + os.Getenv("HOME")}
+	b, err := New(context.Background(), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer backend.Close(context.Background())
-	_, err = backend.requestLocked(context.Background(), "block", "session-1", "action-1", nil)
-	if err == nil || (!errors.Is(err, context.DeadlineExceeded) && !strings.Contains(err.Error(), "deadline")) {
-		t.Fatalf("timeout error = %v", err)
+	defer b.Close(context.Background())
+	response, err := b.request(context.Background(), "environment", "", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := json.Marshal(response.Result)
+	for _, bad := range []string{"SECRET", "API_KEY", "DYLD", "SSH_AUTH", "CUSTOM_CREDENTIAL"} {
+		if bytes.Contains(data, []byte(bad)) {
+			t.Fatalf("environment leaked %s", bad)
+		}
+	}
+	if _, err = b.request(context.Background(), "stderr", "", "", nil); err != nil {
+		t.Fatal("stderr backpressure", err)
+	}
+}
+
+func TestBackendRejectsUnsafeLimits(t *testing.T) {
+	for _, c := range []Config{{HelperPath: "none", MaxFrameBytes: 1 << 40}, {HelperPath: "none", RequestTimeout: time.Hour}} {
+		if _, err := New(context.Background(), c); err == nil {
+			t.Fatal("unsafe limit accepted")
+		}
 	}
 }
