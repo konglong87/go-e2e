@@ -17,7 +17,8 @@
 <p align="center">
   <a href="https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=55aq8d1d-7586-46cf-8635-a8c321ad284d">加入飞书社群</a> ·
   <a href="docs/README.md">文档</a> ·
-  <a href="https://github.com/konglong87/go-e2e/issues">问题反馈</a>
+  <a href="https://github.com/konglong87/go-e2e/issues">问题反馈</a> ·
+  <a href="README.en.md">English</a>
 </p>
 
 <p align="center">
