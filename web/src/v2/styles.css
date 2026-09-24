@@ -575,10 +575,28 @@
 .pet-model canvas { pointer-events: auto; cursor: grab; }
 .pet-model .pet-poster { pointer-events: none; }
 
-.webui2-computer-workspace { background: var(--webui2-surface); border: 1px solid var(--webui2-border); border-radius: 18px; box-shadow: var(--webui2-shadow-soft); display: flex; flex-direction: column; gap: 14px; margin: 16px; max-height: calc(100dvh - 32px); min-width: 320px; overflow: auto; padding: 18px; width: min(390px, calc(100% - 32px)); }
+.webui2-computer-launcher, .webui2-computer-workspace { box-sizing: border-box; position: fixed; z-index: 15; }
+.webui2-computer-launcher { align-items: center; background: color-mix(in srgb, var(--webui2-surface) 94%, var(--webui2-accent-surface)); border: 1px solid var(--webui2-border); border-radius: 999px; box-shadow: 0 12px 28px rgb(31 41 51 / 16%), 0 2px 6px rgb(31 41 51 / 9%); color: var(--webui2-text); cursor: pointer; display: inline-flex; font: inherit; gap: 8px; min-height: 38px; padding: 0 12px; right: 20px; top: 76px; }
+.webui2-computer-launcher:hover, .webui2-computer-launcher:focus-visible { border-color: var(--webui2-accent); box-shadow: 0 14px 30px rgb(31 41 51 / 19%), 0 0 0 3px color-mix(in srgb, var(--webui2-accent) 18%, transparent); outline: none; }
+.webui2-computer-launcher > svg:first-child { color: var(--webui2-accent); }
+.webui2-computer-launcher-label { font-size: 12px; font-weight: 720; white-space: nowrap; }
+.webui2-computer-launcher-backend { color: var(--webui2-text-muted); font-size: 11px; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.webui2-computer-launcher-dot { background: var(--webui2-text-muted); border-radius: 50%; box-shadow: 0 0 0 3px color-mix(in srgb, var(--webui2-text-muted) 14%, transparent); height: 7px; width: 7px; }
+.webui2-computer-launcher-dot--ready { background: var(--webui2-success); box-shadow: 0 0 0 3px color-mix(in srgb, var(--webui2-success) 16%, transparent); }
+.webui2-computer-launcher-dot--attention { background: var(--webui2-warning); box-shadow: 0 0 0 3px color-mix(in srgb, var(--webui2-warning) 16%, transparent); }
+.webui2-computer-launcher-dot--stopped { background: var(--webui2-danger); }
+.webui2-computer-workspace { background: var(--webui2-surface); border: 1px solid var(--webui2-border); border-radius: 18px; box-shadow: 0 18px 48px rgb(31 41 51 / 20%), 0 3px 10px rgb(31 41 51 / 10%); display: flex; flex-direction: column; gap: 14px; max-height: min(760px, calc(100dvh - 32px)); min-width: 320px; overflow: auto; overscroll-behavior: contain; padding: 16px; touch-action: manipulation; user-select: none; width: min(390px, calc(100vw - 24px)); }
+.webui2-computer-workspace[data-dragging="true"] { cursor: grabbing; }
 .webui2-computer-header, .webui2-computer-section-heading, .webui2-computer-toolbar, .webui2-computer-preview-meta { align-items: center; display: flex; gap: 10px; justify-content: space-between; }
+.webui2-computer-header-actions { align-items: center; display: flex; gap: 7px; }
+.webui2-computer-drag-handle { align-items: center; cursor: grab; display: flex; flex: 1 1 auto; gap: 8px; min-width: 0; touch-action: none; }
+.webui2-computer-drag-handle:focus-visible { border-radius: 8px; outline: 2px solid var(--webui2-accent); outline-offset: 3px; }
+.webui2-computer-drag-handle > svg { color: var(--webui2-text-muted); flex: 0 0 auto; }
+.webui2-computer-header h2, .webui2-computer-section-heading h3 { margin: 2px 0 0; }
 .webui2-computer-header h2, .webui2-computer-section-heading h3 { margin: 2px 0 0; }
 .webui2-computer-header h2 { font-size: 18px; }
+.webui2-computer-icon-button { align-items: center; background: transparent; border: 1px solid transparent; border-radius: 7px; color: var(--webui2-text-muted); cursor: pointer; display: inline-flex; height: 30px; justify-content: center; padding: 0; width: 30px; }
+.webui2-computer-icon-button:hover, .webui2-computer-icon-button:focus-visible { background: var(--webui2-surface-muted); border-color: var(--webui2-border); color: var(--webui2-text); outline: none; }
 .webui2-computer-section-heading h3 { font-size: 14px; }
 .webui2-computer-eyebrow { color: var(--webui2-text-muted); font-size: 10px; font-weight: 750; letter-spacing: .11em; }
 .webui2-computer-backend, .webui2-computer-state, .webui2-computer-count { background: var(--webui2-surface-muted); border-radius: 999px; color: var(--webui2-text-muted); font-size: 11px; padding: 5px 8px; }
@@ -614,4 +632,7 @@
 .webui2-computer-modal dt { color: var(--webui2-text-muted); }
 .webui2-computer-modal dd { margin: 0; text-align: right; }
 .webui2-computer-modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
-@media (max-width: 900px) { .webui2-computer-workspace { margin: 10px; max-height: none; width: calc(100% - 20px); } }
+@media (max-width: 900px) {
+  .webui2-computer-launcher { right: 12px; top: 64px; }
+  .webui2-computer-workspace { max-height: calc(100dvh - 24px); min-width: 0; width: min(390px, calc(100vw - 24px)); }
+}

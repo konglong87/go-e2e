@@ -9,19 +9,28 @@ import { capabilities, createTestClient, deferred, observationResponse, snapshot
 describe("ComputerWorkspace", () => {
   let root: Root;
   let container: HTMLDivElement;
+  let storage: Record<string, string>;
   beforeEach(() => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     container = document.createElement("div");
     document.body.append(container);
+    storage = { "go-e2e.computer-workspace.v1": JSON.stringify({ collapsed: false, position: null }) };
+    Object.defineProperty(window, "localStorage", { configurable: true, value: {
+      getItem: (key: string) => storage[key] ?? null,
+      setItem: (key: string, value: string) => { storage[key] = value; },
+      removeItem: (key: string) => { delete storage[key]; },
+      clear: () => { storage = {}; },
+    } });
     root = createRoot(container);
   });
   afterEach(() => {
     act(() => root.unmount());
     container.remove();
+    storage = {};
     delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
   });
   function button(label: string): HTMLButtonElement {
-    const found = Array.from(container.querySelectorAll("button")).find((element) => element.textContent === label);
+    const found = Array.from(document.body.querySelectorAll("button")).find((element) => element.textContent === label);
     if (!found) throw new Error(`Missing button: ${label}`);
     return found;
   }
@@ -30,6 +39,16 @@ describe("ComputerWorkspace", () => {
   it("has no panel with a non-desktop / unavailable bridge", async () => {
     await act(async () => root.render(<ComputerWorkspace client={null} />));
     expect(container.innerHTML).toBe("");
+  });
+
+  it("opens as a compact launcher and expands into a draggable workspace", async () => {
+    storage = {};
+    const client = createTestClient();
+    await act(async () => root.render(<ComputerWorkspace client={client} />));
+    expect(document.body.querySelector('[aria-label="Open Computer Use workspace"]')).not.toBeNull();
+    await act(async () => { (document.body.querySelector('[aria-label="Open Computer Use workspace"]') as HTMLButtonElement).click(); });
+    expect(document.body.querySelector('[aria-label="Computer workspace"]')).not.toBeNull();
+    expect(document.body.querySelector('[aria-label="Collapse Computer Use workspace"]')).not.toBeNull();
   });
 
   it("handles the actual start → observe DTO under StrictMode without resetting on rerender", async () => {
@@ -42,11 +61,11 @@ describe("ComputerWorkspace", () => {
     await click("Approve session");
     expect(client.start).toHaveBeenCalledWith({ approved: true });
     expect(client.observe).toHaveBeenCalledWith("s1");
-    expect(container.querySelector("img")?.getAttribute("src")).toBe(`data:image/png;base64,${observationResponse.image_data}`);
+    expect(document.body.querySelector("img")?.getAttribute("src")).toBe(`data:image/png;base64,${observationResponse.image_data}`);
     await act(async () => root.render(render()));
     expect(button("Stop").disabled).toBe(false);
     expect(client.start).toHaveBeenCalledTimes(1);
-    expect(container.querySelector("img")).not.toBeNull();
+    expect(document.body.querySelector("img")).not.toBeNull();
   });
 
   it("keeps Pause and Stop clickable during capture and ignores late control/capture responses", async () => {
@@ -67,8 +86,8 @@ describe("ComputerWorkspace", () => {
     await click("Stop");
     expect(client.stop).toHaveBeenCalledWith("s1");
     await act(async () => { pause.resolve(snapshot("paused")); capture.resolve(observationResponse); });
-    expect(container.querySelector(".webui2-computer-state")?.textContent).toBe("stopped");
-    expect(container.querySelector("img")).toBeNull();
+    expect(document.body.querySelector(".webui2-computer-state")?.textContent).toBe("stopped");
+    expect(document.body.querySelector("img")).toBeNull();
     expect(button("Start session").disabled).toBe(false);
   });
 
@@ -76,7 +95,7 @@ describe("ComputerWorkspace", () => {
     const client = createTestClient();
     client.getCapabilities = vi.fn().mockRejectedValue(new Error("native helper unavailable"));
     await act(async () => root.render(<StrictMode><ComputerWorkspace client={client} /></StrictMode>));
-    expect(container.querySelector('[role="alert"]')?.textContent).toBe("native helper unavailable");
+    expect(document.body.querySelector('[role="alert"]')?.textContent).toBe("native helper unavailable");
     expect(button("Start session").disabled).toBe(true);
   });
 
@@ -85,7 +104,7 @@ describe("ComputerWorkspace", () => {
     client.getCapabilities = vi.fn().mockResolvedValue({ available: false, capabilities, error_code: "disabled", error_message: "Computer Use disabled by host" });
     await act(async () => root.render(<ComputerWorkspace client={client} />));
     expect(button("Start session").disabled).toBe(true);
-    expect(container.querySelector('[role="alert"]')?.textContent).toBe("Computer Use disabled by host");
+    expect(document.body.querySelector('[role="alert"]')?.textContent).toBe("Computer Use disabled by host");
   });
 
   const readinessCases: Partial<ComputerCapabilities>[] = [
@@ -100,7 +119,7 @@ describe("ComputerWorkspace", () => {
     client.getCapabilities = vi.fn().mockResolvedValue({ available: true, capabilities: blocked });
     await act(async () => root.render(<ComputerWorkspace client={client} />));
     expect(button("Start session").disabled).toBe(true);
-    expect(container.querySelector('[role="status"]')?.textContent).toBeTruthy();
+    expect(document.body.querySelector('[role="status"]')?.textContent).toBeTruthy();
     const approve = vi.fn();
     await act(async () => root.render(<ComputerApprovalDialog capabilities={blocked} available busy={false} onApprove={approve} onCancel={vi.fn()} />));
     expect(button("Approve session").disabled).toBe(true);
