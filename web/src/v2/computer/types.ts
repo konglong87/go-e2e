@@ -1,5 +1,6 @@
 /** Platform-neutral Computer Use DTOs. Keep these aligned with internal/computeruse JSON tags. */
 export type ComputerReadiness = "unknown" | "unavailable" | "permission_required" | "ready" | "failed";
+export type ComputerPermissionTarget = "accessibility" | "screen_capture";
 export type ComputerPermissionState = "unknown" | "required" | "approved" | "denied";
 export type ComputerFocusState = "unknown" | "focused" | "changed" | "unavailable";
 export type ComputerSessionState = "pending_approval" | "ready" | "paused" | "needs_observation" | "stopped" | "failed";

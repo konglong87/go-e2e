@@ -16,6 +16,7 @@ export const observationResponse: ComputerObservationResponse = {
 export function createTestClient(): ComputerClient {
   return {
     getCapabilities: vi.fn<ComputerClient["getCapabilities"]>().mockResolvedValue({ available: true, capabilities }),
+    openPermissionSettings: vi.fn<ComputerClient["openPermissionSettings"]>().mockResolvedValue(undefined),
     start: vi.fn<ComputerClient["start"]>().mockResolvedValue(snapshot()),
     observe: vi.fn<ComputerClient["observe"]>().mockResolvedValue(observationResponse),
     pause: vi.fn<ComputerClient["pause"]>().mockResolvedValue(snapshot("paused")),

@@ -4,6 +4,7 @@ import { capabilities, observationResponse, snapshot } from "./testFixtures";
 
 const bridge = (): ComputerBridge => ({
   GetComputerCapabilities: vi.fn<ComputerBridge["GetComputerCapabilities"]>().mockResolvedValue({ available: true, capabilities }),
+  OpenComputerPermissionSettings: vi.fn<NonNullable<ComputerBridge["OpenComputerPermissionSettings"]>>().mockResolvedValue(undefined),
   StartComputerSession: vi.fn<ComputerBridge["StartComputerSession"]>().mockResolvedValue(snapshot()),
   ObserveComputerSession: vi.fn<ComputerBridge["ObserveComputerSession"]>().mockResolvedValue(observationResponse),
   PauseComputerSession: vi.fn<ComputerBridge["PauseComputerSession"]>().mockResolvedValue(snapshot("paused")),
@@ -18,6 +19,8 @@ describe("computer bridge DTO contract", () => {
     const host = bridge();
     const client = createComputerClient(host);
     await expect(client.getCapabilities()).resolves.toEqual({ available: true, capabilities });
+    await expect(client.openPermissionSettings("accessibility")).resolves.toBeUndefined();
+    expect(host.OpenComputerPermissionSettings).toHaveBeenCalledWith("accessibility");
     await expect(client.start({ approved: true })).resolves.toEqual(snapshot());
     expect(host.StartComputerSession).toHaveBeenCalledWith({ approved: true });
     await expect(client.observe("s1")).resolves.toEqual(observationResponse);
@@ -38,5 +41,10 @@ describe("computer bridge DTO contract", () => {
     expect(getComputerBridge()).toBeNull();
     window.go.main!.app = { RestartLocalService: vi.fn(), ...bridge() };
     expect(getComputerBridge()).not.toBeNull();
+  });
+  it("returns a clear error when permission navigation is not exposed by the host", async () => {
+    const host = bridge();
+    delete host.OpenComputerPermissionSettings;
+    await expect(createComputerClient(host).openPermissionSettings("screen_capture")).rejects.toThrow("Computer permission settings are unavailable.");
   });
 });

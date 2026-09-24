@@ -1,4 +1,24 @@
-import type { ComputerCapabilities } from "./types";
+import type { ComputerCapabilities, ComputerPermissionTarget } from "./types";
+
+export type ComputerPermissionGuideAction = {
+  target: ComputerPermissionTarget;
+  label: "Accessibility" | "Screen Recording";
+  description: string;
+};
+
+const COMPUTER_PERMISSION_GUIDE_ACTIONS: readonly ComputerPermissionGuideAction[] = [
+  { target: "accessibility", label: "Accessibility", description: "Allow Computer Use to control the desktop." },
+  { target: "screen_capture", label: "Screen Recording", description: "Allow Computer Use to read the desktop." }
+];
+
+/** Returns only the macOS permissions that are explicitly missing. */
+export function computerPermissionGuideActions(available: boolean, caps: ComputerCapabilities | null): ComputerPermissionGuideAction[] {
+  if (!available || !caps) return [];
+  return COMPUTER_PERMISSION_GUIDE_ACTIONS.filter((action) => {
+    if (action.target === "accessibility") return caps.input_readiness === "permission_required";
+    return caps.capture_readiness === "permission_required";
+  });
+}
 
 /** Session approval is separate from OS permission/readiness. Fail closed on unknowns. */
 export function computerReadinessError(available: boolean, caps: ComputerCapabilities | null): string | null {
