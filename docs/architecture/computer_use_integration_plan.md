@@ -200,6 +200,45 @@ internal/computerbackend/
 `internal/computeruse` 请求，不直接调用 CGEvent、SendInput、xdotool 或
 截图命令。平台代码必须留在 backend。
 
+### 6.2 输入与截图依赖决策
+
+`pyautogui` 和 `pynput` 都不能成为 Computer Use 的跨平台核心抽象。它们只能
+作为 backend adapter，且不允许被 Query Loop、TUI 或 Desktop-v2 直接调用。
+
+| 依赖 | 允许用途 | 不允许用途 |
+| --- | --- | --- |
+| `PyAutoGUI` | Phase 1 isolated X11 的鼠标/键盘 adapter；isolated Code Execution 中的受控输入 | macOS/Windows Host 的统一核心；多显示器和窗口状态事实来源 |
+| `pynput` | 可选测试辅助或平台补充输入 | 主 ComputerUse executor；截图、窗口管理、Host 权限抽象 |
+| `xdotool`/XTest | isolated X11 的低层输入 fallback 或对照实现 | 跨平台抽象 |
+| macOS native helper | CGEvent、Quartz/ScreenCapture、Accessibility readiness | 在 Go 主进程中直接散落 cgo/UI 平台逻辑 |
+| Windows native helper | SendInput、Windows Capture、UI Automation readiness | 用 Python 库掩盖系统权限和窗口状态 |
+
+第一阶段默认组合为：
+
+```text
+Go ComputerSession
+  -> Python helper 或 X11 helper
+  -> PyAutoGUI input adapter
+  -> 独立 screenshot adapter
+  -> ActionReceipt
+```
+
+截图、输入注入、窗口焦点和 session 状态必须是四个独立职责。即使
+`PyAutoGUI` 自带截图能力，也不能把它作为截图事实来源；截图必须带宽高、
+scale factor、display ID、时间和 hash。
+
+Python helper 通过 stdio 或 Unix socket 与 Go 通信，必须满足：
+
+- 进程级超时、取消和退出码可观测；
+- 环境缺失时返回 capability unavailable，不静默切到 Host；
+- 不接收模型原始 prompt，只接收已校验的 Action；
+- 不持有模型 provider key、用户 Token 或系统凭据；
+- 不把 Python 异常直接暴露为模型可执行指令；
+- 运行结果统一转换为 `ActionReceipt`。
+
+Host Desktop 的正式实现必须使用平台 native helper；`PyAutoGUI/pynput` 不能
+作为 macOS、Windows 或 Wayland 的兼容性承诺。
+
 ## 7. Domain Contract
 
 ### 7.1 Backend 接口
@@ -577,11 +616,15 @@ sidecar 或平台 helper 管理。
 
 - Linux Xvfb。
 - Headful Chromium 或固定 GUI fixture。
-- xdotool/等价 input backend。
-- FFmpeg/截图 backend。
+- PyAutoGUI input adapter，保留 xdotool/XTest 对照或 fallback。
+- 独立 FFmpeg/Pillow/mss screenshot adapter。
+- 单 display、固定分辨率、固定 scale factor。
 - 真实点击、输入、滚动、截图 hash、状态验证。
 
 这是第一阶段真实 Computer Use 验收环境，也是 CI 的主要 backend。
+
+Phase 1 不使用 `pynput` 作为主执行路径。`pynput` 如需保留，只能用于测试
+辅助或显式的 Linux X11 补充 adapter，并且不能改变统一 backend contract。
 
 ### Phase 2：TUI + Desktop-v2 控制面
 
@@ -604,6 +647,8 @@ sidecar 或平台 helper 管理。
 平台代码建议使用独立 Swift/Objective-C helper，通过 stdio 或 Unix socket
 与 Go 通信，不把 cgo 和平台 UI 细节塞入 Query Loop。
 
+本阶段不以 `PyAutoGUI` 或 `pynput` 作为 macOS Host 的正式输入实现。
+
 ### Phase 4：Code Execution
 
 目标：
@@ -619,6 +664,9 @@ sidecar 或平台 helper 管理。
 - Windows Capture/SendInput/UI Automation。
 - Wayland portal 或受支持 compositor backend。
 - action trajectory 录制、脱敏、回放和 Computer Skill 生成。
+
+Windows Host 不通过 `PyAutoGUI/pynput` 宣称跨平台兼容；Wayland 需要单独的
+compositor/portal capability probe，不能把 X11 adapter 直接复用为兼容实现。
 
 ## 15. 持久化与证据
 
@@ -909,13 +957,15 @@ Computer Use 必须由独立 feature flag 和独立 tool registration 控制。�
 
 ## 22. 实施前必须确认的决策
 
-1. 第一阶段是否确认以 Linux Virtual Desktop 作为 CI 和真实闭环基线。
-2. macOS Host Backend 是否只允许 Desktop-v2，不允许 TUI 默认开启。
-3. `ComputerUse` 是否只面向本地交互 session，暂不开放 Feishu/channel。
-4. 截图默认采用 `failure` 还是 `none` retention。
-5. 是否允许 provider-native Computer Tool，还是第一版只走统一 JSON schema。
-6. isolated backend 是先用 Xvfb 进程，还是直接引入完整 VM。
-7. 是否将 Computer Profile 作为独立 runtime profile，而不是普通 code/chat 的可选 tool。
+1. 第一阶段确认以 Linux Virtual Desktop 作为 CI 和真实闭环基线。
+2. macOS Host Backend 只允许 Desktop-v2 显式开启，TUI 默认只允许 isolated。
+3. `ComputerUse` 只面向本地交互 session，暂不开放 Feishu/channel。
+4. 截图默认采用 `failure` retention。
+5. 第一版先走统一 JSON schema，provider-native adapter 后置。
+6. isolated backend 先用 Xvfb 进程，不直接引入完整 VM。
+7. Computer Profile 作为独立 runtime profile，不作为普通 code/chat 的隐式 tool。
+8. Phase 1 使用 PyAutoGUI isolated input adapter，不使用 pynput 作为主执行器。
+9. Host Desktop 使用平台 native helper，不以 Python 库承诺跨平台兼容。
 
 推荐默认答案：
 
@@ -928,6 +978,9 @@ Screenshot retention=failure
 Unified JSON schema first
 Xvfb process first, VM later
 Computer Profile isolated from ordinary code/chat
+PyAutoGUI only behind isolated adapter
+Pynput not in the primary executor path
+Native helper for Host Desktop
 ```
 
 ## 23. 完成定义
