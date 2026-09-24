@@ -636,3 +636,47 @@
   .webui2-computer-launcher { right: 12px; top: 64px; }
   .webui2-computer-workspace { max-height: calc(100dvh - 24px); min-width: 0; width: min(390px, calc(100vw - 24px)); }
 }
+
+.webui2-computer-progress-launcher, .webui2-computer-progress { box-sizing: border-box; position: fixed; z-index: 16; }
+.webui2-computer-progress-launcher { align-items: center; background: color-mix(in srgb, var(--webui2-surface) 95%, var(--webui2-accent-surface)); border: 1px solid var(--webui2-border); border-radius: 14px; box-shadow: 0 16px 34px rgb(31 41 51 / 18%), 0 3px 10px rgb(31 41 51 / 10%); color: var(--webui2-text); display: inline-flex; gap: 8px; min-height: 46px; padding: 0 12px; right: 22px; bottom: 22px; }
+.webui2-computer-progress-launcher:hover, .webui2-computer-progress-launcher:focus-visible { border-color: var(--webui2-accent); box-shadow: 0 18px 38px rgb(31 41 51 / 20%), 0 0 0 3px color-mix(in srgb, var(--webui2-accent) 18%, transparent); outline: none; }
+.webui2-computer-progress-launcher > svg { color: var(--webui2-accent); }
+.webui2-computer-progress-launcher-copy { display: flex; flex-direction: column; gap: 1px; min-width: 0; text-align: left; }
+.webui2-computer-progress-launcher-copy strong { font-size: 12px; }
+.webui2-computer-progress-launcher-copy span { color: var(--webui2-text-muted); font-size: 11px; }
+.webui2-computer-progress-dot { background: var(--webui2-text-muted); border-radius: 50%; box-shadow: 0 0 0 3px color-mix(in srgb, var(--webui2-text-muted) 14%, transparent); height: 7px; width: 7px; }
+.webui2-computer-progress-dot--active { background: var(--webui2-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--webui2-accent) 16%, transparent); }
+.webui2-computer-progress-dot--ready { background: var(--webui2-success); box-shadow: 0 0 0 3px color-mix(in srgb, var(--webui2-success) 16%, transparent); }
+.webui2-computer-progress-dot--paused { background: var(--webui2-warning); box-shadow: 0 0 0 3px color-mix(in srgb, var(--webui2-warning) 16%, transparent); }
+.webui2-computer-progress-dot--attention { background: var(--webui2-danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--webui2-danger) 16%, transparent); }
+.webui2-computer-progress { background: color-mix(in srgb, var(--webui2-surface) 98%, var(--webui2-accent-surface)); border: 1px solid var(--webui2-border); border-radius: 16px; box-shadow: 0 20px 52px rgb(31 41 51 / 22%), 0 3px 10px rgb(31 41 51 / 10%); display: flex; flex-direction: column; gap: 14px; max-height: min(500px, calc(100dvh - 44px)); min-width: 300px; overflow: auto; overscroll-behavior: contain; padding: 14px; touch-action: manipulation; user-select: none; width: min(360px, calc(100vw - 24px)); }
+.webui2-computer-progress[data-dragging="true"] { cursor: grabbing; }
+.webui2-computer-progress-header, .webui2-computer-progress-header-actions, .webui2-computer-progress-summary-row { align-items: center; display: flex; gap: 8px; justify-content: space-between; }
+.webui2-computer-progress-header-actions { flex: 0 0 auto; }
+.webui2-computer-progress-drag-handle { align-items: center; background: transparent; border: 0; color: inherit; cursor: grab; display: flex; flex: 1 1 auto; font: inherit; gap: 8px; min-width: 0; padding: 0; text-align: left; touch-action: none; }
+.webui2-computer-progress-drag-handle:focus-visible { border-radius: 8px; outline: 2px solid var(--webui2-accent); outline-offset: 3px; }
+.webui2-computer-progress-drag-handle > svg { color: var(--webui2-text-muted); flex: 0 0 auto; }
+.webui2-computer-progress-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.webui2-computer-progress-title strong { font-size: 16px; line-height: 1.2; }
+.webui2-computer-progress-status { border-radius: 999px; font-size: 11px; padding: 4px 7px; white-space: nowrap; }
+.webui2-computer-progress-status--active { background: var(--webui2-accent-surface); color: var(--webui2-accent); }
+.webui2-computer-progress-status--ready { background: var(--webui2-success-surface); color: var(--webui2-success); }
+.webui2-computer-progress-status--paused { background: var(--webui2-warning-surface); color: var(--webui2-warning); }
+.webui2-computer-progress-status--attention { background: var(--webui2-danger-surface); color: var(--webui2-danger); }
+.webui2-computer-progress-summary { background: var(--webui2-surface-muted); border-radius: 11px; padding: 11px 12px; }
+.webui2-computer-progress-summary-row strong { font-size: 12px; }
+.webui2-computer-progress-summary-row span { color: var(--webui2-text-muted); font-size: 11px; }
+.webui2-computer-progress-summary p { color: var(--webui2-text-muted); font-size: 12px; line-height: 1.45; margin: 7px 0 0; }
+.webui2-computer-progress-steps { border-top: 1px solid var(--webui2-border-subtle); padding-top: 12px; }
+.webui2-computer-progress-steps ol { list-style: none; margin: 10px 0 0; padding: 0; }
+.webui2-computer-progress-steps li { align-items: flex-start; border-bottom: 1px solid var(--webui2-border-subtle); display: grid; gap: 8px; grid-template-columns: 8px minmax(0, 1fr) auto; padding: 8px 0; }
+.webui2-computer-progress-steps li > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.webui2-computer-progress-steps li span, .webui2-computer-progress-steps li time { color: var(--webui2-text-muted); font-size: 11px; }
+.webui2-computer-progress-steps li strong { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.webui2-computer-progress-step-dot { background: var(--webui2-text-muted); border-radius: 50%; height: 8px; margin-top: 4px; width: 8px; }
+.webui2-computer-progress-step-dot--executed { background: var(--webui2-success); }
+.webui2-computer-progress-step-dot--failed, .webui2-computer-progress-step-dot--unknown, .webui2-computer-progress-step-dot--rejected { background: var(--webui2-danger); }
+@media (max-width: 900px) {
+  .webui2-computer-progress-launcher { bottom: 12px; right: 12px; }
+  .webui2-computer-progress { max-height: calc(100dvh - 24px); min-width: 0; width: min(360px, calc(100vw - 24px)); }
+}

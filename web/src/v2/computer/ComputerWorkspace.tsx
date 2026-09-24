@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type { ReactElement, PointerEvent as ReactPointerEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ComputerApprovalDialog } from "./ComputerApprovalDialog";
+import { ComputerExecutionProgress } from "./ComputerExecutionProgress";
 import { ComputerPermissionGuide } from "./ComputerPermissionGuide";
 import type { ComputerClient } from "./client";
 import { ComputerPreview } from "./ComputerPreview";
@@ -208,5 +209,13 @@ export function ComputerWorkspace({ client }: { client: ComputerClient | null })
       /> : null}
     </aside>;
 
-  return createPortal(panel, portalHost());
+  const executionProgress = computer.session && computer.session.state !== "stopped" ? <ComputerExecutionProgress
+    controlIntent={computer.controlIntent}
+    error={computer.error}
+    loading={computer.loading}
+    receipts={computer.receipts}
+    state={computer.session.state}
+  /> : null;
+
+  return createPortal(<>{panel}{executionProgress}</>, portalHost());
 }

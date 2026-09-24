@@ -77,6 +77,7 @@ describe("ComputerWorkspace", () => {
     expect(client.start).toHaveBeenCalledWith({ approved: true });
     expect(client.observe).toHaveBeenCalledWith("s1");
     expect(document.body.querySelector("img")?.getAttribute("src")).toBe(`data:image/png;base64,${observationResponse.image_data}`);
+    expect(document.body.querySelector('[aria-label="Computer Use execution progress"]')).not.toBeNull();
     await act(async () => root.render(render()));
     expect(button("Stop").disabled).toBe(false);
     expect(client.start).toHaveBeenCalledTimes(1);
