@@ -81,14 +81,20 @@ test("fresh source embeds only placeholders and passes desktop build, vet and un
   }
 });
 
-test("CI separates source-only checks from real native builds and follows main", () => {
+test("desktop CI separates source-only checks from real native builds and follows main", () => {
   const ci = readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8");
-  const native = ci.slice(ci.indexOf("  desktop-linux:"), ci.indexOf("\n  scripts:"));
+  const nativeWorkflow = readFileSync(
+    path.join(root, ".github/workflows/desktop-linux.yml"),
+    "utf8",
+  );
+  const native = nativeWorkflow.slice(nativeWorkflow.indexOf("  native:"));
+  assert.doesNotMatch(ci, /desktop-linux:/);
   assert.match(native, /runs-on: ubuntu-24\.04/);
-  assert.match(native, /CGO_ENABLED: '1'/);
-  assert.match(native, /script: \[build-desktop-v2\.sh\]/);
+  assert.match(nativeWorkflow, /CGO_ENABLED: '1'/);
+  assert.match(nativeWorkflow, /branches: \[main\]/);
+  assert.match(nativeWorkflow, /paths:/);
+  assert.match(native, /bash scripts\/build-desktop-v2\.sh -platform linux\/amd64 -tags webkit2_41/);
   assert.match(native, /libgtk-3-dev libwebkit2gtk-4\.1-dev/);
-  assert.match(native, /-tags webkit2_41/);
   assert.match(native, /npm ci --legacy-peer-deps/);
   assert.match(native, /wails@v2\.10\.2/);
   assert.match(ci, /node --test scripts\/test-desktop-ci-prerequisites\.mjs/);
