@@ -35,6 +35,7 @@ import (
 	"github.com/konglong87/go-e2e/internal/toolpolicy"
 	"github.com/konglong87/go-e2e/internal/toolresult"
 	"github.com/konglong87/go-e2e/internal/tools"
+	computerusetool "github.com/konglong87/go-e2e/internal/tools/computeruse"
 )
 
 type MessageStreamer interface {
@@ -366,6 +367,8 @@ func (r Runtime) Run(ctx context.Context, req Request, toolContext tools.Context
 		return Result{}, depthLimitError(depth, maxDepth)
 	}
 	toolContext.SubagentDepth = depth
+	toolContext.ComputerUse = nil
+	toolContext.ComputerUseImageSupported = false
 	if toolContext.AgentBudget == nil {
 		// No session-level budget was wired in (server and eval paths). Fall
 		// back to a budget scoped to this sub-agent tree: the pointer travels
@@ -471,6 +474,8 @@ func (r Runtime) Run(ctx context.Context, req Request, toolContext tools.Context
 	// any sub-agent (AUDIT-P1-20). Deny both.
 	deniedTools = appendToolNameUnique(deniedTools, "SendMessage")
 	deniedTools = appendToolNameUnique(deniedTools, "AgentMessage")
+	// Desktop authority is never delegable, even with an explicit agent allowlist.
+	deniedTools = appendToolNameUnique(deniedTools, computerusetool.ToolName)
 	if registry != nil {
 		registry = registry.FilterPolicy(allowedTools, deniedTools)
 	}
@@ -2489,6 +2494,8 @@ func (r Runtime) runTool(ctx context.Context, registry *tools.Registry, block an
 		return trace
 	}
 	childContext := parent
+	childContext.ComputerUse = nil
+	childContext.ComputerUseImageSupported = false
 	if strings.TrimSpace(req.CWD) != "" {
 		childContext.CWD = req.CWD
 	}

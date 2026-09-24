@@ -1014,10 +1014,10 @@ func coreRuntimeToolsWithOptions(settings config.Settings, client skill.MessageS
 func computerUseToolsForOptions(runtimeOptions options) []tools.Tool {
 	if !runtimeOptions.computerUseProfile || runtimeOptions.runtimeProfile.IsBare() ||
 		runtimeOptions.computerUseService == nil || !runtimeOptions.computerUseImageSupported ||
-		runtimeOptions.tenantID == 0 || runtimeOptions.tenantUserID == 0 {
+		runtimeOptions.tenantID == 0 || runtimeOptions.tenantUserID == 0 || runtimeOptions.tenantSessionID == 0 {
 		return nil
 	}
-	return []tools.Tool{computerusetool.New(runtimeOptions.computerUseService)}
+	return []tools.Tool{computerusetool.New()}
 }
 
 func sessionControlToolsForOptions(runtimeOptions options) []tools.Tool {

@@ -32,10 +32,14 @@ func TestComputerUseRegistrationIsOptInAndImageGated(t *testing.T) {
 		want bool
 	}{
 		{name: "default", opts: options{}, want: false},
-		{name: "missing service", opts: options{computerUseProfile: true, computerUseImageSupported: true, tenantID: 7, tenantUserID: 11}, want: false},
-		{name: "missing image support", opts: options{computerUseProfile: true, computerUseService: service, tenantID: 7, tenantUserID: 11}, want: false},
-		{name: "bare profile", opts: options{runtimeProfile: runtimeprofile.ProfileBare, computerUseProfile: true, computerUseService: service, computerUseImageSupported: true, tenantID: 7, tenantUserID: 11}, want: false},
-		{name: "explicit desktop capability", opts: options{computerUseProfile: true, computerUseService: service, computerUseImageSupported: true, tenantID: 7, tenantUserID: 11}, want: true},
+		{name: "missing service", opts: options{computerUseProfile: true, computerUseImageSupported: true, tenantID: 7, tenantUserID: 11, tenantSessionID: 13}, want: false},
+		{name: "missing image support", opts: options{computerUseProfile: true, computerUseService: service, tenantID: 7, tenantUserID: 11, tenantSessionID: 13}, want: false},
+		{name: "bare profile", opts: options{runtimeProfile: runtimeprofile.ProfileBare, computerUseProfile: true, computerUseService: service, computerUseImageSupported: true, tenantID: 7, tenantUserID: 11, tenantSessionID: 13}, want: false},
+		{name: "missing conversation", opts: options{computerUseProfile: true, computerUseService: service, computerUseImageSupported: true, tenantID: 7, tenantUserID: 11}, want: false},
+		{name: "missing tenant", opts: options{computerUseProfile: true, computerUseService: service, computerUseImageSupported: true, tenantUserID: 11, tenantSessionID: 13}, want: false},
+		{name: "missing user", opts: options{computerUseProfile: true, computerUseService: service, computerUseImageSupported: true, tenantID: 7, tenantSessionID: 13}, want: false},
+		{name: "missing opt-in", opts: options{computerUseService: service, computerUseImageSupported: true, tenantID: 7, tenantUserID: 11, tenantSessionID: 13}, want: false},
+		{name: "explicit desktop capability", opts: options{computerUseProfile: true, computerUseService: service, computerUseImageSupported: true, tenantID: 7, tenantUserID: 11, tenantSessionID: 13}, want: true},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
