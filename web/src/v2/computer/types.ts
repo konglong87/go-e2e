@@ -8,8 +8,8 @@ export type ComputerVerification = "not_checked" | "passed" | "failed" | "unknow
 
 export type ComputerCoordinateSpace = {
   display_id?: string;
-  origin: "top_left" | string;
-  unit: "pixels" | string;
+  origin: "top_left";
+  unit: "pixels";
   width: number;
   height: number;
   scale_factor: number;
@@ -75,7 +75,7 @@ export type ComputerActionReceipt = {
   redacted_action_summary: string;
   error_code?: string;
   error_message?: string;
-  duration?: string | number;
+  duration?: number;
   completed_at: string;
   before?: ComputerMediaRef;
   after?: ComputerMediaRef;
@@ -101,12 +101,9 @@ export type ComputerSessionSnapshot = {
   state: ComputerSessionState;
   capabilities: ComputerCapabilities;
   observation?: ComputerObservation;
-  receipts?: ComputerActionReceipt[];
   last_receipt?: ComputerActionReceipt;
-  error?: string;
 };
 
 export type StartComputerSessionInput = {
   approved: boolean;
-  max_actions?: number;
 };

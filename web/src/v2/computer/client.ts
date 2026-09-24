@@ -1,13 +1,13 @@
 import { getDesktopServiceBridge, type DesktopServiceBridge } from "../desktopServiceBridge";
-import type { ComputerActionReceipt, ComputerCapabilities, ComputerCapabilitiesResponse, ComputerObservation, ComputerObservationResponse, ComputerSessionSnapshot, StartComputerSessionInput } from "./types";
+import type { ComputerActionReceipt, ComputerCapabilitiesResponse, ComputerObservationResponse, ComputerSessionSnapshot, StartComputerSessionInput } from "./types";
 
 export type ComputerClient = {
-  getCapabilities: () => Promise<ComputerCapabilities>;
+  getCapabilities: () => Promise<ComputerCapabilitiesResponse>;
   start: (input: StartComputerSessionInput) => Promise<ComputerSessionSnapshot>;
-  observe: (sessionID: string) => Promise<ComputerObservationResponse | ComputerSessionSnapshot>;
-  pause: (sessionID: string) => Promise<ComputerSessionSnapshot | void>;
-  resume: (sessionID: string) => Promise<ComputerSessionSnapshot | void>;
-  stop: (sessionID: string) => Promise<ComputerSessionSnapshot | void>;
+  observe: (sessionID: string) => Promise<ComputerObservationResponse>;
+  pause: (sessionID: string) => Promise<ComputerSessionSnapshot>;
+  resume: (sessionID: string) => Promise<ComputerSessionSnapshot>;
+  stop: (sessionID: string) => Promise<ComputerSessionSnapshot>;
   getReceipt: (sessionID: string, actionID: string) => Promise<ComputerActionReceipt>;
 };
 
@@ -16,20 +16,25 @@ export type ComputerBridge = Pick<Required<DesktopServiceBridge>, "GetComputerCa
 export function getComputerBridge(): ComputerBridge | null {
   const bridge = getDesktopServiceBridge();
   if (!bridge?.GetComputerCapabilities || !bridge.StartComputerSession || !bridge.ObserveComputerSession || !bridge.PauseComputerSession || !bridge.ResumeComputerSession || !bridge.StopComputerSession || !bridge.GetComputerActionReceipt) return null;
-  return bridge as unknown as ComputerBridge;
+  return {
+    GetComputerCapabilities: bridge.GetComputerCapabilities,
+    StartComputerSession: bridge.StartComputerSession,
+    ObserveComputerSession: bridge.ObserveComputerSession,
+    PauseComputerSession: bridge.PauseComputerSession,
+    ResumeComputerSession: bridge.ResumeComputerSession,
+    StopComputerSession: bridge.StopComputerSession,
+    GetComputerActionReceipt: bridge.GetComputerActionReceipt
+  };
 }
 
 export function createComputerClient(bridge: ComputerBridge): ComputerClient {
   return {
-    getCapabilities: async () => {
-      const value = await bridge.GetComputerCapabilities!() as ComputerCapabilitiesResponse | ComputerCapabilities;
-      return ("capabilities" in value ? value.capabilities : value);
-    },
-    start: async (input) => await bridge.StartComputerSession!(input) as ComputerSessionSnapshot,
-    observe: async (sessionID) => await bridge.ObserveComputerSession!(sessionID) as ComputerObservationResponse | ComputerSessionSnapshot,
-    pause: async (sessionID) => await bridge.PauseComputerSession!(sessionID) as ComputerSessionSnapshot | void,
-    resume: async (sessionID) => await bridge.ResumeComputerSession!(sessionID) as ComputerSessionSnapshot | void,
-    stop: async (sessionID) => await bridge.StopComputerSession!(sessionID) as ComputerSessionSnapshot | void,
-    getReceipt: async (sessionID, actionID) => await bridge.GetComputerActionReceipt!(sessionID, actionID) as ComputerActionReceipt
+    getCapabilities: () => bridge.GetComputerCapabilities(),
+    start: (input) => bridge.StartComputerSession(input),
+    observe: (sessionID) => bridge.ObserveComputerSession(sessionID),
+    pause: (sessionID) => bridge.PauseComputerSession(sessionID),
+    resume: (sessionID) => bridge.ResumeComputerSession(sessionID),
+    stop: (sessionID) => bridge.StopComputerSession(sessionID),
+    getReceipt: (sessionID, actionID) => bridge.GetComputerActionReceipt(sessionID, actionID)
   };
 }

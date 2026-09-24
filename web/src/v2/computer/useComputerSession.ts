@@ -1,84 +1,135 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createComputerClient, type ComputerClient } from "./client";
-import type { ComputerActionReceipt, ComputerCapabilities, ComputerObservation, ComputerObservationResponse, ComputerSessionSnapshot, StartComputerSessionInput } from "./types";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { ComputerClient } from "./client";
+import { computerReadinessError } from "./readiness";
+import type { ComputerActionReceipt, ComputerCapabilities, ComputerObservation, ComputerSessionSnapshot, StartComputerSessionInput } from "./types";
 
 type ComputerState = {
+  available: boolean;
   capabilities: ComputerCapabilities | null;
   session: ComputerSessionSnapshot | null;
   observation: ComputerObservation | null;
   receipts: ComputerActionReceipt[];
   loading: boolean;
   error: string | null;
+  controlIntent: "pause" | "stop" | null;
 };
+const initialState: ComputerState = { available: false, capabilities: null, session: null, observation: null, receipts: [], loading: false, error: null, controlIntent: null };
 
-const initialState: ComputerState = { capabilities: null, session: null, observation: null, receipts: [], loading: false, error: null };
-
-function mergeSnapshot(current: ComputerState, value: ComputerSessionSnapshot | void): ComputerState {
-  if (!value) return current;
-  const receipts = [...current.receipts, ...(value.receipts ?? []), ...(value.last_receipt ? [value.last_receipt] : [])].filter((item, index, list) => list.findIndex((candidate) => candidate.action_id === item.action_id) === index);
-  return { ...current, session: value, capabilities: value.capabilities ?? current.capabilities, observation: value.observation ?? current.observation, receipts };
+function mergeSnapshot(current: ComputerState, snapshot: ComputerSessionSnapshot): ComputerState {
+  const receipt = snapshot.last_receipt;
+  const receipts = receipt ? [...current.receipts.filter((item) => item.action_id !== receipt.action_id), receipt] : current.receipts;
+  // A snapshot contains metadata only. Preserve image bytes only for the same observation.
+  const observation = snapshot.observation?.id === current.observation?.id
+    ? current.observation : snapshot.observation ?? current.observation;
+  return { ...current, session: snapshot, capabilities: snapshot.capabilities, observation, receipts };
 }
 
 export function useComputerSession(client: ComputerClient | null) {
   const [state, setState] = useState<ComputerState>(initialState);
-  const mounted = useRef(true);
-  const controlSerial = useRef(0);
-  const sessionIDRef = useRef<string | null>(null);
-  useEffect(() => () => { mounted.current = false; }, []);
-  useEffect(() => { setState(initialState); sessionIDRef.current = null; }, [client]);
-
-  const run = useCallback(async <T,>(operation: () => Promise<T>, update?: (value: T) => void): Promise<T> => {
-    setState((current) => ({ ...current, loading: true, error: null }));
-    try {
-      const value = await operation();
-      if (mounted.current) {
-        setState((current) => ({ ...current, loading: false }));
-        update?.(value);
-      }
-      return value;
-    } catch (error) {
-      if (mounted.current) setState((current) => ({ ...current, loading: false, error: error instanceof Error ? error.message : String(error) }));
-      throw error;
-    }
+  const current = useRef(initialState);
+  const mounted = useRef(false);
+  // Every request has one generation; safety controls supersede all pending work.
+  const generation = useRef(0);
+  const update = useCallback((next: ComputerState) => {
+    current.current = next;
+    if (mounted.current) setState(next);
   }, []);
 
-  const loadCapabilities = useCallback(() => {
-    if (!client) return Promise.resolve(null);
-    return run(() => client.getCapabilities(), (capabilities) => setState((current) => ({ ...current, capabilities })));
-  }, [client, run]);
-  const start = useCallback((input: StartComputerSessionInput = { approved: false }) => {
-    if (!client) return Promise.reject(new Error("Computer Use is unavailable"));
-    return run(() => client.start(input), (snapshot) => { sessionIDRef.current = snapshot.session_id; setState((current) => mergeSnapshot(current, snapshot)); });
-  }, [client, run]);
-  const observe = useCallback(() => {
-    const sessionID = state.session?.session_id ?? sessionIDRef.current;
-    if (!client || !sessionID) return Promise.reject(new Error("No computer session is active"));
-    return run(() => client.observe(sessionID), (value) => setState((current) => {
-      if ("image_data" in value || "media_type" in value) {
-        const response = value as ComputerObservationResponse;
-        const observation = { ...response.observation, image_data: response.image_data, media_type: response.media_type };
-        return { ...current, observation, session: { ...current.session, session_id: sessionID, state: current.session?.state ?? "ready", capabilities: observation.capabilities, observation } as ComputerSessionSnapshot, capabilities: observation.capabilities ?? current.capabilities };
-      }
-      return { ...current, observation: value as unknown as ComputerObservation };
-    }));
-  }, [client, run, state.session?.session_id]);
-  const control = useCallback((operation: (sessionID: string) => Promise<ComputerSessionSnapshot | void>) => {
-    const sessionID = state.session?.session_id ?? sessionIDRef.current;
-    if (!client || !sessionID) return Promise.reject(new Error("No computer session is active"));
-    const serial = ++controlSerial.current;
-    return run(() => operation(sessionID), (value) => {
-      if (serial === controlSerial.current) setState((current) => mergeSnapshot(current, value));
-    });
-  }, [client, run, state.session?.session_id]);
-  const pause = useCallback(() => client ? control(client.pause) : Promise.reject(new Error("Computer Use is unavailable")), [client, control]);
-  const resume = useCallback(() => client ? control(client.resume) : Promise.reject(new Error("Computer Use is unavailable")), [client, control]);
-  const stop = useCallback(() => client ? control(client.stop) : Promise.reject(new Error("Computer Use is unavailable")), [client, control]);
-  const getReceipt = useCallback((actionID: string) => {
-    const sessionID = state.session?.session_id ?? sessionIDRef.current;
-    if (!client || !sessionID) return Promise.reject(new Error("No computer session is active"));
-    return run(() => client.getReceipt(sessionID, actionID), (receipt) => setState((current) => ({ ...current, receipts: current.receipts.some((item) => item.action_id === receipt.action_id) ? current.receipts : [...current.receipts, receipt] })));
-  }, [client, run, state.session?.session_id]);
+  useEffect(() => {
+    mounted.current = true;
+    ++generation.current;
+    update(initialState);
+    return () => { mounted.current = false; ++generation.current; };
+  }, [client, update]);
 
-  const actions = useMemo(() => ({ loadCapabilities, start, observe, pause, resume, stop, getReceipt }), [getReceipt, loadCapabilities, observe, pause, resume, start, stop]);
-  return { ...state, available: Boolean(client), ...actions };
+  const fail = useCallback((message: string): never => {
+    update({ ...current.current, error: message });
+    throw new Error(message);
+  }, [update]);
+
+  const run = useCallback(async <T,>(operation: () => Promise<T>, apply: (value: T, state: ComputerState) => ComputerState): Promise<T | null> => {
+    const version = ++generation.current;
+    update({ ...current.current, loading: true, error: null });
+    try {
+      const value = await operation();
+      if (!mounted.current || version !== generation.current) return null;
+      update({ ...apply(value, current.current), loading: false });
+      return value;
+    } catch (error) {
+      if (!mounted.current || version !== generation.current) return null;
+      update({ ...current.current, loading: false, error: error instanceof Error ? error.message : String(error) });
+      throw error;
+    }
+  }, [update]);
+
+  const loadCapabilities = useCallback(async () => {
+    if (!client) return null;
+    // Never let a readiness refresh supersede a session safety control.
+    if (current.current.session || current.current.loading) return null;
+    return run(() => client.getCapabilities(), (value, state) => ({
+      ...state, available: value.available, capabilities: value.capabilities,
+      error: value.error_message || value.error_code || (!value.available ? "Computer Use is unavailable on this host." : null)
+    }));
+  }, [client, run]);
+
+  const start = useCallback(async (input: StartComputerSessionInput = { approved: false }) => {
+    const state = current.current;
+    if (!client) return fail("Computer Use is unavailable");
+    if (!input.approved) return fail("Explicit session approval is required");
+    const readiness = computerReadinessError(state.available, state.capabilities);
+    if (readiness) return fail(readiness);
+    if (state.loading || (state.session && state.session.state !== "stopped")) return fail("Stop the current computer session before starting another");
+    update({ ...state, session: null, observation: null, receipts: [], controlIntent: null });
+    return run(() => client.start(input), (snapshot, state) => mergeSnapshot(state, snapshot));
+  }, [client, fail, run, update]);
+
+  const observe = useCallback(async () => {
+    const state = current.current;
+    const session = state.session;
+    if (!client || !session) return fail("No computer session is active");
+    if (state.controlIntent || !["ready", "needs_observation"].includes(session.state)) return fail("The computer session cannot observe until it is resumed");
+    if (state.loading) return fail("A computer request is already pending");
+    return run(() => client.observe(session.session_id), (value, state) => {
+      if (value.observation.session_id !== session.session_id) throw new Error("Observation session mismatch");
+      const observation = { ...value.observation, image_data: value.image_data, media_type: value.media_type };
+      return { ...state, observation, capabilities: observation.capabilities, session: { ...session, state: "ready", observation, capabilities: observation.capabilities } };
+    });
+  }, [client, fail, run]);
+
+  const control = useCallback(async (kind: "pause" | "resume" | "stop") => {
+    const state = current.current;
+    const session = state.session;
+    if (!client || !session) return fail("No computer session is active");
+    if (session.state === "stopped") return fail("The computer session is stopped");
+    if (kind !== "stop" && state.controlIntent === "stop") return fail("Stop requested; retry Stop if it failed before continuing");
+    if (kind === "resume" && (state.loading || session.state !== "paused")) return fail("Only a confirmed paused session can resume");
+    if (kind === "resume") {
+      const readiness = computerReadinessError(state.available, state.capabilities);
+      if (readiness) return fail(readiness);
+    }
+    // Retain the safety intent on rejection: outcome is not confirmed; allow Stop retry.
+    update({ ...state, controlIntent: kind === "resume" ? state.controlIntent : kind });
+    return run(() => client[kind](session.session_id), (snapshot, state) => {
+      if (snapshot.session_id !== session.session_id) throw new Error("Control session mismatch");
+      if (kind === "stop" && snapshot.state !== "stopped") throw new Error("Backend did not confirm Stop");
+      if (kind === "pause" && snapshot.state !== "paused") throw new Error("Backend did not confirm Pause");
+      return { ...mergeSnapshot(state, snapshot), controlIntent: null };
+    });
+  }, [client, fail, run, update]);
+  const pause = useCallback(() => control("pause"), [control]);
+  const resume = useCallback(() => control("resume"), [control]);
+  const stop = useCallback(() => control("stop"), [control]);
+
+  const getReceipt = useCallback(async (actionID: string) => {
+    const state = current.current;
+    if (!client || !state.session) return fail("No computer session is active");
+    if (state.loading || state.controlIntent) return fail("A computer control request is pending");
+    const sessionID = state.session.session_id;
+    return run(() => client.getReceipt(sessionID, actionID), (receipt, state) => {
+      if (receipt.session_id !== sessionID || receipt.action_id !== actionID) throw new Error("Receipt ownership mismatch");
+      return { ...state, receipts: [...state.receipts.filter((item) => item.action_id !== receipt.action_id), receipt] };
+    });
+  }, [client, fail, run]);
+
+  return { ...state, loadCapabilities, start, observe, pause, resume, stop, getReceipt };
 }

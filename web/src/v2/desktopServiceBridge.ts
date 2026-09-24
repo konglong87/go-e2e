@@ -1,3 +1,5 @@
+import type { ComputerCapabilitiesResponse, ComputerSessionSnapshot, ComputerObservationResponse, ComputerActionReceipt, StartComputerSessionInput } from "./computer/types";
+
 export type DesktopServiceStatus = {
   state: "stopped" | "starting" | "ready" | "failed";
   pid?: number;
@@ -25,13 +27,13 @@ export type DesktopServiceBridge = {
   SaveBackgroundImage?: (dataURL: string, name: string) => Promise<DesktopBackgroundImage>;
   SetBackgroundMode?: (mode: DesktopBackgroundMode) => Promise<DesktopBackgroundImage>;
   ClearBackgroundImage?: () => Promise<void>;
-  GetComputerCapabilities?: () => Promise<unknown>;
-  StartComputerSession?: (input: unknown) => Promise<unknown>;
-  ObserveComputerSession?: (sessionID: string) => Promise<unknown>;
-  PauseComputerSession?: (sessionID: string) => Promise<unknown>;
-  ResumeComputerSession?: (sessionID: string) => Promise<unknown>;
-  StopComputerSession?: (sessionID: string) => Promise<unknown>;
-  GetComputerActionReceipt?: (sessionID: string, actionID: string) => Promise<unknown>;
+  GetComputerCapabilities?: () => Promise<ComputerCapabilitiesResponse>;
+  StartComputerSession?: (input: StartComputerSessionInput) => Promise<ComputerSessionSnapshot>;
+  ObserveComputerSession?: (sessionID: string) => Promise<ComputerObservationResponse>;
+  PauseComputerSession?: (sessionID: string) => Promise<ComputerSessionSnapshot>;
+  ResumeComputerSession?: (sessionID: string) => Promise<ComputerSessionSnapshot>;
+  StopComputerSession?: (sessionID: string) => Promise<ComputerSessionSnapshot>;
+  GetComputerActionReceipt?: (sessionID: string, actionID: string) => Promise<ComputerActionReceipt>;
 };
 
 declare global {
