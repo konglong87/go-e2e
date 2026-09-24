@@ -13,10 +13,10 @@
 - 第一阶段只支持 macOS 当前用户桌面，由 Desktop-v2 发起并监督真实 screenshot、click、type、key 和 scroll 闭环。
 - macOS Host Desktop 使用独立 Swift/Objective-C native helper，负责 Screen Capture、CGEvent、Accessibility readiness 和焦点状态。
 - 第一阶段权限简化为 session-level explicit approval；保留 Pause/Stop 和凭据不落盘等硬约束，不实现完整 action risk classifier。
-- Linux `isolated_x11`、Windows Host、TUI Computer Use、Code Execution 和 Replay 均后置，不作为第一期交付范围。
+- Windows Host 作为第二期目标；Linux `isolated_x11`、TUI Computer Use、Code Execution 和 Replay 后置，不作为第一期交付范围。
 - `PyAutoGUI` 和 `pynput` 不进入第一期主执行链，也不是跨平台核心抽象。
 
-因此，本文件是“macOS Host MVP 实施基线”；后续仍需根据真实 `.app`、系统权限和像素 E2E 结果调整 capability，而不是把未来平台能力写成当前承诺。
+因此，本文件是“macOS Host MVP + Windows Host Phase 2 实施基线”；后续仍需根据真实 `.app`、系统权限和像素 E2E 结果调整 capability，而不是把未来平台能力写成当前承诺。
 
 ## 1. 结论摘要
 
@@ -115,7 +115,7 @@ Isolated VM / Sandbox
 5. 复用现有 Permission、Transcript、Media 和取消机制，但第一阶段采用简单 session-level approval。
 6. 第一阶段只支持 Structured Action；Code Execution 后置。
 7. 以真实 macOS `.app`、真实截图和动作回执完成端到端验收。
-8. 为后续 Linux isolated、Windows Host、Record/Replay 和 Computer Skill 留出扩展位。
+8. 为第二期 Windows Host 以及后续 Linux isolated、Record/Replay 和 Computer Skill 留出扩展位。
 
 ### 4.2 第一阶段非目标
 
@@ -229,6 +229,14 @@ internal/computerbackend/
 | macOS native helper | CGEvent、Quartz/ScreenCapture、Accessibility readiness | 在 Go 主进程中直接散落 cgo/UI 平台逻辑 |
 | Windows native helper | SendInput、Windows Capture、UI Automation readiness | 用 Python 库掩盖系统权限和窗口状态 |
 
+第一期虽然只实现 macOS，但公共合同必须从一开始保持跨平台：
+
+- `ComputerSession`、`Action`、`Observation`、`ActionReceipt` 不能出现 CGEvent、Quartz、Win32 或 WinRT 专有字段。
+- 平台差异通过 `Capabilities`、`Readiness`、`FocusState` 和 `CoordinateSpace` 表达。
+- 截图统一采用 screenshot top-left origin，并携带 width、height、scale factor、display/window 和 frame hash。
+- Host permission 统一为 session-level approval；macOS 和 Windows 不各自设计一套上层权限协议。
+- Wails bridge 和 Desktop Preview 不判断操作系统细节，只消费平台无关的 capability/readiness。
+
 第一阶段默认组合为：
 
 ```text
@@ -259,7 +267,7 @@ Python helper 通过 stdio 或 Unix socket 与 Go 通信，必须满足：
 - 不把 Python 异常直接暴露为模型可执行指令；
 - 运行结果统一转换为 `ActionReceipt`。
 
-Host Desktop 的正式实现必须使用平台 native helper；第一阶段只实现 macOS helper。
+Host Desktop 的正式实现必须使用平台 native helper；第一阶段实现 macOS helper，第二期实现 Windows helper。
 `PyAutoGUI/pynput` 不能作为 macOS、Windows、Linux 或 Wayland 的兼容性承诺。
 
 ## 7. Domain Contract
@@ -277,6 +285,20 @@ type Backend interface {
     Close(ctx context.Context) error
 }
 ```
+
+Backend 实现必须通过统一的 capability/readiness 合同暴露平台差异：
+
+```text
+capture_readiness
+input_readiness
+focus_state
+permission_state
+coordinate_space
+target_window
+```
+
+第一期 macOS 和第二期 Windows 都必须实现同一组字段。上层不得通过操作系统名称
+分支执行动作，也不得把 macOS 专有权限字段写进公共 Action schema。
 
 ### 7.2 Observation
 
@@ -656,16 +678,28 @@ sidecar 或平台 helper 管理。
 第一期不实现 Windows、Linux、TUI Computer Use、Code Execution、Replay、Channel
 和多级 action risk classifier。
 
-### Phase 2：Runtime + Desktop 完整控制面
+### Phase 2：Windows Host + Desktop-v2 复用
 
 目标：
 
-- `ComputerUse` tool 条件注册。
-- provider image capability gate。
-- ComputerSession 状态机。
-- Wails bridge 和 backend supervisor。
-- Computer Preview、Action Timeline、Permission Banner。
-- screenshot 临时资产与 receipt readback。
+- 复用第一期的 `ComputerSession`、`ComputerUse` tool、Observation、Action 和 ActionReceipt。
+- Windows native helper。
+- `SendInput` 鼠标键盘输入。
+- Windows Graphics Capture 或等价的原生窗口/显示器捕获。
+- foreground window、UIPI/integrity level 和 input readiness。
+- Desktop-v2 Computer Preview、Action Timeline、Pause/Stop 和 session-level approval 复用。
+- Windows 原生打包、helper 生命周期和失败 readback。
+
+第二期最小平台范围：
+
+- Windows 11 x64；
+- 单显示器或单选中窗口；
+- 前台窗口输入；
+- 不操作 UAC/secure desktop；
+- 不自动提权；
+- UI Automation 只作为后续辅助观察，不作为 screenshot/click 主链依赖。
+
+第二期不修改上层 ComputerUse schema，不增加 Windows 专有 action 类型。
 
 ### Phase 3：TUI 控制面
 
@@ -690,15 +724,7 @@ sidecar 或平台 helper 管理。
 Linux 只是后续 isolated backend，不是第一期目标。第一期不使用 Linux runner 作为
 产品验收前置条件。
 
-### Phase 5：Windows Host
-
-目标：
-
-- Windows Capture/SendInput/UI Automation。
-- foreground/UIPI readiness。
-- native permission flow。
-
-### Phase 6：Code Execution and Replay
+### Phase 5：Code Execution and Replay
 
 目标：
 
@@ -767,7 +793,8 @@ probe backend，再产生新的 observation。
 computerUse:
   enabled: false
   mode: host
-  backend: macos_native
+  platform: macos
+  backend: native_host
   requireSessionApproval: true
   maxActions: 30
   maxDurationMs: 300000
@@ -780,7 +807,7 @@ computerUse:
 配置规则：
 
 1. `enabled=false` 时不注册 `ComputerUse` tool。
-2. 第一阶段只允许 `mode=host`、`backend=macos_native`，不探测或切换 Linux/Windows backend。
+2. 第一阶段只允许 `mode=host`、`platform=macos`、`backend=native_host`，不探测或切换 Linux/Windows backend。
 3. `allowHostControl=false` 时拒绝创建 Host session；用户点击 Start 并批准后只授予当前 session。
 4. `requireSessionApproval=true` 时必须先完成 Desktop-v2 session approval。
 5. profile、session 和一次性运行参数只能收紧权限，不能扩大宿主上限。
@@ -828,7 +855,7 @@ schema、model turn 或 token 成本。
 
 ### 18.2 Contract Tests
 
-Fake Backend、Virtual Desktop、macOS Host Backend 必须共享同一 backend contract
+Fake Backend、macOS Host Backend、Windows Host Backend 和 Virtual Desktop 必须共享同一 backend contract
 测试：
 
 - observe；
@@ -879,10 +906,23 @@ Fake Backend、Virtual Desktop、macOS Host Backend 必须共享同一 backend c
 - 验证权限拒绝和失败 readback。
 - 保存原生窗口截图。
 
-### 18.6 安全负向测试
+### 18.6 Windows Host E2E（第二期）
+
+- 构建真实 Windows `.exe` 和 native helper。
+- 启动真实 Desktop-v2。
+- 完成 session-level approval。
+- 使用单显示器或单选中窗口获得真实截图。
+- 真实执行 click、type、key、scroll。
+- 校验 `SendInput` 前台窗口和 integrity readiness。
+- 校验 Windows Capture frame、尺寸、scale factor 和 hash。
+- 校验前后截图、ActionReceipt 和失败 readback。
+- 高权限窗口、UAC/secure desktop、焦点丢失时明确拒绝，不自动提权或重放。
+
+### 18.7 安全负向测试
 
 - Host mode 未授权时拒绝。
 - 未准备 Screen Recording/Accessibility 权限时拒绝。
+- Windows capture/input/focus readiness 未准备时拒绝。
 - CAPTCHA 动作被阻止。
 - 密码和 Token 不进入 receipt/transcript。
 - Prompt Injection 不得改变权限策略。
@@ -972,7 +1012,15 @@ Computer Use 必须由独立 feature flag 和独立 tool registration 控制。�
 - Pause/Stop。
 - native screenshot acceptance。
 
-### Slice D：TUI
+### Slice D：Windows Host
+
+- Windows native helper。
+- Capture/SendInput/UI Automation readiness。
+- foreground/UIPI/integrity readiness。
+- Host permission flow复用。
+- Windows packaging and native acceptance。
+
+### Slice E：TUI
 
 - Computer events。
 - timeline。
@@ -980,19 +1028,13 @@ Computer Use 必须由独立 feature flag 和独立 tool registration 控制。�
 - pause/resume/stop。
 - PTY screenshot acceptance。
 
-### Slice E：Linux virtual_x11
+### Slice F：Linux virtual_x11
 
 - Linux Xvfb backend。
 - Go X11 helper + XTest input。
 - screenshot、input、window readiness。
 - local fixture。
 - real E2E receipt。
-
-### Slice F：Windows Host
-
-- Windows native helper。
-- Capture/SendInput/UI Automation readiness。
-- Host permission flow。
 
 ### Slice G：Code Execution and Replay
 
@@ -1011,7 +1053,7 @@ Computer Use 必须由独立 feature flag 和独立 tool registration 控制。�
 6. 第一版先走统一 JSON schema，provider-native adapter 后置。
 7. 第一阶段只使用 macOS native helper，不引入 PyAutoGUI、pynput 或 Python helper。
 8. Host permission 不完整时明确失败，不自动切换到 Linux/isolated backend。
-9. Linux virtual_x11、Windows Host、Code Execution 和 Replay 后置。
+9. 第二期实现 Windows Host；Linux virtual_x11、Code Execution 和 Replay 后置。
 
 推荐默认答案：
 
@@ -1028,7 +1070,7 @@ No PyAutoGUI in the primary path
 No pynput
 No Python helper in Phase 1
 Linux virtual_x11 later
-Windows Host later
+Windows Host in Phase 2
 ```
 
 ## 23. 完成定义
@@ -1049,3 +1091,17 @@ Computer Use 第一阶段只有同时满足以下条件才算完成：
 Linux virtual_x11、TUI Computer Use、Windows Host、Code Execution 和 Replay 不属于第一期
 完成条件。第一期完成前，项目只能称为“具备 macOS Host Computer Use MVP”，不能宣称
 具备跨平台或完整隔离的 Computer Use。
+
+第二期 Windows Host 的完成定义是在不修改上层 ComputerUse schema 的前提下，新增
+`windows_native` backend，并同时满足：
+
+1. Windows 11 x64 真实 `.exe` 和 native helper 可启动。
+2. Desktop-v2 可以复用第一期的 Preview、Timeline、Pause、Stop 和 session approval。
+3. 单显示器或单选中窗口可以获得真实 screenshot。
+4. `SendInput` 可以在前台、同等或允许的 integrity level 下完成 click/type/key/scroll。
+5. Windows capture、focus、UIPI/integrity readiness 不满足时明确失败。
+6. UAC/secure desktop 不自动提权、不盲目重放、不静默切换到其他 backend。
+7. 前后截图、receipt、失败 readback 和 Windows 原生验收证据完整。
+
+第二期完成后，项目可以称为“macOS + Windows Host Computer Use”；Linux virtual_x11
+仍然不属于 Host Desktop 完成定义。
