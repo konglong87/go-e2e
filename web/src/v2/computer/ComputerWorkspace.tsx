@@ -2,6 +2,8 @@ import { ChevronDown, GripVertical, Monitor, Minus } from "lucide-react";
 import { createPortal } from "react-dom";
 import type { ReactElement, PointerEvent as ReactPointerEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useI18n } from "../../lib/i18n";
+import { computerReadinessMessage, computerUICopy, preferredComputerLanguage, localizeComputerError } from "./computerUICopy";
 import { ComputerApprovalDialog } from "./ComputerApprovalDialog";
 import { ComputerExecutionProgress } from "./ComputerExecutionProgress";
 import { ComputerPermissionGuide } from "./ComputerPermissionGuide";
@@ -10,7 +12,6 @@ import { ComputerPreview } from "./ComputerPreview";
 import { ComputerTimeline } from "./ComputerTimeline";
 import { ComputerToolbar } from "./ComputerToolbar";
 import { clampComputerWorkspacePosition, loadComputerWorkspacePreferences, saveComputerWorkspacePreferences, type ComputerWorkspacePoint } from "./computerWorkspacePreferences";
-import { computerReadinessError } from "./readiness";
 import { useComputerSession } from "./useComputerSession";
 
 const DRAG_THRESHOLD_PX = 6;
@@ -31,6 +32,9 @@ function portalHost(): HTMLElement {
 }
 
 export function ComputerWorkspace({ client }: { client: ComputerClient | null }): ReactElement | null {
+  useI18n(); // Subscribe to the app language so a settings change rerenders this surface.
+  const language = preferredComputerLanguage();
+  const copy = computerUICopy[language];
   const computer = useComputerSession(client);
   const [approvalOpen, setApprovalOpen] = useState(false);
   const [preferences, setPreferences] = useState(loadComputerWorkspacePreferences);
@@ -69,10 +73,10 @@ export function ComputerWorkspace({ client }: { client: ComputerClient | null })
 
   if (!client) return null;
 
-  const readiness = computerReadinessError(computer.available, computer.capabilities);
+  const readiness = computerReadinessMessage(computer.available, computer.capabilities, language);
   const state = computer.session?.state ?? "idle";
   const status = readiness ? "attention" : state;
-  const backend = computer.capabilities?.backend || "detecting";
+  const backend = computer.capabilities?.backend || copy.backendDetecting;
   const start = async () => {
     setApprovalOpen(false);
     try {
@@ -87,14 +91,14 @@ export function ComputerWorkspace({ client }: { client: ComputerClient | null })
     persist({ collapsed });
   };
 
-  const onDragStart = (event: ReactPointerEvent<HTMLDivElement>): void => {
+  const onDragStart = (event: ReactPointerEvent<HTMLButtonElement>): void => {
     if (event.button !== 0 || !panelRef.current) return;
     const rect = panelRef.current.getBoundingClientRect();
     dragRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, originX: rect.left, originY: rect.top, moved: false };
     try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* Pointer capture is unavailable in some test environments. */ }
   };
 
-  const onDragMove = (event: ReactPointerEvent<HTMLDivElement>): void => {
+  const onDragMove = (event: ReactPointerEvent<HTMLButtonElement>): void => {
     const current = dragRef.current;
     if (!current || current.pointerId !== event.pointerId || !panelRef.current) return;
     const dx = event.clientX - current.startX;
@@ -112,7 +116,7 @@ export function ComputerWorkspace({ client }: { client: ComputerClient | null })
     ));
   };
 
-  const onDragEnd = (event: ReactPointerEvent<HTMLDivElement>): void => {
+  const onDragEnd = (event: ReactPointerEvent<HTMLButtonElement>): void => {
     const current = dragRef.current;
     if (!current || current.pointerId !== event.pointerId) return;
     dragRef.current = null;
@@ -130,7 +134,7 @@ export function ComputerWorkspace({ client }: { client: ComputerClient | null })
     persist({ position: next });
   };
 
-  const onDragCancel = (event: ReactPointerEvent<HTMLDivElement>): void => {
+  const onDragCancel = (event: ReactPointerEvent<HTMLButtonElement>): void => {
     if (dragRef.current?.pointerId !== event.pointerId) return;
     dragRef.current = null;
     setDragging(false);
@@ -140,42 +144,41 @@ export function ComputerWorkspace({ client }: { client: ComputerClient | null })
   const panel = preferences.collapsed
     ? <button
       aria-expanded={false}
-      aria-label="Open Computer Use workspace"
+      aria-label={copy.launcher}
       className="webui2-computer-launcher"
       onClick={toggleCollapsed}
       type="button"
     >
       <Monitor aria-hidden="true" size={17} strokeWidth={2.2} />
       <span className={`webui2-computer-launcher-dot webui2-computer-launcher-dot--${status}`} />
-      <span className="webui2-computer-launcher-label">Computer Use</span>
+      <span className="webui2-computer-launcher-label">{copy.controlSurface}</span>
       <span className="webui2-computer-launcher-backend">{backend}</span>
       <ChevronDown aria-hidden="true" size={15} />
     </button>
     : <aside
       ref={panelRef}
-      aria-label="Computer workspace"
+      aria-label={copy.workspace}
       className="webui2-computer-workspace"
       data-dragging={dragging ? "true" : "false"}
       style={panelStyle}
     >
       <header className="webui2-computer-header">
-        <div
-          aria-label="Drag Computer Use workspace"
+        <button
+          aria-label={copy.dragWorkspace}
           className="webui2-computer-drag-handle"
           data-drag-handle="true"
           onPointerCancel={onDragCancel}
           onPointerDown={onDragStart}
           onPointerMove={onDragMove}
           onPointerUp={onDragEnd}
-          role="button"
-          tabIndex={0}
+          type="button"
         >
           <GripVertical aria-hidden="true" size={16} />
-          <div><span className="webui2-computer-eyebrow">CONTROL SURFACE</span><h2>Computer Workspace</h2></div>
-        </div>
+          <span className="webui2-computer-header-title"><span className="webui2-computer-eyebrow">{copy.controlSurface}</span><span className="webui2-computer-header-title-text">{copy.workspace}</span></span>
+        </button>
         <div className="webui2-computer-header-actions">
           <span className="webui2-computer-backend">{backend}</span>
-          <button aria-label="Collapse Computer Use workspace" className="webui2-computer-icon-button" onClick={toggleCollapsed} title="Collapse" type="button"><Minus aria-hidden="true" size={16} /></button>
+          <button aria-label={copy.collapseWorkspace} className="webui2-computer-icon-button" onClick={toggleCollapsed} title={copy.collapse} type="button"><Minus aria-hidden="true" size={16} /></button>
         </div>
       </header>
       <ComputerToolbar
@@ -197,7 +200,7 @@ export function ComputerWorkspace({ client }: { client: ComputerClient | null })
         onRecheck={async () => { await computer.loadCapabilities(); }}
       /> : null}
       {!computer.error && readiness ? <p className="webui2-computer-error" role="status">{readiness}</p> : null}
-      {computer.error ? <p className="webui2-computer-error" role="alert">{computer.error}</p> : null}
+      {computer.error ? <p className="webui2-computer-error" role="alert">{localizeComputerError(computer.error, language)}</p> : null}
       <ComputerPreview observation={computer.observation} capabilities={computer.capabilities} />
       <ComputerTimeline receipts={computer.receipts} />
       {approvalOpen ? <ComputerApprovalDialog
@@ -211,7 +214,7 @@ export function ComputerWorkspace({ client }: { client: ComputerClient | null })
 
   const executionProgress = computer.session && computer.session.state !== "stopped" ? <ComputerExecutionProgress
     controlIntent={computer.controlIntent}
-    error={computer.error}
+    error={computer.error ? localizeComputerError(computer.error, language) : null}
     loading={computer.loading}
     receipts={computer.receipts}
     state={computer.session.state}

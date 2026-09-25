@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
-import { computerReadinessError } from "./readiness";
+import { useI18n } from "../../lib/i18n";
+import { computerReadinessMessage, computerUICopy, preferredComputerLanguage } from "./computerUICopy";
 import type { ComputerCapabilities } from "./types";
 
 type Props = {
@@ -11,22 +12,25 @@ type Props = {
 };
 
 export function ComputerApprovalDialog({ capabilities, available, busy, onApprove, onCancel }: Props): ReactElement {
-  const readiness = computerReadinessError(available, capabilities);
+  useI18n(); // Subscribe to the app language so a settings change rerenders this surface.
+  const language = preferredComputerLanguage();
+  const copy = computerUICopy[language];
+  const readiness = computerReadinessMessage(available, capabilities, language);
   return <div className="webui2-computer-modal-backdrop" role="presentation">
     <section className="webui2-computer-modal" role="dialog" aria-modal="true" aria-labelledby="webui2-computer-approval-title">
-      <span className="webui2-computer-eyebrow">SESSION APPROVAL</span>
-      <h2 id="webui2-computer-approval-title">Allow Computer Use?</h2>
-      <p>This session can observe and operate the current desktop after you approve it. Do not enter passwords, tokens, or other secrets through Computer Use.</p>
+      <span className="webui2-computer-eyebrow">{copy.sessionApproval}</span>
+      <h2 id="webui2-computer-approval-title">{copy.approvalTitle}</h2>
+      <p>{copy.approvalDescription}</p>
       <dl>
-        <div><dt>Platform</dt><dd>{capabilities?.platform || "Unknown"} · {capabilities?.backend || "Unknown backend"}</dd></div>
-        <div><dt>Capture</dt><dd>{capabilities?.capture_readiness || "unknown"}</dd></div>
-        <div><dt>Input</dt><dd>{capabilities?.input_readiness || "unknown"}</dd></div>
-        <div><dt>Target</dt><dd>{capabilities?.target_window?.title || "Current desktop"}</dd></div>
+        <div><dt>{copy.platform}</dt><dd>{capabilities?.platform || copy.unknown} · {capabilities?.backend || copy.unknownBackend}</dd></div>
+        <div><dt>{copy.capture}</dt><dd>{capabilities?.capture_readiness ? copy.readiness[capabilities.capture_readiness] : copy.unknown}</dd></div>
+        <div><dt>{copy.input}</dt><dd>{capabilities?.input_readiness ? copy.readiness[capabilities.input_readiness] : copy.unknown}</dd></div>
+        <div><dt>{copy.target}</dt><dd>{capabilities?.target_window?.title || copy.currentDesktop}</dd></div>
       </dl>
       {readiness ? <p role="status">{readiness}</p> : null}
       <div className="webui2-computer-modal-actions">
-        <button className="webui2-computer-button webui2-computer-button--quiet" disabled={busy} onClick={onCancel} type="button">Cancel</button>
-        <button className="webui2-computer-button" disabled={busy || Boolean(readiness)} onClick={onApprove} type="button">{busy ? "Starting…" : "Approve session"}</button>
+        <button className="webui2-computer-button webui2-computer-button--quiet" disabled={busy} onClick={onCancel} type="button">{copy.cancel}</button>
+        <button className="webui2-computer-button" disabled={busy || Boolean(readiness)} onClick={onApprove} type="button">{busy ? copy.starting : copy.approveSession}</button>
       </div>
     </section>
   </div>;

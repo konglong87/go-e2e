@@ -2,8 +2,10 @@ import { Activity, ChevronUp, GripVertical, Minus } from "lucide-react";
 import { createPortal } from "react-dom";
 import type { ReactElement, PointerEvent as ReactPointerEvent } from "react";
 import { useState, useRef } from "react";
+import { useI18n } from "../../lib/i18n";
 import type { ComputerActionReceipt, ComputerSessionState } from "./types";
 import { clampComputerWorkspacePosition, type ComputerWorkspacePoint } from "./computerWorkspacePreferences";
+import { computerProgressCopy, preferredComputerLanguage, type ComputerProgressStatus } from "./computerUICopy";
 
 const DRAG_THRESHOLD_PX = 6;
 const DEFAULT_RIGHT_PX = 22;
@@ -22,7 +24,7 @@ type DragState = {
 type ProgressTone = "active" | "ready" | "paused" | "attention";
 
 type ProgressStatus = {
-  label: string;
+  key: ComputerProgressStatus;
   tone: ProgressTone;
   summary: string;
 };
@@ -42,19 +44,19 @@ function portalHost(): HTMLElement {
 }
 
 function progressStatus(state: ComputerSessionState, loading: boolean, controlIntent: "pause" | "stop" | null, error: string | null): ProgressStatus {
-  if (error || state === "failed") return { label: "Needs attention", tone: "attention", summary: error ?? "The Computer Use session failed." };
-  if (controlIntent === "pause") return { label: "Pausing", tone: "active", summary: "Pausing the Computer Use session…" };
-  if (controlIntent === "stop") return { label: "Stopping", tone: "active", summary: "Stopping the Computer Use session…" };
-  if (loading) return { label: "Working", tone: "active", summary: "Running the current Computer Use step…" };
-  if (state === "paused") return { label: "Paused", tone: "paused", summary: "The session is paused. Resume from the workspace when ready." };
-  if (state === "needs_observation") return { label: "Waiting", tone: "active", summary: "Waiting for the next desktop observation…" };
-  if (state === "pending_approval") return { label: "Awaiting approval", tone: "paused", summary: "Approve the session to start Computer Use." };
-  return { label: "Ready", tone: "ready", summary: "Computer Use is ready for the next step." };
+  if (error || state === "failed") return { key: "needsAttention", tone: "attention", summary: error ?? "" };
+  if (controlIntent === "pause") return { key: "pausing", tone: "active", summary: "" };
+  if (controlIntent === "stop") return { key: "stopping", tone: "active", summary: "" };
+  if (loading) return { key: "working", tone: "active", summary: "" };
+  if (state === "paused") return { key: "paused", tone: "paused", summary: "" };
+  if (state === "needs_observation") return { key: "waiting", tone: "active", summary: "" };
+  if (state === "pending_approval") return { key: "awaitingApproval", tone: "paused", summary: "" };
+  return { key: "ready", tone: "ready", summary: "" };
 }
 
-function stepTime(value: string): string {
+function stepTime(value: string, language: "en" | "zh"): string {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "" : date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleTimeString(language === "zh" ? "zh-CN" : "en-US", { hour: "2-digit", minute: "2-digit" });
 }
 
 export function ComputerExecutionProgress({
@@ -66,14 +68,19 @@ export function ComputerExecutionProgress({
   defaultCollapsed = false,
   onCollapsedChange,
 }: ComputerExecutionProgressProps): ReactElement {
+  useI18n(); // Subscribe to the app language so a settings change rerenders this surface.
+  const language = preferredComputerLanguage();
+  const copy = computerProgressCopy[language];
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [position, setPosition] = useState<ComputerWorkspacePoint | null>(null);
   const [dragging, setDragging] = useState(false);
   const panelRef = useRef<HTMLElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const status = progressStatus(state, loading, controlIntent, error);
+  const statusLabel = copy.statusLabel[status.key];
+  const statusSummary = status.summary || copy.statusSummary[status.key];
   const recentReceipts = receipts.slice(-MAX_VISIBLE_STEPS).reverse();
-  const completedLabel = `${receipts.length} ${receipts.length === 1 ? "step" : "steps"} completed`;
+  const completedLabel = copy.completedSteps(receipts.length);
 
   const toggleCollapsed = (): void => {
     const next = !collapsed;
@@ -131,20 +138,20 @@ export function ComputerExecutionProgress({
   const panelStyle = position ? { left: position.x, top: position.y } : { right: DEFAULT_RIGHT_PX, bottom: DEFAULT_BOTTOM_PX };
   const launcher = <button
     aria-expanded={false}
-    aria-label="Open Computer Use execution progress"
+    aria-label={copy.openProgress}
     className="webui2-computer-progress-launcher"
     onClick={toggleCollapsed}
     type="button"
   >
     <Activity aria-hidden="true" size={16} />
     <span className={`webui2-computer-progress-dot webui2-computer-progress-dot--${status.tone}`} />
-    <span className="webui2-computer-progress-launcher-copy"><strong>Computer Use</strong><span>{completedLabel}</span></span>
+    <span className="webui2-computer-progress-launcher-copy"><strong>{copy.title}</strong><span>{completedLabel}</span></span>
     <ChevronUp aria-hidden="true" size={15} />
   </button>;
 
   const panel = <aside
     ref={panelRef}
-    aria-label="Computer Use execution progress"
+    aria-label={copy.title}
     className="webui2-computer-progress"
     data-dragging={dragging ? "true" : "false"}
     data-status={status.tone}
@@ -152,7 +159,7 @@ export function ComputerExecutionProgress({
   >
     <header className="webui2-computer-progress-header">
       <button
-        aria-label="Drag Computer Use execution progress"
+        aria-label={copy.dragProgress}
         className="webui2-computer-progress-drag-handle"
         data-drag-handle="execution-progress"
         onPointerCancel={onDragCancel}
@@ -162,24 +169,24 @@ export function ComputerExecutionProgress({
         type="button"
       >
         <GripVertical aria-hidden="true" size={16} />
-        <span className="webui2-computer-progress-title"><span className="webui2-computer-eyebrow">LIVE EXECUTION</span><strong>Computer Use progress</strong></span>
+        <span className="webui2-computer-progress-title"><span className="webui2-computer-eyebrow">{copy.liveExecution}</span><strong>{copy.title}</strong></span>
       </button>
       <div className="webui2-computer-progress-header-actions">
-        <span className={`webui2-computer-progress-status webui2-computer-progress-status--${status.tone}`}>{status.label}</span>
-        <button aria-label="Collapse Computer Use execution progress" className="webui2-computer-icon-button" onClick={toggleCollapsed} title="Collapse" type="button"><Minus aria-hidden="true" size={16} /></button>
+        <span className={`webui2-computer-progress-status webui2-computer-progress-status--${status.tone}`}>{statusLabel}</span>
+        <button aria-label={copy.closeProgress} className="webui2-computer-icon-button" onClick={toggleCollapsed} title={copy.collapse} type="button"><Minus aria-hidden="true" size={16} /></button>
       </div>
     </header>
     <div className="webui2-computer-progress-summary" aria-live="polite">
-      <div className="webui2-computer-progress-summary-row"><strong>{completedLabel}</strong><span>{status.label}</span></div>
-      <p>{status.summary}</p>
+      <div className="webui2-computer-progress-summary-row"><strong>{completedLabel}</strong><span>{statusLabel}</span></div>
+      <p>{statusSummary}</p>
     </div>
-    <section aria-label="Computer Use execution steps" className="webui2-computer-progress-steps">
-      <div className="webui2-computer-section-heading"><div><span className="webui2-computer-eyebrow">STEP SUMMARY</span><h3>Recent activity</h3></div><span className="webui2-computer-count">{receipts.length}</span></div>
-      {recentReceipts.length === 0 ? <p className="webui2-computer-empty">No action steps have been recorded yet.</p> : <ol>
+    <section aria-label={copy.executionSteps} className="webui2-computer-progress-steps">
+      <div className="webui2-computer-section-heading"><div><span className="webui2-computer-eyebrow">{copy.stepSummary}</span><h3>{copy.recentActivity}</h3></div><span className="webui2-computer-count">{receipts.length}</span></div>
+      {recentReceipts.length === 0 ? <p className="webui2-computer-empty">{copy.noSteps}</p> : <ol>
         {recentReceipts.map((receipt) => <li key={receipt.action_id}>
           <span className={`webui2-computer-progress-step-dot webui2-computer-progress-step-dot--${receipt.outcome}`} />
-          <div><strong>{receipt.redacted_action_summary || "Computer action"}</strong><span>{receipt.outcome} · {receipt.verification}</span></div>
-          <time dateTime={receipt.completed_at}>{stepTime(receipt.completed_at)}</time>
+          <div><strong>{receipt.redacted_action_summary || copy.fallbackAction}</strong><span>{copy.outcome[receipt.outcome]} · {copy.verification[receipt.verification]}</span></div>
+          <time dateTime={receipt.completed_at}>{stepTime(receipt.completed_at, language)}</time>
         </li>)}
       </ol>}
     </section>

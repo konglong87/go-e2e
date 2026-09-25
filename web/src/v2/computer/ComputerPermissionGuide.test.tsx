@@ -1,4 +1,5 @@
 import { act } from "react";
+import { I18nProvider } from "../../lib/i18n";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ComputerPermissionGuide } from "./ComputerPermissionGuide";
@@ -12,12 +13,20 @@ function withReadiness(overrides: Partial<ComputerCapabilities>): ComputerCapabi
 describe("ComputerPermissionGuide", () => {
   let root: Root;
   let container: HTMLDivElement;
+  let storage: Map<string, string>;
 
   beforeEach(() => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
+    storage = new Map([["golang-cc-webui.language.v1", "en"]]);
+    Object.defineProperty(window, "localStorage", { configurable: true, value: {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => { storage.set(key, value); },
+      removeItem: (key: string) => { storage.delete(key); },
+      clear: () => { storage.clear(); },
+    } });
   });
 
   afterEach(() => {
@@ -33,14 +42,22 @@ describe("ComputerPermissionGuide", () => {
   }) => {
     const openPermissionSettings = options?.openPermissionSettings ?? vi.fn<(target: ComputerPermissionTarget) => Promise<void>>().mockResolvedValue(undefined);
     const onRecheck = options?.onRecheck ?? vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
-    act(() => root.render(<ComputerPermissionGuide
+    act(() => root.render(<I18nProvider><ComputerPermissionGuide
       available={options?.available ?? true}
       capabilities={nextCapabilities}
       client={{ openPermissionSettings }}
       onRecheck={onRecheck}
-    />));
+    /></I18nProvider>));
     return { openPermissionSettings, onRecheck };
   };
+
+  it("defaults Computer Use copy to Chinese without a language preference", () => {
+    storage.delete("golang-cc-webui.language.v1");
+    render(withReadiness({ input_readiness: "permission_required", capture_readiness: "permission_required" }));
+    expect(container.textContent).toContain("电脑操作需要系统权限");
+    expect(container.textContent).toContain("打开辅助功能设置");
+    expect(container.textContent).not.toContain("Computer Use needs system permissions");
+  });
 
   it("shows separate Accessibility and Screen Recording actions from readiness", () => {
     render(withReadiness({ input_readiness: "permission_required", capture_readiness: "permission_required" }));

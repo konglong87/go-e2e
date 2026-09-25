@@ -589,7 +589,7 @@
 .webui2-computer-workspace[data-dragging="true"] { cursor: grabbing; }
 .webui2-computer-header, .webui2-computer-section-heading, .webui2-computer-toolbar, .webui2-computer-preview-meta { align-items: center; display: flex; gap: 10px; justify-content: space-between; }
 .webui2-computer-header-actions { align-items: center; display: flex; gap: 7px; }
-.webui2-computer-drag-handle { align-items: center; cursor: grab; display: flex; flex: 1 1 auto; gap: 8px; min-width: 0; touch-action: none; }
+.webui2-computer-drag-handle { align-items: center; background: transparent; border: 0; color: inherit; cursor: grab; font: inherit; padding: 0; text-align: left; display: flex; flex: 1 1 auto; gap: 8px; min-width: 0; touch-action: none; }
 .webui2-computer-drag-handle:focus-visible { border-radius: 8px; outline: 2px solid var(--webui2-accent); outline-offset: 3px; }
 .webui2-computer-drag-handle > svg { color: var(--webui2-text-muted); flex: 0 0 auto; }
 .webui2-computer-header h2, .webui2-computer-section-heading h3 { margin: 2px 0 0; }
