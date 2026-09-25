@@ -12,6 +12,8 @@ while let data = readFrame() {
         try engine.state.register(request)
         guard let command = Command(rawValue: request.command) else { throw SafetyError.invalidEnvelope }
         switch command {
+        case .requestPermissions:
+            responder.send(request, outcome: .executed, result: engine.requestPermissions())
         case .pause, .resume, .stop, .shutdown:
             let generation = request.payload["generation"]?.integer(in: 0...Int(Int32.max)) ?? -1
             try engine.state.control(command, generation: generation)

@@ -17,6 +17,7 @@ final class FakeDesktop: DesktopPlatform {
     func geometry() throws -> DisplayGeometry { if failGeometry { throw SafetyError.unsupportedDisplay }; return display }
     func captureAllowed() -> Bool { capturePermission }
     func inputAllowed() -> Bool { inputPermission }
+    func requestPermissions() { }
     func focus() -> Int32? { focused }
     func capture(_ g: DisplayGeometry) throws -> Data {
         if failCapture { throw SafetyError.screenshotFailed }; captureHook?(); return Data([1,2,3])

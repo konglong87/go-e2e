@@ -54,7 +54,7 @@ func TestHelperProcess(t *testing.T) {
 		result := map[string]any{}
 		outcome := cu.OutcomeExecuted
 		switch req.Command {
-		case commandReadiness:
+		case commandRequestPermissions, commandReadiness:
 			result = map[string]any{"capture_readiness": "ready", "input_readiness": "ready", "permission_state": "approved", "focus_state": "focused", "image_supported": true, "supports_pause": true, "supports_stop": true, "coordinate_space": map[string]any{"display_id": "1", "width": 2, "height": 2, "scale_factor": 2}}
 		case commandObserve:
 			result = imagePayload()

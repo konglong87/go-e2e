@@ -8,6 +8,7 @@ protocol DesktopPlatform {
     func geometry() throws -> DisplayGeometry
     func captureAllowed() -> Bool
     func inputAllowed() -> Bool
+    func requestPermissions()
     func focus() -> Int32?
     func capture(_ geometry: DisplayGeometry) throws -> Data
     func post(_ operation: InputOperation) throws
@@ -24,6 +25,11 @@ struct MacDesktop: DesktopPlatform {
     }
     func captureAllowed() -> Bool { CGPreflightScreenCaptureAccess() }
     func inputAllowed() -> Bool { AXIsProcessTrusted() && CGPreflightPostEventAccess() }
+    func requestPermissions() {
+        _ = CGRequestScreenCaptureAccess()
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        _ = AXIsProcessTrustedWithOptions(options)
+    }
     func focus() -> Int32? { NSWorkspace.shared.frontmostApplication?.processIdentifier }
     func capture(_ geometry: DisplayGeometry) throws -> Data {
         guard captureAllowed(), let id = UInt32(geometry.id), let image = CGDisplayCreateImage(id),

@@ -18,17 +18,18 @@ import (
 )
 
 const (
-	commandReadiness = "readiness"
-	commandObserve   = "observe"
-	commandExecute   = "execute"
-	commandPause     = "pause"
-	commandResume    = "resume"
-	commandStop      = "stop"
-	commandShutdown  = "shutdown"
-	defaultTimeout   = 10 * time.Second
-	maxTimeout       = 60 * time.Second
-	maxFrameBytes    = 8 * 1024 * 1024
-	maxActions       = 4096
+	commandRequestPermissions = "request_permissions"
+	commandReadiness          = "readiness"
+	commandObserve            = "observe"
+	commandExecute            = "execute"
+	commandPause              = "pause"
+	commandResume             = "resume"
+	commandStop               = "stop"
+	commandShutdown           = "shutdown"
+	defaultTimeout            = 10 * time.Second
+	maxTimeout                = 60 * time.Second
+	maxFrameBytes             = 8 * 1024 * 1024
+	maxActions                = 4096
 )
 
 type Config struct {
@@ -52,6 +53,7 @@ type Backend struct {
 	observation             cu.Observation
 	actions                 map[string]struct{}
 	capabilities            cu.Capabilities
+	permissionsRequested    bool
 }
 type imageData struct {
 	data      []byte
@@ -166,12 +168,31 @@ func (b *Backend) request(ctx context.Context, command, sessionID, actionID stri
 	return result, err
 }
 
+func (b *Backend) requestPermissions(ctx context.Context) error {
+	b.mu.Lock()
+	if b.permissionsRequested {
+		b.mu.Unlock()
+		return nil
+	}
+	b.mu.Unlock()
+	if _, err := b.request(ctx, commandRequestPermissions, "", "", nil); err != nil {
+		return err
+	}
+	b.mu.Lock()
+	b.permissionsRequested = true
+	b.mu.Unlock()
+	return nil
+}
+
 func (b *Backend) Capabilities(ctx context.Context) (cu.Capabilities, error) {
 	b.mu.Lock()
 	closed := b.closed
 	b.mu.Unlock()
 	if closed {
 		return cu.Capabilities{}, &rejection{"closed"}
+	}
+	if err := b.requestPermissions(ctx); err != nil {
+		return cu.Capabilities{}, err
 	}
 	response, err := b.request(ctx, commandReadiness, "", "", nil)
 	if err != nil {

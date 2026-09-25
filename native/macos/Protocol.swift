@@ -11,7 +11,7 @@ let maxTextUnits = 4096
 let maxWaitMS = 10000
 let maxScrollDelta = 10000
 
-enum Command: String { case readiness, observe, execute, pause, resume, stop, shutdown }
+enum Command: String { case requestPermissions = "request_permissions", readiness, observe, execute, pause, resume, stop, shutdown }
 enum Outcome: String { case executed, rejected, unknown, failed }
 enum ActionKind: String, CaseIterable {
     case click, doubleClick = "double_click", rightClick = "right_click", move, type, key, hotkey, scroll, wait

@@ -10,6 +10,11 @@ final class Engine {
     private let platform: DesktopPlatform
     init(platform: DesktopPlatform) { self.platform = platform }
 
+    func requestPermissions() -> JSONValue {
+        platform.requestPermissions()
+        return readiness()
+    }
+
     func readiness() -> JSONValue {
         let geometry = try? platform.geometry()
         let capture = platform.captureAllowed(), input = platform.inputAllowed()
