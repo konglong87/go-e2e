@@ -54,7 +54,12 @@ func TestHelperProcess(t *testing.T) {
 		result := map[string]any{}
 		outcome := cu.OutcomeExecuted
 		switch req.Command {
-		case commandRequestPermissions, commandReadiness:
+		case commandRequestPermissions:
+			if marker != "" {
+				_ = os.WriteFile(marker, append(readMarker(t, marker), []byte("permissions\n")...), 0600)
+			}
+			fallthrough
+		case commandReadiness:
 			result = map[string]any{"capture_readiness": "ready", "input_readiness": "ready", "permission_state": "approved", "focus_state": "focused", "image_supported": true, "supports_pause": true, "supports_stop": true, "coordinate_space": map[string]any{"display_id": "1", "width": 2, "height": 2, "scale_factor": 2}}
 		case commandObserve:
 			result = imagePayload()
@@ -114,6 +119,18 @@ func TestHelperProcess(t *testing.T) {
 		}
 	}
 }
+
+func readMarker(t *testing.T, path string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		t.Fatalf("read marker: %v", err)
+	}
+	return data
+}
 func helperConfig(t *testing.T, mode string, timeout time.Duration, marker string) Config {
 	t.Helper()
 	return Config{HelperPath: os.Args[0], HelperArgs: []string{"-test.run=^TestHelperProcess$", "--", "computer-test-helper", mode, marker}, RequestTimeout: timeout}
@@ -148,6 +165,38 @@ func awaitMarker(t *testing.T, path string) {
 		time.Sleep(time.Millisecond)
 	}
 	t.Fatal("helper did not receive execute")
+}
+
+func TestNewCallsHostPermissionRequest(t *testing.T) {
+	requested := false
+	cfg := helperConfig(t, "", time.Second, "")
+	cfg.RequestHostPermissions = func() { requested = true }
+	b, err := New(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = b.Close(context.Background()) }()
+	if !requested {
+		t.Fatal("host permission request was not invoked")
+	}
+}
+
+func TestCapabilitiesRefreshesPermissionProbe(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "permissions")
+	b := newTestBackend(t, "", time.Second, marker)
+	if err := os.WriteFile(marker, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Capabilities(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Capabilities(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	data := readMarker(t, marker)
+	if got := strings.Count(string(data), "permissions\n"); got != 2 {
+		t.Fatalf("permission probe count = %d, want 2; marker=%q", got, data)
+	}
 }
 
 func TestBackendObserveExecuteAndStop(t *testing.T) {

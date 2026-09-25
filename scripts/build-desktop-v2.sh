@@ -27,6 +27,15 @@ LDFLAGS="-s -w" OUTPUT="${DESKTOP_DIR}/go-e2e" \
 
 APP_BIN="${DESKTOP_DIR}/build/bin/go-e2e.app/Contents/MacOS"
 APP_PATH="${DESKTOP_DIR}/build/bin/go-e2e.app"
+# Ad-hoc signatures otherwise designate the binary by cdhash, so every local
+# rebuild invalidates the user's TCC grant. A stable designated requirement
+# keeps the local development identity consistent until a real Apple identity
+# is supplied for release signing.
+MACOS_ADHOC_DESIGNATED_REQUIREMENT="${MACOS_ADHOC_DESIGNATED_REQUIREMENT:-=designated => identifier \"com.wails.go-e2e\"}"
+macos_codesign() {
+  local target="$1"
+  codesign --force --identifier "com.wails.go-e2e" --sign - --requirements "${MACOS_ADHOC_DESIGNATED_REQUIREMENT}" --timestamp=none "${target}"
+}
 if [[ -d "${APP_BIN}" ]]; then
   cp "${DESKTOP_DIR}/go-e2e" "${APP_BIN}/go-e2e"
   rm -f "${APP_BIN}/golang-cc"
@@ -39,13 +48,19 @@ if [[ -d "${APP_BIN}" ]]; then
       esac
     done
     helper_dir="${APP_PATH}/Contents/Helpers"
-    mkdir -p "${helper_dir}"
-    MACOS_ARCH="${helper_arch}" bash "${ROOT}/scripts/build-computer-helper-macos.sh" "${helper_dir}/computer-helper-macos" >/dev/null
+    # Remove the pre-bundle helper path from older builds; leaving it behind
+    # would keep an unsigned/stale resource in the outer app seal.
+    rm -f "${helper_dir}/computer-helper-macos"
+    helper_app="${helper_dir}/ComputerHelper.app"
+    mkdir -p "${helper_app}/Contents/MacOS"
+    MACOS_ARCH="${helper_arch}" bash "${ROOT}/scripts/build-computer-helper-macos.sh" "${helper_app}/Contents/MacOS/computer-helper-macos" >/dev/null
     # The service/helper binaries are embedded after Wails creates its app signature.
-    # Sign nested binaries first, then seal the outer app bundle again.
-    codesign --force --sign - --timestamp=none "${APP_BIN}/go-e2e"
-    codesign --force --sign - --timestamp=none "${helper_dir}/computer-helper-macos"
-    codesign --force --deep --sign - --timestamp=none "${APP_PATH}"
+    # Sign every executable/bundle with the same stable local requirement, then
+    # seal only the outer app (without --deep re-signing nested bundles).
+    macos_codesign "${APP_BIN}/go-e2e-desktop"
+    macos_codesign "${APP_BIN}/go-e2e"
+    macos_codesign "${helper_app}"
+    codesign --force --sign - --requirements "${MACOS_ADHOC_DESIGNATED_REQUIREMENT}" --timestamp=none "${APP_PATH}"
     codesign --verify --deep --strict --verbose=2 "${APP_PATH}"
   fi
   # Keep Finder's package modification time aligned with the actual build.

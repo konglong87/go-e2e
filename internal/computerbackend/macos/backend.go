@@ -33,12 +33,13 @@ const (
 )
 
 type Config struct {
-	HelperPath     string
-	HelperArgs     []string
-	HelperEnv      []string
-	RequestTimeout time.Duration
-	MaxFrameBytes  int
-	Now            func() time.Time
+	HelperPath             string
+	HelperArgs             []string
+	HelperEnv              []string
+	RequestTimeout         time.Duration
+	RequestHostPermissions func()
+	MaxFrameBytes          int
+	Now                    func() time.Time
 }
 
 type Backend struct {
@@ -53,7 +54,6 @@ type Backend struct {
 	observation             cu.Observation
 	actions                 map[string]struct{}
 	capabilities            cu.Capabilities
-	permissionsRequested    bool
 }
 type imageData struct {
 	data      []byte
@@ -106,6 +106,12 @@ func New(ctx context.Context, c Config) (*Backend, error) {
 	}
 	if c.Now == nil {
 		c.Now = time.Now
+	}
+	// Request from the signed desktop host as well as the nested helper. macOS
+	// attributes TCC prompts to the process making the request; keeping this
+	// in the host process makes the visible go-e2e entry the source of truth.
+	if c.RequestHostPermissions != nil {
+		c.RequestHostPermissions()
 	}
 	p, err := native.StartProcess(ctx, c.HelperPath, c.HelperArgs, helperEnvironment(c.HelperEnv), native.NewCodec(uint32(c.MaxFrameBytes)))
 	if err != nil {
@@ -169,18 +175,13 @@ func (b *Backend) request(ctx context.Context, command, sessionID, actionID stri
 }
 
 func (b *Backend) requestPermissions(ctx context.Context) error {
-	b.mu.Lock()
-	if b.permissionsRequested {
-		b.mu.Unlock()
-		return nil
-	}
-	b.mu.Unlock()
+	// Permission state can change while the helper is alive after the user
+	// toggles a macOS Privacy setting. Keep this probe idempotent but do not
+	// cache it: every capabilities refresh must re-run the native request so
+	// the UI can become ready without forcing an app restart.
 	if _, err := b.request(ctx, commandRequestPermissions, "", "", nil); err != nil {
 		return err
 	}
-	b.mu.Lock()
-	b.permissionsRequested = true
-	b.mu.Unlock()
 	return nil
 }
 

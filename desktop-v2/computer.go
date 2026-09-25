@@ -70,7 +70,11 @@ func newComputerBackend(ctx context.Context) (cu.Backend, error) {
 	if err != nil {
 		return nil, err
 	}
-	return macbackend.New(ctx, macbackend.Config{HelperPath: path, RequestTimeout: computerRequestTimeout})
+	return macbackend.New(ctx, macbackend.Config{
+		HelperPath:             path,
+		RequestTimeout:         computerRequestTimeout,
+		RequestHostPermissions: macbackend.RequestHostPermissions,
+	})
 }
 func locateComputerHelper() (string, error) {
 	if value := strings.TrimSpace(os.Getenv(computerHelperEnv)); value != "" {
@@ -83,9 +87,14 @@ func locateComputerHelper() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	path := filepath.Join(filepath.Dir(executable), "..", "Helpers", computerHelperName)
-	if stat, err := os.Stat(path); err == nil && !stat.IsDir() {
-		return path, nil
+	candidates := []string{
+		filepath.Join(filepath.Dir(executable), "..", "Helpers", "ComputerHelper.app", "Contents", "MacOS", computerHelperName),
+		filepath.Join(filepath.Dir(executable), "..", "Helpers", computerHelperName),
+	}
+	for _, path := range candidates {
+		if stat, statErr := os.Stat(path); statErr == nil && !stat.IsDir() {
+			return path, nil
+		}
 	}
 	return "", errors.New("computer helper is not bundled")
 }

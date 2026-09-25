@@ -25,4 +25,10 @@ swiftc -O \
   "$ROOT_DIR/native/macos/main.swift" \
   -o "$OUTPUT"
 chmod 0755 "$OUTPUT"
+# When placed inside Contents/MacOS, turn the helper into a real nested app
+# bundle so macOS TCC can identify it and list it in Privacy settings.
+if [[ "$(basename "$(dirname "$OUTPUT")")" == "MacOS" ]]; then
+  helper_contents="$(cd "$(dirname "$OUTPUT")/.." && pwd)"
+  cp "$ROOT_DIR/native/macos/Info.plist" "$helper_contents/Info.plist"
+fi
 printf '%s\n' "$OUTPUT"
