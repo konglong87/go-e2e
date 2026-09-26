@@ -33,3 +33,12 @@ Do not silently add window targeting, drag, multi-display, an unsecured web inpu
 - Output `executed` means dispatch acknowledged, not UI verified: immediately returned screenshots can precede animation/navigation. A subsequent observation confirmed page state.
 - Browser startup produced one observe failure/session pause; reason not yet isolated. Explicit resume and a fresh observation succeeded. Do not label that case passed until characterized.
 - Default builds do not compile the acceptance listener. This does not connect the production model runtime to the desktop controller.
+
+## Production bridge preparation — 2026-09-26
+- Resume ledger: the only dirty files were task-owned `desktop-v2/computer_agent_service*.go` and `internal/computerbridge/**`; no pre-existing user changes were included. Pulled origin/main with fast-forward-only before continuing.
+- Added bounded authenticated Unix HTTP client/handler, strict wire validation, image validation, and ambiguous-execution receipts without retry. There is deliberately no Start/approval operation.
+- Added host adapter to the existing Controller; every operation checks the full tenant/user/conversation binding. Synthetic preview ownership (conversation=0) is inaccessible. UI/controller Stop revokes lookup.
+- Added real Unix-socket client -> handler -> host adapter -> Controller integration test with a fake backend; this validates wire/authority/stop/replay boundaries, NOT native GUI input.
+- Verification passed: focused Go tests; race tests for desktop-v2, computerbridge, computeruse, computerbackend/... and tools/computeruse; go vet for computerbridge and desktop-v2. macOS linker emitted LC_DYSYMTAB warnings but tests exited successfully.
+- Delivery: this slice is committed/pushed separately as transport preparation. No runtime listener, trusted active-conversation UI approval, or model injection is wired yet. No new desktop screenshot acceptance is claimed for this slice. Existing native evidence does not validate this new model path.
+- Remaining gates unchanged: production model routing, real focus-perturbation regression, real permission revocation, clean-install/signed-upgrade/notarization. Keep `go-e2e-desktop`; it is the Wails executable, not a confirmed obsolete entry.
