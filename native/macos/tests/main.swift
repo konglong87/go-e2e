@@ -105,12 +105,106 @@ for reason in ["permission","capture","focus","geometry","noevent","stopped","pa
     expect(result.outcome == .rejected && desktop.posts.isEmpty, "pre-input rejection: \(reason)")
 }
 
-for reason in ["permission","focus","screenshot","deadline"] {
+// A completed atomic action may activate another app. Its after-image must
+// reflect the new focus; further input still requires a fresh observation.
+let activatedFocus: Int32 = 7
+let activationActions: [(String, [String:JSONValue])] = [
+    ("hotkey", ["keys":.array([.string("command"),.string("tab")])]),
+    ("key", ["key":.string("return")]),
+    ("click", ["x":.number(2),"y":.number(2)]),
+    ("type", ["text":.string("ab")]),
+    ("double_click", ["x":.number(2),"y":.number(2)])
+]
+for (kind, payload) in activationActions {
+    let (engine,desktop) = setup()
+    let originalFocus = desktop.focused
+    let operationCount = try ActionPlan(action(kind, payload).payload, geometry: desktop.display).operations.count
+    desktop.postHook = {
+        if desktop.posts.count == operationCount { desktop.focused = activatedFocus }
+    }
+    var capturedFocus: Int32?
+    desktop.captureHook = { capturedFocus = desktop.focused }
+    let result = engine.execute(action(kind, payload))
+    expect(result.outcome == .executed && result.error == nil && desktop.posts.count == operationCount,
+           "terminal focus switch accepted: \(kind)")
+    expect(capturedFocus == activatedFocus && result.payload["data"]?.string == Data([1,2,3]).base64EncodedString(),
+           "fresh after-image captured at activated focus: \(kind)")
+    expect(engine.execute(action("key", ["key":.string("return")])).outcome == .rejected && desktop.posts.count == operationCount,
+           "activation does not revive consumed observation: \(kind)")
+    desktop.postHook = nil
+    let nextObservation = "activated"
+    expect(engine.observe(request("observe", payload:["observation_id":.string(nextObservation)])).outcome == .executed,
+           "helper remains usable after activation: \(kind)")
+    let next = request("execute", payload:["kind":.string("key"),"key":.string("return"),"observation_id":.string(nextObservation)])
+    expect(engine.execute(next).outcome == .executed && desktop.posts.count == operationCount + 1,
+           "fresh observation binds to activated focus: \(kind)")
+    expect(engine.observe(request("observe", payload:["observation_id":.string(nextObservation)])).outcome == .executed,
+           "observe activated focus again: \(kind)")
+    desktop.focused = originalFocus
+    let staleFocus = engine.execute(request("execute", payload:["kind":.string("key"),"key":.string("return"),"observation_id":.string(nextObservation)]))
+    expect(staleFocus.outcome == .rejected && staleFocus.error == .focusChanged && desktop.posts.count == operationCount + 1,
+           "new binding rejects old focus before dispatch: \(kind)")
+}
+
+// Switching before dispatch must reject even an action intended to activate an app.
+do {
+    let (engine,desktop) = setup()
+    desktop.focused = activatedFocus
+    let result = engine.execute(action("hotkey", ["keys":.array([.string("command"),.string("tab")])]))
+    expect(result.outcome == .rejected && result.error == .focusChanged && desktop.posts.isEmpty,
+           "activation action rejects stale focus before dispatch")
+}
+
+// A switch between atomic operations must never send the rest into another app.
+for (kind, payload) in activationActions where kind == "type" || kind == "double_click" {
+    let (engine,desktop) = setup()
+    desktop.postHook = { desktop.focused = activatedFocus }
+    let result = engine.execute(action(kind, payload))
+    expect(result.outcome == .unknown && result.error == .focusChanged && desktop.posts.count == 1,
+           "focus switch between operations aborts: \(kind)")
+    expectThrows("ambiguous multi-operation action cannot resume: \(kind)") { try engine.state.control(.resume,generation:1) }
+}
+
+// A new stable focus is acceptable; a change while capturing the after-image
+// (including focus loss) is ambiguous and must still stop the helper.
+for loseFocus in [false, true] {
+    let (engine,desktop) = setup()
+    let originalFocus = desktop.focused
+    var captured = false
+    desktop.postHook = { desktop.focused = activatedFocus }
+    desktop.captureHook = {
+        captured = true
+        desktop.focused = loseFocus ? nil : originalFocus
+    }
+    let result = engine.execute(action("key", ["key":.string("return")]))
+    expect(result.outcome == .unknown && result.error == .focusChanged && desktop.posts.count == 1,
+           "focus changes during after-capture fail closed: \(loseFocus)")
+    expect(captured && result.payload["data"] == nil, "inconsistent after-image is captured but not returned")
+    expectThrows("inconsistent after-capture cannot resume") { try engine.state.control(.resume,generation:1) }
+    expect(engine.observe(request("observe", payload:["observation_id":.string("after-failure")])).outcome == .rejected,
+           "inconsistent after-capture prevents new binding")
+}
+
+// No focused app is not a valid new binding, even after a completed action.
+do {
+    let (engine,desktop) = setup()
+    var captured = false
+    desktop.postHook = { desktop.focused = nil }
+    desktop.captureHook = { captured = true }
+    let result = engine.execute(action("key", ["key":.string("return")]))
+    expect(result.outcome == .unknown && result.error == .focusChanged && desktop.posts.count == 1 && !captured,
+           "missing after-focus fails before capture")
+    expectThrows("missing after-focus cannot resume") { try engine.state.control(.resume,generation:1) }
+}
+
+for reason in ["permission","capture","focus","geometry","screenshot","deadline"] {
     let (engine,desktop) = setup()
     desktop.postHook = {
         switch reason {
         case "permission": desktop.inputPermission = false
-        case "focus": desktop.focused = 7
+        case "capture": desktop.capturePermission = false
+        case "focus": desktop.focused = activatedFocus
+        case "geometry": desktop.failGeometry = true
         case "screenshot": desktop.failCapture = true
         default: Thread.sleep(forTimeInterval: 0.05)
         }

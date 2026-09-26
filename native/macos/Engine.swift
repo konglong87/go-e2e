@@ -35,9 +35,11 @@ final class Engine {
     private func capture(_ request: Envelope, geometry: DisplayGeometry) throws -> JSONValue {
         try state.gate(request)
         guard platform.captureAllowed(), try platform.geometry() == geometry else { throw SafetyError.screenshotFailed }
+        guard let focus = platform.focus() else { throw SafetyError.focusChanged }
         let data = try platform.capture(geometry)
         try state.gate(request)
         guard try platform.geometry() == geometry else { throw SafetyError.unsupportedDisplay }
+        guard platform.focus() == focus else { throw SafetyError.focusChanged }
         return .object(["media_type": .string("image/png"), "data": .string(data.base64EncodedString()),
                         "width": .number(Double(geometry.width)), "height": .number(Double(geometry.height)),
                         "scale_factor": .number(geometry.scale), "display_id": .string(geometry.id)])
@@ -83,10 +85,10 @@ final class Engine {
                 }
             }
             try wait(plan.waitMS, request: request)
-            // Focus is part of the observation binding. Revalidate after the
-            // action/wait as well as before posting so a window switch cannot
-            // be reported as an executed, visually verified action.
-            guard platform.focus() == snapshot.focus else { throw SafetyError.focusChanged }
+            // The final atomic operation may legitimately activate another app.
+            // Capture requires stable current focus, not the consumed binding;
+            // subsequent input still needs a fresh observe. This is not visual
+            // verification that the action achieved its intended result.
             let payload = try capture(request, geometry: snapshot.geometry)
             return ActionResult(outcome: .executed, payload: payload, error: nil)
         } catch {
