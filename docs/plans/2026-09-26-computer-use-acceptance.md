@@ -12,10 +12,10 @@ The normal model-to-desktop service integration must be separately checked: acce
 | Slice | Intended files | Verification | Delivery |
 |---|---|---|---|
 | Host acceptance adapter | desktop-v2/main.go, computer.go, computer_acceptance*.go, scripts/computer-acceptance.py | default/tagged/race Go tests; real .app build; WorkBuddy native hotkey/type/click + PNG evidence; cancellation/drain regressions | verified; committing slice |
-| Isolated event fixture | internal/computeracceptance/** | HTTP tests, trusted DOM events observed from native input | pending (parallel worker) |
-| Real native acceptance | scripts/computer-acceptance*, ignored build/validation/20260926 | screenshots + event assertions + action receipts, WorkBuddy new task | pending |
-| Failure and scope report | focused regressions if failures found; docs | stale/focus/crash/pause/stop; permission revocation only with user consent | pending |
-| Release audit | docs evidence and blockers | fresh install/upgrade/cert/agent routing evidence, not assumptions | pending (parallel read-only audit) |
+| Isolated event fixture | internal/computeracceptance/** | HTTP/race tests; trusted DOM events observed from native input; fixture-final.png | verified in e02bad7 |
+| Real native acceptance | scripts/computer-acceptance*, ignored build/validation/20260926 | WorkBuddy open/new task; 11 isolated input cases; safety results; native screenshots | verified on 2026-09-26; see report |
+| Failure and scope report | docs/reports/computer-use-acceptance-20260926.md | stale/focus/crash/pause/stop; permission revocation and unsupported scope recorded | verified; remaining gates explicit |
+| Release audit | docs/reports/computer-use-acceptance-20260926.md | signing, install/upgrade, agent routing and `go-e2e-desktop` usage audit | verified as blocked with evidence |
 
 ## Plan and gates
 1. Add opt-in host adapter and tests without changing native safety behavior. Review, test, commit, push slice.
