@@ -172,3 +172,514 @@ func TestCaptureFailurePauses(t *testing.T) {
 		t.Fatal("capture failure did not pause")
 	}
 }
+
+// interruptibleBackend models a helper whose action RPC must finish normally
+// after a control acknowledgement. Cancelling that RPC poisons the helper.
+type interruptibleBackend struct {
+	*FakeBackend
+	entered     chan struct{}
+	interrupted chan struct{}
+	finish      chan struct{}
+	returned    chan struct{}
+	pauseSeen   chan struct{}
+	stopSeen    chan struct{}
+	resumeSeen  chan struct{}
+	resumeReply chan struct{}
+	mu          sync.Mutex
+	actionCtx   context.Context
+	unavailable bool
+	stopped     bool
+	calls       int
+	pauseHook   func(context.Context) error
+	stopHook    func(context.Context) error
+}
+
+func newInterruptibleBackend(s *ComputerSession, now time.Time) *interruptibleBackend {
+	observation := readyObservation(s.ID(), now)
+	observation.ID = "fresh-after-pause"
+	return &interruptibleBackend{
+		FakeBackend: &FakeBackend{ObservationValue: observation},
+		entered:     make(chan struct{}), interrupted: make(chan struct{}), finish: make(chan struct{}),
+		returned: make(chan struct{}), pauseSeen: make(chan struct{}), stopSeen: make(chan struct{}),
+		resumeSeen: make(chan struct{}),
+	}
+}
+
+func (b *interruptibleBackend) Execute(ctx context.Context, a Action) (ActionReceipt, error) {
+	b.mu.Lock()
+	b.actionCtx = ctx
+	b.calls++
+	b.mu.Unlock()
+	close(b.entered)
+	defer close(b.returned)
+	select {
+	case <-b.pauseSeen:
+	case <-b.stopSeen:
+	case <-ctx.Done():
+	}
+	close(b.interrupted)
+	select {
+	case <-b.finish:
+	case <-ctx.Done():
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if ctx.Err() != nil {
+		b.unavailable = true
+		return ActionReceipt{}, ctx.Err()
+	}
+	return ActionReceipt{ActionID: a.ID, SessionID: a.SessionID, Outcome: OutcomeRejected}, nil
+}
+
+func (b *interruptibleBackend) controlAvailable() error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.unavailable {
+		return errors.New("helper unavailable")
+	}
+	select {
+	case <-b.returned: // Normal controller cleanup cancels an already-finished context.
+		return nil
+	default:
+	}
+	if b.actionCtx != nil && b.actionCtx.Err() != nil {
+		return errors.New("helper unavailable")
+	}
+	return nil
+}
+
+func (b *interruptibleBackend) Pause(ctx context.Context) error {
+	if err := b.controlAvailable(); err != nil {
+		return err
+	}
+	close(b.pauseSeen)
+	if b.pauseHook != nil {
+		return b.pauseHook(ctx)
+	}
+	return nil
+}
+
+func (b *interruptibleBackend) Resume(ctx context.Context) error {
+	b.mu.Lock()
+	unavailable := b.unavailable
+	b.mu.Unlock()
+	if unavailable {
+		return errors.New("helper unavailable")
+	}
+	close(b.resumeSeen)
+	if b.resumeReply != nil {
+		select {
+		case <-b.resumeReply:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return nil
+}
+
+func (b *interruptibleBackend) Stop(ctx context.Context) error {
+	b.mu.Lock()
+	alreadyStopped := b.stopped
+	b.stopped = true
+	b.mu.Unlock()
+	if alreadyStopped { // Native Stop also acknowledges repeat requests locally.
+		return nil
+	}
+	if err := b.controlAvailable(); err != nil {
+		return err
+	}
+	close(b.stopSeen)
+	if b.stopHook != nil {
+		return b.stopHook(ctx)
+	}
+	return nil
+}
+
+const controllerTestTimeout = 3 * time.Second
+
+func awaitControl[T any](t *testing.T, result <-chan T) T {
+	t.Helper()
+	select {
+	case value := <-result:
+		return value
+	case <-time.After(controllerTestTimeout):
+		t.Fatal("controller operation did not finish within test deadline")
+		var zero T
+		return zero
+	}
+}
+
+func startWaitingController(t *testing.T) (*Controller, *interruptibleBackend, Action, <-chan ActionReceipt) {
+	t.Helper()
+	s, owner, now := newTestSession(t, false)
+	if err := s.SetObservation(readyObservation(s.ID(), now)); err != nil {
+		t.Fatal(err)
+	}
+	b := newInterruptibleBackend(s, now)
+	c, err := NewController(s, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := Action{ID: "waiting", SessionID: s.ID(), ObservationID: "obs-1", Kind: ActionWait, DurationMS: 5000}
+	done := make(chan ActionReceipt, 1)
+	go func() { receipt, _ := c.Execute(context.Background(), owner, a); done <- receipt }()
+	awaitControl(t, b.entered)
+	t.Cleanup(func() { _ = c.Close(context.Background()) })
+	return c, b, a, done
+}
+
+func TestControllerCooperativePauseDrainsReceiptAndResumesWithoutReplay(t *testing.T) {
+	c, b, action, done := startWaitingController(t)
+	s, owner := c.Session(), c.Session().Owner()
+	paused := make(chan error, 1)
+	go func() { paused <- c.Pause(context.Background(), owner, s.ID()) }()
+	awaitControl(t, b.interrupted)
+	if s.State() != SessionPaused {
+		t.Fatal("session was not revoked before backend control")
+	}
+	select {
+	case err := <-paused:
+		t.Fatalf("Pause returned before the interrupted action drained: %v", err)
+	default:
+	}
+	// Hold receipt processing, not just the backend RPC. Acknowledgement alone
+	// must not let Pause return or Resume restore authority ahead of this work.
+	func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		close(b.finish)
+		awaitControl(t, b.returned)
+		select {
+		case err := <-paused:
+			t.Fatalf("Pause returned before receipt processing: %v", err)
+		default:
+		}
+	}()
+	if err := awaitControl(t, paused); err != nil {
+		t.Fatal(err)
+	}
+	if receipt, ok := s.LastReceipt(); !ok || receipt.Outcome != OutcomeRejected {
+		t.Fatalf("Pause did not retain the cooperative rejection: %+v, %v", receipt, ok)
+	}
+	if receipt := awaitControl(t, done); receipt.Outcome != OutcomeRejected {
+		t.Fatalf("cancellation poisoned healthy action: %+v", receipt)
+	}
+	if err := c.Resume(context.Background(), owner, s.ID()); err != nil {
+		t.Fatalf("healthy helper could not resume: %v", err)
+	}
+	if s.State() != SessionNeedsObservation {
+		t.Fatal("resume did not require a fresh observation")
+	}
+	observation, err := c.Observe(context.Background(), owner, ObserveRequest{SessionID: s.ID()})
+	if err != nil || s.State() != SessionReady {
+		t.Fatalf("fresh observation after resume failed: %v", err)
+	}
+	action.ObservationID = observation.ID
+	if _, err := c.Execute(context.Background(), owner, action); err == nil {
+		t.Fatal("consumed action was replayed")
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.unavailable || b.calls != 1 {
+		t.Fatalf("helper poisoned or action replayed: unavailable=%v calls=%d", b.unavailable, b.calls)
+	}
+}
+
+func TestControllerStopSendsControlBeforeCancellation(t *testing.T) {
+	c, b, _, done := startWaitingController(t)
+	if err := c.Stop(context.Background(), c.Session().Owner(), c.Session().ID()); err != nil {
+		t.Fatalf("Stop cancelled helper before control acknowledgement: %v", err)
+	}
+	awaitControl(t, b.stopSeen)
+	if receipt := awaitControl(t, done); receipt.Outcome != OutcomeUnknown {
+		t.Fatalf("cancelled outstanding action needs an unknown receipt: %+v", receipt)
+	}
+	if c.Session().State() != SessionStopped || c.Session().Approved() {
+		t.Fatal("Stop did not permanently revoke authority")
+	}
+}
+
+func TestControllerPauseFallbackIsBoundedAndFailsClosed(t *testing.T) {
+	pauseFailure := errors.New("pause rejected")
+	for _, test := range []struct {
+		name    string
+		timeout time.Duration
+		hook    func(context.Context) error
+		want    error
+	}{
+		{name: "acknowledged but action does not drain", want: context.DeadlineExceeded},
+		{name: "short caller deadline while draining", timeout: 40 * time.Millisecond, want: context.DeadlineExceeded},
+		{name: "pause error", hook: func(context.Context) error { return pauseFailure }, want: pauseFailure},
+		{name: "backend control deadline", timeout: 40 * time.Millisecond, hook: func(ctx context.Context) error {
+			<-ctx.Done()
+			return errors.New("backend hid context error")
+		}, want: context.DeadlineExceeded},
+		{name: "already cancelled", timeout: -1, want: context.Canceled},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			c, b, _, done := startWaitingController(t)
+			b.pauseHook = test.hook
+			ctx := context.Background()
+			if test.timeout > 0 {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, test.timeout)
+				defer cancel()
+			} else if test.timeout < 0 {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithCancel(ctx)
+				cancel()
+			}
+			started := time.Now()
+			err := c.Pause(ctx, c.Session().Owner(), c.Session().ID())
+			if !errors.Is(err, test.want) {
+				t.Fatalf("Pause error = %v, want %v", err, test.want)
+			}
+			limit := controllerControlGrace + 500*time.Millisecond
+			if test.timeout != 0 {
+				limit = 500 * time.Millisecond
+			}
+			if elapsed := time.Since(started); elapsed > limit {
+				t.Fatalf("fallback took %s, limit %s", elapsed, limit)
+			}
+			if receipt := awaitControl(t, done); receipt.Outcome != OutcomeUnknown {
+				t.Fatalf("cancelled RPC lost its unknown receipt: %+v", receipt)
+			}
+			if c.Session().State() != SessionPaused {
+				t.Fatal("fallback restored input authority")
+			}
+			if err := c.Resume(context.Background(), c.Session().Owner(), c.Session().ID()); err == nil {
+				t.Fatal("unavailable helper was recreated or resumed")
+			}
+		})
+	}
+}
+
+func TestControllerStopBypassesPauseAndRejectsActuallyQueuedInput(t *testing.T) {
+	c, b, action, done := startWaitingController(t)
+	s, owner := c.Session(), c.Session().Owner()
+	reply := make(chan struct{})
+	var releaseOnce sync.Once
+	releasePause := func() { releaseOnce.Do(func() { close(reply) }) }
+	defer releasePause()
+	b.pauseHook = func(ctx context.Context) error {
+		select {
+		case <-reply:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	paused := make(chan error, 1)
+	go func() { paused <- c.Pause(context.Background(), owner, s.ID()) }()
+	awaitControl(t, b.pauseSeen)
+	queued := make(chan error, 1)
+	action.ID = "queued-after-wait"
+	go func() { _, err := c.Execute(context.Background(), owner, action); queued <- err }()
+	stopped := make(chan error, 1)
+	go func() { stopped <- c.Stop(context.Background(), owner, s.ID()) }()
+	if err := awaitControl(t, stopped); err != nil {
+		t.Fatalf("Stop lost priority to pending Pause: %v", err)
+	}
+	select {
+	case err := <-paused:
+		t.Fatalf("Pause completed before its blocked acknowledgement: %v", err)
+	default:
+	}
+	awaitControl(t, done)
+	if err := awaitControl(t, queued); err == nil {
+		t.Fatal("queued input dispatched after revocation")
+	}
+	releasePause()
+	awaitControl(t, paused)
+	if err := c.Resume(context.Background(), owner, s.ID()); err == nil {
+		t.Fatal("stopped session resumed")
+	}
+	if s.State() != SessionStopped || s.Approved() {
+		t.Fatal("control overlap resurrected the stopped session")
+	}
+}
+
+func TestControllerLateResumeCannotUndoTimedOutPause(t *testing.T) {
+	s, owner, now := newTestSession(t, false)
+	if err := s.Pause(); err != nil {
+		t.Fatal(err)
+	}
+	b := newInterruptibleBackend(s, now)
+	b.resumeReply = make(chan struct{})
+	c, _ := NewController(s, b)
+	t.Cleanup(func() { _ = c.Close(context.Background()) })
+	resumed := make(chan error, 1)
+	go func() { resumed <- c.Resume(context.Background(), owner, s.ID()) }()
+	awaitControl(t, b.resumeSeen)
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
+	defer cancel()
+	if err := c.Pause(ctx, owner, s.ID()); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("queued pause error = %v, want deadline", err)
+	}
+	close(b.resumeReply)
+	if err := awaitControl(t, resumed); err == nil {
+		t.Fatal("late Resume acknowledgement undid a timed-out pause")
+	}
+	if s.State() != SessionPaused {
+		t.Fatal("timed-out pause did not remain fail-closed")
+	}
+}
+
+func TestControllerResumeWaitsForPauseAndReceiptDrain(t *testing.T) {
+	c, b, _, done := startWaitingController(t)
+	s, owner := c.Session(), c.Session().Owner()
+	paused := make(chan error, 1)
+	go func() { paused <- c.Pause(context.Background(), owner, s.ID()) }()
+	awaitControl(t, b.interrupted)
+	resumed := make(chan error, 1)
+	go func() { resumed <- c.Resume(context.Background(), owner, s.ID()) }()
+	select {
+	case <-b.resumeSeen:
+		t.Fatal("Resume overtook pending Pause/action receipt")
+	default:
+	}
+	close(b.finish)
+	if err := awaitControl(t, paused); err != nil {
+		t.Fatal(err)
+	}
+	if err := awaitControl(t, resumed); err != nil {
+		t.Fatal(err)
+	}
+	awaitControl(t, done)
+	if s.State() != SessionNeedsObservation {
+		t.Fatal("late receipt processing undid Resume")
+	}
+}
+
+func TestControllerStopDeadlineStillCancelsAndRevokes(t *testing.T) {
+	c, b, _, done := startWaitingController(t)
+	b.stopHook = func(ctx context.Context) error {
+		<-ctx.Done()
+		return errors.New("backend hid deadline")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
+	defer cancel()
+	if err := c.Stop(ctx, c.Session().Owner(), c.Session().ID()); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Stop error = %v, want caller deadline", err)
+	}
+	if receipt := awaitControl(t, done); receipt.Outcome != OutcomeUnknown {
+		t.Fatalf("Stop timeout did not cancel action: %+v", receipt)
+	}
+	if c.Session().State() != SessionStopped || c.Session().Approved() {
+		t.Fatal("Stop timeout restored authority")
+	}
+}
+
+func TestControllerStopBypassesResumeAndRejectsLateAcknowledgement(t *testing.T) {
+	s, owner, now := newTestSession(t, false)
+	if err := s.Pause(); err != nil {
+		t.Fatal(err)
+	}
+	b := newInterruptibleBackend(s, now)
+	b.resumeReply = make(chan struct{})
+	c, _ := NewController(s, b)
+	t.Cleanup(func() { _ = c.Close(context.Background()) })
+	resumed := make(chan error, 1)
+	go func() { resumed <- c.Resume(context.Background(), owner, s.ID()) }()
+	awaitControl(t, b.resumeSeen)
+	if err := c.Stop(context.Background(), owner, s.ID()); err != nil {
+		t.Fatal(err)
+	}
+	close(b.resumeReply)
+	if err := awaitControl(t, resumed); err == nil {
+		t.Fatal("late Resume acknowledgement undid Stop")
+	}
+	if s.State() != SessionStopped || s.Approved() {
+		t.Fatal("Stop lost priority to Resume")
+	}
+}
+
+type cancellationIgnoringBackend struct {
+	*FakeBackend
+	entered chan context.Context
+	release chan struct{}
+}
+
+func (b *cancellationIgnoringBackend) Execute(ctx context.Context, _ Action) (ActionReceipt, error) {
+	b.entered <- ctx
+	<-b.release
+	return ActionReceipt{}, errors.New("uncooperative action ended")
+}
+
+func TestControllerPauseDoesNotWaitForeverForCancellationIgnoringAction(t *testing.T) {
+	s, owner, now := newTestSession(t, false)
+	if err := s.SetObservation(readyObservation(s.ID(), now)); err != nil {
+		t.Fatal(err)
+	}
+	b := &cancellationIgnoringBackend{FakeBackend: &FakeBackend{}, entered: make(chan context.Context, 1), release: make(chan struct{})}
+	c, _ := NewController(s, b)
+	done := make(chan error, 1)
+	go func() {
+		_, err := c.Execute(context.Background(), owner, Action{ID: "stuck", SessionID: s.ID(), ObservationID: "obs-1", Kind: ActionWait, DurationMS: 5000})
+		done <- err
+	}()
+	t.Cleanup(func() {
+		close(b.release)
+		awaitControl(t, done)
+		_ = c.Close(context.Background())
+	})
+	actionCtx := awaitControl(t, b.entered)
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
+	defer cancel()
+	paused := make(chan error, 1)
+	go func() { paused <- c.Pause(ctx, owner, s.ID()) }()
+	if err := awaitControl(t, paused); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Pause must time out independently of action completion: %v", err)
+	}
+	if !errors.Is(actionCtx.Err(), context.Canceled) || s.State() != SessionPaused {
+		t.Fatal("uncooperative action was not cancelled with authority revoked")
+	}
+	ctx, cancelResume := context.WithTimeout(context.Background(), 40*time.Millisecond)
+	defer cancelResume()
+	if err := c.Resume(ctx, owner, s.ID()); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Resume bypassed the outstanding operation: %v", err)
+	}
+	b.FakeBackend.mu.Lock()
+	defer b.FakeBackend.mu.Unlock()
+	if !b.FakeBackend.Paused {
+		t.Fatal("backend was resumed before the old action drained")
+	}
+}
+
+func TestControllerRepeatedStopDoesNotCancelPendingStopAcknowledgement(t *testing.T) {
+	c, b, _, done := startWaitingController(t)
+	reply := make(chan struct{})
+	var once sync.Once
+	release := func() { once.Do(func() { close(reply) }) }
+	defer release()
+	b.stopHook = func(ctx context.Context) error {
+		select {
+		case <-reply:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	first, second := make(chan error, 1), make(chan error, 1)
+	go func() { first <- c.Stop(context.Background(), c.Session().Owner(), c.Session().ID()) }()
+	awaitControl(t, b.stopSeen)
+	go func() { second <- c.Stop(context.Background(), c.Session().Owner(), c.Session().ID()) }()
+	select {
+	case err := <-second:
+		t.Fatalf("repeat Stop bypassed the outstanding acknowledgement: %v", err)
+	case <-time.After(40 * time.Millisecond):
+	}
+	b.mu.Lock()
+	cancelled := b.actionCtx.Err()
+	b.mu.Unlock()
+	if cancelled != nil {
+		t.Fatal("repeat Stop cancelled the action before the first Stop acknowledgement")
+	}
+	release()
+	for _, stopped := range []<-chan error{first, second} {
+		if err := awaitControl(t, stopped); err != nil {
+			t.Fatal(err)
+		}
+	}
+	awaitControl(t, done)
+}

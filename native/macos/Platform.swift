@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import Carbon.HIToolbox
 import CoreGraphics
 import ImageIO
 import UniformTypeIdentifiers
@@ -41,8 +42,8 @@ struct MacDesktop: DesktopPlatform {
         return data as Data
     }
     func post(_ operation: InputOperation) throws {
-        // Allocate *both* events before posting either one; always release any
-        // key/button we press. Modifiers are flags, never held physical keys.
+        // Allocate the entire sequence before posting; a failed allocation
+        // must never leave a key, modifier, or mouse button pressed.
         let down: CGEvent?
         let up: CGEvent?
         switch operation {
@@ -62,10 +63,10 @@ struct MacDesktop: DesktopPlatform {
             up?.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units)
             down?.flags = []; up?.flags = []
         case .key(let code, let flags):
-            down = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: true)
-            up = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: false)
-            guard up != nil else { throw SafetyError.inputUnavailable }
-            down?.flags = flags; up?.flags = flags
+            let events = try KeyboardEventSequence.make(code: code, flags: flags)
+            // Keep press/release together inside Engine's existing input gate.
+            for event in events { event.post(tap: .cghidEventTap) }
+            return
         case .scroll(let x, let y):
             down = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: y, wheel2: x, wheel3: 0); up = nil
         }
@@ -73,5 +74,43 @@ struct MacDesktop: DesktopPlatform {
         if case .mouse = operation { down.flags = []; up?.flags = [] }
         if case .scroll = operation { down.flags = [] }
         down.post(tap: .cghidEventTap); up?.post(tap: .cghidEventTap)
+    }
+}
+
+// CGEvent.h specifies modifier down/up events as part of a complete keystroke.
+// CGEventCreateKeyboardEvent produces flagsChanged for modifier key codes;
+// setting flags on the main key's keyUp alone is not a modifier release.
+// Pure construction allows tests to inspect every event without posting input.
+enum KeyboardEventSequence {
+    static let modifiers: [(code: CGKeyCode, flag: CGEventFlags)] = [
+        (CGKeyCode(kVK_Control), .maskControl),
+        (CGKeyCode(kVK_Option), .maskAlternate),
+        (CGKeyCode(kVK_Shift), .maskShift),
+        (CGKeyCode(kVK_Command), .maskCommand),
+    ]
+
+    static func make(code: CGKeyCode, flags: CGEventFlags,
+                     create: (CGKeyCode, Bool) -> CGEvent? = {
+                         CGEvent(keyboardEventSource: nil, virtualKey: $0, keyDown: $1)
+                     }) throws -> [CGEvent] {
+        var events: [CGEvent] = []
+        var held: CGEventFlags = []
+        let pressed = modifiers.filter { flags.contains($0.flag) }
+        func append(_ key: CGKeyCode, down: Bool, flags: CGEventFlags) throws {
+            guard let event = create(key, down) else { throw SafetyError.inputUnavailable }
+            event.flags = flags
+            events.append(event)
+        }
+        for modifier in pressed {
+            held.insert(modifier.flag)
+            try append(modifier.code, down: true, flags: held)
+        }
+        try append(code, down: true, flags: flags)
+        try append(code, down: false, flags: flags)
+        for modifier in pressed.reversed() {
+            held.remove(modifier.flag)
+            try append(modifier.code, down: false, flags: held)
+        }
+        return events
     }
 }

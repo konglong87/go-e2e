@@ -83,6 +83,10 @@ final class Engine {
                 }
             }
             try wait(plan.waitMS, request: request)
+            // Focus is part of the observation binding. Revalidate after the
+            // action/wait as well as before posting so a window switch cannot
+            // be reported as an executed, visually verified action.
+            guard platform.focus() == snapshot.focus else { throw SafetyError.focusChanged }
             let payload = try capture(request, geometry: snapshot.geometry)
             return ActionResult(outcome: .executed, payload: payload, error: nil)
         } catch {
