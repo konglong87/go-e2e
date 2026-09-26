@@ -35,6 +35,7 @@ type app struct {
 	token           string
 	service         *localServiceController
 	computerManager *computerManager
+	acceptanceClose func()
 	windowCtx       context.Context
 	windowDone      chan struct{}
 }
@@ -92,6 +93,12 @@ func desktopWailsOptions(application *app, config desktopConfig, target *url.URL
 
 func (a *app) startup(ctx context.Context) {
 	a.setWindowContext(ctx)
+	closeAcceptance, acceptanceErr := startComputerAcceptance(ctx, a.computer(), os.Args[1:])
+	if acceptanceErr != nil {
+		startupLog("computer acceptance: " + acceptanceErr.Error())
+	} else {
+		a.acceptanceClose = closeAcceptance
+	}
 	startupLog("startup begin")
 	config, err := loadDesktopConfig()
 	if err != nil {
@@ -261,6 +268,9 @@ func desktopSQLitePath() (string, error) {
 }
 
 func (a *app) shutdown(ctx context.Context) {
+	if a.acceptanceClose != nil {
+		a.acceptanceClose()
+	}
 	if err := a.persistWindowState(ctx); err != nil {
 		wailsruntime.LogErrorf(ctx, "save window state: %v", err)
 	}

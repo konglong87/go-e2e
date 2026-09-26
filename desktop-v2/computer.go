@@ -99,6 +99,9 @@ func locateComputerHelper() (string, error) {
 	return "", errors.New("computer helper is not bundled")
 }
 func (m *computerManager) ensureBackendLocked(ctx context.Context) (cu.Backend, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if m.backend != nil {
 		return m.backend, nil
 	}
@@ -119,8 +122,19 @@ func (m *computerManager) capabilities(ctx context.Context) (cu.Capabilities, er
 	return b.Capabilities(ctx)
 }
 func (m *computerManager) start(ctx context.Context, in ComputerSessionStartInput) (ComputerSessionDTO, error) {
+	return m.startWithLifetime(ctx, ctx, in)
+}
+
+// The host owns the helper lifetime; approval belongs to the live caller.
+func (m *computerManager) startWithLifetime(ctx, lifetime context.Context, in ComputerSessionStartInput) (ComputerSessionDTO, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return ComputerSessionDTO{}, err
+	}
+	if err := lifetime.Err(); err != nil {
+		return ComputerSessionDTO{}, err
+	}
 	if m.controller != nil {
 		s := m.controller.Session()
 		if s.State() != cu.SessionStopped && s.State() != cu.SessionFailed {
@@ -138,12 +152,15 @@ func (m *computerManager) start(ctx context.Context, in ComputerSessionStartInpu
 		m.backend = nil
 		m.controller = nil
 	}
-	b, err := m.ensureBackendLocked(ctx)
+	b, err := m.ensureBackendLocked(lifetime)
 	if err != nil {
 		return ComputerSessionDTO{}, err
 	}
 	caps, err := b.Capabilities(ctx)
 	if err != nil {
+		return ComputerSessionDTO{}, err
+	}
+	if err := ctx.Err(); err != nil {
 		return ComputerSessionDTO{}, err
 	}
 	s, err := cu.NewComputerSession(cu.SessionOptions{Owner: m.owner, Capabilities: caps})
