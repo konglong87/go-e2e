@@ -346,3 +346,25 @@ normal Wails build and fresh autonomous cold-launch/native screenshot evidence.
   stated macOS single-display scope. External-focus PID-change verification,
   actual permission revocation, signed clean-install/upgrade, notarization and
   distribution gates remain open; stable-release acceptance remains false.
+
+### External-focus fail-closed fix and real macOS verification — 2026-09-27
+
+- A tagged current-source host was used with the real bundled helper and an
+  independent macOS frontmost-PID readback. The test initially exposed that
+  the helper's `NSWorkspace.frontmostApplication` signal could remain stale for
+  a non-activating helper, allowing a stale-observation click after Edge became
+  frontmost.
+- Fixed `native/macos/Platform.swift` to derive focus from Window Server's
+  ordered on-screen layer-0 window list, with NSWorkspace only as fallback.
+- Rebuilt the tagged helper and reran the real sequence: acceptance host PID
+  `39976` was frontmost for the observation; Edge PID `48113` was then made
+  frontmost; reusing the old observation was rejected with no after-image and
+  no executed receipt. The native session remained `needs_observation` and the
+  rejected receipt recorded no input side effect.
+- Evidence is retained locally under ignored
+  `desktop-v2/build/validation/20260927/focus-test/`, including the before
+  observation, `focus-fixed-after-switch.json`, and
+  `focus-fixed-snapshot.json`.
+- Native safety assertions passed: `bash native/macos/tests/run.sh` reported
+  157 assertions. This closes the real external-focus stale-observation gate;
+  it does not add window targeting or multi-display support.

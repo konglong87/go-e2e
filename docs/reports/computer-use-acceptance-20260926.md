@@ -690,3 +690,31 @@ latest-source **model-driven cold launch + navigation pass** for the stated
 macOS single-display scope. It does not close the remaining external-focus,
 real permission-revocation, signed clean-install/upgrade, notarization, or
 release-distribution gates.
+
+## External-focus fail-closed fix — 2026-09-27
+
+The real tagged acceptance run exposed a focus-detection defect: a helper using
+only `NSWorkspace.frontmostApplication` could retain a stale host PID while a
+non-activating helper was running. In that state, a stale-observation click
+could be accepted after another app became frontmost.
+
+`native/macos/Platform.swift` now derives the focus identity from Window
+Server's ordered on-screen layer-0 window list, falling back to NSWorkspace
+only when the list is unavailable. This keeps the safety decision in the
+native helper rather than trusting UI state.
+
+Real verification after rebuilding the helper:
+
+- Frontmost before observation: current acceptance host PID `39976`.
+- Frontmost after perturbation: Microsoft Edge PID `48113`.
+- Reusing the old observation was rejected with no after-image and no executed
+  receipt; the session stayed in `needs_observation`.
+- Evidence: ignored local files under
+  `desktop-v2/build/validation/20260927/focus-test/`, especially
+  `focus-fixed-before-1.json`, `focus-fixed-after-switch.json`, and
+  `focus-fixed-snapshot.json`.
+
+`bash native/macos/tests/run.sh` passed **157 native safety assertions**.
+This closes external-focus fail-closed verification, while clean signed
+installation/upgrade, notarization, stapled ticket, and actual TCC revocation
+remain open release gates.

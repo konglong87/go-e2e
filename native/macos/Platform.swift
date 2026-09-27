@@ -31,7 +31,23 @@ struct MacDesktop: DesktopPlatform {
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         _ = AXIsProcessTrustedWithOptions(options)
     }
-    func focus() -> Int32? { NSWorkspace.shared.frontmostApplication?.processIdentifier }
+    // NSWorkspace can report the helper host itself while a different app
+    // owns the topmost on-screen window (notably for a non-activating helper
+    // launched by a Wails host). Use the Window Server ordering as the
+    // authoritative frontmost-app signal, with NSWorkspace as a fallback.
+    func focus() -> Int32? {
+        let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+        if let windows = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] {
+            for window in windows {
+                let layer = (window[kCGWindowLayer as String] as? NSNumber)?.intValue
+                guard layer == 0,
+                      let pid = (window[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value,
+                      pid > 0 else { continue }
+                return pid
+            }
+        }
+        return NSWorkspace.shared.frontmostApplication?.processIdentifier
+    }
     func capture(_ geometry: DisplayGeometry) throws -> Data {
         guard captureAllowed(), let id = UInt32(geometry.id), let image = CGDisplayCreateImage(id),
               image.width == geometry.width, image.height == geometry.height else { throw SafetyError.screenshotFailed }
