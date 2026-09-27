@@ -718,3 +718,80 @@ Real verification after rebuilding the helper:
 This closes external-focus fail-closed verification, while clean signed
 installation/upgrade, notarization, stapled ticket, and actual TCC revocation
 remain open release gates.
+
+## Real macOS TCC revoke, fail-closed, and restore — 2026-09-27
+
+This slice was performed on the current installed build with explicit user
+authorization. The current bundle identifier is `com.wails.go-e2e`.
+
+### Revocation
+
+The following commands were run and each returned exit code 0:
+
+```text
+tccutil reset ScreenCapture com.wails.go-e2e
+tccutil reset Accessibility com.wails.go-e2e
+```
+
+After relaunching the real Wails app, its own Computer Use panel visibly
+reported that system permissions were required. The start button was disabled,
+the panel reported `屏幕截图未就绪：需要授权`, the desktop preview contained
+no screenshot, and the input path was not ready. This is the desired
+fail-closed behavior: no input action was dispatched while permission was
+missing. The native screenshot is:
+
+```text
+desktop-v2/build/validation/20260927/permission-revocation/revoked-permissions-ui.png
+```
+
+The permission-reset log is:
+
+```text
+desktop-v2/build/validation/20260927/permission-revocation/revoke.log
+```
+
+### Restoration and real native probe
+
+The user completed the macOS administrator authentication. System Settings then
+showed `go-e2e` enabled under Accessibility and Screen Recording. macOS asked
+to exit and reopen go-e2e for the Screen Recording change; the current build
+was restarted and its UI returned to `已就绪`.
+
+A separate short-lived probe used the production nested helper from the current
+app bundle (not a fake backend). It observed the current desktop and executed a
+real click at the center of the current single display. Results:
+
+```text
+capture_readiness=ready
+input_readiness=ready
+permission_state=approved
+focus_state=focused
+observation=2704x1756, scale_factor=2, display_id=1
+action=click, outcome=executed, after_observation=observation-after-8
+```
+
+Evidence:
+
+```text
+desktop-v2/build/validation/20260927/permission-revocation/permission-test-summary.json
+desktop-v2/build/validation/20260927/permission-revocation/restored-native-probe.json
+desktop-v2/build/validation/20260927/permission-revocation/restored-native-observation.png
+desktop-v2/build/validation/20260927/permission-revocation/restored-native-after.png
+desktop-v2/build/validation/20260927/permission-revocation/restored-ready-ui.png
+desktop-v2/build/validation/20260927/permission-revocation/restored-computer-use.png
+```
+
+### `go-e2e-desktop` authorization item
+
+`Contents/MacOS/go-e2e-desktop` is the Wails desktop host. It owns the native
+window and starts the local `Contents/MacOS/go-e2e` server plus the nested
+`Contents/Helpers/ComputerHelper.app/Contents/MacOS/computer-helper-macos`.
+The app's macOS permission request intentionally asks the host and helper to
+request permissions, while the runtime readiness probe is the source of truth.
+The separate `go-e2e-desktop` row shown by Screen Recording can represent a
+prior or other app identity; its presence alone is not acceptance evidence.
+
+This closes the installed-build TCC revoke/restore acceptance gate. It does
+not close Developer ID signing, notarization/stapling, clean install/upgrade
+continuity, or distribution gates. Therefore the project is not being called
+stable-release ready.

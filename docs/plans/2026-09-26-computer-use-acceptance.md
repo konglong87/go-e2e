@@ -368,3 +368,39 @@ normal Wails build and fresh autonomous cold-launch/native screenshot evidence.
 - Native safety assertions passed: `bash native/macos/tests/run.sh` reported
   157 assertions. This closes the real external-focus stale-observation gate;
   it does not add window targeting or multi-display support.
+
+### Real TCC revoke/restore slice — 2026-09-27
+
+- User-authorized macOS TCC reset was executed for the current bundle ID
+  `com.wails.go-e2e`:
+  `tccutil reset ScreenCapture com.wails.go-e2e` and
+  `tccutil reset Accessibility com.wails.go-e2e`; both commands exited 0.
+- The real go-e2e UI then entered its fail-closed permission state: the
+  Computer Use start button was disabled, the panel reported that screenshot
+  capture was not ready, the preview had no desktop image, and input was not
+  ready. Native screenshot evidence is retained at
+  `desktop-v2/build/validation/20260927/permission-revocation/revoked-permissions-ui.png`.
+  This proves the production UI did not dispatch input without TCC; it is not
+  represented as an executed-input receipt.
+- Through macOS System Settings, `go-e2e` was re-enabled under Accessibility
+  and Screen Recording. macOS required the app to exit and reopen after the
+  Screen Recording change; the app was restarted from the current build.
+- After restart the UI reported Computer Use `已就绪`. A real native helper
+  probe then returned `capture_readiness=ready`, `input_readiness=ready`,
+  `permission_state=approved`, captured a 2704x1756 observation, and executed
+  a real click with an `executed` receipt plus an after-image.
+- Evidence is retained under the ignored
+  `desktop-v2/build/validation/20260927/permission-revocation/`, including
+  `permission-test-summary.json`, `restored-native-probe.json`,
+  `restored-native-observation.png`, `restored-native-after.png`,
+  `restored-ready-ui.png`, and `restored-computer-use.png`.
+- The app layout was also checked against the bundle: the Wails host is
+  `Contents/MacOS/go-e2e-desktop`, the local server is
+  `Contents/MacOS/go-e2e`, and native capture/input is performed by the nested
+  `ComputerHelper.app`. A separate `go-e2e-desktop` row in macOS TCC must not
+  be used alone as proof for the current bundle; runtime readiness is the
+  authoritative check.
+- This closes the real revoke/fail-closed/restore gate for this installed
+  ad-hoc build. Developer ID signing, clean-install/upgrade TCC continuity,
+  notarization, stapling, and distribution gates remain open; stable release
+  is still not accepted.
