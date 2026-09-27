@@ -1,6 +1,8 @@
 import Foundation
 import CoreGraphics
 
+let maxDragSteps = 64
+
 struct DisplayGeometry: Equatable {
     let id: String
     let bounds: CGRect // global CG event coordinates (points)
@@ -83,6 +85,9 @@ final class SafetyState {
 
 enum InputOperation {
     case mouse(ActionKind, CGPoint, Int)
+    case mouseDown(CGPoint, CGMouseButton)
+    case mouseDrag(CGPoint, CGMouseButton)
+    case mouseUp(CGPoint, CGMouseButton)
     case unicode([UInt16])
     case key(CGKeyCode, CGEventFlags)
     case scroll(Int32, Int32)
@@ -113,15 +118,45 @@ func hotkey(_ values: [JSONValue]) throws -> KeySpec {
 struct ActionPlan {
     let operations: [InputOperation]
     let waitMS: Int
+    let dragStepDelayMS: Int
     let doubleClick: Bool
+
+    private static func button(_ value: JSONValue?) throws -> CGMouseButton {
+        switch value?.string?.lowercased() ?? "left" {
+        case "left": return .left
+        case "right": return .right
+        default: throw SafetyError.invalidAction
+        }
+    }
+
     init(_ payload: JSONValue, geometry: DisplayGeometry) throws {
         guard let raw = payload["kind"]?.string, let kind = ActionKind(rawValue: raw) else { throw SafetyError.invalidAction }
-        var ops: [InputOperation] = []; var wait = 0
+        var ops: [InputOperation] = []; var wait = 0; var dragDelay = 0
         switch kind {
         case .click, .doubleClick, .rightClick, .move:
             guard let x = payload["x"]?.integer(in: 0...maxImageDimension), let y = payload["y"]?.integer(in: 0...maxImageDimension) else { throw SafetyError.invalidAction }
             let p = try geometry.point(x: x, y: y)
             ops.append(.mouse(kind, p, 1)); if kind == .doubleClick { ops.append(.mouse(kind, p, 2)) }
+        case .drag:
+            guard let startX = payload["start_x"]?.integer(in: 0...maxImageDimension),
+                  let startY = payload["start_y"]?.integer(in: 0...maxImageDimension),
+                  let endX = payload["x"]?.integer(in: 0...maxImageDimension),
+                  let endY = payload["y"]?.integer(in: 0...maxImageDimension) else { throw SafetyError.invalidAction }
+            let start = try geometry.point(x: startX, y: startY)
+            let end = try geometry.point(x: endX, y: endY)
+            let mouseButton = try Self.button(payload["button"])
+            let duration = payload["duration_ms"]?.integer(in: 0...maxWaitMS) ?? 0
+            let distance = max(abs(endX - startX), abs(endY - startY))
+            let steps = max(1, min(maxDragSteps, max(1, distance / 16)))
+            ops.append(.mouseDown(start, mouseButton))
+            for step in 1...steps {
+                let fraction = Double(step) / Double(steps)
+                let point = CGPoint(x: start.x + (end.x - start.x) * fraction,
+                                    y: start.y + (end.y - start.y) * fraction)
+                ops.append(.mouseDrag(point, mouseButton))
+            }
+            ops.append(.mouseUp(end, mouseButton))
+            if duration > 0 { dragDelay = max(1, duration / (steps + 1)) }
         case .type:
             guard let text = payload["text"]?.string, !text.isEmpty, text.utf16.count <= maxTextUnits else { throw SafetyError.invalidAction }
             // One Unicode scalar per down/up pair: no broken surrogate pairs.
@@ -138,6 +173,6 @@ struct ActionPlan {
         case .wait:
             guard let duration = payload["duration_ms"]?.integer(in: 0...maxWaitMS) else { throw SafetyError.invalidAction }; wait = duration
         }
-        operations = ops; waitMS = wait; doubleClick = kind == .doubleClick
+        operations = ops; waitMS = wait; dragStepDelayMS = dragDelay; doubleClick = kind == .doubleClick
     }
 }

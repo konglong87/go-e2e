@@ -20,6 +20,7 @@ const (
 	MaxHotkeyKeys       = 5
 	MaxKeyBytes         = 32
 	MaxScrollDelta      = 10000
+	MaxDragDurationMS   = MaxActionDurationMS
 )
 
 // Platform identifies the host family without exposing platform implementation
@@ -103,6 +104,17 @@ type WindowRef struct {
 type Point struct {
 	X int `json:"x"`
 	Y int `json:"y"`
+}
+
+type MouseButton string
+
+const (
+	MouseButtonLeft  MouseButton = "left"
+	MouseButtonRight MouseButton = "right"
+)
+
+func (b MouseButton) valid() bool {
+	return b == MouseButtonLeft || b == MouseButtonRight
 }
 
 type MediaRef struct {
@@ -203,6 +215,7 @@ const (
 	ActionKey         ActionKind = "key"
 	ActionHotkey      ActionKind = "hotkey"
 	ActionScroll      ActionKind = "scroll"
+	ActionDrag        ActionKind = "drag"
 	ActionWait        ActionKind = "wait"
 	ActionPause       ActionKind = "pause"
 	ActionResume      ActionKind = "resume"
@@ -211,7 +224,7 @@ const (
 
 func (k ActionKind) IsInput() bool {
 	switch k {
-	case ActionClick, ActionDoubleClick, ActionRightClick, ActionMove, ActionType, ActionKey, ActionHotkey, ActionScroll:
+	case ActionClick, ActionDoubleClick, ActionRightClick, ActionMove, ActionDrag, ActionType, ActionKey, ActionHotkey, ActionScroll:
 		return true
 	default:
 		return false
@@ -235,6 +248,7 @@ type Action struct {
 	DisplayID     string         `json:"display_id,omitempty"`
 	WindowID      string         `json:"window_id,omitempty"`
 	Point         *Point         `json:"point,omitempty"`
+	StartPoint    *Point         `json:"start_point,omitempty"`
 	Button        string         `json:"button,omitempty"`
 	Text          string         `json:"text,omitempty"`
 	Key           string         `json:"key,omitempty"`
@@ -275,6 +289,26 @@ func (a Action) Validate(now time.Time, observation Observation) error {
 		}
 		if a.Point.X < 0 || a.Point.Y < 0 || a.Point.X >= observation.Width || a.Point.Y >= observation.Height {
 			return fmt.Errorf("point (%d,%d) is outside observation bounds %dx%d", a.Point.X, a.Point.Y, observation.Width, observation.Height)
+		}
+	}
+	if a.Kind == ActionDrag {
+		if a.StartPoint == nil || a.Point == nil {
+			return errors.New("drag requires start_point and point")
+		}
+		for name, point := range map[string]*Point{"start_point": a.StartPoint, "point": a.Point} {
+			if point.X < 0 || point.Y < 0 || point.X >= observation.Width || point.Y >= observation.Height {
+				return fmt.Errorf("%s (%d,%d) is outside observation bounds %dx%d", name, point.X, point.Y, observation.Width, observation.Height)
+			}
+		}
+		button := MouseButton(a.Button)
+		if button == "" {
+			button = MouseButtonLeft
+		}
+		if !button.valid() {
+			return fmt.Errorf("unsupported drag button %q", a.Button)
+		}
+		if a.DurationMS < 0 || a.DurationMS > MaxDragDurationMS {
+			return errors.New("drag duration must not be negative")
 		}
 	}
 	if a.Kind == ActionType && a.Text == "" {

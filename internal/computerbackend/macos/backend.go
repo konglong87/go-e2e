@@ -207,7 +207,7 @@ func (b *Backend) Capabilities(ctx context.Context) (cu.Capabilities, error) {
 	caps.ProtocolVersion = cu.ProtocolVersion
 	caps.Platform = cu.PlatformMacOS
 	caps.Backend = cu.BackendNativeHost
-	caps.Actions = []cu.ActionKind{cu.ActionClick, cu.ActionDoubleClick, cu.ActionRightClick, cu.ActionMove, cu.ActionType, cu.ActionKey, cu.ActionHotkey, cu.ActionScroll, cu.ActionWait}
+	caps.Actions = []cu.ActionKind{cu.ActionClick, cu.ActionDoubleClick, cu.ActionRightClick, cu.ActionMove, cu.ActionDrag, cu.ActionType, cu.ActionKey, cu.ActionHotkey, cu.ActionScroll, cu.ActionWait}
 	caps.CoordinateSpace.Origin = cu.OriginTopLeft
 	caps.CoordinateSpace.Unit = cu.CoordinatePixels
 	if err = caps.Validate(); err != nil {
@@ -336,6 +336,13 @@ func (b *Backend) Execute(ctx context.Context, action cu.Action) (cu.ActionRecei
 	if action.Point != nil {
 		payload["x"] = action.Point.X
 		payload["y"] = action.Point.Y
+	}
+	if action.StartPoint != nil {
+		payload["start_x"] = action.StartPoint.X
+		payload["start_y"] = action.StartPoint.Y
+	}
+	if action.Button != "" {
+		payload["button"] = action.Button
 	}
 	response, err := b.request(ctx, commandExecute, action.SessionID, action.ID, payload)
 	if err != nil {

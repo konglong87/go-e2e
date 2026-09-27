@@ -25,6 +25,7 @@ final class FakeDesktop: DesktopPlatform {
     func post(_ operation: InputOperation) throws {
         if failPost { throw SafetyError.inputUnavailable }; posts.append(operation); postHook?()
     }
+    func releasePressedButton(_ button: CGMouseButton) { posts.append(.mouseUp(.zero, button)) }
 }
 var assertions = 0
 func expect(_ value: @autoclosure () -> Bool, _ label: String) {
@@ -82,6 +83,11 @@ if case .unicode(let units) = unicode.operations[1] { expect(units.count == 2, "
 let click = try ActionPlan(.object(["kind":.string("double_click"),"x":.number(2),"y":.number(2)]), geometry: retina)
 expect(click.operations.count == 2, "double click pair count")
 if case .mouse(_, _, let count) = click.operations[1] { expect(count == 2, "double click state") }
+let drag = try ActionPlan(.object(["kind":.string("drag"),"start_x":.number(10),"start_y":.number(10),"x":.number(190),"y":.number(90),"duration_ms":.number(160)]), geometry: retina)
+expect(drag.operations.count >= 4, "drag has down, path, and up")
+if case .mouseDown = drag.operations.first! { expect(true, "drag mouse down") } else { expect(false, "drag mouse down") }
+if case .mouseUp = drag.operations.last! { expect(true, "drag mouse up") } else { expect(false, "drag mouse up") }
+expect(drag.dragStepDelayMS > 0, "drag duration creates pacing")
 
 for reason in ["permission","capture","focus","geometry","noevent","stopped","paused","expired","session","observation","display","window","generation"] {
     let (engine,desktop) = setup()

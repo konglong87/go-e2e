@@ -455,6 +455,8 @@ func assertPayloadCode(t *testing.T, result tools.Result, key, want string) {
 	}
 }
 
+func intPtr(value int) *int { return &value }
+
 func executedScreenshotService(t *testing.T) *serviceStub {
 	t.Helper()
 	service := screenshotService(t)
@@ -475,7 +477,7 @@ func executedScreenshotService(t *testing.T) *serviceStub {
 
 func TestExecutedActionAutomaticallyCapturesFreshObservation(t *testing.T) {
 	for _, kind := range []cu.ActionKind{
-		cu.ActionClick, cu.ActionDoubleClick, cu.ActionRightClick, cu.ActionMove,
+		cu.ActionClick, cu.ActionDoubleClick, cu.ActionRightClick, cu.ActionMove, cu.ActionDrag,
 		cu.ActionType, cu.ActionKey, cu.ActionHotkey, cu.ActionScroll, cu.ActionWait,
 	} {
 		t.Run(string(kind), func(t *testing.T) {
@@ -485,6 +487,7 @@ func TestExecutedActionAutomaticallyCapturesFreshObservation(t *testing.T) {
 			input, err := json.Marshal(request{
 				SessionID: testComputerSession, Action: string(kind), ObservationID: testBeforeImageID,
 				DisplayID: displayID, WindowID: windowID, Text: testPrivateError,
+				StartX: intPtr(1), StartY: intPtr(2), X: intPtr(3), Y: intPtr(4), Button: "left",
 			})
 			if err != nil {
 				t.Fatal(err)

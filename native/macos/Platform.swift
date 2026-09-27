@@ -13,6 +13,7 @@ protocol DesktopPlatform {
     func focus() -> Int32?
     func capture(_ geometry: DisplayGeometry) throws -> Data
     func post(_ operation: InputOperation) throws
+    func releasePressedButton(_ button: CGMouseButton)
 }
 
 struct MacDesktop: DesktopPlatform {
@@ -58,38 +59,51 @@ struct MacDesktop: DesktopPlatform {
         return data as Data
     }
     func post(_ operation: InputOperation) throws {
-        // Allocate the entire sequence before posting; a failed allocation
-        // must never leave a key, modifier, or mouse button pressed.
-        let down: CGEvent?
-        let up: CGEvent?
         switch operation {
         case .mouse(let kind, let point, let clickCount):
             let button: CGMouseButton = kind == .rightClick ? .right : .left
             let downType: CGEventType = kind == .move ? .mouseMoved : (button == .right ? .rightMouseDown : .leftMouseDown)
-            down = CGEvent(mouseEventSource: nil, mouseType: downType, mouseCursorPosition: point, mouseButton: button)
-            if kind == .move { up = nil }
-            else { up = CGEvent(mouseEventSource: nil, mouseType: button == .right ? .rightMouseUp : .leftMouseUp, mouseCursorPosition: point, mouseButton: button) }
-            down?.setIntegerValueField(.mouseEventClickState, value: Int64(clickCount)); up?.setIntegerValueField(.mouseEventClickState, value: Int64(clickCount))
-            if kind != .move && up == nil { throw SafetyError.inputUnavailable }
+            guard let down = CGEvent(mouseEventSource: nil, mouseType: downType, mouseCursorPosition: point, mouseButton: button) else { throw SafetyError.inputUnavailable }
+            down.flags = []
+            down.setIntegerValueField(.mouseEventClickState, value: Int64(clickCount))
+            down.post(tap: .cghidEventTap)
+            if kind != .move {
+                guard let up = CGEvent(mouseEventSource: nil, mouseType: button == .right ? .rightMouseUp : .leftMouseUp, mouseCursorPosition: point, mouseButton: button) else { throw SafetyError.inputUnavailable }
+                up.flags = []; up.setIntegerValueField(.mouseEventClickState, value: Int64(clickCount)); up.post(tap: .cghidEventTap)
+            }
+        case .mouseDown(let point, let button):
+            let type: CGEventType = button == .right ? .rightMouseDown : .leftMouseDown
+            guard let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point, mouseButton: button) else { throw SafetyError.inputUnavailable }
+            event.flags = []; event.post(tap: .cghidEventTap)
+        case .mouseDrag(let point, let button):
+            let type: CGEventType = button == .right ? .rightMouseDragged : .leftMouseDragged
+            guard let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point, mouseButton: button) else { throw SafetyError.inputUnavailable }
+            event.flags = []; event.post(tap: .cghidEventTap)
+        case .mouseUp(let point, let button):
+            let type: CGEventType = button == .right ? .rightMouseUp : .leftMouseUp
+            guard let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point, mouseButton: button) else { throw SafetyError.inputUnavailable }
+            event.flags = []; event.post(tap: .cghidEventTap)
         case .unicode(let units):
-            down = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true)
-            up = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: false)
-            guard up != nil else { throw SafetyError.inputUnavailable }
-            down?.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units)
-            up?.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units)
-            down?.flags = []; up?.flags = []
+            guard let down = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true),
+                  let up = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: false) else { throw SafetyError.inputUnavailable }
+            down.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units)
+            up.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units)
+            down.flags = []; up.flags = []; down.post(tap: .cghidEventTap); up.post(tap: .cghidEventTap)
         case .key(let code, let flags):
             let events = try KeyboardEventSequence.make(code: code, flags: flags)
             // Keep press/release together inside Engine's existing input gate.
             for event in events { event.post(tap: .cghidEventTap) }
-            return
         case .scroll(let x, let y):
-            down = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: y, wheel2: x, wheel3: 0); up = nil
+            guard let event = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: y, wheel2: x, wheel3: 0) else { throw SafetyError.inputUnavailable }
+            event.flags = []; event.post(tap: .cghidEventTap)
         }
-        guard let down else { throw SafetyError.inputUnavailable }
-        if case .mouse = operation { down.flags = []; up?.flags = [] }
-        if case .scroll = operation { down.flags = [] }
-        down.post(tap: .cghidEventTap); up?.post(tap: .cghidEventTap)
+    }
+
+    func releasePressedButton(_ button: CGMouseButton) {
+        let type: CGEventType = button == .right ? .rightMouseUp : .leftMouseUp
+        if let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: NSEvent.mouseLocation, mouseButton: button) {
+            event.flags = []; event.post(tap: .cghidEventTap)
+        }
     }
 }
 

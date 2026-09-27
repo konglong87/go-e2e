@@ -46,7 +46,7 @@ func (Tool) Description() string {
 }
 
 func (Tool) InputSchema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"session_id":{"type":"string"},"action":{"type":"string","enum":["observe","click","double_click","right_click","move","type","key","hotkey","scroll","wait","pause","stop"]},"display_id":{"type":"string"},"window_id":{"type":"string"},"observation_id":{"type":"string"},"x":{"type":"integer"},"y":{"type":"integer"},"text":{"type":"string"},"key":{"type":"string"},"keys":{"type":"array","items":{"type":"string"}},"delta_x":{"type":"integer"},"delta_y":{"type":"integer"},"duration_ms":{"type":"integer"}},"required":["session_id","action"],"additionalProperties":false}`)
+	return json.RawMessage(`{"type":"object","properties":{"session_id":{"type":"string"},"action":{"type":"string","enum":["observe","click","double_click","right_click","move","drag","type","key","hotkey","scroll","wait","pause","stop"]},"display_id":{"type":"string"},"window_id":{"type":"string"},"observation_id":{"type":"string"},"x":{"type":"integer"},"y":{"type":"integer"},"start_x":{"type":"integer"},"start_y":{"type":"integer"},"button":{"type":"string","enum":["left","right"]},"text":{"type":"string"},"key":{"type":"string"},"keys":{"type":"array","items":{"type":"string"}},"delta_x":{"type":"integer"},"delta_y":{"type":"integer"},"duration_ms":{"type":"integer"}},"required":["session_id","action"],"additionalProperties":false}`)
 }
 
 func (Tool) ExecutionPolicy() tools.ExecutionPolicy {
@@ -82,7 +82,7 @@ func (t Tool) Run(ctx context.Context, input json.RawMessage, tc tools.Context) 
 		return t.control(ctx, owner, params, func() error { return service.Pause(ctx, owner, params.SessionID) })
 	case cu.ActionStop:
 		return t.control(ctx, owner, params, func() error { return service.Stop(ctx, owner, params.SessionID) })
-	case cu.ActionClick, cu.ActionDoubleClick, cu.ActionRightClick, cu.ActionMove, cu.ActionType, cu.ActionKey, cu.ActionHotkey, cu.ActionScroll, cu.ActionWait:
+	case cu.ActionClick, cu.ActionDoubleClick, cu.ActionRightClick, cu.ActionMove, cu.ActionDrag, cu.ActionType, cu.ActionKey, cu.ActionHotkey, cu.ActionScroll, cu.ActionWait:
 		return t.execute(ctx, service, owner, params, tc)
 	default:
 		return errorResult("invalid_input", "unsupported computer action")
@@ -97,6 +97,9 @@ type request struct {
 	ObservationID string   `json:"observation_id"`
 	X             *int     `json:"x"`
 	Y             *int     `json:"y"`
+	StartX        *int     `json:"start_x"`
+	StartY        *int     `json:"start_y"`
+	Button        string   `json:"button"`
 	Text          string   `json:"text"`
 	Key           string   `json:"key"`
 	Keys          []string `json:"keys"`
@@ -171,10 +174,13 @@ func (t Tool) execute(ctx context.Context, service cu.Service, owner cu.SessionO
 	action := cu.Action{
 		ID: id, SessionID: params.SessionID, ObservationID: params.ObservationID, Kind: cu.ActionKind(params.Action),
 		DisplayID: params.DisplayID, WindowID: params.WindowID, Text: params.Text, Key: params.Key,
-		Keys: params.Keys, DeltaX: params.DeltaX, DeltaY: params.DeltaY, DurationMS: params.DurationMS,
+		Keys: params.Keys, DeltaX: params.DeltaX, DeltaY: params.DeltaY, DurationMS: params.DurationMS, Button: params.Button,
 	}
 	if params.X != nil && params.Y != nil {
 		action.Point = &cu.Point{X: *params.X, Y: *params.Y}
+	}
+	if params.StartX != nil && params.StartY != nil {
+		action.StartPoint = &cu.Point{X: *params.StartX, Y: *params.StartY}
 	}
 	receipt, executeErr := service.Execute(ctx, owner, action)
 	// Errors can accompany an unknown outcome after input was dispatched. Never

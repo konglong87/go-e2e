@@ -17,7 +17,7 @@ let maxScrollDelta = 10000
 enum Command: String { case requestPermissions = "request_permissions", readiness, observe, execute, pause, resume, stop, shutdown }
 enum Outcome: String { case executed, rejected, unknown, failed }
 enum ActionKind: String, CaseIterable {
-    case click, doubleClick = "double_click", rightClick = "right_click", move, type, key, hotkey, scroll, wait
+    case click, doubleClick = "double_click", rightClick = "right_click", move, drag, type, key, hotkey, scroll, wait
 }
 
 struct Envelope: Codable {

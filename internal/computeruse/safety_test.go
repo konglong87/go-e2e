@@ -79,7 +79,7 @@ func TestActionBoundsAndUnknownKind(t *testing.T) {
 	now := time.Now()
 	o := readyObservation("s", now)
 	for _, a := range []Action{
-		{Kind: ActionKind("script")}, {Kind: ActionWait, DurationMS: -1}, {Kind: ActionWait, DurationMS: MaxActionDurationMS + 1},
+		{Kind: ActionKind("script")}, {Kind: ActionWait, DurationMS: -1}, {Kind: ActionDrag, StartPoint: &Point{X: 1, Y: 1}}, {Kind: ActionWait, DurationMS: MaxActionDurationMS + 1},
 		{Kind: ActionType, Text: "x", DisplayID: "other"}, {Kind: ActionHotkey, Keys: []string{""}}, {Kind: ActionScroll, DeltaY: MaxScrollDelta + 1},
 	} {
 		a.ID = "a"

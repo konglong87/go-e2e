@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 
 struct ActionResult {
     let outcome: Outcome
@@ -78,6 +79,8 @@ final class Engine {
     }
     func execute(_ request: Envelope) -> ActionResult {
         var posted = false
+        var pressedButton: CGMouseButton?
+        defer { if let pressedButton { platform.releasePressedButton(pressedButton) } }
         do {
             let snapshot = try state.begin(request); try target(request, geometry: snapshot.geometry)
             let plan = try ActionPlan(request.payload, geometry: snapshot.geometry)
@@ -87,8 +90,13 @@ final class Engine {
                 // Revalidate TCC/focus/display just before each pair. Stop only
                 // waits for this short critical section, not the entire action.
                 try checkInput(snapshot)
+                if case .mouseDown(_, let button) = operation { pressedButton = button }
                 try state.gate(request) {
                     try platform.post(operation); posted = true
+                }
+                if case .mouseUp = operation { pressedButton = nil }
+                if plan.dragStepDelayMS > 0 && index + 1 < plan.operations.count {
+                    try wait(plan.dragStepDelayMS, request: request)
                 }
             }
             try wait(plan.waitMS, request: request)
