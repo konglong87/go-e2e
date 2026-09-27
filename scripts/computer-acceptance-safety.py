@@ -203,8 +203,12 @@ class SafetyRun:
         return select_helper_pid(app, rows)
 
     def crash(self):
-        self.crash_helper_pid()
+        require_app_path(self.app_path)
+        # The preceding Stop case legitimately closes its helper. Start this
+        # case's session before selecting its unique helper; still validate the
+        # exact app/parent relationship before any input and again before kill.
         self.restart()
+        self.crash_helper_pid()
         obs = self.d.observe()
         with ThreadPoolExecutor(max_workers=1) as pool:
             future = pool.submit(self.d.call, "execute", session_id=self.d.session, action=self.action(obs, kind="wait", duration_ms=INFLIGHT_WAIT_MS))

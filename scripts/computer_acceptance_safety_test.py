@@ -308,6 +308,31 @@ class CrashScopeTests(unittest.TestCase):
             runner.d.call.assert_not_called()
             kill.assert_not_called()
 
+    def test_crash_restarts_helper_after_preceding_stop_case(self):
+        runner = runner_for(observation())
+        runner.app_path = self.APP
+        helper_live = False
+
+        def restart():
+            nonlocal helper_live
+            helper_live = True
+
+        def processes(*args, **kwargs):
+            return self.process_table(helpers=((201, 200),) if helper_live else ())
+
+        runner.restart.side_effect = restart
+        runner.d.call.side_effect = [
+            {"error": "helper lost", "data": {"outcome": "unknown"}},
+            {"error": "helper lost"},
+        ]
+        with patch.object(SAFETY, "require_app_path", return_value=self.APP), \
+                patch.object(SAFETY.subprocess, "check_output", side_effect=processes), \
+                patch.object(SAFETY.os, "kill") as kill, \
+                patch.object(SAFETY.time, "sleep"):
+            runner.crash()
+            kill.assert_called_once_with(201, SAFETY.signal.SIGKILL)
+            self.assertEqual(runner.restart.call_count, 2)
+
     def test_crash_targets_only_selected_pid_without_global_kill(self):
         runner = runner_for(observation())
         runner.app_path = self.APP
