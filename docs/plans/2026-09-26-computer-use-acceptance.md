@@ -75,3 +75,21 @@ The empty test conversation was stopped and archived via the scoped session API;
 a follow-up owner lookup returned 404. The old isolated fixture process was stopped.
 No system permissions or user conversations were altered. Existing screenshots
 and acceptance evidence remain private/ignored; no credentials or DBs are staged.
+
+## Real-provider acceptance and SQLite follow-up (2026-09-27)
+- Resume status was clean at 8479011; origin/main was pulled fast-forward-only.
+- Local critical path: probe actual configured routes with generated non-private
+  digit images, no fallback, before any desktop screenshot is sent. Use a separate
+  owner-only home directory for isolated model settings, workspace and DB; do not
+  alter the user's normal settings. Native UI still owns conversation approval.
+- Parallel slice: SQLite audit read-to-write upgrade contention. Files are
+  internal/storage/mysql/sqlite.go, sqlite_transaction_test.go and
+  internal/server/session_control_stop_sqlite_test.go. Driver-level IMMEDIATE
+  transactions reserve the writer before reads; no blanket retries or timeout
+  increases. A deterministic competing-connection test failed before the fix and
+  passes afterward in both rollback and WAL journal modes. Detached test workers
+  are drained before DB cleanup.
+- Verification: both SQLite Stop cases repeated 50 times, affected storage/mysql,
+  sessioncontrol and server suites (ordinary + race), repeated focused race
+  tests all passed. This fixes the reproduced lock-upgrade case; long-held
+  external writers may still legitimately exhaust the busy timeout.

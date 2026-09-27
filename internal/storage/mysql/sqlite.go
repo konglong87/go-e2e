@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,7 +24,18 @@ func OpenSQLiteGormRepository(ctx context.Context, path string, logger *slog.Log
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
 	}
-	db, err := gorm.Open(gormsqlite.Open(path), &gorm.Config{})
+	absolutePath, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	// SQLite omits SELECT FOR UPDATE. Reserve the writer at BEGIN instead of
+	// upgrading a deferred read transaction after another connection has begun
+	// writing (an immediate SQLITE_BUSY that the busy timeout cannot resolve).
+	// Driver options apply to every pooled connection, including replacements.
+	dsn := url.URL{Scheme: "file", Path: filepath.ToSlash(absolutePath)}
+	options := url.Values{"_txlock": {"immediate"}}
+	dsn.RawQuery = options.Encode()
+	db, err := gorm.Open(gormsqlite.Open(dsn.String()), &gorm.Config{})
 	if err != nil {
 		return nil, err
 	}

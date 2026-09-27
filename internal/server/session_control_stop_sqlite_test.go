@@ -63,6 +63,16 @@ func TestSessionControlStopCancelsInflightRunAndReplaysOnSQLite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Cancellation notification only means the provider returned, not that the
+	// detached runner finished its persistence. Drain before closing/removing
+	// SQLite, also when Send or Stop fails, so no worker outlives the fixture.
+	defer func() {
+		drainCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := svc.(SessionControlDrainer).Drain(drainCtx); err != nil {
+			t.Errorf("drain session control runner: %v", err)
+		}
+	}()
 	requestContext := sessioncontrol.RequestContext{TenantID: tenantID, UserID: userID, ActorUserID: userID}
 	created, err := svc.Create(ctx, sessioncontrol.CreateRequest{Context: requestContext, Title: "stop", CWD: opts.Workspace, IdempotencyKey: "sqlite-stop-create"})
 	if err != nil {

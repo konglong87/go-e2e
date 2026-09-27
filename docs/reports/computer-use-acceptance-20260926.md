@@ -221,3 +221,18 @@ real external-focus perturbation, actual OS permission revocation, clean-user
 installation, signed upgrade/TCC continuity, Developer ID and notarization. The
 single-display/no-window-target/no-drag capability boundaries are unchanged.
 `go-e2e-desktop` remains the actual Wails executable and was not removed.
+
+## SQLite contention follow-up (2026-09-27)
+
+The previously recorded `database is locked` failure was reproduced and traced
+to a deferred read transaction upgrading after a concurrent writer reservation.
+The opener now uses the driver's `_txlock=immediate` connection option. A
+controlled competing writer proves the regression in both rollback-journal and
+WAL modes. There is no retry loop, busy-timeout increase or pool-size workaround.
+
+The two SQLite Stop cases passed 50 repetitions each; complete storage/mysql,
+sessioncontrol and server suites passed normally and with `-race`. The test also
+drains detached finalization before removing its SQLite fixture. This supersedes
+the earlier unresolved-lock status for this reproduced case, not all possible
+SQLite failures. Legitimate external write contention still returns errors when
+the existing timeout is exhausted.
