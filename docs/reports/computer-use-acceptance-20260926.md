@@ -591,3 +591,39 @@ Evidence under `desktop-v2/build/validation/20260927/native-input/`:
 before/after screenshot and redacted receipt, and `fixture-final.png`.
 Safety fault injection is a separate run; its results are not implied by these
 11 successful input cases.
+
+## Current native safety rerun — seven scoped cases passed
+
+The live run exposed a harness sequencing bug: Stop correctly terminates its
+helper, so a following crash-test preflight cannot require that old helper to
+still exist. A regression failed before the correction; commit `872cfcc` validates
+the explicit app path, starts the crash case's new session, then selects and
+rechecks that new helper before signaling. All **22** deterministic harness tests
+passed afterward. Exact host/path/parent guards remain intact; there is no global
+process kill. The first partial run is preserved under `safety-attempt-1/`.
+
+The complete repeated native run then passed all seven cases:
+
+1. Actual returned observation expiry rejection (waited past its 30-second TTL).
+2. Superseded observation rejection.
+3. Pause during an in-flight bounded wait; subsequent input rejected.
+4. Explicit resume after that interrupted wait and fresh capture.
+5. Stop during an in-flight bounded wait; subsequent input rejected.
+6. SIGKILL of only the isolated host's uniquely identified helper during wait:
+   outcome unknown, not executed, and later observation denied.
+7. New session after helper crash successfully captures again.
+
+The forbidden sentinel was not added to the fixture text. Pause/Stop timings,
+receipts, rejection errors, and recovery screenshot are retained in
+`desktop-v2/build/validation/20260927/native-input/safety-results.json`,
+`safety-run.log`, and `safety-crash-recovered.png`. These are real native
+Controller/helper tests, not model planning. Interruptions cover the supported
+wait action, **not a held mouse button/key or drag**.
+
+External-focus verification remains open: CUA AX Raise/click/shortcut probes did
+not establish a different frontmost application PID according to the independent
+macOS front-app readback. A coordinate probe returned `noWindowsAvailable` while
+process inspection still showed Edge alive. No stale-focus input was sent or
+claimed rejected. This is an instrumentation limitation, not proof of a product
+focus defect or success. The acceptance session was explicitly stopped afterward.
+Real OS permission revocation and signed clean-install/upgrade also remain open.

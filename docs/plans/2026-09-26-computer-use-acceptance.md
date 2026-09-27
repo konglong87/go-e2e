@@ -303,3 +303,14 @@ normal Wails build and fresh autonomous cold-launch/native screenshot evidence.
   final text/selection/scroll assertions and actual screenshot matched.
 - Evidence retained under ignored 20260927/native-input. Report records setup
   limitations explicitly. Safety run proceeds independently with exact app scope.
+
+### Native safety slice checkpoint
+
+- Live Stop -> crash-test sequence uncovered stale-helper preflight assumption;
+  red/green regression added, 22 Python tests pass. Fix pushed as `872cfcc`.
+- All seven live native safety cases then passed, with scoped helper termination
+  and recovery capture. Wait interruptions are not held-key/mouse/drag coverage.
+- External-focus probes still could not establish a true frontmost PID change;
+  no stale-focus action dispatched. Do not mark that case passed.
+- Native session stopped after evidence capture. Current-build model cold launch,
+  actual OS revocation and signed install/upgrade gates remain outstanding.
