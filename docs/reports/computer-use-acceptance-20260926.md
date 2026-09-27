@@ -627,3 +627,27 @@ process inspection still showed Edge alive. No stale-focus input was sent or
 claimed rejected. This is an instrumentation limitation, not proof of a product
 focus defect or success. The acceptance session was explicitly stopped afterward.
 Real OS permission revocation and signed clean-install/upgrade also remain open.
+
+## Final current-build model retry checkpoint — 2026-09-27
+
+A final isolated-copy attempt was prepared from the latest source commit and
+started with WorkBuddy absent from the process list. The copy was then discarded
+because macOS LaunchServices/TCC identity handling made the changed bundle
+identifier require a separate permission entry; no new permission was silently
+assumed. The original-bundle copy was also not used to claim a model pass.
+
+A separate normal-app session was created only to diagnose the configured model
+route. The selected `gpt-5.6-sol` request failed before the first ComputerUse
+call with provider HTTP 404 `model is not found`. It therefore produced no native
+input, no WorkBuddy launch, and no screenshot evidence. A gpt-5.5 provider was
+selected in the UI afterward, but no new model run was started before cleanup;
+this is not a pass. The normal app's existing user sessions were not quit or
+modified. The exact isolated credential/config root was removed after the failed
+attempt; current native fixture and safety evidence remain retained.
+
+This does not invalidate Attempt 10's independent Assistant -> New Task pass,
+which remains a genuine warm-navigation pass on its stated build. It means the
+latest-source **cold launch + navigation in one model run remains unverified**.
+The provider/model availability prerequisite must be fixed or explicitly routed
+to an available vision-capable provider before another model attempt is useful.
+Stable release remains not accepted.

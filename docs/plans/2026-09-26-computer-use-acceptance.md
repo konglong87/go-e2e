@@ -314,3 +314,14 @@ normal Wails build and fresh autonomous cold-launch/native screenshot evidence.
   no stale-focus action dispatched. Do not mark that case passed.
 - Native session stopped after evidence capture. Current-build model cold launch,
   actual OS revocation and signed install/upgrade gates remain outstanding.
+
+### Final model retry checkpoint
+
+- Current-source cold precondition was recorded with WorkBuddy not running, but
+  isolated bundle identity required a separate TCC entry; no new permission was
+  silently granted. The isolated copy/config/credential root was cleaned.
+- Normal-app diagnostic session failed before ComputerUse with gpt-5.6-sol 404
+  model-not-found. No native action or target-app side effect occurred. UI
+  selection of gpt-5.5 was not followed by a run, so no pass is claimed.
+- Latest source cold launch/navigation remains open; all other evidence remains
+  scope-labeled. Normal user app was not quit or overwritten.
