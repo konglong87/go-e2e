@@ -233,3 +233,27 @@ normal Wails build and fresh autonomous cold-launch/native screenshot evidence.
 - Next locally actionable work remains the latest-build native fixture/safety
   rerun, then a new isolated model run for cold-start/navigation. Distribution
   and real permission-revocation gates still need their own evidence/consent.
+
+## Native fixture rerun plan — after 6c8cf17
+
+- Resume: worktree initially clean; main pulled up to date.
+- Normal desktop has two active-state user sessions; do not quit or overwrite it.
+  Build a tagged host binary into ignored validation output and package a separate
+  copy of the existing Wails app. Use credential-free isolated settings and the
+  explicit private acceptance socket. Verify original binary hashes unchanged.
+- Repair the stale fixed-11-second expiry test to follow actual expires_at before
+  issuing input; deterministic Python tests must prove safe waiting/fail-closed.
+  Crash injection must explicitly name the isolated app and validate exact parent
+  PID/path, never match/kill the normal app's helper.
+- Rerun all real trusted-event fixture cases with before/after native screenshots.
+  Then stale/expired/pause/stop/helper-crash cases and a separately proven external
+  focus perturbation. TCC revocation remains action-time user-controlled.
+- Intended source slice: safety runner and focused Python regression tests;
+  evidence stays ignored. Commit/push each verified slice, then cleanup the
+  temporary fixture/app/config while preserving requested evidence.
+
+- Harness repair focused verification: 21 Python unit tests passed, covering real
+  expiry metadata/clock changes and explicit isolated-app helper PID selection.
+  The tagged side-by-side Wails app built successfully, signature verified, and
+  its live private listener reports capture/input ready. Original app binaries
+  hash-identical. Physical fixture/safety execution follows this harness slice.
