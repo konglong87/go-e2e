@@ -106,6 +106,18 @@ func (s *serviceStub) ObservationImage(ctx context.Context, owner cu.SessionOwne
 	}
 	return s.image, s.imageType, s.imageErr
 }
+
+type coordinatingService struct {
+	*serviceStub
+	sessionID string
+	starts    int
+}
+
+func (s *coordinatingService) EnsureComputerSession(context.Context, cu.SessionOwner) (string, error) {
+	s.starts++
+	return s.sessionID, nil
+}
+
 func testContext(service cu.Service) tools.Context {
 	return tools.Context{TenantID: 7, UserID: 11, SessionID: 13, ComputerUse: service, ComputerUseImageSupported: true, Invocation: tools.Invocation{RunID: "run-1", ToolUseID: "tool-1"}}
 }
@@ -144,6 +156,18 @@ func assertImage(t *testing.T, result tools.Result, want []byte) {
 		t.Fatal(err)
 	}
 }
+func TestObserveLazilyCoordinatesMissingSessionID(t *testing.T) {
+	base := screenshotService(t)
+	service := &coordinatingService{serviceStub: base, sessionID: testComputerSession}
+	result := New().Run(context.Background(), json.RawMessage(`{"action":"observe"}`), testContext(service))
+	if result.IsError {
+		t.Fatal(result.Content)
+	}
+	if service.starts != 1 || service.lastObserve.SessionID != testComputerSession {
+		t.Fatalf("lazy session binding did not run: starts=%d observe=%+v", service.starts, service.lastObserve)
+	}
+}
+
 func TestObservePassesRealScreenshotImageContext(t *testing.T) {
 	service := screenshotService(t)
 	result := runRequest(service, `{"session_id":"computer-1","action":"observe"}`)

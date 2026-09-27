@@ -12,7 +12,30 @@ var errComputerAgentUnauthorized = errors.New("no approved computer session for 
 // computerAgentService does not create or approve sessions. It borrows the UI's
 // controller only when a full, non-local owner binding is already present.
 // A local preview/acceptance owner (conversation=0) is intentionally invisible.
-type computerAgentService struct{ manager *computerManager }
+type computerAgentService struct {
+	manager  *computerManager
+	lifetime func() context.Context
+}
+
+// EnsureComputerSession is called only after the agent tool's normal
+// ComputerUse permission gate. It binds an approved model owner lazily, while
+// keeping local preview (owner 0/0/0) outside this path.
+func (s computerAgentService) EnsureComputerSession(ctx context.Context, owner cu.SessionOwner) (string, error) {
+	if s.manager == nil || !validComputerConversationOwner(owner) {
+		return "", errComputerAgentUnauthorized
+	}
+	lifetime := ctx
+	if s.lifetime != nil {
+		if value := s.lifetime(); value != nil {
+			lifetime = value
+		}
+	}
+	snapshot, err := s.manager.startOwnedWithLifetime(ctx, lifetime, ComputerSessionStartInput{Approved: true}, owner)
+	if err != nil {
+		return "", err
+	}
+	return snapshot.ID, nil
+}
 
 func (s computerAgentService) controller(ctx context.Context, owner cu.SessionOwner, id string, lookup bool) (*cu.Controller, error) {
 	if err := ctx.Err(); err != nil {

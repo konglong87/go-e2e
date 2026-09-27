@@ -34,6 +34,13 @@ type ObservationImageProvider interface {
 	ObservationImage(context.Context, cu.SessionOwner, string, string) ([]byte, string, error)
 }
 
+// SessionCoordinator lets the trusted desktop integration lazily bind the first
+// model ComputerUse call to the current conversation. It is intentionally an
+// optional capability: local preview and test fakes still require explicit IDs.
+type SessionCoordinator interface {
+	EnsureComputerSession(context.Context, cu.SessionOwner) (string, error)
+}
+
 // Tool carries no authority: registry clones may safely share this value.
 type Tool struct{}
 
@@ -46,7 +53,7 @@ func (Tool) Description() string {
 }
 
 func (Tool) InputSchema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"session_id":{"type":"string"},"action":{"type":"string","enum":["observe","click","double_click","right_click","move","drag","type","key","hotkey","scroll","wait","pause","stop"]},"display_id":{"type":"string"},"window_id":{"type":"string"},"observation_id":{"type":"string"},"x":{"type":"integer"},"y":{"type":"integer"},"start_x":{"type":"integer"},"start_y":{"type":"integer"},"button":{"type":"string","enum":["left","right"]},"text":{"type":"string"},"key":{"type":"string"},"keys":{"type":"array","items":{"type":"string"}},"delta_x":{"type":"integer"},"delta_y":{"type":"integer"},"duration_ms":{"type":"integer"}},"required":["session_id","action"],"additionalProperties":false}`)
+	return json.RawMessage(`{"type":"object","properties":{"session_id":{"type":"string"},"action":{"type":"string","enum":["observe","click","double_click","right_click","move","drag","type","key","hotkey","scroll","wait","pause","stop"]},"display_id":{"type":"string"},"window_id":{"type":"string"},"observation_id":{"type":"string"},"x":{"type":"integer"},"y":{"type":"integer"},"start_x":{"type":"integer"},"start_y":{"type":"integer"},"button":{"type":"string","enum":["left","right"]},"text":{"type":"string"},"key":{"type":"string"},"keys":{"type":"array","items":{"type":"string"}},"delta_x":{"type":"integer"},"delta_y":{"type":"integer"},"duration_ms":{"type":"integer"}},"required":["action"],"additionalProperties":false}`)
 }
 
 func (Tool) ExecutionPolicy() tools.ExecutionPolicy {
@@ -71,10 +78,21 @@ func (t Tool) Run(ctx context.Context, input json.RawMessage, tc tools.Context) 
 	if err := decode(input, &params); err != nil {
 		return errorResult("invalid_input", "invalid computer use request")
 	}
-	if strings.TrimSpace(params.SessionID) == "" {
-		return errorResult("invalid_input", "session_id is required")
-	}
 	owner := cu.SessionOwner{TenantID: tc.TenantID, UserID: tc.UserID, SessionID: tc.SessionID}
+	if strings.TrimSpace(params.SessionID) == "" {
+		if cu.ActionKind(params.Action) != cu.ActionObserve {
+			return errorResult("invalid_input", "session_id is required for this action")
+		}
+		coordinator, ok := service.(SessionCoordinator)
+		if !ok {
+			return errorResult("session_start_unavailable", "computer session must be started explicitly")
+		}
+		sessionID, startErr := coordinator.EnsureComputerSession(ctx, owner)
+		if startErr != nil || strings.TrimSpace(sessionID) == "" {
+			return errorResult("session_start_failed", "computer session could not be started")
+		}
+		params.SessionID = sessionID
+	}
 	switch cu.ActionKind(params.Action) {
 	case cu.ActionObserve:
 		return t.observe(ctx, service, owner, params)

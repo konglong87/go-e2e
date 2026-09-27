@@ -104,3 +104,18 @@ revalidates that topology in addition to the selected display geometry, focus,
 and target window. A display add/remove therefore rejects a stale action before
 any input post. The fake native matrix now reports 167 assertions; physical
 monitor hot-plug and mixed-DPI acceptance remain outstanding.
+
+## Lazy managed-session orchestration — 2026-09-27
+
+The ComputerUse tool may now omit `session_id` for its first `observe` call.
+The trusted desktop service implements an optional coordinator that lazily
+creates/approves a session for the current managed conversation, using the
+already-established ComputerUse permission gate and the Wails host lifetime.
+Local preview remains explicit and cannot enter this path because local owners
+are rejected. Cross-conversation ownership checks remain enforced.
+
+This removes the model-run dependency on a user clicking “授权本次会话” after
+OS permissions are already granted. It does not automate first-time macOS TCC
+consent, does not let model output mint permission, and does not yet provide a
+runtime task-finalizer that automatically stops every session if the model
+fails to call Stop.

@@ -42,6 +42,20 @@ func agentControllerForTest(t *testing.T, approved bool) (computerAgentService, 
 	t.Cleanup(func() { _ = m.close(context.Background()) })
 	return computerAgentService{manager: m}, b, owner, session.ID()
 }
+func TestAgentServiceLazilyApprovesManagedConversation(t *testing.T) {
+	pending, _, owner, id := agentControllerForTest(t, false)
+	got, err := pending.EnsureComputerSession(context.Background(), owner)
+	if err != nil || got != id {
+		t.Fatalf("EnsureComputerSession() = %q, %v", got, err)
+	}
+	if !pending.manager.controller.Session().Approved() {
+		t.Fatal("managed session was not approved")
+	}
+	if _, err := pending.EnsureComputerSession(context.Background(), cu.SessionOwner{TenantID: 7, UserID: 11, SessionID: 99}); err == nil {
+		t.Fatal("foreign owner received a session")
+	}
+}
+
 func TestAgentServiceNeverMintsOrExposesLocalApproval(t *testing.T) {
 	ctx := context.Background()
 	m, _ := testComputerManager()
