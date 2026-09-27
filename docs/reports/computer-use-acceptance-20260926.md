@@ -480,3 +480,44 @@ real-input fixture; external focus perturbation and actual OS permission
 revocation; clean installation, signed upgrade and notarized distribution.
 Attempt 10's independent navigation pass remains valid for its stated build,
 not silently upgraded to a blanket latest-build or stable-release certification.
+
+## Isolated latest-source fixture preparation and OS consent checkpoint
+
+The normal desktop's read-only session API returned 32 sessions, including two in
+active states. It was therefore neither quit nor overwritten. A separately built
+`computeracceptance` host was packaged into an ignored side-by-side copy at
+`desktop-v2/build/validation/20260927/native-fixture-build/go-e2e.app`, using the
+same current source for the native stack and copied unchanged helper/server/assets.
+Normal-app host/server/helper hashes were checked unchanged. The copied app has
+credential-free isolated settings; no provider request is used for this fixture.
+
+Before running the safety suite, the fixed 11-second expiry delay was found to be
+invalid for the current 30-second native lifetime. Commit `e07c387` now waits for
+the returned RFC3339 expiry with a bounded monotonic guard; malformed metadata
+fails before input. Crash injection additionally requires an explicit app path
+and the exact unique host/helper parent relationship, rechecked before signaling.
+This prevents accidentally targeting the concurrently running normal desktop.
+
+Fresh verification:
+
+- 21 Python safety-runner regression tests passed.
+- Tagged desktop/fixture/fixture-command Go race suites passed.
+- 157 fake-platform native safety assertions passed (no real capture/input).
+- 436 native event-construction assertions passed (no events posted).
+- Side-by-side Wails build and strict ad-hoc signature verification passed.
+- Its live private listener reported capture/input ready, native screenshots
+  succeeded, and two bounded native keyboard actions opened/closed Spotlight.
+  These setup actions are **not** a fixture-input or safety-suite pass.
+
+A macOS consent dialog then visibly requested direct screen/system-audio access
+for go-e2e. It appeared despite ready preflight metadata and successful captures;
+its cause is not inferred to be a new-install, upgrade, or TCC-continuity result.
+No Allow/System Settings button was clicked. Spotlight was closed so the prompt
+is fully visible, and the acceptance Controller was explicitly stopped.
+
+Evidence: `desktop-v2/build/validation/20260927/native-input/04-pending-system-permission.png`
+and `native-fixture-build/checkpoint.json`. The local fixture server and isolated
+app remain available for the user's action-time authorization decision; there is
+no active native-input sequence. The normal desktop remains running, untouched.
+**Current-build fixture inputs and safety cases have not yet run.** This new
+consent checkpoint is not counted as an acceptance pass or a stable release.

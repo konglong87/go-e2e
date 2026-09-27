@@ -257,3 +257,15 @@ normal Wails build and fresh autonomous cold-launch/native screenshot evidence.
   The tagged side-by-side Wails app built successfully, signature verified, and
   its live private listener reports capture/input ready. Original app binaries
   hash-identical. Physical fixture/safety execution follows this harness slice.
+
+### Isolated fixture checkpoint
+
+- Harness slice committed/pushed as `e07c387`; 21 Python tests, tagged desktop/
+  fixture race tests, 157 fake native assertions, 436 non-posting event assertions
+  passed. Side-by-side app signature verified; original app hashes unchanged.
+- First real screenshots succeeded but an additional macOS screen/system-audio
+  consent dialog appeared. No consent action taken; acceptance Controller stopped.
+  Setup hotkeys only: fixture input/safety suites remain unrun.
+- Pending user action-time authorization for the visible system dialog. Private
+  credential-free app/fixture remain available; do not kill the normal desktop's
+  active sessions. Only the explicit copied app is allowed for crash injection.
