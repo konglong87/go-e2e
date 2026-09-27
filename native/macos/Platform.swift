@@ -7,6 +7,7 @@ import UniformTypeIdentifiers
 
 protocol DesktopPlatform {
     func geometry() throws -> DisplayGeometry
+    func geometries() throws -> [DisplayGeometry]
     func captureAllowed() -> Bool
     func inputAllowed() -> Bool
     func requestPermissions()
@@ -16,14 +17,31 @@ protocol DesktopPlatform {
     func releasePressedButton(_ button: CGMouseButton)
 }
 
+extension DesktopPlatform {
+    func geometries() throws -> [DisplayGeometry] { [try geometry()] }
+}
+
 struct MacDesktop: DesktopPlatform {
     func geometry() throws -> DisplayGeometry {
+        let all = try geometries()
+        let mainID = String(CGMainDisplayID())
+        guard let main = all.first(where: { $0.id == mainID }) ?? all.first else { throw SafetyError.unsupportedDisplay }
+        return main
+    }
+
+    func geometries() throws -> [DisplayGeometry] {
         var count: UInt32 = 0
-        guard CGGetActiveDisplayList(0, nil, &count) == .success, count == 1 else { throw SafetyError.unsupportedDisplay }
-        let id = CGMainDisplayID()
-        guard let mode = CGDisplayCopyDisplayMode(id) else { throw SafetyError.unsupportedDisplay }
-        let g = DisplayGeometry(id: String(id), bounds: CGDisplayBounds(id), width: mode.pixelWidth, height: mode.pixelHeight)
-        guard g.valid else { throw SafetyError.unsupportedDisplay }; return g
+        guard CGGetActiveDisplayList(0, nil, &count) == .success, count > 0 else { throw SafetyError.unsupportedDisplay }
+        var ids = [CGDirectDisplayID](repeating: 0, count: Int(count))
+        var actual: UInt32 = 0
+        guard CGGetActiveDisplayList(count, &ids, &actual) == .success, actual > 0 else { throw SafetyError.unsupportedDisplay }
+        let result = try ids.prefix(Int(actual)).map { id -> DisplayGeometry in
+            guard let mode = CGDisplayCopyDisplayMode(id) else { throw SafetyError.unsupportedDisplay }
+            let geometry = DisplayGeometry(id: String(id), bounds: CGDisplayBounds(id), width: mode.pixelWidth, height: mode.pixelHeight)
+            guard geometry.valid else { throw SafetyError.unsupportedDisplay }
+            return geometry
+        }
+        return result
     }
     func captureAllowed() -> Bool { CGPreflightScreenCaptureAccess() }
     func inputAllowed() -> Bool { AXIsProcessTrusted() && CGPreflightPostEventAccess() }

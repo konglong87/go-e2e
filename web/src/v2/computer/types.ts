@@ -37,6 +37,7 @@ export type ComputerCapabilities = {
   focus_state: ComputerFocusState;
   permission_state: ComputerPermissionState;
   coordinate_space: ComputerCoordinateSpace;
+  displays?: ComputerCoordinateSpace[];
   target_window?: ComputerWindowRef;
   actions?: string[];
   image_supported: boolean;

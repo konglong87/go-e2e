@@ -137,19 +137,20 @@ func NewMediaRef(id, mediaType string, data []byte, width, height int) MediaRef 
 }
 
 type Capabilities struct {
-	ProtocolVersion  string          `json:"protocol_version"`
-	Platform         Platform        `json:"platform"`
-	Backend          BackendKind     `json:"backend"`
-	CaptureReadiness Readiness       `json:"capture_readiness"`
-	InputReadiness   Readiness       `json:"input_readiness"`
-	FocusState       FocusState      `json:"focus_state"`
-	PermissionState  PermissionState `json:"permission_state"`
-	CoordinateSpace  CoordinateSpace `json:"coordinate_space"`
-	TargetWindow     WindowRef       `json:"target_window,omitempty"`
-	Actions          []ActionKind    `json:"actions,omitempty"`
-	ImageSupported   bool            `json:"image_supported"`
-	SupportsPause    bool            `json:"supports_pause"`
-	SupportsStop     bool            `json:"supports_stop"`
+	ProtocolVersion  string            `json:"protocol_version"`
+	Platform         Platform          `json:"platform"`
+	Backend          BackendKind       `json:"backend"`
+	CaptureReadiness Readiness         `json:"capture_readiness"`
+	InputReadiness   Readiness         `json:"input_readiness"`
+	FocusState       FocusState        `json:"focus_state"`
+	PermissionState  PermissionState   `json:"permission_state"`
+	CoordinateSpace  CoordinateSpace   `json:"coordinate_space"`
+	Displays         []CoordinateSpace `json:"displays,omitempty"`
+	TargetWindow     WindowRef         `json:"target_window,omitempty"`
+	Actions          []ActionKind      `json:"actions,omitempty"`
+	ImageSupported   bool              `json:"image_supported"`
+	SupportsPause    bool              `json:"supports_pause"`
+	SupportsStop     bool              `json:"supports_stop"`
 }
 
 func (c Capabilities) Ready() bool {

@@ -5,6 +5,7 @@ import CoreGraphics
 // CGEvent, asks for permissions, focuses apps, or captures the actual desktop.
 final class FakeDesktop: DesktopPlatform {
     var display = DisplayGeometry(id: "1", bounds: CGRect(x: 100, y: -50, width: 100, height: 50), width: 200, height: 100)
+    var extraDisplays: [DisplayGeometry] = []
     var capturePermission = true
     var inputPermission = true
     var focused: Int32? = 42
@@ -15,6 +16,7 @@ final class FakeDesktop: DesktopPlatform {
     var postHook: (() -> Void)?
     var captureHook: (() -> Void)?
     func geometry() throws -> DisplayGeometry { if failGeometry { throw SafetyError.unsupportedDisplay }; return display }
+    func geometries() throws -> [DisplayGeometry] { if failGeometry { throw SafetyError.unsupportedDisplay }; return [display] + extraDisplays }
     func captureAllowed() -> Bool { capturePermission }
     func inputAllowed() -> Bool { inputPermission }
     func requestPermissions() { }
@@ -51,6 +53,16 @@ func setup() -> (Engine,FakeDesktop) {
 func action(_ kind: String, _ extra: [String:JSONValue] = [:], seconds: Double = 5) -> Envelope {
     var p = extra; p["kind"] = .string(kind); p["observation_id"] = .string("obs")
     return request("execute", payload: p, seconds: seconds)
+}
+
+do {
+    let desktop = FakeDesktop()
+    desktop.extraDisplays = [DisplayGeometry(id: "2", bounds: CGRect(x: -100, y: 0, width: 100, height: 50), width: 200, height: 100)]
+    let engine = Engine(platform: desktop)
+    let ready = engine.readiness()
+    expect(ready["displays"]?.array?.count == 2, "readiness exposes all displays")
+    let result = engine.observe(request("observe", payload: ["observation_id":.string("secondary"), "display_id":.string("2")]))
+    expect(result.outcome == .executed, "secondary display observation")
 }
 
 // Safe integer conversion, overflow, bounds, NaN, infinity, fractions.
