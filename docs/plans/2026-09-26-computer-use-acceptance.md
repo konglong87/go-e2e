@@ -219,3 +219,17 @@ cancellation, or capture failure must fail closed while preserving the receipt.
 Write scope: tool implementation and tests, runtime guidance, this plan and report.
 Verification: exact operation-order/unit privacy/error tests, affected race suites,
 normal Wails build and fresh autonomous cold-launch/native screenshot evidence.
+
+### Delivery and evidence checkpoint after 801423c
+
+- Auto-observe slice committed/pushed as `801423c`; red/green operation-order and
+  fail-closed tests plus all eight affected race suites passed. Normal `.app`
+  rebuilt and strict ad-hoc signature checked.
+- Attempt 12 terminated with the authoritative two-minute agent-stream idle
+  timeout after initial Observe, before any input. This is not a native pass.
+- Task and native panel both stopped; isolated app/server/helper exited. Exact
+  task-created settings/credential-copy root removed; requested ignored evidence
+  retained. User global configuration untouched.
+- Next locally actionable work remains the latest-build native fixture/safety
+  rerun, then a new isolated model run for cold-start/navigation. Distribution
+  and real permission-revocation gates still need their own evidence/consent.

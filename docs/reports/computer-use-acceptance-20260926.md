@@ -428,3 +428,55 @@ This is a genuine successful navigation workflow, not a claim that all Computer
 Use capabilities or release gates pass. Cold-launch evidence is still attempt 6
 on its earlier build; a single-run current-build cold launch plus navigation and
 remaining input/safety/distribution gates remain distinct work.
+
+## Successful input now composes a fresh authorized observation
+
+Attempt 11 was a genuine current-build cold-start test: WorkBuddy was installed
+but no app process was running. The model opened Spotlight and dispatched text,
+but skipped Observe before a key action; the key was rejected. WorkBuddy never
+started. Thus the earlier caption improvement alone did not make the protocol
+robust enough. This failed run is retained under `attempt-11/`.
+
+Commit `801423c` composes the existing owner-bound `Service.Observe` after a
+successful executed action **and** a validated after-image. Its response contains
+the original receipt plus the new observation ID, expiry, metadata and image. A
+receipt image is still never actionable. Controller, native helper, coordinate
+mapping, TCC, focus, expiry and Stop gates are unchanged. This adds a read-only
+capture, never an input retry. Errors, unknown/rejected outcomes, missing/corrupt
+evidence and cancellation do not trigger the capture; failed post-action capture
+preserves the executed receipt and available evidence and tells the model to stop.
+
+The operation-order and failure regression tests failed against the preceding
+implementation, then passed. Eight affected packages passed with `-race`:
+`internal/tools/computeruse`, `internal/query`, `internal/cli`,
+`internal/computeruse`, `internal/computerbackend/macos`,
+`internal/computerbridge`, `desktop-v2`, and `internal/anthropic`.
+The normal untagged desktop app was rebuilt and strict signature verification
+passed. An initial guidance-string test failure was corrected before the final
+passing suite; no failing tests were waived.
+
+Attempt 12 used that normal build with WorkBuddy absent from the process list.
+It completed only its initial Observe. The authoritative terminal event was
+`agent task stream idle timeout after 2m0s`, not a native-input success or a
+successful model completion. No input action was recorded. Session status and
+native panel both reached stopped. The passive observer's later timeout was not
+used to infer query termination; the API/event record was separately checked.
+This run therefore **does not validate the new action-plus-observation path live**
+or establish a same-build cold-launch/navigation pass.
+
+### Cleanup and remaining gates
+
+After all model runs were terminal and the native session stopped, the isolated
+Wails instance and its owned server/helper processes were stopped. Only the
+exact task-created directory `/Users/konglong/.go-e2e/cu-live-440467931` was
+removed, including copied provider credentials, private test DB and logs. The
+user's normal configuration was not modified. Requested screenshots and redacted
+run evidence remain under ignored `desktop-v2/build/validation/20260927/`;
+`cleanup.json` records this check. No screenshot, credential, database or private
+log is included in Git.
+
+Still open: complete cold-start plus navigation on the latest build; current-build
+real-input fixture; external focus perturbation and actual OS permission
+revocation; clean installation, signed upgrade and notarized distribution.
+Attempt 10's independent navigation pass remains valid for its stated build,
+not silently upgraded to a blanket latest-build or stable-release certification.
