@@ -76,6 +76,17 @@ do {
 
 do {
     let desktop = FakeDesktop()
+    desktop.extraDisplays = [DisplayGeometry(id: "2", bounds: CGRect(x: -100, y: 0, width: 100, height: 50), width: 200, height: 100)]
+    let engine = Engine(platform: desktop)
+    let observed = engine.observe(request("observe", payload: ["observation_id":.string("topology")]))
+    expect(observed.outcome == .executed, "topology baseline observation")
+    desktop.extraDisplays = []
+    let result = engine.execute(action("click", ["x":.number(2), "y":.number(2)]))
+    expect(result.outcome == .rejected && desktop.posts.isEmpty, "display topology change rejects stale action")
+}
+
+do {
+    let desktop = FakeDesktop()
     desktop.targetWindow = NativeWindow(id: "window-9", title: "Fixture", ownerPID: 77, bundleID: "fixture.app", frame: desktop.display.bounds, displayID: desktop.display.id, isVisible: true, isFrontmost: false)
     let engine = Engine(platform: desktop)
     let observed = engine.observe(request("observe", payload: ["observation_id":.string("window-observation"), "window_id":.string("window-9")]))

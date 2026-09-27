@@ -53,6 +53,7 @@ struct Snapshot {
     let id: String
     let session: String
     let geometry: DisplayGeometry
+    let displayIDs: [String]
     let focus: Int32
     let expires: Date
 }

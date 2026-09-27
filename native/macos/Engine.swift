@@ -54,6 +54,9 @@ final class Engine {
         if let window = request.payload["window_id"]?.string, !window.isEmpty && geometry.windowID != window { throw SafetyError.unsupportedDisplay }
         if let display = request.payload["display_id"]?.string, !display.isEmpty && display != geometry.id { throw SafetyError.unsupportedDisplay }
     }
+    private func displayIDs() throws -> [String] {
+        try platform.geometries().map(\.id).sorted()
+    }
     private func capture(_ request: Envelope, geometry: DisplayGeometry) throws -> JSONValue {
         try state.gate(request)
         guard platform.captureAllowed(), try resolveGeometry(for: request) == geometry else { throw SafetyError.screenshotFailed }
@@ -80,7 +83,8 @@ final class Engine {
             guard platform.focus() == focus else { throw SafetyError.focusChanged }
             if let windowID = geometry.windowID, platform.activeWindowID() != windowID { throw SafetyError.focusChanged }
             let expires = now().addingTimeInterval(observationTTLSeconds)
-            try state.save(Snapshot(id: id, session: request.sessionID, geometry: geometry, focus: focus, expires: expires), for: request)
+            let topology = try displayIDs()
+            try state.save(Snapshot(id: id, session: request.sessionID, geometry: geometry, displayIDs: topology, focus: focus, expires: expires), for: request)
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
             payload["observation_expires_at"] = .string(formatter.string(from: expires))
@@ -92,6 +96,7 @@ final class Engine {
         guard platform.focus() == snapshot.focus else { throw SafetyError.focusChanged }
         if let windowID = snapshot.geometry.windowID, platform.activeWindowID() != windowID { throw SafetyError.focusChanged }
         guard try resolveGeometry(for: request) == snapshot.geometry else { throw SafetyError.unsupportedDisplay }
+        guard try displayIDs() == snapshot.displayIDs else { throw SafetyError.unsupportedDisplay }
     }
     private func wait(_ milliseconds: Int, request: Envelope) throws {
         let end = ProcessInfo.processInfo.systemUptime + Double(milliseconds) / 1000

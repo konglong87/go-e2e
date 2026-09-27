@@ -96,3 +96,11 @@ model-driven automatic target selection. Those remain open acceptance gates.
 - This closes basic real drag execution for the single-display fixture. Pause,
   Stop, focus perturbation, helper crash, window-target drag, and multi-display
   drag remain separate gates.
+
+## Display topology stale-observation guard — 2026-09-27
+
+The native snapshot now records the sorted display-ID topology. Every input
+revalidates that topology in addition to the selected display geometry, focus,
+and target window. A display add/remove therefore rejects a stale action before
+any input post. The fake native matrix now reports 167 assertions; physical
+monitor hot-plug and mixed-DPI acceptance remain outstanding.
