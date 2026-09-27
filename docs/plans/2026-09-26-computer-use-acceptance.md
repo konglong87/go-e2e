@@ -325,3 +325,24 @@ normal Wails build and fresh autonomous cold-launch/native screenshot evidence.
   selection of gpt-5.5 was not followed by a run, so no pass is claimed.
 - Latest source cold launch/navigation remains open; all other evidence remains
   scope-labeled. Normal user app was not quit or overwritten.
+
+### Latest-source autonomous cold-launch pass — 2026-09-27
+
+- Isolated the model/provider and desktop data roots; the normal user settings
+  and normal app sessions were not changed. The isolated route was `gpt-6-sol`
+  with an exact primary image-input declaration and no fallbacks.
+- A first run failed on a provider truncated JSON stream before any tool call.
+  A direct tool probe confirmed the route can return the ordinary function-form
+  `ComputerUse` call and that the provider stream recovery path works; the
+  failed run was not counted.
+- Fresh retry session `attempt-14` completed the actual requested model loop:
+  observe, launch WorkBuddy, click **助理**, observe, click **新建任务**, observe,
+  and Stop. Eight ComputerUse calls were recorded; executed clicks returned
+  fresh observation IDs and no action error/rejection occurred.
+- Final native AX verification shows **新建任务** selected with a blank composer;
+  final screenshot and redacted conversation summary are retained locally under
+  ignored `desktop-v2/build/validation/20260927/attempt-14/`.
+- This closes the latest-source model-driven cold-launch/navigation gate for the
+  stated macOS single-display scope. External-focus PID-change verification,
+  actual permission revocation, signed clean-install/upgrade, notarization and
+  distribution gates remain open; stable-release acceptance remains false.

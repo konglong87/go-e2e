@@ -651,3 +651,42 @@ latest-source **cold launch + navigation in one model run remains unverified**.
 The provider/model availability prerequisite must be fixed or explicitly routed
 to an available vision-capable provider before another model attempt is useful.
 Stable release remains not accepted.
+
+## Latest-source autonomous Computer Use acceptance — 2026-09-27
+
+The configured route was tested in an isolated, non-user configuration root:
+`gpt-6-sol` through the OpenAI Responses-compatible provider, with one exact
+`primary` image-input route and no fallback routes. This did not modify the
+user's normal `~/.golang-cc/settings.json`.
+
+The first latest-source run reached the provider but failed with a transient
+`unexpected end of JSON input` before a ComputerUse tool call. A direct
+provider tool probe then confirmed the route can return a `ComputerUse`
+function call and that the Responses stream recovery path recovered a truncated
+SSE attempt. The acceptance was rerun in a fresh approved session rather than
+counting the failed run.
+
+Fresh retry session evidence (`attempt-14`, ignored private build output):
+
+- WorkBuddy was absent before the run.
+- Model issued a real `ComputerUse observe` and received `observation-7`.
+- Model issued eight ComputerUse calls total, with successful executed input
+  receipts and fresh observations including `observation-11`, `observation-15`,
+  `observation-21`, and `observation-27`.
+- WorkBuddy was autonomously launched, the model clicked **助理**, then clicked
+  **新建任务**.
+- The final native AX tree independently shows `新建任务` selected and its
+  blank composer (`今天帮你做些什么？ ...`). The final screenshot is
+  `desktop-v2/build/validation/20260927/attempt-14/workbuddy-final.png`.
+- The model explicitly called ComputerUse Stop and the managed session finished
+  `completed`; the final response states the three observed transitions.
+- No task content, login, message, settings change, points claim, or app update
+  was performed.
+
+The exact private conversation and a redacted event summary are retained under
+`desktop-v2/build/validation/20260927/attempt-14/conversation.json` and
+`summary.json` locally and are ignored by Git. This is now a genuine
+latest-source **model-driven cold launch + navigation pass** for the stated
+macOS single-display scope. It does not close the remaining external-focus,
+real permission-revocation, signed clean-install/upgrade, notarization, or
+release-distribution gates.
