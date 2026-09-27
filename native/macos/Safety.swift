@@ -8,6 +8,11 @@ struct DisplayGeometry: Equatable {
     let bounds: CGRect // global CG event coordinates (points)
     let width: Int
     let height: Int
+    let windowID: String?
+
+    init(id: String, bounds: CGRect, width: Int, height: Int, windowID: String? = nil) {
+        self.id = id; self.bounds = bounds; self.width = width; self.height = height; self.windowID = windowID
+    }
     var scale: Double { Double(width) / bounds.width }
     var valid: Bool {
         bounds.minX.isFinite && bounds.minY.isFinite && bounds.width.isFinite && bounds.height.isFinite &&
@@ -22,6 +27,26 @@ struct DisplayGeometry: Equatable {
     var coordinateSpace: JSONValue {
         .object(["display_id": .string(id), "origin": .string("top_left"), "unit": .string("pixels"),
                  "width": .number(Double(width)), "height": .number(Double(height)), "scale_factor": .number(scale)])
+    }
+}
+
+struct NativeWindow: Equatable {
+    let id: String
+    let title: String
+    let ownerPID: Int32
+    let bundleID: String
+    let frame: CGRect
+    let displayID: String
+    let isVisible: Bool
+    let isFrontmost: Bool
+
+    var json: JSONValue {
+        .object([
+            "id": .string(id), "title": .string(title), "owner_pid": .number(Double(ownerPID)),
+            "bundle_id": .string(bundleID),
+            "frame": .object(["x": .number(frame.origin.x), "y": .number(frame.origin.y), "width": .number(frame.width), "height": .number(frame.height)]),
+            "is_visible": .bool(isVisible), "is_frontmost": .bool(isFrontmost), "display_id": .string(displayID)
+        ])
     }
 }
 struct Snapshot {

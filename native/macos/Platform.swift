@@ -8,6 +8,10 @@ import UniformTypeIdentifiers
 protocol DesktopPlatform {
     func geometry() throws -> DisplayGeometry
     func geometries() throws -> [DisplayGeometry]
+    func windows() throws -> [NativeWindow]
+    func windowGeometry(_ id: String) throws -> DisplayGeometry
+    func activateWindow(_ id: String) -> Bool
+    func activeWindowID() -> String?
     func captureAllowed() -> Bool
     func inputAllowed() -> Bool
     func requestPermissions()
@@ -19,6 +23,10 @@ protocol DesktopPlatform {
 
 extension DesktopPlatform {
     func geometries() throws -> [DisplayGeometry] { [try geometry()] }
+    func windows() throws -> [NativeWindow] { [] }
+    func windowGeometry(_ id: String) throws -> DisplayGeometry { throw SafetyError.unsupportedDisplay }
+    func activateWindow(_ id: String) -> Bool { false }
+    func activeWindowID() -> String? { nil }
 }
 
 struct MacDesktop: DesktopPlatform {
@@ -43,6 +51,58 @@ struct MacDesktop: DesktopPlatform {
         }
         return result
     }
+    func windows() throws -> [NativeWindow] {
+        let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+        guard let raw = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else { return [] }
+        let activeID = activeWindowID()
+        let displays = try geometries()
+        return raw.compactMap { entry in
+            guard let number = (entry[kCGWindowNumber as String] as? NSNumber)?.uint32Value,
+                  let pid = (entry[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value,
+                  pid > 0,
+                  let boundsDict = entry[kCGWindowBounds as String] as? NSDictionary,
+                  let bounds = CGRect(dictionaryRepresentation: boundsDict),
+                  bounds.width > 0, bounds.height > 0 else { return nil }
+            let layer = (entry[kCGWindowLayer as String] as? NSNumber)?.intValue ?? 0
+            let alpha = (entry[kCGWindowAlpha as String] as? NSNumber)?.doubleValue ?? 1
+            let title = (entry[kCGWindowName as String] as? String) ?? ""
+            let bundle = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier ?? ""
+            let displayID = displays.first(where: { $0.bounds.intersects(bounds) })?.id ?? String(CGMainDisplayID())
+            return NativeWindow(id: String(number), title: title, ownerPID: pid, bundleID: bundle,
+                                frame: bounds, displayID: displayID, isVisible: layer == 0 && alpha > 0,
+                                isFrontmost: activeID == String(number))
+        }
+    }
+
+    func windowGeometry(_ id: String) throws -> DisplayGeometry {
+        guard let window = try windows().first(where: { $0.id == id }),
+              let windowNumber = UInt32(window.id),
+              let image = CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(windowNumber), [.bestResolution, .boundsIgnoreFraming]),
+              image.width > 0, image.height > 0 else { throw SafetyError.unsupportedDisplay }
+        let geometry = DisplayGeometry(id: window.displayID, bounds: window.frame, width: image.width, height: image.height, windowID: window.id)
+        guard geometry.valid else { throw SafetyError.unsupportedDisplay }
+        return geometry
+    }
+
+    func activateWindow(_ id: String) -> Bool {
+        let list: [NativeWindow]
+        do { list = try windows() } catch { return false }
+        guard let window = list.first(where: { $0.id == id }), window.ownerPID > 0,
+              let app = NSRunningApplication(processIdentifier: window.ownerPID) else { return false }
+        return app.activate(options: [.activateIgnoringOtherApps])
+    }
+
+    func activeWindowID() -> String? {
+        let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+        guard let windows = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else { return nil }
+        for window in windows {
+            guard (window[kCGWindowLayer as String] as? NSNumber)?.intValue == 0,
+                  let number = (window[kCGWindowNumber as String] as? NSNumber)?.uint32Value else { continue }
+            return String(number)
+        }
+        return nil
+    }
+
     func captureAllowed() -> Bool { CGPreflightScreenCaptureAccess() }
     func inputAllowed() -> Bool { AXIsProcessTrusted() && CGPreflightPostEventAccess() }
     func requestPermissions() {
@@ -68,8 +128,14 @@ struct MacDesktop: DesktopPlatform {
         return NSWorkspace.shared.frontmostApplication?.processIdentifier
     }
     func capture(_ geometry: DisplayGeometry) throws -> Data {
-        guard captureAllowed(), let id = UInt32(geometry.id), let image = CGDisplayCreateImage(id),
-              image.width == geometry.width, image.height == geometry.height else { throw SafetyError.screenshotFailed }
+        guard captureAllowed() else { throw SafetyError.screenshotFailed }
+        let image: CGImage?
+        if let windowID = geometry.windowID, let number = UInt32(windowID) {
+            image = CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(number), [.bestResolution, .boundsIgnoreFraming])
+        } else if let displayID = UInt32(geometry.id) {
+            image = CGDisplayCreateImage(displayID)
+        } else { image = nil }
+        guard let image, image.width == geometry.width, image.height == geometry.height else { throw SafetyError.screenshotFailed }
         let data = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil) else { throw SafetyError.screenshotFailed }
         CGImageDestinationAddImage(destination, image, nil)

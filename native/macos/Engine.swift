@@ -25,6 +25,7 @@ final class Engine {
         let geometry = primary ?? geometries?.first
         let capture = platform.captureAllowed(), input = platform.inputAllowed()
         let displays = geometries?.map { $0.coordinateSpace } ?? []
+        let windows = (try? platform.windows())?.map { $0.json } ?? []
         return .object([
             "capture_readiness": .string(geometry == nil ? "unavailable" : (capture ? "ready" : "permission_required")),
             "input_readiness": .string(geometry == nil ? "unavailable" : (input ? "ready" : "permission_required")),
@@ -33,10 +34,15 @@ final class Engine {
             "image_supported": .bool(geometry != nil), "supports_pause": .bool(true), "supports_stop": .bool(true),
             "coordinate_space": geometry?.coordinateSpace ?? .object(["origin":.string("top_left"),"unit":.string("pixels"),"width":.number(0),"height":.number(0),"scale_factor":.number(0)]),
             "displays": .array(displays),
+            "windows": .array(windows),
             "actions": .array(ActionKind.allCases.map { .string($0.rawValue) })
         ])
     }
     private func resolveGeometry(for request: Envelope) throws -> DisplayGeometry {
+        if let windowID = request.payload["window_id"]?.string, !windowID.isEmpty {
+            guard platform.activateWindow(windowID) else { throw SafetyError.focusChanged }
+            return try platform.windowGeometry(windowID)
+        }
         let all = try platform.geometries()
         if let display = request.payload["display_id"]?.string, !display.isEmpty {
             guard let selected = all.first(where: { $0.id == display }) else { throw SafetyError.unsupportedDisplay }
@@ -45,7 +51,7 @@ final class Engine {
         return try platform.geometry()
     }
     private func target(_ request: Envelope, geometry: DisplayGeometry) throws {
-        if let window = request.payload["window_id"]?.string, !window.isEmpty { throw SafetyError.unsupportedDisplay }
+        if let window = request.payload["window_id"]?.string, !window.isEmpty && geometry.windowID != window { throw SafetyError.unsupportedDisplay }
         if let display = request.payload["display_id"]?.string, !display.isEmpty && display != geometry.id { throw SafetyError.unsupportedDisplay }
     }
     private func capture(_ request: Envelope, geometry: DisplayGeometry) throws -> JSONValue {
@@ -56,9 +62,13 @@ final class Engine {
         try state.gate(request)
         guard try resolveGeometry(for: request) == geometry else { throw SafetyError.unsupportedDisplay }
         guard platform.focus() == focus else { throw SafetyError.focusChanged }
-        return .object(["media_type": .string("image/png"), "data": .string(data.base64EncodedString()),
+        if let windowID = geometry.windowID, platform.activeWindowID() != windowID { throw SafetyError.focusChanged }
+        var result: [String: JSONValue] = ["media_type": .string("image/png"), "data": .string(data.base64EncodedString()),
                         "width": .number(Double(geometry.width)), "height": .number(Double(geometry.height)),
-                        "scale_factor": .number(geometry.scale), "display_id": .string(geometry.id)])
+                        "scale_factor": .number(geometry.scale), "display_id": .string(geometry.id)]
+        if let windowID = geometry.windowID { result["window_id"] = .string(windowID) }
+        if let active = try? platform.windows().first(where: { $0.isFrontmost }) { result["active_window"] = active.json }
+        return .object(result)
     }
     func observe(_ request: Envelope) -> ActionResult {
         do {
@@ -68,6 +78,7 @@ final class Engine {
                   let focus = platform.focus() else { throw SafetyError.invalidAction }
             guard case .object(var payload) = try capture(request, geometry: geometry) else { throw SafetyError.screenshotFailed }
             guard platform.focus() == focus else { throw SafetyError.focusChanged }
+            if let windowID = geometry.windowID, platform.activeWindowID() != windowID { throw SafetyError.focusChanged }
             let expires = now().addingTimeInterval(observationTTLSeconds)
             try state.save(Snapshot(id: id, session: request.sessionID, geometry: geometry, focus: focus, expires: expires), for: request)
             let formatter = ISO8601DateFormatter()
@@ -79,6 +90,7 @@ final class Engine {
     private func checkInput(_ snapshot: Snapshot, request: Envelope) throws {
         guard platform.inputAllowed(), platform.captureAllowed() else { throw SafetyError.permissionRequired }
         guard platform.focus() == snapshot.focus else { throw SafetyError.focusChanged }
+        if let windowID = snapshot.geometry.windowID, platform.activeWindowID() != windowID { throw SafetyError.focusChanged }
         guard try resolveGeometry(for: request) == snapshot.geometry else { throw SafetyError.unsupportedDisplay }
     }
     private func wait(_ milliseconds: Int, request: Envelope) throws {

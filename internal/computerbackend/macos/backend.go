@@ -59,6 +59,19 @@ type imageData struct {
 	data      []byte
 	mediaType string
 }
+
+func decodeWindowRef(raw any) (cu.WindowRef, bool) {
+	data, err := json.Marshal(raw)
+	if err != nil {
+		return cu.WindowRef{}, false
+	}
+	var window cu.WindowRef
+	if err := json.Unmarshal(data, &window); err != nil || window.ID == "" {
+		return cu.WindowRef{}, false
+	}
+	return window, true
+}
+
 type helperResponse struct {
 	OK        *bool          `json:"ok"`
 	Outcome   cu.Outcome     `json:"outcome"`
@@ -247,7 +260,7 @@ func (b *Backend) Observe(ctx context.Context, req cu.ObserveRequest) (cu.Observ
 		return cu.Observation{}, err
 	}
 	defer func() { <-b.operation }()
-	if req.SessionID == "" || req.WindowID != "" {
+	if req.SessionID == "" {
 		return cu.Observation{}, &rejection{"unsupported_target"}
 	}
 	id := fmt.Sprintf("observation-%d", b.requestCounter.Add(1))
@@ -278,8 +291,10 @@ func (b *Backend) Observe(ctx context.Context, req cu.ObserveRequest) (cu.Observ
 		return cu.Observation{}, errors.New("invalid observation expiration metadata")
 	}
 	caps := b.capabilities
+	windowID, _ := response.Result["window_id"].(string)
+	activeWindow, _ := decodeWindowRef(response.Result["active_window"])
 	caps.CoordinateSpace = cu.CoordinateSpace{DisplayID: display, Origin: cu.OriginTopLeft, Unit: cu.CoordinatePixels, Width: width, Height: height, ScaleFactor: scale}
-	obs := cu.Observation{ID: id, SessionID: req.SessionID, DisplayID: display, Width: width, Height: height, ScaleFactor: scale, Screenshot: cu.NewMediaRef(id, mediaType, data, width, height), Capabilities: caps, ObservedAt: now, ExpiresAt: expires}
+	obs := cu.Observation{ID: id, SessionID: req.SessionID, DisplayID: display, WindowID: windowID, ActiveWindow: activeWindow, Width: width, Height: height, ScaleFactor: scale, Screenshot: cu.NewMediaRef(id, mediaType, data, width, height), Capabilities: caps, ObservedAt: now, ExpiresAt: expires}
 	b.images = map[string]imageData{id: {data: data, mediaType: mediaType}}
 	b.observation = obs
 	b.capabilities = caps
@@ -318,7 +333,7 @@ func (b *Backend) Execute(ctx context.Context, action cu.Action) (cu.ActionRecei
 	b.mu.Lock()
 	obs := b.observation
 	_, duplicate := b.actions[action.ID]
-	valid := b.validEpoch(epoch) && !duplicate && len(b.actions) < maxActions && action.SessionID == obs.SessionID && action.ObservationID == obs.ID && obs.ID != "" && (action.DisplayID == "" || action.DisplayID == obs.DisplayID) && action.WindowID == "" && action.Button == ""
+	valid := b.validEpoch(epoch) && !duplicate && len(b.actions) < maxActions && action.SessionID == obs.SessionID && action.ObservationID == obs.ID && obs.ID != "" && (action.DisplayID == "" || action.DisplayID == obs.DisplayID) && (action.WindowID == "" || action.WindowID == obs.WindowID) && action.Button == ""
 	if valid {
 		b.actions[action.ID] = struct{}{}
 	}
@@ -362,6 +377,10 @@ func (b *Backend) Execute(ctx context.Context, action cu.Action) (cu.ActionRecei
 		b.invalidate()
 		return finish(errors.New("invalid after screenshot"))
 	}
+	if activeWindow, ok := decodeWindowRef(response.Result["active_window"]); ok {
+		receipt.ActiveWindowAfter = activeWindow
+	}
+
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if !b.validEpoch(epoch) {

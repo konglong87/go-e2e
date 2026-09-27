@@ -6,6 +6,8 @@ import CoreGraphics
 final class FakeDesktop: DesktopPlatform {
     var display = DisplayGeometry(id: "1", bounds: CGRect(x: 100, y: -50, width: 100, height: 50), width: 200, height: 100)
     var extraDisplays: [DisplayGeometry] = []
+    var targetWindow: NativeWindow?
+    var selectedWindowID: String?
     var capturePermission = true
     var inputPermission = true
     var focused: Int32? = 42
@@ -17,6 +19,13 @@ final class FakeDesktop: DesktopPlatform {
     var captureHook: (() -> Void)?
     func geometry() throws -> DisplayGeometry { if failGeometry { throw SafetyError.unsupportedDisplay }; return display }
     func geometries() throws -> [DisplayGeometry] { if failGeometry { throw SafetyError.unsupportedDisplay }; return [display] + extraDisplays }
+    func windows() throws -> [NativeWindow] { targetWindow.map { [$0] } ?? [] }
+    func windowGeometry(_ id: String) throws -> DisplayGeometry {
+        guard let window = targetWindow, window.id == id else { throw SafetyError.unsupportedDisplay }
+        return DisplayGeometry(id: window.displayID, bounds: window.frame, width: display.width, height: display.height, windowID: window.id)
+    }
+    func activateWindow(_ id: String) -> Bool { guard targetWindow?.id == id else { return false }; selectedWindowID = id; focused = targetWindow?.ownerPID; return true }
+    func activeWindowID() -> String? { selectedWindowID }
     func captureAllowed() -> Bool { capturePermission }
     func inputAllowed() -> Bool { inputPermission }
     func requestPermissions() { }
@@ -63,6 +72,17 @@ do {
     expect(ready["displays"]?.array?.count == 2, "readiness exposes all displays")
     let result = engine.observe(request("observe", payload: ["observation_id":.string("secondary"), "display_id":.string("2")]))
     expect(result.outcome == .executed, "secondary display observation")
+}
+
+do {
+    let desktop = FakeDesktop()
+    desktop.targetWindow = NativeWindow(id: "window-9", title: "Fixture", ownerPID: 77, bundleID: "fixture.app", frame: desktop.display.bounds, displayID: desktop.display.id, isVisible: true, isFrontmost: false)
+    let engine = Engine(platform: desktop)
+    let observed = engine.observe(request("observe", payload: ["observation_id":.string("window-observation"), "window_id":.string("window-9")]))
+    expect(observed.outcome == .executed, "window observation activates and captures target")
+    let actionRequest = request("execute", payload: ["kind":.string("click"), "x":.number(2), "y":.number(2), "window_id":.string("window-9"), "observation_id":.string("window-observation")])
+    let actionResult = engine.execute(actionRequest)
+    expect(actionResult.outcome == .executed, "window-targeted click")
 }
 
 // Safe integer conversion, overflow, bounds, NaN, infinity, fractions.

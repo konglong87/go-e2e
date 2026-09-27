@@ -16,7 +16,8 @@ export type ComputerCoordinateSpace = {
   scale_factor: number;
 };
 
-export type ComputerWindowRef = { id?: string; title?: string };
+export type ComputerWindowFrame = { x: number; y: number; width: number; height: number };
+export type ComputerWindowRef = { id?: string; title?: string; owner_pid?: number; bundle_id?: string; frame?: ComputerWindowFrame; is_visible?: boolean; is_frontmost?: boolean };
 export type ComputerPoint = { x: number; y: number };
 export type ComputerMediaRef = {
   id?: string;

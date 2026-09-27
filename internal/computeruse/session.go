@@ -290,6 +290,18 @@ func (s *ComputerSession) Receipt(id string) (ActionReceipt, bool) {
 }
 func cloneCapabilities(c Capabilities) Capabilities {
 	c.Actions = append([]ActionKind(nil), c.Actions...)
+	c.Displays = append([]CoordinateSpace(nil), c.Displays...)
+	c.Windows = append([]WindowRef(nil), c.Windows...)
+	for i := range c.Windows {
+		if c.Windows[i].Frame != nil {
+			frame := *c.Windows[i].Frame
+			c.Windows[i].Frame = &frame
+		}
+	}
+	if c.TargetWindow.Frame != nil {
+		frame := *c.TargetWindow.Frame
+		c.TargetWindow.Frame = &frame
+	}
 	return c
 }
 func cloneObservation(o Observation) Observation {

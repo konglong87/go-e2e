@@ -96,9 +96,21 @@ type CoordinateSpace struct {
 	ScaleFactor float64          `json:"scale_factor"`
 }
 
+type WindowFrame struct {
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
+}
+
 type WindowRef struct {
-	ID    string `json:"id,omitempty"`
-	Title string `json:"title,omitempty"`
+	ID          string       `json:"id,omitempty"`
+	Title       string       `json:"title,omitempty"`
+	OwnerPID    int32        `json:"owner_pid,omitempty"`
+	BundleID    string       `json:"bundle_id,omitempty"`
+	Frame       *WindowFrame `json:"frame,omitempty"`
+	IsVisible   bool         `json:"is_visible,omitempty"`
+	IsFrontmost bool         `json:"is_frontmost,omitempty"`
 }
 
 type Point struct {
@@ -146,6 +158,7 @@ type Capabilities struct {
 	PermissionState  PermissionState   `json:"permission_state"`
 	CoordinateSpace  CoordinateSpace   `json:"coordinate_space"`
 	Displays         []CoordinateSpace `json:"displays,omitempty"`
+	Windows          []WindowRef       `json:"windows,omitempty"`
 	TargetWindow     WindowRef         `json:"target_window,omitempty"`
 	Actions          []ActionKind      `json:"actions,omitempty"`
 	ImageSupported   bool              `json:"image_supported"`
@@ -341,6 +354,9 @@ func (a Action) Validate(now time.Time, observation Observation) error {
 	}
 	if a.DisplayID != "" && a.DisplayID != observation.DisplayID {
 		return errors.New("action display mismatch")
+	}
+	if observation.WindowID != "" && a.WindowID != observation.WindowID {
+		return errors.New("action window mismatch")
 	}
 	if a.WindowID != "" && a.WindowID != observation.WindowID {
 		return errors.New("action window mismatch")
