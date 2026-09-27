@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/konglong87/go-e2e/internal/anthropic"
@@ -102,4 +103,40 @@ func toolHookFailure(name string, result tools.Result, err error) tools.Result {
 		result.Content = "ComputerUse hook failed"
 	}
 	return result
+}
+
+// Computer audit projections are intentionally not valid executable inputs.
+// Replay them as plain history, not as malformed examples of the live tool's
+// schema. Keep matching results paired as text; other tool protocols and images
+// remain untouched. No raw desktop input is reintroduced into model history.
+func computerModelHistory(messages []anthropic.MessageParam) []anthropic.MessageParam {
+	ids := make(map[string]struct{})
+	for _, message := range messages {
+		for _, block := range message.Content {
+			if block.Type == blockTypeToolUse && tools.IsComputerUseTool(block.Name) {
+				ids[block.ID] = struct{}{}
+			}
+		}
+	}
+	if len(ids) == 0 {
+		return messages
+	}
+	out := append([]anthropic.MessageParam(nil), messages...)
+	for i, message := range messages {
+		out[i].Content = append([]anthropic.ContentBlock(nil), message.Content...)
+		for j, block := range message.Content {
+			if block.Type == blockTypeToolUse && tools.IsComputerUseTool(block.Name) {
+				var summary struct {
+					Action string `json:"action"`
+				}
+				_ = json.Unmarshal(tools.RedactToolInput(block.Name, block.Input), &summary)
+				out[i].Content[j] = anthropic.ContentBlock{Type: blockTypeText, Text: fmt.Sprintf("Historical ComputerUse action: %s. Sensitive arguments are omitted. This is an audit note, not executable tool arguments; use the current tool schema for any new action.", summary.Action)}
+			} else if block.Type == blockTypeToolResult {
+				if _, ok := ids[block.ToolUseID]; ok {
+					out[i].Content[j] = anthropic.ContentBlock{Type: blockTypeText, Text: "Historical ComputerUse result: " + block.Content}
+				}
+			}
+		}
+	}
+	return out
 }

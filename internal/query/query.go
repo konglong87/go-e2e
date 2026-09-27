@@ -1641,6 +1641,7 @@ func (s *Session) run(ctx context.Context, prompt string, cb runCallbacks) (resu
 		})
 		requestBaseMessages = s.withActiveSkillContextMessages(requestBaseMessages)
 		requestBaseMessages = withPendingGateNudge(requestBaseMessages, pendingGateNudge)
+		requestBaseMessages = computerModelHistory(requestBaseMessages)
 		requestMessages := addMessageCacheBreakpoint(requestBaseMessages, promptCachingEnabled(s.currentModel()), false, s.querySource())
 		currentModel := s.currentModel()
 		toolDefinitions := registry.Definitions()

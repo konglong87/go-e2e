@@ -322,3 +322,60 @@ func TestComputerPrivacyPermissionBoundaries(t *testing.T) {
 		})
 	}
 }
+
+// Audit projections deliberately do not match ComputerUse's executable schema.
+// Presenting them as past tool arguments teaches the model invalid calls.
+func TestComputerPrivacyModelHistoryDoesNotReplayAuditArguments(t *testing.T) {
+	tool := &computerPrivacyTool{name: "ComputerUse"}
+	streamer := &computerPrivacyStreamer{name: tool.Name()}
+	s := New(streamer, tools.NewRegistry(tool), Options{Model: "test", MaxTurns: 2, CWD: t.TempDir()})
+	if _, err := s.Run(context.Background(), "perform action", io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	assertComputerPrivacy(t, "model history", streamer.next)
+	for _, message := range streamer.next {
+		for _, block := range message.Content {
+			if block.Type == blockTypeToolUse && tools.IsComputerUseTool(block.Name) {
+				t.Fatal("redacted audit summary replayed as executable tool arguments")
+			}
+			if block.Type == blockTypeToolResult && block.ToolUseID == "computer-call" {
+				t.Fatal("orphaned computer tool result remains")
+			}
+		}
+	}
+	if string(tool.input) != computerPrivacyInput {
+		t.Fatal("live executable input changed")
+	}
+}
+
+func TestComputerModelHistoryPreservesOtherToolsAndSource(t *testing.T) {
+	original := []anthropic.MessageParam{
+		{Role: "assistant", Content: []anthropic.ContentBlock{
+			{Type: blockTypeToolUse, ID: "computer", Name: "ComputerUse", Input: json.RawMessage(computerPrivacyInput)},
+			{Type: blockTypeToolUse, ID: "other", Name: "Other", Input: json.RawMessage(`{"value":"ordinary"}`)},
+		}},
+		{Role: "user", Content: []anthropic.ContentBlock{
+			{Type: blockTypeToolResult, ToolUseID: "computer", Content: `{"receipt":{"outcome":"executed"}}`},
+			{Type: blockTypeToolResult, ToolUseID: "other", Content: "ordinary result"},
+			{Type: blockTypeImage, Source: &anthropic.ContentSource{Type: "base64", MediaType: "image/png", Data: computerPrivacyPNG}},
+		}},
+	}
+	before, _ := json.Marshal(original)
+	projected := computerModelHistory(original)
+	after, _ := json.Marshal(original)
+	if !bytes.Equal(before, after) {
+		t.Fatal("source history mutated")
+	}
+	assertComputerPrivacy(t, "projected model history", projected)
+	if projected[0].Content[0].Type != blockTypeText || projected[1].Content[0].Type != blockTypeText {
+		t.Fatal("computer protocol not paired as text")
+	}
+	if projected[0].Content[1].Type != blockTypeToolUse || projected[1].Content[1].Type != blockTypeToolResult || projected[1].Content[2].Source.Data != computerPrivacyPNG {
+		t.Fatal("ordinary tools or image changed")
+	}
+	twice, _ := json.Marshal(computerModelHistory(projected))
+	once, _ := json.Marshal(projected)
+	if !bytes.Equal(once, twice) {
+		t.Fatal("model history projection is not idempotent")
+	}
+}

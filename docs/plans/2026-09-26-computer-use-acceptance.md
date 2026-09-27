@@ -123,3 +123,21 @@ and acceptance evidence remain private/ignored; no credentials or DBs are staged
   revoked. Focused and complete CLI/desktop/bridge/domain/backend/tool race
   suites passed. This cannot guarantee delivery to an unreachable host; cleanup
   errors remain visible and do not overwrite the original query result/error.
+
+### Second actual model run and history-schema regression
+- The normal Query's hotkey executed and opened Spotlight with the independent
+  30-second snapshot lifetime. Subsequent observe/type/stop requests had invalid
+  parameters. WorkBuddy was not launched. The model's completed status is NOT
+  acceptance success; its final answer explicitly said the task was unfinished.
+- Runtime teardown revoked the host grant despite the malformed Stop call:
+  a later native UI observe request was rejected as unauthorized. The UI still
+  displayed cached ready/progress state, exposing a separate status-sync gap.
+- Model history currently presents redacted audit JSON as ComputerUse function
+  arguments even though that JSON is intentionally not the executable schema.
+  A regression test fails on this malformed historical example. Project the
+  ComputerUse call/result pair to plain historical text only at the model-input
+  boundary; preserve all privacy redaction, real execution input, images and
+  unrelated tool call/result protocols. No raw input is restored to history.
+- Red/green privacy/history tests and complete query, CLI, ComputerUse-tool and
+  provider-adapter race suites passed. Actual-provider behavior of this history
+  change still requires another independent run; earlier failures remain saved.

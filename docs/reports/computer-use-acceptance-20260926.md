@@ -273,3 +273,22 @@ coverage includes a mocked reproduction of observe -> rejected hotkey -> malform
 third response. Full affected CLI/desktop/bridge/domain/backend/tool race suites
 passed. An unreachable host can still prevent delivery; the original query error
 is preserved and cleanup failure is logged rather than hidden.
+
+## Second real-provider attempt (2026-09-27): partial input, still failed acceptance
+
+The model's hotkey executed and opened Spotlight. The returned observation now
+has the bounded 30-second lifetime, separate from RPC timeout. Later calls failed
+strict input decoding; no WorkBuddy process was launched. The model returned a
+completed conversation but explicitly reported the desktop task unfinished.
+Runtime cleanup revoked the grant even though the model's Stop call was invalid;
+a subsequent native UI screenshot request was denied. The UI retained a cached
+ready state, so agent-to-UI status synchronization remains a known gap.
+
+Investigation found that redacted audit JSON was sent back to the model as
+ComputerUse function-call arguments despite not matching the tool schema. A
+regression test failed before the correction. Model history now projects these
+call/result pairs as ordinary historical text; strict execution decoding and
+all input/image privacy boundaries remain intact. No raw input is restored to
+history. Full query/CLI/ComputerUse/provider-adapter race suites passed. This
+fix's live-provider effect remains to be verified; the second attempt is not
+reclassified as successful.
