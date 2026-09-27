@@ -292,3 +292,23 @@ all input/image privacy boundaries remain intact. No raw input is restored to
 history. Full query/CLI/ComputerUse/provider-adapter race suites passed. This
 fix's live-provider effect remains to be verified; the second attempt is not
 reclassified as successful.
+
+## Live-history refinement and bounded frames
+
+Subsequent real-provider attempts still did not complete WorkBuddy acceptance:
+one stopped after an executed shortcut's immediate image did not confirm the
+launcher; another repeatedly observed and grew provider input from about 16.5k
+to 46.4k tokens. The observation-only run was explicitly stopped, not reported as
+success.
+
+The current live query now preserves canonical model-generated tool arguments
+and matching results in ephemeral memory. This supersedes the earlier decision
+to turn *all* active calls into historical text. Restored transcript/audit records
+remain non-executable historical notes. Tool parameter recording, callbacks and
+hooks stay redacted; compaction inputs and full prompt dumps now also exclude raw
+ComputerUse inputs and transient screenshot bytes. Only the latest two desktop
+frames are retained in model request history; unrelated/user images remain.
+
+This is a protocol/privacy-boundary correction, not a relaxation of native
+permission, owner binding, freshness, Stop, or strict action validation. The
+actual autonomous WorkBuddy objective still requires a successful live run.

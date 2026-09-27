@@ -35,6 +35,7 @@ func (s *Session) dumpPromptRequest(turn int, req anthropic.MessagesRequest, man
 }
 
 func buildPromptDumpRecord(s *Session, turn int, req anthropic.MessagesRequest, manifest ContextManifest, full bool) promptDumpRecord {
+	req.Messages = s.computerAuditHistory(req.Messages)
 	return promptdump.Build(promptdump.Metadata{
 		SessionID:          s.streamSessionID(),
 		TenantSessionID:    s.options.TenantSessionID,

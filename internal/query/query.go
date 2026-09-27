@@ -1397,11 +1397,13 @@ func (s *Session) run(ctx context.Context, prompt string, cb runCallbacks) (resu
 	for i := range messages {
 		messages[i] = redactComputerAssistant(messages[i])
 	}
+	messages = computerModelHistory(messages)
 	assembly := s.assembleContextMessages(ctx, prompt)
 	userRecordContent := ""
 	if resuming {
 		messages = append(messages, redactComputerAssistant(s.resumeInput.AssistantMessage))
 		messages = append(messages, anthropic.MessageParam{Role: "user", Content: []anthropic.ContentBlock{s.resumeInput.ToolResult}})
+		messages = computerModelHistory(messages)
 	} else {
 		userMessage, recordContent := userMessageWithAttachments(prompt, s.options.Attachments)
 		userRecordContent = recordContent
@@ -1593,7 +1595,7 @@ func (s *Session) run(ctx context.Context, prompt string, cb runCallbacks) (resu
 		})
 		if s.compactor != nil {
 			compactCtx, compactSpan := telemetry.StartSpan(turnCtx, telemetry.Event{Name: telemetry.EventCompact, Category: telemetry.CategorySystem, Source: "query.Session.run", SessionID: s.options.TenantSessionID, Properties: map[string]any{"mode": "automatic", "turn": turn}})
-			compactResult, err := s.compactor.MaybeCompact(compactCtx, s.currentModel(), system, systemBlocks, registry.Definitions(), messages)
+			compactResult, err := s.compactor.MaybeCompact(compactCtx, s.currentModel(), system, systemBlocks, registry.Definitions(), s.computerAuditHistory(messages))
 			compactStatus := telemetry.StatusOK
 			if err != nil {
 				compactStatus = telemetry.StatusError
@@ -1632,6 +1634,7 @@ func (s *Session) run(ctx context.Context, prompt string, cb runCallbacks) (resu
 				}, cb)
 			}
 		}
+		messages = s.limitComputerImageHistory(messages)
 		requestBaseMessages := s.withRuntimeStatusMessages(ctx, messages, runtimeStatusRequest{
 			Turn:       turn,
 			MaxTurns:   s.options.MaxTurns,
@@ -1641,7 +1644,6 @@ func (s *Session) run(ctx context.Context, prompt string, cb runCallbacks) (resu
 		})
 		requestBaseMessages = s.withActiveSkillContextMessages(requestBaseMessages)
 		requestBaseMessages = withPendingGateNudge(requestBaseMessages, pendingGateNudge)
-		requestBaseMessages = computerModelHistory(requestBaseMessages)
 		requestMessages := addMessageCacheBreakpoint(requestBaseMessages, promptCachingEnabled(s.currentModel()), false, s.querySource())
 		currentModel := s.currentModel()
 		toolDefinitions := registry.Definitions()
@@ -1873,7 +1875,7 @@ func (s *Session) run(ctx context.Context, prompt string, cb runCallbacks) (resu
 		// draftIndex marks where this turn's assistant message starts, so the
 		// completion gate below can retract the whole turn if it rejects the draft.
 		draftIndex := len(messages)
-		messages = append(messages, redactComputerAssistant(stream.Message))
+		messages = append(messages, stream.Message)
 
 		turnResponse := assistantText(stream.Message.Content)
 		for _, block := range stream.Message.Content {
@@ -2897,7 +2899,7 @@ func (s *Session) compactAfterOverflow(ctx context.Context, cb runCallbacks, str
 	}
 	*attempted = true
 	compactCtx, compactSpan := telemetry.StartSpan(ctx, telemetry.Event{Name: telemetry.EventCompact, Category: telemetry.CategorySystem, Source: "query.Session.compactAfterOverflow", SessionID: s.options.TenantSessionID, Properties: map[string]any{"mode": "overflow", "turn": turn}})
-	compactResult, err := s.compactor.ForceCompact(compactCtx, s.currentModel(), system, systemBlocks, tools, messages)
+	compactResult, err := s.compactor.ForceCompact(compactCtx, s.currentModel(), system, systemBlocks, tools, s.computerAuditHistory(messages))
 	compactStatus := telemetry.StatusOK
 	if err != nil || !compactResult.Compacted {
 		compactStatus = telemetry.StatusError

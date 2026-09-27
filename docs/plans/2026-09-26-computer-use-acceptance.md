@@ -141,3 +141,21 @@ and acceptance evidence remain private/ignored; no credentials or DBs are staged
 - Red/green privacy/history tests and complete query, CLI, ComputerUse-tool and
   provider-adapter race suites passed. Actual-provider behavior of this history
   change still requires another independent run; earlier failures remain saved.
+
+### Canonical live context vs audit context (refinement)
+- A third Responses-route run had valid calls but stopped after its immediate
+  after-image did not yet show the launcher; no WorkBuddy launch was proven.
+- An independent Chat-Completions route passed the generated image probe, but its
+  desktop run repeatedly observed without input. Provider input grew from ~16.5k
+  to ~46.4k tokens across six observations; the test was explicitly stopped.
+- Refine the previous history projection: the current query must retain the
+  canonical tool call/result exchange in short-lived memory for its model.
+  Only restored transcript/audit calls become plain historical notes. The source
+  requirement forbids raw sensitive input in transcripts, not faithful ephemeral
+  model protocol within the active run.
+- All tool-parameter/image persistence boundaries remain redacted. Compaction
+  input and even full prompt dumps receive sanitized copies without transient
+  screenshot bytes; execution/model memory is not mutated by those copies.
+- Retain only the latest two computer screenshots in live request history for
+  visual comparison; preserve receipt metadata and non-computer/user images.
+  This bounds request growth, not a claim of universal model visual accuracy.

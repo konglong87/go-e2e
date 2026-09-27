@@ -105,7 +105,8 @@ func toolHookFailure(name string, result tools.Result, err error) tools.Result {
 	return result
 }
 
-// Computer audit projections are intentionally not valid executable inputs.
+// Restored computer audit projections are not valid executable inputs.
+// Do not apply this projection to the current live model/tool exchange.
 // Replay them as plain history, not as malformed examples of the live tool's
 // schema. Keep matching results paired as text; other tool protocols and images
 // remain untouched. No raw desktop input is reintroduced into model history.
@@ -135,6 +136,46 @@ func computerModelHistory(messages []anthropic.MessageParam) []anthropic.Message
 				if _, ok := ids[block.ToolUseID]; ok {
 					out[i].Content[j] = anthropic.ContentBlock{Type: blockTypeText, Text: "Historical ComputerUse result: " + block.Content}
 				}
+			}
+		}
+	}
+	return out
+}
+
+// Compaction can produce persisted text, and full prompt dumps are persistence.
+// Neither may receive raw computer inputs or transient screenshot bytes.
+func (s *Session) computerAuditHistory(messages []anthropic.MessageParam) []anthropic.MessageParam {
+	history := computerModelHistory(messages)
+	out := append([]anthropic.MessageParam(nil), history...)
+	for i, message := range history {
+		out[i].Content = append([]anthropic.ContentBlock(nil), message.Content...)
+		for j, block := range message.Content {
+			if block.Type == blockTypeImage && s.isTransientComputerImage(block) {
+				out[i].Content[j] = anthropic.ContentBlock{Type: blockTypeText, Text: "Transient desktop screenshot omitted from audit/summary context."}
+			}
+		}
+	}
+	return out
+}
+
+const maxLiveComputerImages = 2
+
+// Keep current and previous desktop frames for visual comparison. Receipt and
+// observation metadata stay in history; user attachments/other media stay intact.
+// Do not let repeated observations grow provider input and latency unboundedly.
+func (s *Session) limitComputerImageHistory(messages []anthropic.MessageParam) []anthropic.MessageParam {
+	out := append([]anthropic.MessageParam(nil), messages...)
+	retained := 0
+	for i := len(messages) - 1; i >= 0; i-- {
+		out[i].Content = append([]anthropic.ContentBlock(nil), messages[i].Content...)
+		for j := len(messages[i].Content) - 1; j >= 0; j-- {
+			block := messages[i].Content[j]
+			if block.Type != blockTypeImage || !s.isTransientComputerImage(block) {
+				continue
+			}
+			retained++
+			if retained > maxLiveComputerImages {
+				out[i].Content[j] = anthropic.ContentBlock{Type: blockTypeText, Text: "Older desktop screenshot omitted; only a fresh observation may authorize new input."}
 			}
 		}
 	}

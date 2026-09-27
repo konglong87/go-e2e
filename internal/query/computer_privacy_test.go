@@ -138,7 +138,12 @@ func TestComputerPrivacyCallbacksRecordersAndFailedImage(t *testing.T) {
 				t.Fatalf("execution input changed: %s", tool.input)
 			}
 			assertComputerPrivacy(t, "result", result)
-			assertComputerPrivacy(t, "next turn", streamer.next)
+			// Live arguments are already known to this model and must remain canonical
+			// in this query's ephemeral protocol. All persistence stays redacted.
+			if len(streamer.next) == 0 {
+				t.Fatal("live model history missing")
+			}
+			assertComputerPrivacy(t, "summary boundary", s.computerAuditHistory(streamer.next))
 			imageFound := false
 			for _, message := range streamer.next {
 				for _, block := range message.Content {
@@ -325,24 +330,31 @@ func TestComputerPrivacyPermissionBoundaries(t *testing.T) {
 
 // Audit projections deliberately do not match ComputerUse's executable schema.
 // Presenting them as past tool arguments teaches the model invalid calls.
-func TestComputerPrivacyModelHistoryDoesNotReplayAuditArguments(t *testing.T) {
+func TestComputerPrivacyLiveHistoryPreservesCanonicalToolExchange(t *testing.T) {
 	tool := &computerPrivacyTool{name: "ComputerUse"}
 	streamer := &computerPrivacyStreamer{name: tool.Name()}
 	s := New(streamer, tools.NewRegistry(tool), Options{Model: "test", MaxTurns: 2, CWD: t.TempDir()})
 	if _, err := s.Run(context.Background(), "perform action", io.Discard); err != nil {
 		t.Fatal(err)
 	}
-	assertComputerPrivacy(t, "model history", streamer.next)
+	foundCall, foundResult := false, false
 	for _, message := range streamer.next {
 		for _, block := range message.Content {
 			if block.Type == blockTypeToolUse && tools.IsComputerUseTool(block.Name) {
-				t.Fatal("redacted audit summary replayed as executable tool arguments")
+				foundCall = true
+				if string(block.Input) != computerPrivacyInput {
+					t.Fatal("live arguments replaced with non-executable audit summary")
+				}
 			}
 			if block.Type == blockTypeToolResult && block.ToolUseID == "computer-call" {
-				t.Fatal("orphaned computer tool result remains")
+				foundResult = true
 			}
 		}
 	}
+	if !foundCall || !foundResult {
+		t.Fatal("live tool call/result protocol was replaced with historical text")
+	}
+	assertComputerPrivacy(t, "audit history", s.computerAuditHistory(streamer.next))
 	if string(tool.input) != computerPrivacyInput {
 		t.Fatal("live executable input changed")
 	}
@@ -377,5 +389,58 @@ func TestComputerModelHistoryPreservesOtherToolsAndSource(t *testing.T) {
 	once, _ := json.Marshal(projected)
 	if !bytes.Equal(once, twice) {
 		t.Fatal("model history projection is not idempotent")
+	}
+}
+
+func TestComputerImagesAreBoundedAndAuditDumpRemainsPrivate(t *testing.T) {
+	s := New(nil, nil, Options{Model: "test", CWD: t.TempDir()})
+	var messages []anthropic.MessageParam
+	for i := 0; i < 5; i++ {
+		m := anthropic.MessageParam{Role: "user", Content: []anthropic.ContentBlock{{Type: blockTypeImage, Source: &anthropic.ContentSource{Type: "base64", MediaType: "image/png", Data: fmt.Sprintf("computer-frame-%d", i)}}}}
+		s.rememberTransientComputerImages([]anthropic.MessageParam{m})
+		messages = append(messages, m)
+	}
+	userImage := anthropic.ContentBlock{Type: blockTypeImage, Source: &anthropic.ContentSource{Type: "base64", MediaType: "image/png", Data: "ordinary-user-image"}}
+	messages = append(messages, anthropic.MessageParam{Role: "user", Content: []anthropic.ContentBlock{userImage}})
+	messages = append(messages, anthropic.MessageParam{Role: "assistant", Content: []anthropic.ContentBlock{{Type: blockTypeToolUse, ID: "call", Name: "ComputerUse", Input: json.RawMessage(computerPrivacyInput)}}})
+	before, _ := json.Marshal(messages)
+	limited := s.limitComputerImageHistory(messages)
+	computerImages, otherImages := 0, 0
+	for _, m := range limited {
+		for _, b := range m.Content {
+			if b.Type == blockTypeImage {
+				if s.isTransientComputerImage(b) {
+					computerImages++
+				} else {
+					otherImages++
+				}
+			}
+		}
+	}
+	if computerImages != maxLiveComputerImages || otherImages != 1 {
+		t.Fatalf("images: computer=%d other=%d", computerImages, otherImages)
+	}
+	if limited[3].Content[0].Source.Data != "computer-frame-3" || limited[4].Content[0].Source.Data != "computer-frame-4" {
+		t.Fatal("newest frames not retained")
+	}
+	after, _ := json.Marshal(messages)
+	if !bytes.Equal(before, after) {
+		t.Fatal("source mutated")
+	}
+	dump := buildPromptDumpRecord(s, 2, anthropic.MessagesRequest{Model: "test", Messages: messages}, ContextManifest{}, true)
+	assertComputerPrivacy(t, "full prompt dump", dump)
+	raw, _ := json.Marshal(dump)
+	for i := 0; i < 5; i++ {
+		if bytes.Contains(raw, []byte(fmt.Sprintf("computer-frame-%d", i))) {
+			t.Fatal("desktop image in dump")
+		}
+	}
+	if !bytes.Contains(raw, []byte("ordinary-user-image")) {
+		t.Fatal("ordinary full-dump image unexpectedly changed")
+	}
+	audit := s.computerAuditHistory(messages)
+	raw, _ = json.Marshal(audit)
+	if bytes.Contains(raw, []byte("computer-frame-")) {
+		t.Fatal("desktop image exposed to summary model")
 	}
 }
