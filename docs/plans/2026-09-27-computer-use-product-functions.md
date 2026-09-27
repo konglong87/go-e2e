@@ -119,3 +119,10 @@ OS permissions are already granted. It does not automate first-time macOS TCC
 consent, does not let model output mint permission, and does not yet provide a
 runtime task-finalizer that automatically stops every session if the model
 fails to call Stop.
+
+## Drag interruption release guard — 2026-09-27
+
+The native fake matrix now covers focus loss after drag mouse-down: the result
+is `unknown`/`focus_changed` and the emergency mouse-up is posted before the
+helper reports the failure. The matrix is now 170 assertions. Real pause/stop,
+permission revoke, and helper-crash drag interruption remain to be run.

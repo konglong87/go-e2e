@@ -132,6 +132,18 @@ if case .mouseDown = drag.operations.first! { expect(true, "drag mouse down") } 
 if case .mouseUp = drag.operations.last! { expect(true, "drag mouse up") } else { expect(false, "drag mouse up") }
 expect(drag.dragStepDelayMS > 0, "drag duration creates pacing")
 
+do {
+    let (engine, desktop) = setup()
+    var postCount = 0
+    desktop.postHook = {
+        postCount += 1
+        if postCount == 1 { desktop.focused = 7 }
+    }
+    let result = engine.execute(action("drag", ["start_x":.number(10), "start_y":.number(10), "x":.number(190), "y":.number(90), "duration_ms":.number(320)]))
+    expect(result.outcome == .unknown && result.error == .focusChanged, "drag focus interruption is ambiguous")
+    expect(desktop.posts.contains { if case .mouseUp = $0 { return true }; return false }, "interrupted drag releases mouse button")
+}
+
 for reason in ["permission","capture","focus","geometry","noevent","stopped","paused","expired","session","observation","display","window","generation"] {
     let (engine,desktop) = setup()
     var req = action("type", ["text":.string("abc")])
