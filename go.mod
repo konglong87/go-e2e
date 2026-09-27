@@ -24,6 +24,7 @@ require (
 	github.com/larksuite/oapi-sdk-go/v3 v3.9.10
 	github.com/mark3labs/mcp-go v0.45.0
 	github.com/mattn/go-runewidth v0.0.19
+	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/openai/openai-go/v3 v3.32.0
 	github.com/redis/go-redis/v9 v9.18.0
 	github.com/robfig/cron/v3 v3.0.1
@@ -117,7 +118,6 @@ require (
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.22 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
-	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/microcosm-cc/bluemonday v1.0.27 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
