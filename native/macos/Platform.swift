@@ -87,20 +87,34 @@ struct MacDesktop: DesktopPlatform {
     func activateWindow(_ id: String) -> Bool {
         let list: [NativeWindow]
         do { list = try windows() } catch { return false }
-        guard let window = list.first(where: { $0.id == id }), window.ownerPID > 0,
-              let app = NSRunningApplication(processIdentifier: window.ownerPID) else { return false }
-        return app.activate(options: [.activateIgnoringOtherApps])
+        guard let window = list.first(where: { $0.id == id }), window.ownerPID > 0 else { return false }
+        if window.isFrontmost || activeWindowID() == id { return true }
+        guard let app = NSRunningApplication(processIdentifier: window.ownerPID) else { return false }
+        let activated = app.activate(options: [])
+        if activated { return true }
+        // Activation can return false when the app is already active; verify
+        // the Window Server state instead of treating that as a capture error.
+        return activeWindowID() == id || (try? windows().first(where: { $0.id == id })?.isFrontmost) == true
     }
 
     func activeWindowID() -> String? {
         let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
         guard let windows = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else { return nil }
+        // AppKit may expose a separate title-bar/menu companion window above the
+        // real content window. Prefer the first substantial layer-0 window so a
+        // target's identity remains stable across those decorations.
+        var fallback: String?
         for window in windows {
             guard (window[kCGWindowLayer as String] as? NSNumber)?.intValue == 0,
                   let number = (window[kCGWindowNumber as String] as? NSNumber)?.uint32Value else { continue }
-            return String(number)
+            fallback = fallback ?? String(number)
+            if let boundsDict = window[kCGWindowBounds as String] as? NSDictionary,
+               let bounds = CGRect(dictionaryRepresentation: boundsDict),
+               bounds.width > 100, bounds.height > 100 {
+                return String(number)
+            }
         }
-        return nil
+        return fallback
     }
 
     func captureAllowed() -> Bool { CGPreflightScreenCaptureAccess() }

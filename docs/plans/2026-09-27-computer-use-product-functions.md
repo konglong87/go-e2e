@@ -56,3 +56,26 @@ The native tests now exercise a fake window target and selected secondary displa
 not real Window Server enumeration, real target activation, or a physical
 multi-monitor setup. The next gate is a Wails-host build and a real fixture with
 WorkBuddy plus a second app, including screenshots and active-window metadata.
+
+## Real Wails-host window-target acceptance — 2026-09-27
+
+On the current ad-hoc build with the real Wails host acceptance socket:
+
+- Capabilities enumerated 14 on-screen Window Server targets and one display.
+- A visible `go-e2e` target was observed by `window_id`, producing a window-only
+  screenshot (`2674x1588`) and an `executed` native move receipt whose active
+  window remained the requested ID.
+- WorkBuddy was then launched cold, its visible main window (`bundle_id`
+  `com.workbuddy.workbuddy`, window ID `8792`) was selected from the host's
+  capability inventory, and a window-only screenshot (`2704x1688`) was taken.
+- A real window-targeted move and a harmless click in the empty WorkBuddy
+  composer both returned `outcome=executed`; every receipt retained the same
+  WorkBuddy active-window ID and fresh after-image.
+- Evidence is retained under ignored
+  `desktop-v2/build/validation/20260927/window-target/`, including
+  `capabilities-after-workbuddy.json`, `workbuddy-window-result.json`,
+  `workbuddy-window-click-result.json`, and their before/after PNGs.
+
+This is a real single-display window-target pass, not proof of multi-monitor,
+window-close/move invalidation, multiple same-app window disambiguation, or
+model-driven automatic target selection. Those remain open acceptance gates.
