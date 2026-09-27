@@ -93,3 +93,25 @@ and acceptance evidence remain private/ignored; no credentials or DBs are staged
   sessioncontrol and server suites (ordinary + race), repeated focused race
   tests all passed. This fixes the reproduced lock-upgrade case; long-held
   external writers may still legitimately exhaust the busy timeout.
+
+### First actual model run: new gates found
+- Two standard-font random-digit probes passed on the configured Responses route;
+  the default glm route reported no image, and an earlier seven-segment probe had
+  one wrong digit. These are capability observations, not general vision accuracy.
+- A normal, non-acceptance-tag desktop build ran in a separate private home
+  configuration/workspace/DB. UI approval bound a real created conversation;
+  its permission default was deny with only ComputerUse allowed. WorkBuddy was
+  installed but had no running app processes before the model run.
+- Real provider -> normal Query -> ComputerUse observe -> real helper succeeded.
+  The observation expired after 10 seconds (capture RPC timeout). The model's
+  hotkey arrived ~15 seconds later and was rejected with no dispatch. The next
+  provider request failed with unexpected end of JSON input; no Stop tool call
+  occurred. The test operator then stopped the host session. No blind input retry.
+- Critical-path fix: decouple the helper's bounded 30-second observation lifetime
+  from the capture RPC's independent deadline. Return exact expiry metadata and
+  validate it in Go. Native injected-clock tests cover fresh observations after
+  capture-RPC expiration and rejected observations beyond their own expiry.
+- Parallel fix: bind runtime cleanup to the exact acquired host session and
+  revoke on query termination even when the model/provider fails to call Stop.
+  No re-lookup that might stop a later grant; no use of cancelled request context
+  for cleanup; preserve original run errors.

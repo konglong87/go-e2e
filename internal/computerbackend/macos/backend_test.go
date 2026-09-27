@@ -63,6 +63,17 @@ func TestHelperProcess(t *testing.T) {
 			result = map[string]any{"capture_readiness": "ready", "input_readiness": "ready", "permission_state": "approved", "focus_state": "focused", "image_supported": true, "supports_pause": true, "supports_stop": true, "coordinate_space": map[string]any{"display_id": "1", "width": 2, "height": 2, "scale_factor": 2}}
 		case commandObserve:
 			result = imagePayload()
+			result["observation_expires_at"] = time.Now().Add(cu.DefaultObservationTTL).Format(time.RFC3339Nano)
+			switch mode {
+			case "missing-expiry":
+				delete(result, "observation_expires_at")
+			case "invalid-expiry":
+				result["observation_expires_at"] = "not-a-time"
+			case "past-expiry":
+				result["observation_expires_at"] = time.Now().Add(-time.Second).Format(time.RFC3339Nano)
+			case "long-expiry":
+				result["observation_expires_at"] = time.Now().Add(time.Hour).Format(time.RFC3339Nano)
+			}
 		case commandExecute:
 			if marker != "" {
 				_ = os.WriteFile(marker, []byte("execute"), 0600)
@@ -394,5 +405,31 @@ func TestBackendRejectsUnsafeLimits(t *testing.T) {
 		if _, err := New(context.Background(), c); err == nil {
 			t.Fatal("unsafe limit accepted")
 		}
+	}
+}
+
+func TestObservationLifetimeIsNotCaptureRPCTimeout(t *testing.T) {
+	b := newTestBackend(t, "", time.Second, "")
+	obs := observeTest(t, b)
+	lifetime := obs.ExpiresAt.Sub(obs.ObservedAt)
+	if lifetime < cu.DefaultObservationTTL-time.Second || lifetime > cu.DefaultObservationTTL {
+		t.Fatalf("unexpected snapshot lifetime %s", lifetime)
+	}
+	// Advance only the host's domain clock; no sleeps or increased RPC deadlines.
+	// The previous timeout-bound observation would reject this before dispatch.
+	b.config.Now = func() time.Time { return obs.ObservedAt.Add(10 * time.Second) }
+	receipt, err := b.Execute(context.Background(), waitAction(obs))
+	if err != nil || receipt.Outcome != cu.OutcomeExecuted {
+		t.Fatalf("fresh observation after capture timeout: %+v %v", receipt, err)
+	}
+}
+func TestObservationExpirationMetadataFailsClosed(t *testing.T) {
+	for _, mode := range []string{"missing-expiry", "invalid-expiry", "past-expiry", "long-expiry"} {
+		t.Run(mode, func(t *testing.T) {
+			b := newTestBackend(t, mode, time.Second, "")
+			if _, err := b.Observe(context.Background(), cu.ObserveRequest{SessionID: "session-1"}); err == nil {
+				t.Fatal("unbounded/missing expiration accepted")
+			}
+		})
 	}
 }

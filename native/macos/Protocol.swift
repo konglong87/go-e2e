@@ -3,6 +3,9 @@ import Foundation
 let protocolVersion = "computer-use.v1"
 let maxFrameBytes = 8 * 1024 * 1024
 let maxRequestSeconds: TimeInterval = 60
+// Observation freshness is distinct from the deadline of the capture RPC.
+// Must match computeruse.DefaultObservationTTL; the host may shorten it.
+let observationTTLSeconds: TimeInterval = 30
 let maxRememberedIDs = 4096
 let maxImagePixels = 32 * 1024 * 1024
 let maxImageDimension = 16384

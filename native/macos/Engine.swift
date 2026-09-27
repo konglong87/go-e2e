@@ -6,9 +6,12 @@ struct ActionResult {
     let error: SafetyError?
 }
 final class Engine {
-    let state = SafetyState()
+    let state: SafetyState
     private let platform: DesktopPlatform
-    init(platform: DesktopPlatform) { self.platform = platform }
+    private let now: () -> Date
+    init(platform: DesktopPlatform, now: @escaping () -> Date = Date.init) {
+        self.platform = platform; self.now = now; self.state = SafetyState(now: now)
+    }
 
     func requestPermissions() -> JSONValue {
         platform.requestPermissions()
@@ -49,11 +52,15 @@ final class Engine {
             try state.gate(request)
             let geometry = try platform.geometry(); try target(request, geometry: geometry)
             guard let id = request.payload["observation_id"]?.string, !id.isEmpty, id.utf8.count <= 256,
-                  let focus = platform.focus(), let deadline = request.expires else { throw SafetyError.invalidAction }
-            let payload = try capture(request, geometry: geometry)
+                  let focus = platform.focus() else { throw SafetyError.invalidAction }
+            guard case .object(var payload) = try capture(request, geometry: geometry) else { throw SafetyError.screenshotFailed }
             guard platform.focus() == focus else { throw SafetyError.focusChanged }
-            try state.save(Snapshot(id: id, session: request.sessionID, geometry: geometry, focus: focus, expires: deadline), for: request)
-            return ActionResult(outcome: .executed, payload: payload, error: nil)
+            let expires = now().addingTimeInterval(observationTTLSeconds)
+            try state.save(Snapshot(id: id, session: request.sessionID, geometry: geometry, focus: focus, expires: expires), for: request)
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            payload["observation_expires_at"] = .string(formatter.string(from: expires))
+            return ActionResult(outcome: .executed, payload: .object(payload), error: nil)
         } catch { return ActionResult(outcome: .rejected, payload: .object([:]), error: error as? SafetyError ?? .screenshotFailed) }
     }
     private func checkInput(_ snapshot: Snapshot) throws {

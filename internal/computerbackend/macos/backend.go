@@ -270,9 +270,16 @@ func (b *Backend) Observe(ctx context.Context, req cu.ObserveRequest) (cu.Observ
 		return cu.Observation{}, &rejection{"inactive"}
 	}
 	now := b.config.Now()
+	// Use the helper's actual snapshot expiry, not this capture RPC's timeout.
+	// Requiring its bounded metadata fails closed with stale/unmatched helpers.
+	expiryText, okExpiry := response.Result["observation_expires_at"].(string)
+	expires, expiryErr := time.Parse(time.RFC3339Nano, expiryText)
+	if !okExpiry || expiryErr != nil || !expires.After(now) || expires.After(now.Add(cu.DefaultObservationTTL)) {
+		return cu.Observation{}, errors.New("invalid observation expiration metadata")
+	}
 	caps := b.capabilities
 	caps.CoordinateSpace = cu.CoordinateSpace{DisplayID: display, Origin: cu.OriginTopLeft, Unit: cu.CoordinatePixels, Width: width, Height: height, ScaleFactor: scale}
-	obs := cu.Observation{ID: id, SessionID: req.SessionID, DisplayID: display, Width: width, Height: height, ScaleFactor: scale, Screenshot: cu.NewMediaRef(id, mediaType, data, width, height), Capabilities: caps, ObservedAt: now, ExpiresAt: now.Add(b.config.RequestTimeout)}
+	obs := cu.Observation{ID: id, SessionID: req.SessionID, DisplayID: display, Width: width, Height: height, ScaleFactor: scale, Screenshot: cu.NewMediaRef(id, mediaType, data, width, height), Capabilities: caps, ObservedAt: now, ExpiresAt: expires}
 	b.images = map[string]imageData{id: {data: data, mediaType: mediaType}}
 	b.observation = obs
 	b.capabilities = caps

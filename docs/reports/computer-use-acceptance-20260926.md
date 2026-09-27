@@ -236,3 +236,28 @@ drains detached finalization before removing its SQLite fixture. This supersedes
 the earlier unresolved-lock status for this reproduced case, not all possible
 SQLite failures. Legitimate external write contention still returns errors when
 the existing timeout is exhausted.
+
+## First real-provider attempt (2026-09-27): failed, not counted as passed
+
+A normal desktop build (no acceptance adapter) ran with isolated settings,
+workspace and SQLite/JSONL state in a private home directory. Only ComputerUse
+was allowed; all other tools defaulted to deny. The verified Responses route
+read two standard-font random-digit images correctly; the default route reported
+no image, and an earlier seven-segment image was misread. This proves image
+transport on that route, not universal visual accuracy.
+
+The normal model Query called ComputerUse observe and received a real native
+screenshot. Its next hotkey arrived about 15 seconds later, after the returned
+observation's 10-second expiry, and was safely rejected before dispatch. This
+exposed an implementation bug: snapshot lifetime used the capture RPC timeout,
+although the domain freshness limit is 30 seconds. Snapshot expiry is now returned
+by the helper independently of the RPC deadline, and Go rejects missing, expired
+or overlong metadata. Injected-clock native tests prove both boundaries without
+sleeping. The original 30-second freshness limit is not relaxed.
+
+The next provider request failed with `unexpected end of JSON input`; the model
+never issued Stop. The operator stopped the host session. This failure is retained
+as evidence, not erased or retried blindly. Runtime teardown is being hardened to
+revoke the originally acquired grant even when the provider/model does not Stop.
+WorkBuddy had no running app processes before this attempt; this failed attempt
+has not established its launch or New Task acceptance.

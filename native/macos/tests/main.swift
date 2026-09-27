@@ -258,4 +258,23 @@ do {
     let huge = Data("{\"x\":1e999}".utf8)
     expectThrows("overflow JSON number") { _ = try JSONDecoder().decode(JSONValue.self,from:huge) }
 }
+
+// Capture RPC deadlines and snapshot freshness are independent. Use an injected
+// clock, not sleeps, to prove both RPC-expired/fresh and snapshot-expired cases.
+for expiredSnapshot in [false, true] {
+    var instant = Date()
+    let desktop = FakeDesktop()
+    let engine = Engine(platform: desktop, now: { instant })
+    let observed = engine.observe(request("observe", payload: ["observation_id": .string("obs")], seconds: 1))
+    expect(observed.outcome == .executed, "bounded capture RPC completed")
+    expect(observed.payload["observation_expires_at"]?.string != nil, "helper reports actual snapshot expiry")
+    instant = instant.addingTimeInterval(expiredSnapshot ? observationTTLSeconds + 1 : 2)
+    let result = engine.execute(action("click", ["x": .number(2), "y": .number(2)], seconds: 60))
+    if expiredSnapshot {
+        expect(result.outcome == .rejected && desktop.posts.isEmpty, "expired snapshot rejected despite fresh action RPC")
+    } else {
+        expect(result.outcome == .executed && desktop.posts.count == 1, "snapshot survives completed capture RPC deadline")
+    }
+}
+
 print("PASS: \(assertions) native safety assertions (fake platform; no real input/capture)")

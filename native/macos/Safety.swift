@@ -34,6 +34,8 @@ struct Snapshot {
 // wait, IPC or PNG encoding. Stop/Pause invalidate queued generations at once.
 final class SafetyState {
     private let lock = NSLock()
+    private let now: () -> Date
+    init(now: @escaping () -> Date = Date.init) { self.now = now }
     private var paused = false
     private var stopped = false
     private var generation = 0
@@ -44,7 +46,7 @@ final class SafetyState {
 
     func register(_ request: Envelope) throws {
         lock.lock(); defer { lock.unlock() }
-        guard request.valid(at: Date()) else { throw SafetyError.invalidEnvelope }
+        guard request.valid(at: now()) else { throw SafetyError.invalidEnvelope }
         guard !requests.contains(request.requestID) else { throw SafetyError.duplicate }
         guard requests.count < maxRememberedIDs else { stopped = true; throw SafetyError.capacity }
         requests.insert(request.requestID)
@@ -58,7 +60,7 @@ final class SafetyState {
     func end() { lock.lock(); stopped = true; paused = true; observation = nil; lock.unlock() }
     private func check(_ request: Envelope) throws {
         guard !stopped, !paused, request.payload["generation"]?.integer(in: 0...Int(Int32.max)) == generation else { throw SafetyError.inactive }
-        guard let deadline = request.expires, deadline > Date() else { throw SafetyError.expired }
+        guard let deadline = request.expires, deadline > now() else { throw SafetyError.expired }
         if let session, session != request.sessionID { throw SafetyError.staleObservation }
     }
     func gate(_ request: Envelope, body: () throws -> Void = {}) throws {
@@ -71,7 +73,7 @@ final class SafetyState {
     func begin(_ request: Envelope) throws -> Snapshot {
         lock.lock(); defer { lock.unlock() }; try check(request)
         guard let snap = observation, snap.id == request.payload["observation_id"]?.string,
-              snap.session == request.sessionID, snap.expires > Date() else { throw SafetyError.staleObservation }
+              snap.session == request.sessionID, snap.expires > now() else { throw SafetyError.staleObservation }
         guard !actions.contains(request.actionID) else { throw SafetyError.duplicate }
         guard actions.count < maxRememberedIDs else { stopped = true; throw SafetyError.capacity }
         actions.insert(request.actionID); observation = nil // consume even if later rejected
