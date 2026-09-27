@@ -393,7 +393,7 @@ normal Wails build and fresh autonomous cold-launch/native screenshot evidence.
   `desktop-v2/build/validation/20260927/permission-revocation/`, including
   `permission-test-summary.json`, `restored-native-probe.json`,
   `restored-native-observation.png`, `restored-native-after.png`,
-  `restored-ready-ui.png`, and `restored-computer-use.png`.
+  `restored-ready-ui.jpg`, and `restored-computer-use.jpg`.
 - The app layout was also checked against the bundle: the Wails host is
   `Contents/MacOS/go-e2e-desktop`, the local server is
   `Contents/MacOS/go-e2e`, and native capture/input is performed by the nested

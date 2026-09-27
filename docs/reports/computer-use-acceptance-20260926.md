@@ -777,8 +777,8 @@ desktop-v2/build/validation/20260927/permission-revocation/permission-test-summa
 desktop-v2/build/validation/20260927/permission-revocation/restored-native-probe.json
 desktop-v2/build/validation/20260927/permission-revocation/restored-native-observation.png
 desktop-v2/build/validation/20260927/permission-revocation/restored-native-after.png
-desktop-v2/build/validation/20260927/permission-revocation/restored-ready-ui.png
-desktop-v2/build/validation/20260927/permission-revocation/restored-computer-use.png
+desktop-v2/build/validation/20260927/permission-revocation/restored-ready-ui.jpg
+desktop-v2/build/validation/20260927/permission-revocation/restored-computer-use.jpg
 ```
 
 ### `go-e2e-desktop` authorization item
