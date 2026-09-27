@@ -294,3 +294,12 @@ normal Wails build and fresh autonomous cold-launch/native screenshot evidence.
   signing secrets, no published releases. CI annotations explicitly identify an
   account billing/spending-limit prerequisite before jobs can start.
 - No OS consent or account/billing action taken; native input remains stopped.
+
+### Native fixture input slice verified after user authorization
+
+- Verified prior host exit before relaunch; never inferred exit from timeout.
+- CUA used only for local fixture URL setup, not the 11 acceptance inputs.
+- All 11 cases passed via go-e2e native chain; 102 trusted events, zero drops,
+  final text/selection/scroll assertions and actual screenshot matched.
+- Evidence retained under ignored 20260927/native-input. Report records setup
+  limitations explicitly. Safety run proceeds independently with exact app scope.

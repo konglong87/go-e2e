@@ -558,3 +558,36 @@ offline check log. Only this non-secret summary and the gate wiring enter Git.
 Stable Computer Use release remains unaccepted. OS authorization, current-build
 real-input/safety evidence, complete autonomous cold launch, and actual signed
 installation/upgrade verification remain separate outstanding gates.
+
+## Latest native-input fixture rerun — 2026-09-27
+
+After the user reported granting the macOS dialog, native captures showed no
+remaining consent prompt. The prior desktop listener subsequently disappeared;
+process inspection confirmed both earlier desktop instances had exited before a
+new isolated instance was launched. No input request was dispatched through the
+missing socket. The reason for the application exit is not established and is
+not classified as a successful crash test.
+
+The isolated tagged host uses the current native input stack. It opened Edge
+through native Spotlight actions, but initial URL setup did not establish a
+connected fixture. CUA was used **only to prepare the fresh local fixture tab**;
+that setup is not counted as autonomous navigation or a native-input test case.
+The page then reported zero events, and its token fragment was visibly removed.
+
+All **11 fixture cases passed** through go-e2e's own Controller -> macOS backend
+-> bundled helper, with actual trusted target events, pointer-coordinate checks
+and asserted final effects: click, double-click, right-click/context menu, move,
+scroll, text focus, Chinese/emoji input, Command+A selection, replacement,
+Backspace and ArrowLeft. No CUA/DOM-generated input was used for those cases.
+
+The fixture snapshot contains **102 events, all trusted**, with zero server or
+client drops. Final state: text `验收AB`, selection `3..3`, scrollTop `420`,
+scrollLeft `0`. Native screenshot `fixture-final.png` was visually inspected and
+matches the event/state assertions. This reruns the native input layer, not the
+production model's action-plus-observation path.
+
+Evidence under `desktop-v2/build/validation/20260927/native-input/`:
+`fixture-results.json`, `fixture-snapshot.json`, `fixture-run.log`, each case's
+before/after screenshot and redacted receipt, and `fixture-final.png`.
+Safety fault injection is a separate run; its results are not implied by these
+11 successful input cases.
