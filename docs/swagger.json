@@ -7931,6 +7931,80 @@
                 }
             }
         },
+        "/tenant/session-control/sessions/{source}/{id}/computer-owner": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Available only on the authenticated desktop-local server with a private computer bridge. Rejects browser Origin. Resolves identity from server context and Session Control ownership; does not create or approve computer sessions.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Session Control"
+                ],
+                "summary": "Resolve a managed conversation owner for native desktop approval",
+                "parameters": [
+                    {
+                        "enum": [
+                            "tenant"
+                        ],
+                        "type": "string",
+                        "description": "Managed session namespace",
+                        "name": "source",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Namespace-local session key",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_server.SwaggerComputerOwnerResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_server.SwaggerSessionControlError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_server.SwaggerSessionControlError"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_server.SwaggerSessionControlError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_server.SwaggerSessionControlError"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/internal_server.SwaggerSessionControlError"
+                        }
+                    }
+                }
+            }
+        },
         "/tenant/session-control/sessions/{source}/{id}/conversation": {
             "get": {
                 "security": [
@@ -15551,6 +15625,25 @@
                 },
                 "in_process": {
                     "type": "boolean"
+                }
+            }
+        },
+        "internal_server.SwaggerComputerOwnerResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "object",
+                    "properties": {
+                        "session_id": {
+                            "type": "integer"
+                        },
+                        "tenant_id": {
+                            "type": "integer"
+                        },
+                        "user_id": {
+                            "type": "integer"
+                        }
+                    }
                 }
             }
         },

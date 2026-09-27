@@ -7,13 +7,16 @@ type ComputerState = {
   available: boolean;
   capabilities: ComputerCapabilities | null;
   session: ComputerSessionSnapshot | null;
+  // The native DTO has no conversation label. Retain only a successful start's
+  // approved ref, never the currently selected conversation or persisted UI prefs.
+  approvedConversationRef: string | null;
   observation: ComputerObservation | null;
   receipts: ComputerActionReceipt[];
   loading: boolean;
   error: string | null;
   controlIntent: "pause" | "stop" | null;
 };
-const initialState: ComputerState = { available: false, capabilities: null, session: null, observation: null, receipts: [], loading: false, error: null, controlIntent: null };
+const initialState: ComputerState = { available: false, capabilities: null, session: null, approvedConversationRef: null, observation: null, receipts: [], loading: false, error: null, controlIntent: null };
 
 function mergeSnapshot(current: ComputerState, snapshot: ComputerSessionSnapshot): ComputerState {
   const receipt = snapshot.last_receipt;
@@ -94,8 +97,11 @@ export function useComputerSession(client: ComputerClient | null) {
     const readiness = computerReadinessError(state.available, state.capabilities);
     if (readiness) return fail(readiness);
     if (state.loading || (state.session && state.session.state !== "stopped")) return fail("Stop the current computer session before starting another");
-    update({ ...state, session: null, observation: null, receipts: [], controlIntent: null });
-    return run(() => client.start(input), (snapshot, state) => mergeSnapshot(state, snapshot));
+    const approvedInput = { ...input };
+    update({ ...state, session: null, approvedConversationRef: null, observation: null, receipts: [], controlIntent: null });
+    return run(() => client.start(approvedInput), (snapshot, state) => ({
+      ...mergeSnapshot(state, snapshot), approvedConversationRef: approvedInput.conversation_ref ?? null
+    }));
   }, [client, fail, run, update]);
 
   const observe = useCallback(async () => {

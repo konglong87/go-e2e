@@ -29,6 +29,11 @@ describe("computer bridge DTO contract", () => {
     await expect(client.stop("s1")).resolves.toEqual(snapshot("stopped"));
     expect(host.StopComputerSession).toHaveBeenCalledWith("s1");
   });
+  it("forwards the exact approved conversation ref without client identity fields", async () => {
+    const host = bridge();
+    await createComputerClient(host).start({ approved: true, conversation_ref: "tenant:channel:alpha" });
+    expect(host.StartComputerSession).toHaveBeenCalledExactlyOnceWith({ approved: true, conversation_ref: "tenant:channel:alpha" });
+  });
   it("does not discard available=false or backend error details", async () => {
     const host = bridge();
     const response = { available: false, capabilities, error_code: "capability_unavailable", error_message: "helper missing" };

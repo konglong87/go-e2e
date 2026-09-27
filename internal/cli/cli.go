@@ -153,6 +153,7 @@ type options struct {
 	inlineTenantSkills            []string
 	inlineTenantSkillSource       string
 	responseFormat                *anthropic.ResponseFormat
+	desktopComputerBridge         desktopComputerBridge
 	computerUseProfile            bool
 	computerUseService            computeruse.Service
 	computerUseImageSupported     bool
@@ -700,6 +701,7 @@ func newQuerySession(ctx context.Context, opts options, initial []anthropic.Mess
 		}
 		model, maxTurns = nextModel, nextMaxTurns
 	}
+	computerUseGuidance := configureDesktopComputerUse(ctx, cfg, model, &opts)
 	if runtimePolicy.DiscoverPlugins {
 		cfg.Settings.MCPServers = mergedMCPServers(opts.cwd, cfg.Settings.MCPServers)
 	}
@@ -802,6 +804,7 @@ func newQuerySession(ctx context.Context, opts options, initial []anthropic.Mess
 		}
 		systemAddendum = appendWithBlankLine(systemAddendum, "Respond with a single valid JSON value matching this JSON Schema. Do not include markdown fences or explanatory text.\n\n"+schemaText)
 	}
+	systemAddendum = appendWithBlankLine(systemAddendum, computerUseGuidance)
 	if runtimePolicy.RunHooks {
 		_, _ = hookRunner.RunWithPayload(ctx, hooks.SessionStart, opts.cwd, hooks.Payload{})
 	}

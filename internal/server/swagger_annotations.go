@@ -2465,3 +2465,29 @@ func swaggerTenantImageCapabilities() {}
 // @Failure 401,403,404 {object} SwaggerError
 // @Router /tenant/media/assets/{asset_id} [get]
 func swaggerTenantImageAsset() {}
+
+// SwaggerComputerOwnerResponse is identity resolution, not a permission grant.
+type SwaggerComputerOwnerResponse struct {
+	Data struct {
+		TenantID  uint64 `json:"tenant_id"`
+		UserID    uint64 `json:"user_id"`
+		SessionID uint64 `json:"session_id"`
+	} `json:"data"`
+}
+
+// swaggerComputerOwner godoc
+// @Summary Resolve a managed conversation owner for native desktop approval
+// @Description Available only on the authenticated desktop-local server with a private computer bridge. Rejects browser Origin. Resolves identity from server context and Session Control ownership; does not create or approve computer sessions.
+// @Tags Session Control
+// @Security ApiKeyAuth
+// @Produce json
+// @Param source path string true "Managed session namespace" Enums(tenant)
+// @Param id path string true "Namespace-local session key"
+// @Success 200 {object} SwaggerComputerOwnerResponse
+// @Failure 400 {object} SwaggerSessionControlError
+// @Failure 401 {object} SwaggerSessionControlError
+// @Failure 403 {object} SwaggerSessionControlError
+// @Failure 404 {object} SwaggerSessionControlError
+// @Failure 503 {object} SwaggerSessionControlError
+// @Router /tenant/session-control/sessions/{source}/{id}/computer-owner [get]
+func swaggerComputerOwner() {}

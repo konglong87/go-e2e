@@ -8,6 +8,9 @@ import { ComputerApprovalDialog } from "./ComputerApprovalDialog";
 import { ComputerExecutionProgress } from "./ComputerExecutionProgress";
 import { ComputerPermissionGuide } from "./ComputerPermissionGuide";
 import type { ComputerClient } from "./client";
+import type { SessionRef } from "../routes";
+import type { StartComputerSessionInput } from "./types";
+import { managedComputerConversationRef } from "./conversationApproval";
 import { ComputerPreview } from "./ComputerPreview";
 import { ComputerTimeline } from "./ComputerTimeline";
 import { ComputerToolbar } from "./ComputerToolbar";
@@ -31,12 +34,13 @@ function portalHost(): HTMLElement {
   return document.querySelector<HTMLElement>(".webui2-page") ?? document.body;
 }
 
-export function ComputerWorkspace({ client }: { client: ComputerClient | null }): ReactElement | null {
+export function ComputerWorkspace({ client, selectedConversationRef = null }: { client: ComputerClient | null; selectedConversationRef?: SessionRef | null }): ReactElement | null {
   useI18n(); // Subscribe to the app language so a settings change rerenders this surface.
   const language = preferredComputerLanguage();
   const copy = computerUICopy[language];
   const computer = useComputerSession(client);
-  const [approvalOpen, setApprovalOpen] = useState(false);
+  // Capture the payload when opening the dialog, not when approving it.
+  const [approval, setApproval] = useState<StartComputerSessionInput | null>(null);
   const [preferences, setPreferences] = useState(loadComputerWorkspacePreferences);
   const [position, setPosition] = useState<ComputerWorkspacePoint | null>(preferences.position);
   const [dragging, setDragging] = useState(false);
@@ -44,7 +48,7 @@ export function ComputerWorkspace({ client }: { client: ComputerClient | null })
   const dragRef = useRef<DragState | null>(null);
 
   useEffect(() => {
-    setApprovalOpen(false);
+    setApproval(null);
     void computer.loadCapabilities().catch(() => undefined); // Hook renders the error.
   }, [computer.loadCapabilities]);
 
@@ -77,10 +81,19 @@ export function ComputerWorkspace({ client }: { client: ComputerClient | null })
   const state = computer.session?.state ?? "idle";
   const status = readiness ? "attention" : state;
   const backend = computer.capabilities?.backend || copy.backendDetecting;
+  const active = computer.session && computer.session.state !== "stopped";
+  const approvalLabel = computer.approvedConversationRef
+    ? `${copy.boundConversation}: ${computer.approvedConversationRef}` : copy.localPreview;
+  const openApproval = (): void => {
+    const ref = managedComputerConversationRef(selectedConversationRef);
+    setApproval(ref ? { approved: true, conversation_ref: ref } : { approved: true });
+  };
   const start = async () => {
-    setApprovalOpen(false);
+    if (!approval) return;
+    const approvedInput = approval;
+    setApproval(null);
     try {
-      const session = await computer.start({ approved: true });
+      const session = await computer.start(approvedInput);
       if (session?.state === "ready" || session?.state === "needs_observation") await computer.observe();
     } catch { /* surfaced in the panel */ }
   };
@@ -152,6 +165,7 @@ export function ComputerWorkspace({ client }: { client: ComputerClient | null })
       <Monitor aria-hidden="true" size={17} strokeWidth={2.2} />
       <span className={`webui2-computer-launcher-dot webui2-computer-launcher-dot--${status}`} />
       <span className="webui2-computer-launcher-label">{copy.controlSurface}</span>
+      {active ? <span style={{ maxWidth: 220, overflowWrap: "anywhere", fontSize: 11 }}>{approvalLabel}</span> : null}
       <span className="webui2-computer-launcher-backend">{backend}</span>
       <ChevronDown aria-hidden="true" size={15} />
     </button>
@@ -187,12 +201,13 @@ export function ComputerWorkspace({ client }: { client: ComputerClient | null })
         available={computer.available}
         busy={computer.loading}
         controlIntent={computer.controlIntent}
-        onStart={() => setApprovalOpen(true)}
+        onStart={openApproval}
         onObserve={() => action(computer.observe)}
         onPause={() => action(computer.pause)}
         onResume={() => action(computer.resume)}
         onStop={() => action(computer.stop)}
       />
+      {active ? <p role="status" style={{ margin: 0, overflowWrap: "anywhere" }}>{approvalLabel}</p> : null}
       {!computer.session || computer.session.state === "stopped" ? <ComputerPermissionGuide
         available={computer.available}
         capabilities={computer.capabilities}
@@ -203,12 +218,13 @@ export function ComputerWorkspace({ client }: { client: ComputerClient | null })
       {computer.error ? <p className="webui2-computer-error" role="alert">{localizeComputerError(computer.error, language)}</p> : null}
       <ComputerPreview observation={computer.observation} capabilities={computer.capabilities} />
       <ComputerTimeline receipts={computer.receipts} />
-      {approvalOpen ? <ComputerApprovalDialog
+      {approval ? <ComputerApprovalDialog
+        conversationRef={approval.conversation_ref}
         available={computer.available}
         capabilities={computer.capabilities}
         busy={computer.loading}
         onApprove={() => void start()}
-        onCancel={() => setApprovalOpen(false)}
+        onCancel={() => setApproval(null)}
       /> : null}
     </aside>;
 

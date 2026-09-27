@@ -1168,6 +1168,7 @@ func (r ResolvedImageGeneration) Validate() error {
 }
 
 type Settings struct {
+	ComputerUse        *ComputerUseSettings       `json:"computerUse,omitempty" yaml:"computerUse,omitempty"`
 	Model              string                     `json:"model,omitempty" yaml:"model,omitempty"`
 	ModelOptions       []string                   `json:"modelOptions,omitempty" yaml:"modelOptions,omitempty"`
 	SubagentModelTiers map[string]string          `json:"subagentModelTiers,omitempty" yaml:"subagentModelTiers,omitempty"`
@@ -1980,6 +1981,7 @@ func mergeSettings(base, override Settings) Settings {
 	base.Fallback = mergeFallbackSettings(base.Fallback, override.Fallback)
 	base.Update = mergeUpdateSettings(base.Update, override.Update)
 	base.Multimodal = mergeMultimodalSettings(base.Multimodal, override.Multimodal)
+	base.ComputerUse = mergeComputerUseSettings(base.ComputerUse, override.ComputerUse)
 	base.AutoCompact = mergeAutoCompactSettings(base.AutoCompact, override.AutoCompact)
 	base.Recap = mergeRecapSettings(base.Recap, override.Recap)
 	base.TUI = mergeTUISettings(base.TUI, override.TUI)

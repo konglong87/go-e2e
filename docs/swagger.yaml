@@ -2977,6 +2977,18 @@ definitions:
       in_process:
         type: boolean
     type: object
+  internal_server.SwaggerComputerOwnerResponse:
+    properties:
+      data:
+        properties:
+          session_id:
+            type: integer
+          tenant_id:
+            type: integer
+          user_id:
+            type: integer
+        type: object
+    type: object
   internal_server.SwaggerCreateAgentTaskRequest:
     properties:
       agent_name:
@@ -10575,6 +10587,57 @@ paths:
       security:
       - ApiKeyAuth: []
       summary: Compact a managed session transcript
+      tags:
+      - Session Control
+  /tenant/session-control/sessions/{source}/{id}/computer-owner:
+    get:
+      description: Available only on the authenticated desktop-local server with a
+        private computer bridge. Rejects browser Origin. Resolves identity from server
+        context and Session Control ownership; does not create or approve computer
+        sessions.
+      parameters:
+      - description: Managed session namespace
+        enum:
+        - tenant
+        in: path
+        name: source
+        required: true
+        type: string
+      - description: Namespace-local session key
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_server.SwaggerComputerOwnerResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_server.SwaggerSessionControlError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal_server.SwaggerSessionControlError'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/internal_server.SwaggerSessionControlError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_server.SwaggerSessionControlError'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/internal_server.SwaggerSessionControlError'
+      security:
+      - ApiKeyAuth: []
+      summary: Resolve a managed conversation owner for native desktop approval
       tags:
       - Session Control
   /tenant/session-control/sessions/{source}/{id}/conversation:

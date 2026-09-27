@@ -96,13 +96,13 @@ scrollTop = 420
 - pause 先发送 backend pause，再在有界时间内等待动作收敛；
 - pause/resume 不再因为取消旧 RPC 而无条件杀掉 helper；
 - stop 仍然优先、可打断阻塞动作；
-- 截图/动作完成前重新校验焦点，焦点变化不能被当作视觉验证成功。
+- The post-action old-focus check introduced in `c6e6188` could reject legitimate app activation. `c21e162` replaces it with focus consistency during capture; receipts still do not prove visual intent was achieved.
 
 提交：`c6e6188`。
 
 ## 未通过或未完成
 
-### 1. 生产模型自动规划链路未接通
+### 1. Production model loop: real-provider acceptance still pending
 
 当前真实验收使用的是显式 opt-in 的 Unix socket acceptance adapter。它调用与 Wails UI 共享的 controller，但**不能证明**：
 
@@ -110,14 +110,14 @@ scrollTop = 420
 模型 observation -> 模型 ComputerUse tool -> desktop controller -> receipt -> 下一轮模型 observation
 ```
 
-静态审计显示 local service 启动的是独立 server 进程，生产路径没有注入 desktop-owned `computeruse.Service`。因此不能宣称已达到 Codex App 的生产级自主 Computer Use。
+The initial audit found a separate local-server process without desktop-owned service injection. Subsequent slices add the private bridge, trusted conversation approval, and image-route-gated Query injection. Real-provider autonomous planning remains unverified.
 
 ### 2. 窗口能力范围
 
 当前实现：
 
 - 单活动显示器；多显示器会被拒绝；
-- 操作目标是当前桌面/前台焦点；
+- The post-action old-focus check introduced in `c6e6188` could reject legitimate app activation. `c21e162` replaces it with focus consistency during capture; receipts still do not prove visual intent was achieved.
 - 非空 `window_id` 当前拒绝；
 - 没有独立的窗口枚举、窗口 ID 绑定或按窗口定向操作；
 - 没有拖拽 action。
@@ -162,6 +162,62 @@ go-e2e.app/Contents/MacOS/go-e2e-desktop
 - `e02bad7` — trusted-event fixture and native input safety acceptance
 - `c6e6188` — native modifier and controller safety fixes
 
-当前 `HEAD == origin/main == c6e6188`，工作区干净。
+Historical snapshot only: the original native-input slice was clean and pushed at c6e6188. This is not a claim about the current HEAD or worktree.
 
 **最终发布判断：** 当前可以发布为“实验性/开发者预览验收结果”，不能按“Computer Use 完全通过、稳定版、Codex App 等价能力”发布。生产模型桥接、窗口定向/拖拽能力、clean install/upgrade/notarization 和真实焦点撤销验收仍是发布阻塞项。
+
+## Follow-up: normal-query bridge and trusted desktop approval
+
+The following implementation is now present:
+
+```text
+Native approval UI (captured conversation ref)
+ -> own authenticated local server
+ -> configured desktop identity + bound tenant context + SessionControl.Get
+ -> approved immutable Controller owner
+ -> private Unix listener / inherited memory-only launch pipe
+ -> normal Query (exact declared image routes + approved-session Lookup)
+ -> ComputerUse tool / native controller / screenshot result
+```
+
+Validation is deliberately separated:
+
+- **Production construction with a mocked model:** actual newQuerySession tool
+  registration, normal tool dispatch and image attachment were tested using a
+  local fake provider and fake image backend. This validates runtime plumbing,
+  not a model's ability to plan desktop actions.
+- **Real desktop:** built the Wails `.app`, clicked the actual approval UI,
+  resolved a newly created managed test conversation, received a real native
+  screenshot, paused, resumed, refreshed to a new observation, then stopped.
+  Codex CUA performed these UI acceptance clicks; go-e2e captured the desktop.
+- **Identity regression:** fake owner tests missed a requirement in the real
+  managed store. The added SQLite/JSONL composition test requires the complete
+  bound tenant context, without trusting incoming tenant/user headers.
+- **Image capability:** explicit operator declarations are required for the
+  final selected model and every effective fallback route. No model/provider
+  allowlist was added to the user's settings during this run. Undeclared routes
+  do not receive ComputerUse. See internal/computerbridge/README.md for the format.
+
+Evidence (private, ignored):
+
+- `desktop-v2/build/validation/20260926/bridge/01-local-preview-approval.png`
+- `desktop-v2/build/validation/20260926/bridge/02-bound-conversation-approval.png`
+- `desktop-v2/build/validation/20260926/bridge/03-owner-resolution-failure-before-fix.png`
+- `desktop-v2/build/validation/20260926/bridge/04-bound-conversation-screenshot.png`
+- `desktop-v2/build/validation/20260926/bridge/05-bound-conversation-stopped.png`
+
+Tests: frontend 737 tests and both TypeScript projects; core desktop/bridge/domain/
+backend/tool race suites; CLI/config tests; focused owner/runtime/image-route race
+suites; Go vet; tagged desktop build and ad-hoc deep signature verification.
+Native safety now has 151 fake-platform assertions and 436 non-posting platform
+assertions. The complete native input fixture was NOT rerun on this build.
+
+**Non-green result:** full internal/server testing and a repeated targeted run
+encountered SQLite `database is locked` in the existing session-stop test. Its
+cause has not been established here; it remains a tracked risk, not a passed gate.
+
+**Still not certified:** autonomous WorkBuddy planning by a real configured model,
+real external-focus perturbation, actual OS permission revocation, clean-user
+installation, signed upgrade/TCC continuity, Developer ID and notarization. The
+single-display/no-window-target/no-drag capability boundaries are unchanged.
+`go-e2e-desktop` remains the actual Wails executable and was not removed.

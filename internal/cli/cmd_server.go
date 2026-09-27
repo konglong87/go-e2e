@@ -15,6 +15,7 @@ import (
 	"github.com/konglong87/go-e2e/internal/agenttasks"
 	"github.com/konglong87/go-e2e/internal/agenttasks/memstore"
 	"github.com/konglong87/go-e2e/internal/anthropic"
+	"github.com/konglong87/go-e2e/internal/computerbridge"
 	"github.com/konglong87/go-e2e/internal/config"
 	"github.com/konglong87/go-e2e/internal/credentials"
 	"github.com/konglong87/go-e2e/internal/defaults"
@@ -82,6 +83,18 @@ func serverCommand(ctx context.Context, args []string, opts options, stdout io.W
 			return fmt.Errorf("unknown server option: %s", args[i])
 		}
 	}
+	bridgeConfig, bridgeErr := computerbridge.ConsumeLaunchConfig(desktopLocal && serverOpts.AuthToken != "")
+	if bridgeErr != nil {
+		return bridgeErr
+	}
+	if bridgeConfig != nil {
+		bridge, err := computerbridge.NewClient(*bridgeConfig)
+		if err != nil {
+			return err
+		}
+		opts.desktopComputerBridge = bridge
+	}
+	serverOpts.DesktopComputerOwnerLookup = bridgeConfig != nil && desktopLocal && serverOpts.AuthToken != ""
 	// 绑定安全检查排在最前面：Run 里也有同样的检查，但那时 MySQL 连接已经建好、
 	// "Starting server on ..." 也已经打出去了，紧跟一条拒绝启动读起来自相矛盾。
 	if err := server.ValidateBind(serverOpts); err != nil {
@@ -151,6 +164,13 @@ func serverCommand(ctx context.Context, args []string, opts options, stdout io.W
 		userID, err := repo.EnsureUser(ctx, tenantID, userKey)
 		if err != nil {
 			return fmt.Errorf("initialize desktop user: %w", err)
+		}
+		if serverOpts.DesktopComputerOwnerLookup {
+			serverOpts.DesktopComputerOwnerResolver = func(requestCtx context.Context) (context.Context, sessioncontrol.RequestContext, error) {
+				trustedCtx := observability.WithRequestValues(requestCtx, observability.TraceID(requestCtx), userKey, tenantKey)
+				bound, resolved, err := tenantSvc.ResolveContextOnce(trustedCtx)
+				return bound, sessioncontrol.RequestContext{TenantID: resolved.TenantID, UserID: resolved.UserID, ActorUserID: resolved.UserID}, err
+			}
 		}
 		if err := repo.SetUserRole(ctx, tenantID, userID, mysqlstore.DesktopLocalUserRole); err != nil {
 			return fmt.Errorf("initialize desktop user role: %w", err)

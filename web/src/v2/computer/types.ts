@@ -107,4 +107,5 @@ export type ComputerSessionSnapshot = {
 
 export type StartComputerSessionInput = {
   approved: boolean;
+  conversation_ref?: string;
 };

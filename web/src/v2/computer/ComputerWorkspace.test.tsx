@@ -2,6 +2,7 @@ import { act, StrictMode } from "react";
 import { I18nProvider } from "../../lib/i18n";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { SessionRef } from "../routes";
 import { ComputerWorkspace } from "./ComputerWorkspace";
 import { ComputerApprovalDialog } from "./ComputerApprovalDialog";
 import type { ComputerCapabilities, ComputerObservationResponse, ComputerSessionSnapshot } from "./types";
@@ -84,6 +85,100 @@ describe("ComputerWorkspace", () => {
     expect(button("Stop").disabled).toBe(false);
     expect(client.start).toHaveBeenCalledTimes(1);
     expect(document.body.querySelector("img")).not.toBeNull();
+  });
+
+  it("captures the displayed managed conversation even if selection changes before approval", async () => {
+    const client = createTestClient();
+    const render = (ref: SessionRef | null) => root.render(<I18nProvider><ComputerWorkspace client={client} selectedConversationRef={ref} /></I18nProvider>);
+    await act(async () => render("tenant:alpha"));
+    await click("Start session");
+    const dialog = () => document.body.querySelector('[role="dialog"]');
+    expect(dialog()?.textContent).toContain("tenant:alpha");
+    expect(dialog()?.textContent).toContain("access to observe and operate your desktop");
+    expect(dialog()?.textContent).toContain("does not confirm that autonomous agent execution is connected");
+    await act(async () => render("tenant:beta"));
+    expect(dialog()?.textContent).toContain("tenant:alpha");
+    expect(dialog()?.textContent).not.toContain("tenant:beta");
+    await click("Approve session");
+    expect(client.start).toHaveBeenCalledExactlyOnceWith({ approved: true, conversation_ref: "tenant:alpha" });
+    expect(document.body.textContent).toContain("Desktop access granted to conversation: tenant:alpha");
+    expect(document.body.textContent).not.toContain("tenant:beta");
+    await click("Pause");
+    await act(async () => render(null));
+    expect(document.body.textContent).toContain("Desktop access granted to conversation: tenant:alpha");
+    expect(button("Stop").disabled).toBe(false);
+    await click("Resume");
+    expect(document.body.textContent).toContain("Desktop access granted to conversation: tenant:alpha");
+    await click("Stop");
+    expect(client.stop).toHaveBeenCalledWith("s1");
+    expect(document.body.textContent).not.toContain("Desktop access granted to conversation");
+  });
+
+  it("retains the approved ref while Start is pending and when collapsed", async () => {
+    const client = createTestClient();
+    const pending = deferred<ComputerSessionSnapshot>();
+    client.start = vi.fn().mockReturnValue(pending.promise);
+    const render = (ref: SessionRef) => root.render(<I18nProvider><ComputerWorkspace client={client} selectedConversationRef={ref} /></I18nProvider>);
+    await act(async () => render("tenant:alpha"));
+    await click("Start session");
+    await click("Approve session");
+    await act(async () => render("tenant:beta"));
+    expect(document.body.textContent).not.toContain("Desktop access granted to conversation");
+    await act(async () => pending.resolve(snapshot()));
+    expect(document.body.textContent).toContain("Desktop access granted to conversation: tenant:alpha");
+    await act(async () => { (document.body.querySelector('[aria-label="Collapse Computer Use workspace"]') as HTMLButtonElement).click(); });
+    expect(document.body.querySelector('[aria-label="Open Computer Use workspace"]')?.textContent).toContain("tenant:alpha");
+    expect(document.body.textContent).not.toContain("tenant:beta");
+  });
+
+  it.each<SessionRef | null>([null, "local:workspace", "tenant:", "tenant:bad/ref", "tenant:bad ref", "tenant:bad:key"])("keeps %s explicitly local and never upgrades an open preview approval", async (ref) => {
+    const client = createTestClient();
+    const render = (selectedConversationRef: SessionRef | null) => root.render(<I18nProvider><ComputerWorkspace client={client} selectedConversationRef={selectedConversationRef} /></I18nProvider>);
+    await act(async () => render(ref));
+    await click("Start session");
+    expect(document.body.querySelector('[role="dialog"]')?.textContent).toContain("Allow local desktop preview?");
+    expect(document.body.querySelector('[role="dialog"]')?.textContent).toContain("does NOT allow any agent or conversation");
+    await act(async () => render("tenant:alpha"));
+    expect(document.body.querySelector('[role="dialog"]')?.textContent).not.toContain("tenant:alpha");
+    await click("Approve session");
+    expect(client.start).toHaveBeenCalledExactlyOnceWith({ approved: true });
+    expect(document.body.textContent).toContain("Local preview only — no agent access");
+    expect(document.body.textContent).not.toContain("Desktop access granted to conversation");
+    expect(button("Stop").disabled).toBe(false);
+  });
+
+  it("uses a fresh approval after cancellation and Stop, including managed channel refs", async () => {
+    const client = createTestClient();
+    const render = (ref: SessionRef) => root.render(<I18nProvider><ComputerWorkspace client={client} selectedConversationRef={ref} /></I18nProvider>);
+    await act(async () => render("tenant:alpha"));
+    await click("Start session");
+    await click("Cancel");
+    expect(client.start).not.toHaveBeenCalled();
+    await act(async () => render("tenant:channel:beta"));
+    await click("Start session");
+    expect(document.body.querySelector('[role="dialog"]')?.textContent).toContain("tenant:channel:beta");
+    await click("Approve session");
+    expect(client.start).toHaveBeenLastCalledWith({ approved: true, conversation_ref: "tenant:channel:beta" });
+    await click("Stop");
+    await act(async () => render("local:workspace"));
+    await click("Start session");
+    await click("Approve session");
+    expect(client.start).toHaveBeenLastCalledWith({ approved: true });
+    expect(document.body.textContent).toContain("Local preview only — no agent access");
+    expect(document.body.textContent).not.toContain("tenant:channel:beta");
+  });
+
+  it("does not claim a grant or silently fall back to preview after a rejected Start", async () => {
+    const client = createTestClient();
+    client.start = vi.fn().mockRejectedValue(new Error("conversation cannot authorize computer use"));
+    await act(async () => root.render(<I18nProvider><ComputerWorkspace client={client} selectedConversationRef="tenant:alpha" /></I18nProvider>));
+    await click("Start session");
+    await click("Approve session");
+    expect(client.start).toHaveBeenCalledExactlyOnceWith({ approved: true, conversation_ref: "tenant:alpha" });
+    expect(client.observe).not.toHaveBeenCalled();
+    expect(document.body.querySelector('[role="alert"]')?.textContent).toContain("conversation cannot authorize computer use");
+    expect(document.body.textContent).not.toContain("Desktop access granted to conversation");
+    expect(button("Start session").disabled).toBe(false);
   });
 
   it("keeps Pause and Stop clickable during capture and ignores late control/capture responses", async () => {

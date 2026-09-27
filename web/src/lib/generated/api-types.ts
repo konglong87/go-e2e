@@ -7569,6 +7569,95 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenant/session-control/sessions/{source}/{id}/computer-owner": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resolve a managed conversation owner for native desktop approval
+         * @description Available only on the authenticated desktop-local server with a private computer bridge. Rejects browser Origin. Resolves identity from server context and Session Control ownership; does not create or approve computer sessions.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Namespace-local session key */
+                    id: string;
+                    /** @description Managed session namespace */
+                    source: "tenant";
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["internal_server.SwaggerComputerOwnerResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["internal_server.SwaggerSessionControlError"];
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["internal_server.SwaggerSessionControlError"];
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["internal_server.SwaggerSessionControlError"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["internal_server.SwaggerSessionControlError"];
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["internal_server.SwaggerSessionControlError"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenant/session-control/sessions/{source}/{id}/conversation": {
         parameters: {
             query?: never;
@@ -11971,6 +12060,13 @@ export interface components {
             cancelled?: boolean;
             id?: number;
             in_process?: boolean;
+        };
+        "internal_server.SwaggerComputerOwnerResponse": {
+            data?: {
+                session_id?: number;
+                tenant_id?: number;
+                user_id?: number;
+            };
         };
         "internal_server.SwaggerCreateAgentTaskRequest": {
             agent_name?: string;

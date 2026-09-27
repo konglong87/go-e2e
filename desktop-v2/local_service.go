@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/konglong87/go-e2e/internal/computerbridge"
 	"net/http"
 	"os"
 	"os/exec"
@@ -37,13 +38,14 @@ type LocalServiceStatus struct {
 }
 
 type localServiceConfig struct {
-	executable string
-	workspace  string
-	port       int
-	token      string
-	env        []string
-	dir        string
-	logPath    string
+	computerBridge *computerbridge.Config
+	executable     string
+	workspace      string
+	port           int
+	token          string
+	env            []string
+	dir            string
+	logPath        string
 }
 
 type localServiceProcess struct {
@@ -154,6 +156,24 @@ func (s *localServiceController) startLocked() error {
 		"--desktop-local",
 	)
 	cmd.Env = append(os.Environ(), config.env...)
+	// Never inherit a stale marker from the launching shell.
+	cleanEnv := cmd.Env[:0]
+	for _, value := range cmd.Env {
+		if !strings.HasPrefix(value, computerbridge.LaunchFDEnv+"=") {
+			cleanEnv = append(cleanEnv, value)
+		}
+	}
+	cmd.Env = cleanEnv
+	if config.computerBridge != nil {
+		launchFile, err := computerbridge.NewLaunchFile(*config.computerBridge)
+		if err != nil {
+			_ = serverLog.Close()
+			return s.failStart(fmt.Errorf("prepare computer bridge launch: %w", err))
+		}
+		defer launchFile.Close()
+		cmd.ExtraFiles = []*os.File{launchFile}
+		cmd.Env = append(cmd.Env, computerbridge.LaunchFDEnv+"="+computerbridge.LaunchFD)
+	}
 	cmd.Dir = config.dir
 	cmd.Stdout = serverLog
 	cmd.Stderr = serverLog

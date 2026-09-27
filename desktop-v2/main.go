@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/konglong87/go-e2e/internal/computerbridge"
 	"github.com/konglong87/go-e2e/internal/sessioncontrol"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -36,6 +37,7 @@ type app struct {
 	service         *localServiceController
 	computerManager *computerManager
 	acceptanceClose func()
+	computerBridge  *computerbridge.Listener
 	windowCtx       context.Context
 	windowDone      chan struct{}
 }
@@ -137,11 +139,25 @@ func (a *app) startup(ctx context.Context) {
 	}
 	startupLog("sqlite path=" + sqlitePath)
 	serverLogPath := filepath.Join(filepath.Dir(sqlitePath), "go-e2e-server.log")
+	var bridgeConfig *computerbridge.Config
+	if stdruntime.GOOS == "darwin" {
+		bridge, err := startDesktopComputerBridge(ctx, filepath.Dir(sqlitePath), a.computer())
+		if err != nil {
+			startupLog("computer bridge unavailable: " + err.Error())
+		} else {
+			a.mu.Lock()
+			a.computerBridge = bridge
+			a.mu.Unlock()
+			cfg := bridge.Config()
+			bridgeConfig = &cfg
+		}
+	}
 	service := newLocalServiceController(localServiceConfig{
-		executable: executable,
-		workspace:  config.Workspace,
-		port:       a.port,
-		token:      a.token,
+		executable:     executable,
+		computerBridge: bridgeConfig,
+		workspace:      config.Workspace,
+		port:           a.port,
+		token:          a.token,
 		env: []string{
 			"GO_E2E_SQLITE_PATH=" + sqlitePath,
 			"GOLANG_CC_TENANT_KEY=webui-local",
@@ -278,9 +294,14 @@ func (a *app) shutdown(ctx context.Context) {
 	a.mu.Lock()
 	service := a.service
 	computer := a.computerManager
+	bridge := a.computerBridge
+	a.computerBridge = nil
 	a.service = nil
 	a.computerManager = nil
 	a.mu.Unlock()
+	if bridge != nil {
+		_ = bridge.Close()
+	}
 	if computer != nil {
 		if err := computer.close(ctx); err != nil {
 			wailsruntime.LogErrorf(ctx, "stop computer helper: %v", err)

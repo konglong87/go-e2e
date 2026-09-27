@@ -26,7 +26,8 @@ const (
 )
 
 type ComputerSessionStartInput struct {
-	Approved bool `json:"approved"`
+	Approved        bool   `json:"approved"`
+	ConversationRef string `json:"conversation_ref,omitempty"`
 }
 type ComputerCapabilitiesDTO struct {
 	Capabilities cu.Capabilities `json:"capabilities"`
@@ -127,6 +128,12 @@ func (m *computerManager) start(ctx context.Context, in ComputerSessionStartInpu
 
 // The host owns the helper lifetime; approval belongs to the live caller.
 func (m *computerManager) startWithLifetime(ctx, lifetime context.Context, in ComputerSessionStartInput) (ComputerSessionDTO, error) {
+	return m.startOwnedWithLifetime(ctx, lifetime, in, cu.SessionOwner{TenantID: localComputerTenantID, UserID: localComputerUserID})
+}
+
+// Ownership is immutable for a controller. Never upgrade local preview approval
+// or silently move a still-live capability to a newly selected conversation.
+func (m *computerManager) startOwnedWithLifetime(ctx, lifetime context.Context, in ComputerSessionStartInput, owner cu.SessionOwner) (ComputerSessionDTO, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if err := ctx.Err(); err != nil {
@@ -138,8 +145,11 @@ func (m *computerManager) startWithLifetime(ctx, lifetime context.Context, in Co
 	if m.controller != nil {
 		s := m.controller.Session()
 		if s.State() != cu.SessionStopped && s.State() != cu.SessionFailed {
+			if !s.Owns(owner) {
+				return ComputerSessionDTO{}, errors.New("stop the current computer session before authorizing another conversation")
+			}
 			if in.Approved && s.State() == cu.SessionPendingApproval {
-				if err := s.Approve(m.owner); err != nil {
+				if err := s.Approve(owner); err != nil {
 					return ComputerSessionDTO{}, err
 				}
 			}
@@ -163,7 +173,7 @@ func (m *computerManager) startWithLifetime(ctx, lifetime context.Context, in Co
 	if err := ctx.Err(); err != nil {
 		return ComputerSessionDTO{}, err
 	}
-	s, err := cu.NewComputerSession(cu.SessionOptions{Owner: m.owner, Capabilities: caps})
+	s, err := cu.NewComputerSession(cu.SessionOptions{Owner: owner, Capabilities: caps})
 	if err != nil {
 		return ComputerSessionDTO{}, err
 	}
@@ -173,7 +183,7 @@ func (m *computerManager) startWithLifetime(ctx, lifetime context.Context, in Co
 	}
 	m.controller = c
 	if in.Approved {
-		if err := s.Approve(m.owner); err != nil {
+		if err := s.Approve(owner); err != nil {
 			return ComputerSessionDTO{}, err
 		}
 	}
@@ -202,13 +212,13 @@ func (m *computerManager) observe(ctx context.Context, id string) (ComputerObser
 	if err != nil {
 		return ComputerObservationDTO{}, err
 	}
-	o, err := c.Observe(ctx, m.owner, cu.ObserveRequest{SessionID: id})
+	o, err := c.Observe(ctx, c.Session().Owner(), cu.ObserveRequest{SessionID: id})
 	if err != nil {
 		return ComputerObservationDTO{}, err
 	}
-	data, mediaType, err := c.ObservationImage(ctx, m.owner, id, o.ID)
+	data, mediaType, err := c.ObservationImage(ctx, c.Session().Owner(), id, o.ID)
 	if err != nil {
-		_ = c.Pause(ctx, m.owner, id)
+		_ = c.Pause(ctx, c.Session().Owner(), id)
 		return ComputerObservationDTO{}, err
 	}
 	return ComputerObservationDTO{Observation: o, ImageData: base64.StdEncoding.EncodeToString(data), MediaType: mediaType}, nil
@@ -220,11 +230,11 @@ func (m *computerManager) control(ctx context.Context, id string, kind cu.Action
 	}
 	switch kind {
 	case cu.ActionPause:
-		err = c.Pause(ctx, m.owner, id)
+		err = c.Pause(ctx, c.Session().Owner(), id)
 	case cu.ActionResume:
-		err = c.Resume(ctx, m.owner, id)
+		err = c.Resume(ctx, c.Session().Owner(), id)
 	case cu.ActionStop:
-		err = c.Stop(ctx, m.owner, id)
+		err = c.Stop(ctx, c.Session().Owner(), id)
 	default:
 		err = errors.New("unsupported computer control")
 	}
@@ -252,7 +262,18 @@ func (a *app) GetComputerCapabilities() ComputerCapabilitiesDTO {
 	return ComputerCapabilitiesDTO{Capabilities: caps, Available: true}
 }
 func (a *app) StartComputerSession(in ComputerSessionStartInput) (ComputerSessionDTO, error) {
-	return a.computer().start(a.windowContext(), in)
+	ctx := a.windowContext()
+	if in.ConversationRef == "" {
+		return a.computer().start(ctx, in)
+	}
+	if !in.Approved {
+		return ComputerSessionDTO{}, errors.New("explicit conversation approval is required")
+	}
+	owner, err := resolveComputerConversation(ctx, a.port, a.token, in.ConversationRef)
+	if err != nil {
+		return ComputerSessionDTO{}, err
+	}
+	return a.computer().startOwnedWithLifetime(ctx, ctx, in, owner)
 }
 func (a *app) ObserveComputerSession(id string) (ComputerObservationDTO, error) {
 	return a.computer().observe(a.windowContext(), id)

@@ -42,3 +42,36 @@ Do not silently add window targeting, drag, multi-display, an unsecured web inpu
 - Verification passed: focused Go tests; race tests for desktop-v2, computerbridge, computeruse, computerbackend/... and tools/computeruse; go vet for computerbridge and desktop-v2. macOS linker emitted LC_DYSYMTAB warnings but tests exited successfully.
 - Delivery: this slice is committed/pushed separately as transport preparation. No runtime listener, trusted active-conversation UI approval, or model injection is wired yet. No new desktop screenshot acceptance is claimed for this slice. Existing native evidence does not validate this new model path.
 - Remaining gates unchanged: production model routing, real focus-perturbation regression, real permission revocation, clean-install/signed-upgrade/notarization. Keep `go-e2e-desktop`; it is the Wails executable, not a confirmed obsolete entry.
+
+## Next architecture slice: trusted conversation binding
+- Preserve one shared Controller as the authority; the model bridge can discover/use, never approve/create. Add an authenticated desktop-only owner-resolution endpoint: resolve tenant/user from server context and the numeric conversation ID through existing SessionControl.Get ownership checks. Never trust tenant/user IDs supplied by JavaScript.
+- The Wails approval API accepts only a conversation ref. Resolve it through the desktop's own loopback server using its private token. A running controller cannot be reassigned to a different owner; the user must Stop before granting another conversation. Local preview remains conversation=0 and undiscoverable to model callers.
+- Independently prepare the private Unix listener lifecycle (fresh memory-only token, restrictive socket/directory, cancellation/cleanup). Do not expose the host handler on HTTP/TCP or mint authority through it.
+- Validate forged/missing refs, cross-owner access, old session reuse, failed lookup, stop/rebind and real Unix cleanup before commit/push. UI binding and model-provider image capability gating follow this boundary, not a hardcoded opt-in.
+
+## Integration slice results and change ledger
+| Slice | Files / scope | Verification | Delivery |
+|---|---|---|---|
+| Private listener and launch pipe | internal/computerbridge/listener*, launch* | real Unix client/handler, lifecycle/race, child FD handoff, token not in argv/env/disk | d5573dd pushed |
+| Legitimate app activation | native/macos/Engine.swift, tests/main.swift | red/green regression; 151 fake-platform safety + 436 non-posting event assertions | c21e162 pushed |
+| Trusted owner + normal query composition | desktop-v2/computer*, main.go, local_service.go; internal/server, cli, config; generated API docs/types | shared Controller/race; exact image-route gates including all fallbacks; mocked-provider Query/tool/image loop; real SQLite/JSONL owner resolution; desktop build and native UI approval/capture/pause/resume/stop | verified slice; commit/push with this ledger |
+| Explicit UI binding | web/src/v2/computer/** and WebUIV2App.tsx | 737 frontend tests, both TS projects; native screenshots 01/02/04/05 in bridge evidence directory | verified with composition slice |
+
+Real desktop testing found two identity-context failures before passing. The
+final fix resolves the configured desktop actor with TenantService.ResolveContextOnce
+and carries the bound context through SessionControl.Get. A real store integration
+test covers missing and forged browser identity headers; numeric scope alone is
+not sufficient for TenantManagedStore.
+
+Known non-green test: the full internal/server suite encountered
+TestSessionControlStopCancelsInflightRunAndReplaysOnSQLite with `database is locked`.
+A five-repeat targeted rerun reproduced contention. Do not describe the full
+server suite as green or assume this is release-safe. Focused owner/route tests pass.
+
+Native evidence is under desktop-v2/build/validation/20260926/bridge/. Approval UI
+was driven by Codex CUA; the displayed desktop images were captured by go-e2e's
+own native helper. This does NOT prove real-provider autonomous model planning.
+The empty test conversation was stopped and archived via the scoped session API;
+a follow-up owner lookup returned 404. The old isolated fixture process was stopped.
+No system permissions or user conversations were altered. Existing screenshots
+and acceptance evidence remain private/ignored; no credentials or DBs are staged.

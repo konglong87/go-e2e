@@ -5,13 +5,14 @@ import type { ComputerCapabilities } from "./types";
 
 type Props = {
   capabilities: ComputerCapabilities | null;
+  conversationRef?: string | null;
   available: boolean;
   busy: boolean;
   onApprove: () => void;
   onCancel: () => void;
 };
 
-export function ComputerApprovalDialog({ capabilities, available, busy, onApprove, onCancel }: Props): ReactElement {
+export function ComputerApprovalDialog({ capabilities, conversationRef = null, available, busy, onApprove, onCancel }: Props): ReactElement {
   useI18n(); // Subscribe to the app language so a settings change rerenders this surface.
   const language = preferredComputerLanguage();
   const copy = computerUICopy[language];
@@ -19,9 +20,12 @@ export function ComputerApprovalDialog({ capabilities, available, busy, onApprov
   return <div className="webui2-computer-modal-backdrop" role="presentation">
     <section className="webui2-computer-modal" role="dialog" aria-modal="true" aria-labelledby="webui2-computer-approval-title">
       <span className="webui2-computer-eyebrow">{copy.sessionApproval}</span>
-      <h2 id="webui2-computer-approval-title">{copy.approvalTitle}</h2>
+      <h2 id="webui2-computer-approval-title">{conversationRef ? copy.approvalTitle : copy.localPreviewTitle}</h2>
+      <p>{conversationRef ? copy.conversationApprovalDescription : copy.localPreviewDescription}</p>
       <p>{copy.approvalDescription}</p>
+      {conversationRef ? <p>{copy.integrationNotice}</p> : null}
       <dl>
+        <div><dt>{copy.conversationRef}</dt><dd style={{ overflowWrap: "anywhere" }}>{conversationRef ? <code>{conversationRef}</code> : copy.localPreview}</dd></div>
         <div><dt>{copy.platform}</dt><dd>{capabilities?.platform || copy.unknown} · {capabilities?.backend || copy.unknownBackend}</dd></div>
         <div><dt>{copy.capture}</dt><dd>{capabilities?.capture_readiness ? copy.readiness[capabilities.capture_readiness] : copy.unknown}</dd></div>
         <div><dt>{copy.input}</dt><dd>{capabilities?.input_readiness ? copy.readiness[capabilities.input_readiness] : copy.unknown}</dd></div>

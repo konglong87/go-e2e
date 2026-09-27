@@ -110,3 +110,51 @@ go test ./internal/computerbridge -count=1
 go test -race ./internal/computerbridge -count=1
 go vet ./internal/computerbridge
 ```
+
+## Desktop production composition
+
+The Wails host starts `StartListener` under its private app-data directory. It
+passes the socket configuration to its own local server through an inherited
+pipe (`NewLaunchFile` / `ConsumeLaunchConfig`). Only the descriptor number is in
+the environment. The secret is never persisted; the server clears the marker and
+closes the descriptor before tools or subprocesses run. Restarting the local
+server gets a new launch pipe; quitting the host closes the endpoint.
+
+The native approval input takes a **conversation ref**, not tenant/user IDs. The
+host resolves it against its authenticated local server. That endpoint uses the
+server's configured desktop identity, resolves a bound tenant context, and calls
+existing SessionControl ownership checks. Browser headers cannot choose the
+actor. A live Controller cannot change owners: Stop is required before granting
+another conversation. A local preview has conversation ID zero and remains
+invisible to the model bridge.
+
+For each normal query, after final provider/agent-model selection, runtime
+configuration must explicitly declare image input for every effective route:
+
+```json
+{
+  "computerUse": {
+    "imageInputRoutes": [
+      {"provider": "primary", "model": "YOUR_VERIFIED_IMAGE_INPUT_MODEL"}
+    ]
+  }
+}
+```
+
+This is an operator assertion, **not image-capability discovery and not desktop
+approval**. Do not enable a route merely because its protocol accepts image
+fields. `provider` matches the actual runtime route name: selected/named provider
+name, otherwise `primary` or `fallback-N`. Each effective fallback's model must
+also be declared. Model IDs match exactly; there are no wildcards. An explicit
+empty list revokes all image routes. Changing endpoints/models requires renewed
+capability validation by the operator.
+
+Without a declaration, full trusted identity, or an already approved host
+session, ordinary chat remains usable but ComputerUse is absent. Model requests
+cannot supply this configuration or approve their own access. With all gates
+satisfied, the normal Query registers the ComputerUse tool and receives trusted
+guidance with its approved host-session ID. Subagents do not inherit the grant.
+
+The native desktop UI approval/preview, fake-provider runtime integration, and
+real model planning are separate acceptance layers. Passing either of the first
+two does not establish an autonomous real-provider end-to-end run.

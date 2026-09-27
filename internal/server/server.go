@@ -95,6 +95,9 @@ type Options struct {
 	// SessionControl is the transport-neutral session control boundary. The
 	// runtime composition is owned by the server caller, not the HTTP package.
 	SessionControl SessionControlService
+	// DesktopComputerOwnerLookup is enabled only for the authenticated desktop-local server.
+	DesktopComputerOwnerLookup   bool
+	DesktopComputerOwnerResolver func(context.Context) (context.Context, sessioncontrol.RequestContext, error)
 	// SessionBackend is selected once when the desktop process starts. The
 	// server keeps the field transport-neutral so storage implementations can be
 	// swapped without changing the WebUI session-control contract.
@@ -479,6 +482,7 @@ func newRouter(opts Options, queryFn QueryFunc) *gin.Engine {
 	router.Any("/tenant/context", gin.WrapF(tenantContextHandler(opts)))
 	router.GET("/tenant/session-control/sessions", gin.WrapF(tenantSessionControlSessionsHandler(opts)))
 	router.POST("/tenant/session-control/sessions", gin.WrapF(tenantSessionControlSessionsHandler(opts)))
+	router.GET("/tenant/session-control/sessions/:source/:id/computer-owner", gin.WrapF(tenantComputerOwnerHandler(opts)))
 	router.GET("/tenant/session-control/sessions/:source/:id", gin.WrapF(tenantSessionControlSessionHandler(opts)))
 	router.POST("/tenant/session-control/sessions/:source/:id/messages", gin.WrapF(tenantSessionControlMessageHandler(opts)))
 	router.POST("/tenant/session-control/sessions/:source/:id/compact", gin.WrapF(tenantSessionControlCompactHandler(opts)))
