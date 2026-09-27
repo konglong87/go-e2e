@@ -386,7 +386,7 @@ func TestAllEventTypesAndTargetsMatchAssets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	targets := []TargetID{ClickTarget, DoubleClickTarget, ContextMenuTarget, MouseMoveTarget, ScrollTarget, TextTarget}
+	targets := []TargetID{ClickTarget, DoubleClickTarget, ContextMenuTarget, MouseMoveTarget, ScrollTarget, TextTarget, DragSourceTarget, DragDropTarget}
 	for _, target := range targets {
 		if !strings.Contains(string(page), `id="`+string(target)+`" data-target`) {
 			t.Fatalf("missing embedded target %q", target)

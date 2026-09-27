@@ -79,3 +79,20 @@ On the current ad-hoc build with the real Wails host acceptance socket:
 This is a real single-display window-target pass, not proof of multi-monitor,
 window-close/move invalidation, multiple same-app window disambiguation, or
 model-driven automatic target selection. Those remain open acceptance gates.
+
+## Real drag acceptance — 2026-09-27
+
+- The isolated fixture now includes `drag-source` and `drag-drop-target`; the
+  server validates both target IDs and the page only marks `dragCompleted` after
+  trusted native `mousedown`/intermediate `mousemove`/`mouseup` events.
+- Through the Wails host's real Computer Use acceptance socket, the current
+  build ran all 12 fixture cases. The new drag case passed with an executed
+  receipt, 29 trusted event records, source endpoint `(266,400)`, drop endpoint
+  `(539,400)`, and `dragCompleted=true`.
+- Evidence is retained under ignored
+  `desktop-v2/build/validation/20260927/drag-fixture/`, especially
+  `fixture-drag-before.png`, `fixture-drag-after.png`,
+  `fixture-drag-receipt.json`, `fixture-results.json`, and `fixture-run.log`.
+- This closes basic real drag execution for the single-display fixture. Pause,
+  Stop, focus perturbation, helper crash, window-target drag, and multi-display
+  drag remain separate gates.

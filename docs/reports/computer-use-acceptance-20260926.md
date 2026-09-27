@@ -795,3 +795,32 @@ This closes the installed-build TCC revoke/restore acceptance gate. It does
 not close Developer ID signing, notarization/stapling, clean install/upgrade
 continuity, or distribution gates. Therefore the project is not being called
 stable-release ready.
+
+## Real drag acceptance on the current Wails host — 2026-09-27
+
+The isolated real-input fixture was extended with a drag source and drop target.
+The page records trusted press, intermediate movement, and release events and
+sets `dragCompleted` only after the trusted release arrives on the drop target.
+The fixture's Go schema was updated to validate both new target IDs and the new
+state field; an earlier HTTP 400 from the page heartbeat was therefore fixed
+before the run was counted.
+
+Using the current tagged Wails host acceptance socket and its production native
+helper, the full fixture run passed 12 cases, including the new drag case. The
+real drag receipt was `outcome=executed`; the fixture recorded 29 trusted events
+for the drag path, with source endpoint `(266,400)`, drop endpoint `(539,400)`,
+and `dragCompleted=true`.
+
+Evidence:
+
+```text
+desktop-v2/build/validation/20260927/drag-fixture/fixture-drag-before.png
+desktop-v2/build/validation/20260927/drag-fixture/fixture-drag-after.png
+desktop-v2/build/validation/20260927/drag-fixture/fixture-drag-receipt.json
+desktop-v2/build/validation/20260927/drag-fixture/fixture-results.json
+desktop-v2/build/validation/20260927/drag-fixture/fixture-run.log
+```
+
+This proves basic single-display native drag through go-e2e itself. It does not
+prove drag safety under Pause/Stop, external focus change, helper crash, window
+movement/closure, or multi-display topology changes.

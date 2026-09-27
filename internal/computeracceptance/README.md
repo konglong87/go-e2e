@@ -50,8 +50,9 @@ Exported `EventType` and `TargetID` constants avoid harness-side string literals
 | `MouseMoveTarget` / `mouse-move-target` | `MouseMove` |
 | `ScrollTarget` / `scroll-target` | `Wheel`, `Scroll`, `State.ScrollTop` |
 | `TextTarget` / `text-target` | `Input`, `BeforeInput`, IME composition, `KeyDown`/`KeyUp`, modifiers and native selection |
+| `DragSourceTarget` / `drag-source` + `DragDropTarget` / `drag-drop-target` | Real press/drag/release path with trusted endpoint events and drop state |
 
-Mouse down/up and focus/blur are also recorded. No drag/drop target is included.
+Mouse down/up and focus/blur are also recorded. The fixture includes a drag source and drop target; drag state is only marked complete after trusted native press/drag/release events.
 Text input intentionally has a 1024 UTF-16-unit UI limit. Use harmless test text,
 for example `中文🙂`; never use credentials. Browser/OS-reserved shortcuts may
 not reach DOM listeners. Key selection offsets use UTF-16, not UTF-8 byte counts.

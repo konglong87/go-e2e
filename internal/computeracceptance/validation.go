@@ -77,7 +77,7 @@ func validEventType(kind EventType) bool {
 
 func validTarget(id TargetID) bool {
 	switch id {
-	case ClickTarget, DoubleClickTarget, ContextMenuTarget, MouseMoveTarget, ScrollTarget, TextTarget:
+	case ClickTarget, DoubleClickTarget, ContextMenuTarget, MouseMoveTarget, ScrollTarget, TextTarget, DragSourceTarget, DragDropTarget:
 		return true
 	}
 	return false

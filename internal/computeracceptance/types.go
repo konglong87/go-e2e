@@ -10,7 +10,7 @@ const (
 	MaxRequestBytes = 128 << 10
 	MaxTextBytes    = 4096
 	maxLabelBytes   = 128
-	targetCount     = 6
+	targetCount     = 8
 	maxCoordinate   = 1e7
 )
 
@@ -45,6 +45,8 @@ const (
 	MouseMoveTarget   TargetID = "mouse-move-target"
 	ScrollTarget      TargetID = "scroll-target"
 	TextTarget        TargetID = "text-target"
+	DragSourceTarget  TargetID = "drag-source"
+	DragDropTarget    TargetID = "drag-drop-target"
 )
 
 // Point and Rect use CSS pixels, not screenshot/device pixels.
@@ -155,6 +157,7 @@ type PageState struct {
 	SelectionEnd   int     `json:"selectionEnd"`
 	ScrollTop      float64 `json:"scrollTop"`
 	ScrollLeft     float64 `json:"scrollLeft"`
+	DragCompleted  bool    `json:"dragCompleted"`
 }
 
 // Report is the POST /events wire format. Geometry and State are required;

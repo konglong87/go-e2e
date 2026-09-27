@@ -21,3 +21,7 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0; font-size: 
 table { width: 100%; border-collapse: collapse; font: 12px ui-monospace, monospace; }
 th, td { text-align: left; padding: 5px 10px; border-bottom: 1px solid #ccd6e3; }
 #event-log { height: 180px; overflow: auto; background: #172033; color: #e3efff; padding: 12px; }
+
+#drag-source { background: #fff4d6; border-color: #b26a00; cursor: grab; }
+#drag-drop-target { background: #e6f7ee; border-color: #18794e; }
+#drag-drop-target[data-drag-complete="true"] { background: #b9f2d1; }

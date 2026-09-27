@@ -69,6 +69,30 @@ class FixtureRun:
         self.save()
         print("PASS", name, flush=True)
 
+    def drag_case(self):
+        baseline = self.snapshot()["totalEvents"]
+        start = self.point("drag-source")
+        end = self.point("drag-drop-target")
+        receipt = self.driver.step({"kind": "drag", "start_point": start, "point": end, "duration_ms": 320}, "fixture-drag")
+        if receipt["outcome"] != "executed":
+            raise AssertionError(receipt)
+        result = self.wait_for(lambda s: s["state"]["dragCompleted"] and
+            any(e["sequence"] > baseline and e["type"] == "mousedown" and e["target"] == "drag-source" and e["isTrusted"] for e in s["events"]) and
+            any(e["sequence"] > baseline and e["type"] == "mouseup" and e["target"] == "drag-drop-target" and e["isTrusted"] for e in s["events"]))
+        events = [e for e in result["events"] if e["sequence"] > baseline]
+        scale = self.driver.require(self.driver.call("capabilities"))["coordinate_space"]["scale_factor"]
+        downs = [e for e in events if e["type"] == "mousedown" and e["target"] == "drag-source" and e["isTrusted"]]
+        ups = [e for e in events if e["type"] == "mouseup" and e["target"] == "drag-drop-target" and e["isTrusted"]]
+        if not downs or not ups:
+            raise AssertionError("trusted drag endpoints were not observed")
+        if abs(downs[-1]["screen"]["x"] * scale - start["x"]) > 2 or abs(downs[-1]["screen"]["y"] * scale - start["y"]) > 2:
+            raise AssertionError("drag start coordinate mismatch")
+        if abs(ups[-1]["screen"]["x"] * scale - end["x"]) > 2 or abs(ups[-1]["screen"]["y"] * scale - end["y"]) > 2:
+            raise AssertionError("drag end coordinate mismatch")
+        self.results.append({"case": "drag", "passed": True, "action_id": receipt["action_id"], "events": events, "state": result["state"]})
+        self.save()
+        print("PASS drag", flush=True)
+
     def save(self):
         (self.driver.output / "fixture-results.json").write_text(json.dumps(self.results, ensure_ascii=False, indent=2))
 
@@ -77,6 +101,7 @@ class FixtureRun:
         self.wait_for(lambda s: s["geometry"]["calibration"] is not None)
         for kind, event, target in [("click", "click", "click-target"), ("double_click", "dblclick", "double-click-target"), ("right_click", "contextmenu", "context-menu-target"), ("move", "mousemove", "mouse-move-target")]:
             self.case(kind, {"kind": kind, "point": self.point(target)}, event, target)
+        self.drag_case()
         self.driver.step({"kind": "move", "point": self.point("scroll-target")})
         baseline = self.snapshot()["state"]["scrollTop"]
         self.case("scroll", {"kind": "scroll", "delta_y": -420}, "wheel", "scroll-target", lambda s: s["state"]["scrollTop"] > baseline)
@@ -92,10 +117,12 @@ class FixtureRun:
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--connection", type=Path, default=Path.home() / ".go-e2e/computer-acceptance/fixture.json")
+    p.add_argument("--socket", type=Path, default=module.DEFAULT_SOCKET)
+    p.add_argument("--output", type=Path, default=module.DEFAULT_OUTPUT)
     p.add_argument("--calibrate-x", type=int, required=True)
     p.add_argument("--calibrate-y", type=int, required=True)
     args = p.parse_args()
-    FixtureRun(args.connection, module.Driver()).run(args.calibrate_x, args.calibrate_y)
+    FixtureRun(args.connection, module.Driver(args.socket, args.output)).run(args.calibrate_x, args.calibrate_y)
 
 if __name__ == "__main__":
     main()

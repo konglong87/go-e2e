@@ -18,6 +18,10 @@
   const targets = [...document.querySelectorAll("[data-target]")];
   const input = document.getElementById("text-target");
   const scroll = document.getElementById("scroll-target");
+  const dragSource = document.getElementById("drag-source");
+  const dragDropTarget = document.getElementById("drag-drop-target");
+  let dragActive = false;
+  let dragCompleted = false;
   const queue = [];
   const log = [];
   let dropped = 0;
@@ -123,7 +127,8 @@
     return {
       inputValue: value, inputTruncated: value !== input.value,
       selectionStart: input.selectionStart ?? 0, selectionEnd: input.selectionEnd ?? 0,
-      scrollTop: scroll.scrollTop, scrollLeft: scroll.scrollLeft
+      scrollTop: scroll.scrollTop, scrollLeft: scroll.scrollLeft,
+      dragCompleted
     };
   }
 
@@ -217,6 +222,20 @@
       busy = false;
     }
   }
+
+  dragSource.addEventListener("mousedown", event => {
+    if (event.isTrusted && event.button === 0) dragActive = true;
+  }, { capture: true });
+  dragDropTarget.addEventListener("mouseup", event => {
+    if (event.isTrusted && event.button === 0 && dragActive) {
+      dragActive = false;
+      dragCompleted = true;
+      dragDropTarget.dataset.dragComplete = "true";
+    }
+  }, { capture: true });
+  document.addEventListener("mouseup", event => {
+    if (event.isTrusted && event.button === 0 && event.target !== dragDropTarget) dragActive = false;
+  }, { capture: true });
 
   for (const target of targets) {
     for (const type of EVENT_TYPES) {
