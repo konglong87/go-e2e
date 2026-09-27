@@ -261,3 +261,15 @@ as evidence, not erased or retried blindly. Runtime teardown is being hardened t
 revoke the originally acquired grant even when the provider/model does not Stop.
 WorkBuddy had no running app processes before this attempt; this failed attempt
 has not established its launch or New Task acceptance.
+
+### Query teardown revocation
+
+Normal Query cleanup now issues Stop for the exact acquired service/owner/session,
+including malformed-provider-response, cancellation, construction-failure and
+max-turn paths. Cleanup is bounded independently of the cancelled request and
+never looks up a replacement grant. Host duplicate Stop is allowed for the exact
+revoked binding, without restoring any lookup/observe privilege. Unit/integration
+coverage includes a mocked reproduction of observe -> rejected hotkey -> malformed
+third response. Full affected CLI/desktop/bridge/domain/backend/tool race suites
+passed. An unreachable host can still prevent delivery; the original query error
+is preserved and cleanup failure is logged rather than hidden.

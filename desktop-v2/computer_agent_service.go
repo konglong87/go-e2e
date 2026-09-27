@@ -76,12 +76,29 @@ func (s computerAgentService) Resume(ctx context.Context, owner cu.SessionOwner,
 	return c.Resume(ctx, owner, id)
 }
 func (s computerAgentService) Stop(ctx context.Context, owner cu.SessionOwner, id string) error {
-	c, err := s.controller(ctx, owner, id, false)
-	if err != nil {
+	if err := ctx.Err(); err != nil {
 		return err
+	}
+	if s.manager == nil || !validComputerConversationOwner(owner) {
+		return errComputerAgentUnauthorized
+	}
+	s.manager.mu.Lock()
+	c := s.manager.controller
+	// Revocation clears Approved. The exact old owner may repeat Stop, but must
+	// never discover/use that stopped grant or affect a replacement controller.
+	if c == nil || c.Session().ID() != id || !c.Session().Owns(owner) {
+		s.manager.mu.Unlock()
+		return errComputerAgentUnauthorized
+	}
+	session := c.Session()
+	allowed := session.Approved() || session.State() == cu.SessionStopped || session.State() == cu.SessionFailed
+	s.manager.mu.Unlock()
+	if !allowed {
+		return errComputerAgentUnauthorized
 	}
 	return c.Stop(ctx, owner, id)
 }
+
 func (s computerAgentService) ObservationImage(ctx context.Context, owner cu.SessionOwner, id, observationID string) ([]byte, string, error) {
 	c, err := s.controller(ctx, owner, id, false)
 	if err != nil {

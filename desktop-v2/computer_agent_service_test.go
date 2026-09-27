@@ -195,3 +195,37 @@ func TestAgentBridgeUnixControllerIntegration(t *testing.T) {
 		t.Fatal("wire stop missed shared controller")
 	}
 }
+
+func TestAgentServiceRepeatedStopDoesNotRestoreOrReassignAuthority(t *testing.T) {
+	s, _, owner, id := agentControllerForTest(t, true)
+	ctx := context.Background()
+	if err := s.Stop(ctx, owner, id); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Stop(ctx, owner, id); err != nil {
+		t.Fatal("repeat stop", err)
+	}
+	if _, err := s.Lookup(ctx, owner); err == nil {
+		t.Fatal("repeat stop restored lookup")
+	}
+	pending, _, pendingOwner, pendingID := agentControllerForTest(t, false)
+	if err := pending.Stop(ctx, pendingOwner, pendingID); err == nil {
+		t.Fatal("unapproved session exposed")
+	}
+	replacement, replacementBackend, nextOwner, nextID := agentControllerForTest(t, true)
+	s.manager.mu.Lock()
+	s.manager.controller = replacement.manager.controller
+	s.manager.mu.Unlock()
+	if nextID == id {
+		t.Fatal("test sessions collided")
+	}
+	if err := s.Stop(ctx, owner, id); err == nil {
+		t.Fatal("old cleanup targeted replacement")
+	}
+	if replacementBackend.Stopped {
+		t.Fatal("replacement was stopped")
+	}
+	if got, err := s.Lookup(ctx, nextOwner); err != nil || got != nextID {
+		t.Fatal(got, err)
+	}
+}

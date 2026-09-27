@@ -115,3 +115,11 @@ and acceptance evidence remain private/ignored; no credentials or DBs are staged
   revoke on query termination even when the model/provider fails to call Stop.
   No re-lookup that might stop a later grant; no use of cancelled request context
   for cleanup; preserve original run errors.
+- Runtime cleanup implementation verified: captures the originally acquired
+  service/owner/session ID, uses an independent bounded five-second context,
+  runs on construction failure and normal/error/cancelled/max-turn teardown,
+  and never re-lookups or stops a replacement grant. Host Stop is idempotent for
+  that exact revoked owner/session while all observation/lookup authority stays
+  revoked. Focused and complete CLI/desktop/bridge/domain/backend/tool race
+  suites passed. This cannot guarantee delivery to an unreachable host; cleanup
+  errors remain visible and do not overwrite the original query result/error.

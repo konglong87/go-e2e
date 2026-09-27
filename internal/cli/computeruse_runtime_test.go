@@ -105,7 +105,8 @@ func TestDesktopComputerUseRuntimeGates(t *testing.T) {
 			if test.mutate != nil {
 				test.mutate(&opts, &cfg, bridge)
 			}
-			guidance := configureDesktopComputerUse(context.Background(), cfg, computerRuntimeModel, &opts)
+			guidance, cleanup := configureDesktopComputerUse(context.Background(), cfg, computerRuntimeModel, &opts)
+			defer cleanup()
 			if opts.computerUseProfile != test.want || opts.computerUseImageSupported != test.want || (opts.computerUseService != nil) != test.want || (guidance != "") != test.want {
 				t.Fatalf("gate mismatch: profile=%v image=%v service=%T guidance=%q", opts.computerUseProfile, opts.computerUseImageSupported, opts.computerUseService, guidance)
 			}
@@ -134,7 +135,9 @@ func TestDesktopComputerUseCanceledLookupCannotEnable(t *testing.T) {
 	cancel()
 	bridge := &runtimeComputerBridge{sessionID: computerRuntimeHostSession}
 	opts := computerRuntimeOptions(bridge)
-	if got := configureDesktopComputerUse(ctx, computerRuntimeConfig(), computerRuntimeModel, &opts); got != "" || opts.computerUseService != nil {
+	got, cleanup := configureDesktopComputerUse(ctx, computerRuntimeConfig(), computerRuntimeModel, &opts)
+	defer cleanup()
+	if got != "" || opts.computerUseService != nil {
 		t.Fatalf("canceled lookup enabled capability: %q", got)
 	}
 }

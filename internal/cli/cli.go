@@ -701,7 +701,13 @@ func newQuerySession(ctx context.Context, opts options, initial []anthropic.Mess
 		}
 		model, maxTurns = nextModel, nextMaxTurns
 	}
-	computerUseGuidance := configureDesktopComputerUse(ctx, cfg, model, &opts)
+	computerUseGuidance, cleanupComputerUse := configureDesktopComputerUse(ctx, cfg, model, &opts)
+	computerUseCleanupTransferred := false
+	defer func() {
+		if !computerUseCleanupTransferred {
+			cleanupComputerUse()
+		}
+	}()
 	if runtimePolicy.DiscoverPlugins {
 		cfg.Settings.MCPServers = mergedMCPServers(opts.cwd, cfg.Settings.MCPServers)
 	}
@@ -768,6 +774,8 @@ func newQuerySession(ctx context.Context, opts options, initial []anthropic.Mess
 		ownRecorder = true
 	}
 	cleanup := func() {
+		// Revoke host approval before potentially slow recorder/MCP teardown.
+		cleanupComputerUse()
 		if ownRecorder {
 			_ = recorder.Close()
 		}
@@ -883,6 +891,7 @@ func newQuerySession(ctx context.Context, opts options, initial []anthropic.Mess
 		RuntimeProfile:                runtimePolicy.Profile,
 		ExplicitContextRoots:          resolveRuntimeDirectories(opts.cwd, cfg.Settings.AdditionalDirectories),
 	})
+	computerUseCleanupTransferred = true
 	return querySession, cleanup, nil
 }
 

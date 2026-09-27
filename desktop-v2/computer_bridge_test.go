@@ -54,6 +54,9 @@ func TestDesktopBridgeBindsApprovedConversationAndCleansSocket(t *testing.T) {
 	if _, err := client.Lookup(ctx, owner); err == nil {
 		t.Fatal("native Stop did not revoke model lookup")
 	}
+	if err := client.Stop(ctx, owner, approved.ID); err != nil {
+		t.Fatal("query cleanup after native Stop must be idempotent", err)
+	}
 	path := listener.Config().SocketPath
 	if err := listener.Close(); err != nil {
 		t.Fatal(err)
