@@ -18,6 +18,7 @@ export function createTestClient(): ComputerClient {
     getCapabilities: vi.fn<ComputerClient["getCapabilities"]>().mockResolvedValue({ available: true, capabilities }),
     openPermissionSettings: vi.fn<ComputerClient["openPermissionSettings"]>().mockResolvedValue(undefined),
     start: vi.fn<ComputerClient["start"]>().mockResolvedValue(snapshot()),
+    getSession: vi.fn<ComputerClient["getSession"]>().mockResolvedValue(snapshot()),
     observe: vi.fn<ComputerClient["observe"]>().mockResolvedValue(observationResponse),
     pause: vi.fn<ComputerClient["pause"]>().mockResolvedValue(snapshot("paused")),
     resume: vi.fn<ComputerClient["resume"]>().mockResolvedValue(snapshot()),

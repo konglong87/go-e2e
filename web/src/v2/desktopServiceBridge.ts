@@ -30,6 +30,7 @@ export type DesktopServiceBridge = {
   GetComputerCapabilities?: () => Promise<ComputerCapabilitiesResponse>;
   OpenComputerPermissionSettings?: (target: ComputerPermissionTarget) => Promise<void>;
   StartComputerSession?: (input: StartComputerSessionInput) => Promise<ComputerSessionSnapshot>;
+  GetComputerSession?: (sessionID: string) => Promise<ComputerSessionSnapshot>;
   ObserveComputerSession?: (sessionID: string) => Promise<ComputerObservationResponse>;
   PauseComputerSession?: (sessionID: string) => Promise<ComputerSessionSnapshot>;
   ResumeComputerSession?: (sessionID: string) => Promise<ComputerSessionSnapshot>;

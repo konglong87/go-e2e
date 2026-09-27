@@ -275,6 +275,17 @@ func (a *app) StartComputerSession(in ComputerSessionStartInput) (ComputerSessio
 	}
 	return a.computer().startOwnedWithLifetime(ctx, ctx, in, owner)
 }
+
+// GetComputerSession reads the same controller used by the model runtime. It
+// must not capture, access image bytes, refresh observation freshness, or revoke
+// a grant. Stopped sessions remain readable until replaced by an approved start.
+func (a *app) GetComputerSession(id string) (ComputerSessionDTO, error) {
+	c, err := a.computer().active(id)
+	if err != nil {
+		return ComputerSessionDTO{}, err
+	}
+	return computerSnapshot(c.Session()), nil
+}
 func (a *app) ObserveComputerSession(id string) (ComputerObservationDTO, error) {
 	return a.computer().observe(a.windowContext(), id)
 }

@@ -312,3 +312,20 @@ frames are retained in model request history; unrelated/user images remain.
 This is a protocol/privacy-boundary correction, not a relaxation of native
 permission, owner binding, freshness, Stop, or strict action validation. The
 actual autonomous WorkBuddy objective still requires a successful live run.
+
+## Native UI synchronization
+
+The floating panel now reads the shared Controller state through a read-only
+Wails method. Its one-second non-overlapping polling does not capture or replace
+screenshots and cannot overwrite pending user Stop/Pause with stale results.
+The full frontend suite passed 749 tests, TypeScript passed, and the normal
+`.app` was rebuilt. A live model Stop propagated to the panel automatically;
+see `desktop-v2/build/validation/20260927/04-auto-synced-stopped.png`.
+Last-receipt polling can miss intermediate rapid actions, so the panel is not
+claimed to replace complete event/receipt evidence.
+
+The fifth live test stopped on a real pre-existing macOS informational alert
+saying the go-e2e application could no longer be opened. The active desktop
+instance itself remained running. The alert was independently observed in
+CoreServicesUIAgent and dismissed; the subsequent go-e2e native screenshot no
+longer showed it. This environmental abort is retained, not counted as success.

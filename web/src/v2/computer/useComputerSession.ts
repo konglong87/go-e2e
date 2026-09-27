@@ -16,6 +16,9 @@ type ComputerState = {
   error: string | null;
   controlIntent: "pause" | "stop" | null;
 };
+export const COMPUTER_SESSION_POLL_INTERVAL_MS = 1000;
+const isTerminal = (session: ComputerSessionSnapshot) => session.state === "stopped" || session.state === "failed";
+
 const initialState: ComputerState = { available: false, capabilities: null, session: null, approvedConversationRef: null, observation: null, receipts: [], loading: false, error: null, controlIntent: null };
 
 function mergeSnapshot(current: ComputerState, snapshot: ComputerSessionSnapshot): ComputerState {
@@ -44,6 +47,53 @@ export function useComputerSession(client: ComputerClient | null) {
     update(initialState);
     return () => { mounted.current = false; ++generation.current; };
   }, [client, update]);
+
+  // Share the in-flight guard across effect lifetimes too: switching clients or
+  // sessions cannot overlap a still-pending read from the previous lifecycle.
+  const snapshotPending = useRef(false);
+  const sessionID = state.session?.session_id;
+  const polling = !!state.session && !isTerminal(state.session);
+  useEffect(() => {
+    if (!client || !sessionID || !polling) return;
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const schedule = () => {
+      if (!disposed) timer = setTimeout(() => { void poll(); }, COMPUTER_SESSION_POLL_INTERVAL_MS);
+    };
+    const poll = async () => {
+      const before = current.current;
+      if (disposed || before.session?.session_id !== sessionID || isTerminal(before.session)) return;
+      if (snapshotPending.current || before.loading) { schedule(); return; }
+      snapshotPending.current = true;
+      // A read never increments generation or supersedes a user control.
+      const version = generation.current;
+      try {
+        const snapshot = await client.getSession(sessionID);
+        const latest = current.current;
+        if (disposed || !mounted.current || version !== generation.current || latest.loading
+          || latest.session?.session_id !== sessionID || snapshot.session_id !== sessionID
+          || isTerminal(latest.session)) return;
+        // Unconfirmed Stop/Pause remains authoritative even after a failed RPC.
+        const confirmedIntent = isTerminal(snapshot)
+          || (latest.controlIntent === "pause" && snapshot.state === "paused");
+        if (latest.controlIntent && !confirmedIntent) return;
+        update({
+          ...mergeSnapshot(latest, snapshot),
+          // Snapshot polling is status-only: never capture or replace preview bytes.
+          observation: latest.observation,
+          controlIntent: confirmedIntent ? null : latest.controlIntent,
+        });
+      } catch {
+        // Transient reads must not overwrite actionable control errors. Retry at
+        // the bounded cadence, never via an Observe fallback.
+      } finally {
+        snapshotPending.current = false;
+        if (current.current.session && !isTerminal(current.current.session)) schedule();
+      }
+    };
+    schedule();
+    return () => { disposed = true; clearTimeout(timer); };
+  }, [client, sessionID, polling, update]);
 
   const fail = useCallback((message: string): never => {
     update({ ...current.current, error: message });

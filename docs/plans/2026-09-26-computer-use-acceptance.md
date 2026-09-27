@@ -159,3 +159,14 @@ and acceptance evidence remain private/ignored; no credentials or DBs are staged
 - Retain only the latest two computer screenshots in live request history for
   visual comparison; preserve receipt metadata and non-computer/user images.
   This bounds request growth, not a claim of universal model visual accuracy.
+
+### Native UI state synchronization
+- Added a read-only Wails snapshot method and one-second, non-overlapping polling
+  of the exact active session. Polling never Observe/captures, reads image bytes,
+  or supersedes a model observation. Stale responses after controls/client/session
+  changes or unmount cannot restore old state; Stop/Pause intent is preserved.
+- Verification: 749 frontend tests, TypeScript, focused desktop race tests and
+  normal desktop build. Live model Stop updated the floating panel to stopped
+  without a manual refresh; screenshot 04-auto-synced-stopped.png is retained.
+- This polls last_receipt; it is status/progress feedback, not a replacement for
+  the complete receipt audit when multiple actions occur between poll intervals.

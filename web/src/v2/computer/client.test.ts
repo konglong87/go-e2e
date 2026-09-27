@@ -6,6 +6,7 @@ const bridge = (): ComputerBridge => ({
   GetComputerCapabilities: vi.fn<ComputerBridge["GetComputerCapabilities"]>().mockResolvedValue({ available: true, capabilities }),
   OpenComputerPermissionSettings: vi.fn<NonNullable<ComputerBridge["OpenComputerPermissionSettings"]>>().mockResolvedValue(undefined),
   StartComputerSession: vi.fn<ComputerBridge["StartComputerSession"]>().mockResolvedValue(snapshot()),
+  GetComputerSession: vi.fn<ComputerBridge["GetComputerSession"]>().mockResolvedValue(snapshot()),
   ObserveComputerSession: vi.fn<ComputerBridge["ObserveComputerSession"]>().mockResolvedValue(observationResponse),
   PauseComputerSession: vi.fn<ComputerBridge["PauseComputerSession"]>().mockResolvedValue(snapshot("paused")),
   ResumeComputerSession: vi.fn<ComputerBridge["ResumeComputerSession"]>().mockResolvedValue(snapshot()),
@@ -23,6 +24,9 @@ describe("computer bridge DTO contract", () => {
     expect(host.OpenComputerPermissionSettings).toHaveBeenCalledWith("accessibility");
     await expect(client.start({ approved: true })).resolves.toEqual(snapshot());
     expect(host.StartComputerSession).toHaveBeenCalledWith({ approved: true });
+    await expect(client.getSession("s1")).resolves.toEqual(snapshot());
+    expect(host.GetComputerSession).toHaveBeenCalledExactlyOnceWith("s1");
+    expect(host.ObserveComputerSession).not.toHaveBeenCalled();
     await expect(client.observe("s1")).resolves.toEqual(observationResponse);
     await expect(client.pause("s1")).resolves.toEqual(snapshot("paused"));
     await expect(client.resume("s1")).resolves.toEqual(snapshot());
@@ -46,6 +50,8 @@ describe("computer bridge DTO contract", () => {
     expect(getComputerBridge()).toBeNull();
     window.go.main!.app = { RestartLocalService: vi.fn(), ...bridge() };
     expect(getComputerBridge()).not.toBeNull();
+    delete window.go.main!.app.GetComputerSession;
+    expect(getComputerBridge()).toBeNull();
   });
   it("returns a clear error when permission navigation is not exposed by the host", async () => {
     const host = bridge();

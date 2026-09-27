@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"testing"
+	"time"
 
 	cu "github.com/konglong87/go-e2e/internal/computeruse"
 )
@@ -74,5 +76,103 @@ func TestComputerControlsReturnStateAndNewSessionReplacesStoppedBackend(t *testi
 	}
 	if _, err = m.control(ctx, ready.ID, cu.ActionStop); err == nil {
 		t.Fatal("old session accepted")
+	}
+}
+
+// Any capture/image read through the status endpoint is a regression: model
+// screenshots and observation freshness belong exclusively to the controller.
+type snapshotOnlyComputerBackend struct {
+	cu.FakeBackend
+	t *testing.T
+}
+
+func (b *snapshotOnlyComputerBackend) Observe(context.Context, cu.ObserveRequest) (cu.Observation, error) {
+	b.t.Fatal("snapshot captured the desktop")
+	return cu.Observation{}, nil
+}
+func (b *snapshotOnlyComputerBackend) ObservationImage(context.Context, string) ([]byte, string, error) {
+	b.t.Fatal("snapshot accessed model screenshot bytes")
+	return nil, "", nil
+}
+
+func TestGetComputerSessionReadOnlyModelState(t *testing.T) {
+	ctx := context.Background()
+	m, _ := testComputerManager()
+	backend, err := m.factory(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := &snapshotOnlyComputerBackend{FakeBackend: cu.FakeBackend{
+		CapabilitiesValue: backend.(*cu.FakeBackend).CapabilitiesValue,
+		ReceiptValue:      cu.ActionReceipt{AfterObservationID: "model-after", After: &cu.MediaRef{ID: "model-after-image"}},
+	}, t: t}
+	b.CapabilitiesValue.Actions = []cu.ActionKind{cu.ActionWait}
+	m.backend = b
+	ready, err := m.start(ctx, ComputerSessionStartInput{Approved: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := &app{computerManager: m}
+	c := m.controller
+	s := c.Session()
+	o := cu.Observation{ID: "model-observation", SessionID: ready.ID, Width: 100, Height: 100,
+		Capabilities: ready.Capabilities, ObservedAt: time.Now(), Screenshot: cu.MediaRef{ID: "model-image"}}
+	if err := s.SetObservation(o); err != nil {
+		t.Fatal(err)
+	}
+	before, ok := s.CurrentObservation()
+	if !ok {
+		t.Fatal("missing model observation")
+	}
+	for range 3 {
+		got, err := a.GetComputerSession(ready.ID)
+		if err != nil || got.State != cu.SessionReady || got.Observation == nil || !reflect.DeepEqual(*got.Observation, before) {
+			t.Fatalf("snapshot changed model observation: %+v, %v", got, err)
+		}
+	}
+	after, ok := s.CurrentObservation()
+	if !ok || !reflect.DeepEqual(before, after) || m.controller != c || !s.Approved() {
+		t.Fatal("read changed controller, grant, observation, or freshness")
+	}
+	action := cu.Action{ID: "model-action", SessionID: ready.ID, ObservationID: o.ID, Kind: cu.ActionWait}
+	r, err := c.Execute(ctx, s.Owner(), action)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := a.GetComputerSession(ready.ID)
+	if err != nil || got.State != cu.SessionNeedsObservation || got.LastReceipt == nil || !reflect.DeepEqual(*got.LastReceipt, r) {
+		t.Fatalf("model receipt missing: %+v, %v", got, err)
+	}
+	if _, ok := s.CurrentObservation(); ok {
+		t.Fatal("status read restored an observation consumed by the model")
+	}
+	// Simulate model/runtime cleanup through the shared controller, not UI Stop.
+	if err := c.Stop(ctx, s.Owner(), ready.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, err = a.GetComputerSession(ready.ID)
+	if err != nil || got.State != cu.SessionStopped || got.LastReceipt == nil || s.Approved() || !b.Stopped {
+		t.Fatalf("model Stop not reflected: %+v, %v", got, err)
+	}
+	if _, err := a.GetComputerSession("unknown-session"); err == nil {
+		t.Fatal("accepted a different session ID")
+	}
+	next, err := m.start(ctx, ComputerSessionStartInput{Approved: true})
+	if err != nil || next.ID == ready.ID {
+		t.Fatalf("replacement start: %+v, %v", next, err)
+	}
+	if _, err := a.GetComputerSession(ready.ID); err == nil {
+		t.Fatal("accepted replaced session")
+	}
+}
+
+func TestGetComputerSessionDoesNotInitializeBackend(t *testing.T) {
+	m, count := testComputerManager()
+	a := &app{computerManager: m}
+	if _, err := a.GetComputerSession("missing"); err == nil {
+		t.Fatal("missing session accepted")
+	}
+	if *count != 0 || m.controller != nil || m.backend != nil {
+		t.Fatal("status lookup initialized backend or session")
 	}
 }

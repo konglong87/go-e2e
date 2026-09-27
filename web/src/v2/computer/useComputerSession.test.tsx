@@ -1,7 +1,7 @@
 import { act, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useComputerSession } from "./useComputerSession";
+import { COMPUTER_SESSION_POLL_INTERVAL_MS, useComputerSession } from "./useComputerSession";
 import type { ComputerClient } from "./client";
 import type { ComputerObservationResponse, ComputerSessionSnapshot } from "./types";
 import { capabilities, createTestClient, deferred, observationResponse, snapshot } from "./testFixtures";
@@ -174,4 +174,177 @@ describe("useComputerSession", () => {
     expect(result.session?.state).toBe("ready");
   });
 
+});
+
+describe("read-only session synchronization", () => {
+  let root: Root;
+  let result: ReturnType<typeof useComputerSession>;
+  let client: ComputerClient;
+  let unmounted: boolean;
+  const receipt = {
+    action_id: "model-action", session_id: "s1", platform: "macos", backend: "native_host",
+    outcome: "executed", verification: "passed", focus_before: "focused", focus_after: "focused",
+    redacted_action_summary: "click", completed_at: "2026-09-24T00:00:00Z"
+  } satisfies import("./types").ComputerActionReceipt;
+  function Harness() { result = useComputerSession(client); return null; }
+  async function tick(count = 1) {
+    await act(async () => { await vi.advanceTimersByTimeAsync(COMPUTER_SESSION_POLL_INTERVAL_MS * count); });
+  }
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    root = createRoot(document.createElement("div"));
+    unmounted = false;
+    client = createTestClient();
+    await act(async () => root.render(<StrictMode><Harness /></StrictMode>));
+    await act(async () => { await result.loadCapabilities(); });
+  });
+  afterEach(() => {
+    if (!unmounted) act(() => root.unmount());
+    expect(vi.getTimerCount()).toBe(0);
+    vi.useRealTimers();
+    delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
+  });
+  async function start() {
+    await act(async () => { await result.start({ approved: true, conversation_ref: "approved-conversation" }); });
+  }
+
+  it("polls only active sessions, dedupes model receipts and synchronizes model Stop without Observe", async () => {
+    await tick(3);
+    expect(client.getSession).not.toHaveBeenCalled();
+    await start();
+    client.getSession = vi.fn().mockResolvedValue({ ...snapshot("needs_observation"), last_receipt: receipt });
+    await tick(2);
+    expect(result.session?.state).toBe("needs_observation");
+    expect(result.receipts).toEqual([receipt]);
+    expect(result.approvedConversationRef).toBe("approved-conversation");
+    expect(result.loading).toBe(false);
+    client.getSession = vi.fn().mockResolvedValue({ ...snapshot("stopped"), last_receipt: receipt });
+    await tick(5);
+    expect(client.getSession).toHaveBeenCalledExactlyOnceWith("s1");
+    expect(result.session?.state).toBe("stopped");
+    expect(result.receipts).toEqual([receipt]);
+    expect(client.observe).not.toHaveBeenCalled();
+  });
+
+  it("preserves existing preview bytes while model observation metadata changes", async () => {
+    await start();
+    await act(async () => { await result.observe(); });
+    const preview = result.observation;
+    client.getSession = vi.fn().mockResolvedValue({ ...snapshot(), observation: { ...observationResponse.observation, id: "model-observation" } });
+    await tick();
+    expect(result.observation).toBe(preview);
+    expect(client.observe).toHaveBeenCalledTimes(1);
+  });
+
+  it("never overlaps reads and retries rejected snapshots at a bounded cadence", async () => {
+    await start();
+    const delayed = deferred<ComputerSessionSnapshot>();
+    client.getSession = vi.fn().mockReturnValueOnce(delayed.promise).mockResolvedValue(snapshot());
+    await tick(10);
+    expect(client.getSession).toHaveBeenCalledTimes(1);
+    await act(async () => { delayed.reject(new Error("transient read failure")); });
+    expect(result.error).toBeNull();
+    await tick();
+    expect(client.getSession).toHaveBeenCalledTimes(2);
+    expect(client.observe).not.toHaveBeenCalled();
+  });
+
+  it.each(["pause", "stop"] as const)("discards a late ready snapshot during pending %s", async (kind) => {
+    await start();
+    const read = deferred<ComputerSessionSnapshot>();
+    const control = deferred<ComputerSessionSnapshot>();
+    client.getSession = vi.fn().mockReturnValue(read.promise);
+    client[kind] = vi.fn().mockReturnValue(control.promise);
+    await tick();
+    let pending!: ReturnType<typeof result.stop>;
+    await act(async () => { pending = result[kind](); });
+    await act(async () => { read.resolve({ ...snapshot(), last_receipt: receipt }); });
+    expect(result.loading).toBe(true);
+    expect(result.controlIntent).toBe(kind);
+    expect(result.receipts).toEqual([]);
+    await tick(3);
+    expect(client.getSession).toHaveBeenCalledTimes(1);
+    await act(async () => { control.resolve(snapshot(kind === "pause" ? "paused" : "stopped")); await pending; });
+    expect(result.session?.state).toBe(kind === "pause" ? "paused" : "stopped");
+  });
+
+  it.each(["pause", "stop"] as const)("retains unconfirmed %s intent until a safe snapshot confirms it", async (kind) => {
+    await start();
+    client[kind] = vi.fn().mockRejectedValue(new Error("control outcome unknown"));
+    await act(async () => { await expect(result[kind]()).rejects.toThrow("control outcome unknown"); });
+    await tick();
+    expect(result.controlIntent).toBe(kind);
+    expect(result.error).toBe("control outcome unknown");
+    client.getSession = vi.fn().mockResolvedValue(snapshot(kind === "pause" ? "paused" : "stopped"));
+    await tick();
+    expect(result.controlIntent).toBeNull();
+    expect(result.session?.state).toBe(kind === "pause" ? "paused" : "stopped");
+  });
+
+  it("ignores late reads after Stop then Start and resumes polling the new session", async () => {
+    await start();
+    const read = deferred<ComputerSessionSnapshot>();
+    client.getSession = vi.fn().mockReturnValueOnce(read.promise).mockResolvedValue(snapshot("paused", "s2"));
+    await tick();
+    await act(async () => { await result.stop(); });
+    client.start = vi.fn().mockResolvedValue(snapshot("ready", "s2"));
+    await act(async () => { await result.start({ approved: true, conversation_ref: "new-conversation" }); });
+    await tick(2);
+    expect(client.getSession).toHaveBeenCalledTimes(1);
+    await act(async () => { read.resolve({ ...snapshot("stopped"), last_receipt: receipt }); });
+    expect(result.session?.session_id).toBe("s2");
+    expect(result.receipts).toEqual([]);
+    expect(result.approvedConversationRef).toBe("new-conversation");
+    await tick();
+    expect(client.getSession).toHaveBeenLastCalledWith("s2");
+    expect(result.session?.state).toBe("paused");
+  });
+
+  it("discards a previous client's read even when the new client uses the same session ID", async () => {
+    await start();
+    const read = deferred<ComputerSessionSnapshot>();
+    const oldClient = client;
+    oldClient.getSession = vi.fn().mockReturnValue(read.promise);
+    await tick();
+    client = createTestClient();
+    await act(async () => root.render(<StrictMode><Harness /></StrictMode>));
+    await act(async () => { await result.loadCapabilities(); });
+    await start();
+    await tick(2);
+    expect(client.getSession).not.toHaveBeenCalled();
+    await act(async () => { read.resolve({ ...snapshot("stopped"), last_receipt: receipt }); });
+    expect(result.session?.state).toBe("ready");
+    expect(result.receipts).toEqual([]);
+    await tick();
+    expect(client.getSession).toHaveBeenCalledTimes(1);
+    expect(oldClient.getSession).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["resolve", "reject"] as const)("cleans up timers and ignores late %s after unmount", async (outcome) => {
+    await start();
+    const read = deferred<ComputerSessionSnapshot>();
+    client.getSession = vi.fn().mockReturnValue(read.promise);
+    await tick();
+    act(() => root.unmount());
+    unmounted = true;
+    const previous = result;
+    await act(async () => {
+      if (outcome === "resolve") read.resolve(snapshot("stopped"));
+      else read.reject(new Error("late error"));
+    });
+    await tick(3);
+    expect(result).toBe(previous);
+    expect(client.getSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores mismatched snapshots and stops polling failed sessions", async () => {
+    await start();
+    client.getSession = vi.fn().mockResolvedValueOnce(snapshot("stopped", "other-session")).mockResolvedValue(snapshot("failed"));
+    await tick();
+    expect(result.session?.state).toBe("ready");
+    await tick(4);
+    expect(result.session?.state).toBe("failed");
+    expect(client.getSession).toHaveBeenCalledTimes(2);
+  });
 });
