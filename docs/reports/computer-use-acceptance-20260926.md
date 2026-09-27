@@ -329,3 +329,59 @@ saying the go-e2e application could no longer be opened. The active desktop
 instance itself remained running. The alert was independently observed in
 CoreServicesUIAgent and dismissed; the subsequent go-e2e native screenshot no
 longer showed it. This environmental abort is retained, not counted as success.
+
+## Autonomous cold launch and targeted navigation — 2026-09-27
+
+Attempt 6 ran through the normal configured model Query, ComputerUse tool,
+authenticated desktop bridge, shared Wails Controller and bundled Swift helper.
+WorkBuddy had no running app processes before the attempt; it was running after
+model-generated native input. Independent read-only native inspection confirmed
+New Task selected and an empty composer. No tester-generated WorkBuddy click or
+typing was used. Private evidence:
+
+- `desktop-v2/build/validation/20260927/workbuddy-before.json`
+- `desktop-v2/build/validation/20260927/workbuddy-after-model.json`
+- `desktop-v2/build/validation/20260927/05-live-model-workbuddy-new-task.png`
+
+This establishes autonomous launch, **not a proven click on New Task**: that page
+can be the default landing state. Attempt 7 therefore required the distinct
+Assistant -> New Task transition. It dispatched two clicks, then stopped and
+reported opening the macOS window-control menu instead of Assistant. Independent
+AX inspection never established Assistant selected. The failure remains recorded
+in `attempt-7/` and `06-live-model-navigation-state.png`; it is not a pass.
+
+### Coordinate investigation, not yet a root-cause claim
+
+The current native mapping is screenshot pixels -> global display points, with
+scale applied once in `DisplayGeometry.point`. The provider adapter sends the PNG
+without a client-side resize. Read-only tests against the same configured Responses
+route, with fallback disabled, localized three generated targets on a 2704x1756
+image exactly, both with explicit coordinate instructions and with the existing
+observation-style metadata. A separate recorded full-display WorkBuddy frame also
+returned plausible in-item Assistant/New Task coordinates. These probes weaken a
+*systematic* scale-factor explanation but do not prove reliable localization in
+multi-turn live operation or explain attempt 7. No coordinate transform or safety
+checks were changed based on this hypothesis. Probe evidence remains private under
+`desktop-v2/build/validation/20260927/coordinate-probe/`.
+
+### Release scope and identity recheck
+
+- Current helper requires exactly one active display; nonempty window targeting
+  is rejected. Focus binding is an application PID, not a window identity. Multiple
+  windows of one application are not certified by that guard.
+- Drag is not an advertised native action. A draggable go-e2e control panel does
+  not establish native drag automation support.
+- `go-e2e-desktop` is the current bundle's `CFBundleExecutable`; the adjacent
+  `go-e2e` binary is its local server. Do not remove the desktop executable or
+  its authorization as obsolete. Helper/display naming is not sufficient to map
+  individual TCC entries conclusively.
+- Read-only strict signature verification of the existing bundle passed, but it
+  is ad-hoc signed with no TeamIdentifier. This is not Developer ID distribution.
+- Installer scripts/CI launch smoke tests do not establish clean-user TCC behavior
+  or in-place signed upgrade continuity. No clean-install, two-version signed
+  upgrade, notarized-release, or actual permission-revocation pass is asserted.
+
+Stable release remains **not accepted**. Prior native fixture results are retained
+with their original build/date; they are not silently relabeled as current-build
+passes. The next live attempt is independently tracked and cannot supersede the
+failed navigation record without actual page-transition evidence.

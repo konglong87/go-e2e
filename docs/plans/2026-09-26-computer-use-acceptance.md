@@ -170,3 +170,21 @@ and acceptance evidence remain private/ignored; no credentials or DBs are staged
   without a manual refresh; screenshot 04-auto-synced-stopped.png is retained.
 - This polls last_receipt; it is status/progress feedback, not a replacement for
   the complete receipt audit when multiple actions occur between poll intervals.
+
+## Resume ledger — 2026-09-27, after 55e9339
+
+- Initial worktree clean; `git pull --ff-only origin main` reported up to date.
+- Intended tracked slice: this ledger and acceptance report. No source fixes
+  proposed before coordinate root cause is established.
+- Revalidated attempts 6/7: cold launch proven; explicit navigation failed.
+- Read-only provider coordinate probes: generated targets exact; static WorkBuddy
+  localization plausible. No native input issued by probes; no blanket scale fix.
+- Release/identity sidecar: single active display, no window targeting/drag;
+  `go-e2e-desktop` remains the Wails executable; strict ad-hoc signature passes,
+  clean-install/signed-upgrade/notarization remain unverified.
+- Ongoing live test uses an isolated approved conversation, normal production
+  bridge and only ComputerUse for input. Its terminal outcome and independent
+  screenshots must be checked separately before any success claim.
+- Verification for this documentation slice: local JSON evidence inspected,
+  source mapping/identity audited, `git diff --check`; private screenshots,
+  generated probes, and isolated settings remain ignored and uncommitted.
