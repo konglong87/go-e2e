@@ -201,3 +201,21 @@ and acceptance evidence remain private/ignored; no credentials or DBs are staged
   input came exclusively from go-e2e. Private artifacts remain ignored.
 - Next: same-build cold-launch plus navigation in one run, followed by remaining
   fixture/safety/distribution gates. Overall stable-release gate stays open.
+
+### Next coherent slice: successful input returns a real fresh observation
+
+Attempt 11's cold launch stopped after typing into Spotlight: the model again
+skipped Observe and its next key action was rejected. Caption guidance alone is
+therefore not sufficient protocol robustness. Preserve that failed run.
+
+Architecture: keep Controller/backend/helper unchanged. At the agent-tool boundary,
+a successful executed action with validated after-image is followed by the existing
+owner-bound `Service.Observe`. Return its real observation ID, expiry, metadata and
+image beside the original receipt. This composes existing read-only capture, never
+retries input, never promotes an evidence-image ID into authority, and reuses all
+TCC/focus/expiry/Stop gates. Any action error/unknown/rejection, missing after-image,
+cancellation, or capture failure must fail closed while preserving the receipt.
+
+Write scope: tool implementation and tests, runtime guidance, this plan and report.
+Verification: exact operation-order/unit privacy/error tests, affected race suites,
+normal Wails build and fresh autonomous cold-launch/native screenshot evidence.

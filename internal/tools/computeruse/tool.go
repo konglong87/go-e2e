@@ -25,7 +25,7 @@ const (
 	maxPNGBytes  = 16 << 20
 	maxPNGPixels = 32 << 20
 
-	observationScreenshotGuidance = "Fresh Computer Use observation screenshot. Reference this observation ID for one input action, then observe again."
+	observationScreenshotGuidance = "Fresh Computer Use observation screenshot. Reference this observation ID for one input action. Each successful input returns another fresh observation; inspect it before deciding the next action."
 	actionEvidenceGuidance        = "Computer Use post-action evidence only; not an actionable observation. On a successful action, call observe before the next input; never use this evidence image ID as observation_id. On an error or unknown outcome, stop without replaying input."
 	screenshotCoordinateGuidance  = "Use full-image pixel coordinates with top-left origin, not window-relative or scaled-preview coordinates. Do not divide by scale_factor; the native backend performs that conversion."
 )
@@ -42,7 +42,7 @@ func New() Tool { return Tool{} }
 func (Tool) Name() string { return ToolName }
 
 func (Tool) Description() string {
-	return "Observe and operate an explicitly approved computer session using structured actions. Each input action consumes a fresh observe result. After every input, call observe again before the next input; receipt after-images are evidence only, not usable observations."
+	return "Observe and operate an explicitly approved computer session using structured actions. Each input action consumes a fresh observation. A successful input returns its receipt plus a new observation and screenshot for the next decision. Use observation.id, never receipt.after_observation_id. Observe again if the UI has not settled. Stop on errors or unknown outcomes; never replay input."
 }
 
 func (Tool) InputSchema() json.RawMessage {
@@ -106,15 +106,20 @@ type request struct {
 }
 
 func (t Tool) observe(ctx context.Context, service cu.Service, owner cu.SessionOwner, params request) tools.Result {
+	_, result := t.captureObservation(ctx, service, owner, params)
+	return result
+}
+
+func (t Tool) captureObservation(ctx context.Context, service cu.Service, owner cu.SessionOwner, params request) (cu.Observation, tools.Result) {
 	observation, err := service.Observe(ctx, owner, cu.ObserveRequest{SessionID: params.SessionID, DisplayID: params.DisplayID, WindowID: params.WindowID})
 	if err != nil {
-		return errorResult("observe_failed", "computer observation failed")
+		return cu.Observation{}, errorResult("observe_failed", "computer observation failed")
 	}
 	messages, err := observationImage(ctx, service, owner, params.SessionID, observation.ID, observationScreenshotGuidance)
 	if err != nil {
-		return errorResult("observation_image_failed", "valid computer screenshot unavailable")
+		return cu.Observation{}, errorResult("observation_image_failed", "valid computer screenshot unavailable")
 	}
-	return tools.Result{Content: marshal(map[string]any{"observation": observation}), ContextMessages: messages}
+	return observation, tools.Result{Content: marshal(map[string]any{"observation": observation}), ContextMessages: messages}
 }
 
 // Bound both compressed bytes and decoded pixels before allocating the image.
@@ -180,8 +185,8 @@ func (t Tool) execute(ctx context.Context, service cu.Service, owner cu.SessionO
 	}
 	receipt.RedactedActionSummary = string(action.Kind)
 	payload := map[string]any{"receipt": receipt}
-	out := tools.Result{IsError: executeErr != nil}
-	if executeErr != nil {
+	out := tools.Result{IsError: executeErr != nil || receipt.Outcome != cu.OutcomeExecuted}
+	if out.IsError {
 		payload["error_code"] = "action_failed"
 		payload["message"] = "computer action failed; inspect receipt before any further action"
 	}
@@ -192,6 +197,31 @@ func (t Tool) execute(ctx context.Context, service cu.Service, owner cu.SessionO
 			payload["image_error_code"] = "observation_image_failed"
 		} else {
 			out.ContextMessages = messages
+		}
+	} else {
+		out.IsError = true
+		payload["image_error_code"] = "observation_image_failed"
+	}
+	// A receipt's image is never authority for the next input. Compose a genuine
+	// owner-bound Observe only after unambiguous success and valid visual evidence.
+	// This reuses Controller/native focus, permission, cancellation and TTL gates;
+	// it never retries input or silently promotes an evidence ID to an observation.
+	if !out.IsError {
+		if ctx.Err() != nil {
+			out.IsError = true
+			payload["error_code"] = "post_action_observation_failed"
+		} else {
+			observation, fresh := t.captureObservation(ctx, service, owner, params)
+			if fresh.IsError {
+				out.IsError = true
+				payload["error_code"] = "post_action_observation_failed"
+			} else {
+				payload["observation"] = observation
+				out.ContextMessages = fresh.ContextMessages
+			}
+		}
+		if out.IsError {
+			payload["message"] = "input was executed but fresh observation is unavailable; stop without replaying input"
 		}
 	}
 	out.Content = marshal(payload)
