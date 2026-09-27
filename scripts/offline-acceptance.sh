@@ -149,6 +149,14 @@ else
   fail "history-free source snapshot regression:"
   printf '%s\n' "$output" >&2
 fi
+# Deterministic clocks and mocked process tables only: this must never run the
+# opt-in real-input safety driver or require macOS permissions in CI.
+if output="$(PYTHONDONTWRITEBYTECODE=1 python3 "$SCRIPTS_DIR/computer_acceptance_safety_test.py" 2>&1)"; then
+  pass
+else
+  fail "Computer Use safety harness regression:"
+  printf '%s\n' "$output" >&2
+fi
 if output="$(node --test "$SCRIPTS_DIR/upstream-agent-lifecycle-capture.test.cjs" 2>&1)"; then
   pass
 else

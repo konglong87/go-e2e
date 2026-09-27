@@ -269,3 +269,28 @@ normal Wails build and fresh autonomous cold-launch/native screenshot evidence.
 - Pending user action-time authorization for the visible system dialog. Private
   credential-free app/fixture remain available; do not kill the normal desktop's
   active sessions. Only the explicit copied app is allowed for crash injection.
+
+## Read-only release verification while OS consent is pending
+
+- Resume: worktree clean, main pulled up to date. Automatic continuation is not
+  consent to the macOS permission prompt; native input remains stopped.
+- Fresh local checks found no valid Developer ID Application identity, ad-hoc
+  normal-app signature/no TeamIdentifier, rejected Gatekeeper assessment and no
+  stapled app ticket. Repository signing-secret name query succeeded with none
+  of the six required names; no secret values were accessed.
+- Current CI and Windows jobs failed before executing steps. GitHub check-run
+  annotations attribute this to account billing/spending limits, not code-test
+  failures. No account/billing changes or workflow reruns are authorized here.
+- Small related source slice: include the new deterministic Computer Use safety
+  runner regressions in existing offline acceptance, so CI will actually run
+  them once runner service is available. No GUI, permission changes or native
+  events in this check. Verify via the static offline gate, then commit/push.
+
+- Offline-gate integration verified locally: `--static-only` passed 216 checks,
+  including all new deterministic safety-runner tests. This does not run native
+  input, remote CI or the optional TUI scenario group.
+- Actual release evidence recorded in the report: no local signing identity,
+  ad-hoc app rejected by Gatekeeper/no stapled app ticket, no required repository
+  signing secrets, no published releases. CI annotations explicitly identify an
+  account billing/spending-limit prerequisite before jobs can start.
+- No OS consent or account/billing action taken; native input remains stopped.

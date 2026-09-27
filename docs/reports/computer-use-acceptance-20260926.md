@@ -521,3 +521,40 @@ app remain available for the user's action-time authorization decision; there is
 no active native-input sequence. The normal desktop remains running, untouched.
 **Current-build fixture inputs and safety cases have not yet run.** This new
 consent checkpoint is not counted as an acceptance pass or a stable release.
+
+## Release prerequisites checked against actual state — 2026-09-27
+
+While the new macOS consent dialog remains awaiting user confirmation, a read-only
+release audit was performed. No permission, keychain, account billing, repository
+visibility or release-publication setting was changed; no secret value was read
+or printed.
+
+| Gate | Authoritative observation | Acceptance result |
+| --- | --- | --- |
+| Local Developer ID identity | `security find-identity -v -p codesigning` succeeded and reported zero valid identities; zero Developer ID Application identities | No local formal signing prerequisite established |
+| Current normal app | `codesign` reports ad-hoc signing and no TeamIdentifier | Local integrity verification is not distribution trust |
+| Gatekeeper | `spctl --assess --type execute` returned exit 3 / rejected | Current local app does not pass this distribution assessment |
+| Stapled app ticket | `stapler validate` returned exit 65 / no ticket | No app-level ticket established; this does not substitute for assessing a future DMG |
+| Repository signing configuration | Successful names-only query found none of the six Apple secrets referenced by the release workflow | The workflow's current all-absent branch permits unsigned/unnotarized packaging; no signed build was performed |
+| Published release artifacts | GitHub release listing returned empty; repository metadata still says private | No published candidate was available for a clean-install/signed-upgrade acceptance run |
+| Remote CI | CI for `46f7666` and Windows build for `801423c` failed before steps started | Not passing CI, but also not evidence of a code-test failure |
+
+GitHub check-run annotations explain that jobs did not start because recent
+account payments failed or the spending limit needs attention. The API does not
+resolve which of those account conditions applies. This needs the account owner,
+not a code workaround; no billing change or workflow rerun was attempted.
+
+The new deterministic Computer Use safety-runner tests were not yet included in
+the existing offline acceptance entry point. They are now wired into that gate,
+using fake clocks/process tables only, with bytecode generation disabled. Local
+`GO_E2E_GO_CACHE_MAINTENANCE=0 bash scripts/offline-acceptance.sh --static-only`
+passed **216 checks**. This is an offline/static result, not a replacement for
+remote CI, real native safety tests, or the unrun deterministic TUI scenarios.
+
+Private raw checks are under
+`desktop-v2/build/validation/20260927/release-audit/`: signing/assessment status,
+CI/job/check-run annotations, names-only signing configuration summary and the
+offline check log. Only this non-secret summary and the gate wiring enter Git.
+Stable Computer Use release remains unaccepted. OS authorization, current-build
+real-input/safety evidence, complete autonomous cold launch, and actual signed
+installation/upgrade verification remain separate outstanding gates.
