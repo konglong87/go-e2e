@@ -24,6 +24,10 @@ const (
 	pngMediaType = "image/png"
 	maxPNGBytes  = 16 << 20
 	maxPNGPixels = 32 << 20
+
+	observationScreenshotGuidance = "Fresh Computer Use observation screenshot. Reference this observation ID for one input action, then observe again."
+	actionEvidenceGuidance        = "Computer Use post-action evidence only; not an actionable observation. On a successful action, call observe before the next input; never use this evidence image ID as observation_id. On an error or unknown outcome, stop without replaying input."
+	screenshotCoordinateGuidance  = "Use full-image pixel coordinates with top-left origin, not window-relative or scaled-preview coordinates. Do not divide by scale_factor; the native backend performs that conversion."
 )
 
 type ObservationImageProvider interface {
@@ -38,7 +42,7 @@ func New() Tool { return Tool{} }
 func (Tool) Name() string { return ToolName }
 
 func (Tool) Description() string {
-	return "Observe and operate an explicitly approved computer session using structured actions. Each input action must reference the latest observation."
+	return "Observe and operate an explicitly approved computer session using structured actions. Each input action consumes a fresh observe result. After every input, call observe again before the next input; receipt after-images are evidence only, not usable observations."
 }
 
 func (Tool) InputSchema() json.RawMessage {
@@ -106,7 +110,7 @@ func (t Tool) observe(ctx context.Context, service cu.Service, owner cu.SessionO
 	if err != nil {
 		return errorResult("observe_failed", "computer observation failed")
 	}
-	messages, err := observationImage(ctx, service, owner, params.SessionID, observation.ID)
+	messages, err := observationImage(ctx, service, owner, params.SessionID, observation.ID, observationScreenshotGuidance)
 	if err != nil {
 		return errorResult("observation_image_failed", "valid computer screenshot unavailable")
 	}
@@ -115,7 +119,7 @@ func (t Tool) observe(ctx context.Context, service cu.Service, owner cu.SessionO
 
 // Bound both compressed bytes and decoded pixels before allocating the image.
 // A MIME label or PNG signature alone does not establish a valid screenshot.
-func observationImage(ctx context.Context, service cu.Service, owner cu.SessionOwner, sessionID, observationID string) ([]anthropic.MessageParam, error) {
+func observationImage(ctx context.Context, service cu.Service, owner cu.SessionOwner, sessionID, observationID, guidance string) ([]anthropic.MessageParam, error) {
 	provider, ok := service.(ObservationImageProvider)
 	if !ok || strings.TrimSpace(observationID) == "" {
 		return nil, errors.New("screenshot unavailable")
@@ -132,7 +136,7 @@ func observationImage(ctx context.Context, service cu.Service, owner cu.SessionO
 		return nil, errors.New("invalid screenshot content")
 	}
 	return []anthropic.MessageParam{{Role: "user", Content: []anthropic.ContentBlock{
-		{Type: "text", Text: "Computer Use observation screenshot."},
+		{Type: "text", Text: fmt.Sprintf("%s Image ID: %q. Image dimensions: %dx%d pixels. %s", guidance, observationID, config.Width, config.Height, screenshotCoordinateGuidance)},
 		{Type: "image", Source: &anthropic.ContentSource{Type: "base64", MediaType: pngMediaType, Data: base64.StdEncoding.EncodeToString(data)}},
 	}}}, nil
 }
@@ -182,7 +186,7 @@ func (t Tool) execute(ctx context.Context, service cu.Service, owner cu.SessionO
 		payload["message"] = "computer action failed; inspect receipt before any further action"
 	}
 	if receipt.AfterObservationID != "" {
-		messages, imageErr := observationImage(ctx, service, owner, params.SessionID, receipt.AfterObservationID)
+		messages, imageErr := observationImage(ctx, service, owner, params.SessionID, receipt.AfterObservationID, actionEvidenceGuidance)
 		if imageErr != nil {
 			out.IsError = true
 			payload["image_error_code"] = "observation_image_failed"

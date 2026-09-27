@@ -303,3 +303,37 @@ func TestToolIsSerial(t *testing.T) {
 		t.Fatalf("concurrency = %s", got)
 	}
 }
+
+// A receipt's after-image is evidence, not a fresh Controller observation:
+// BeginAction has already consumed the previous observation. Labeling both
+// images alike encouraged live models to skip Observe and get rejected.
+func TestScreenshotContextDistinguishesObservationFromActionEvidence(t *testing.T) {
+	for _, action := range []string{"observe", "click"} {
+		t.Run(action, func(t *testing.T) {
+			service := screenshotService(t)
+			service.receipt = cu.ActionReceipt{Outcome: cu.OutcomeExecuted, AfterObservationID: "after-1"}
+			result := runRequest(service, `{"session_id":"computer-1","action":"`+action+`"}`)
+			if result.IsError {
+				t.Fatal(result.Content)
+			}
+			assertImage(t, result, service.image)
+			caption := result.ContextMessages[0].Content[0].Text
+			for _, want := range []string{"10x10 pixels", "top-left", "Do not divide by scale_factor"} {
+				if !strings.Contains(caption, want) {
+					t.Errorf("caption missing %q: %s", want, caption)
+				}
+			}
+			if action == "observe" {
+				if !strings.Contains(caption, `"obs-1"`) || strings.Contains(caption, "evidence only") {
+					t.Errorf("wrong observation caption: %s", caption)
+				}
+			} else {
+				for _, want := range []string{`"after-1"`, "evidence only", "call observe before the next input", "not an actionable observation"} {
+					if !strings.Contains(caption, want) {
+						t.Errorf("caption missing %q: %s", want, caption)
+					}
+				}
+			}
+		})
+	}
+}
