@@ -208,11 +208,16 @@ func computerSnapshot(s *cu.ComputerSession) ComputerSessionDTO {
 	return result
 }
 func (m *computerManager) observe(ctx context.Context, id string) (ComputerObservationDTO, error) {
+	return m.observeTarget(ctx, id, cu.ObserveRequest{SessionID: id})
+}
+
+func (m *computerManager) observeTarget(ctx context.Context, id string, request cu.ObserveRequest) (ComputerObservationDTO, error) {
 	c, err := m.active(id)
 	if err != nil {
 		return ComputerObservationDTO{}, err
 	}
-	o, err := c.Observe(ctx, c.Session().Owner(), cu.ObserveRequest{SessionID: id})
+	request.SessionID = id
+	o, err := c.Observe(ctx, c.Session().Owner(), request)
 	if err != nil {
 		return ComputerObservationDTO{}, err
 	}

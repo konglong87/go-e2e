@@ -69,8 +69,11 @@ class Driver:
         path.write_bytes(base64.b64decode(encoded, validate=True))
         return str(path)
 
-    def observe(self, label=None):
-        data = self.require(self.call("observe", session_id=self.session))
+    def observe(self, label=None, display_id="", window_id=""):
+        fields = {"session_id": self.session}
+        if display_id: fields["display_id"] = display_id
+        if window_id: fields["window_id"] = window_id
+        data = self.require(self.call("observe", **fields))
         if label:
             self.image(data.pop("image_data"), label)
             (self.output / (label + ".json")).write_text(json.dumps(data, ensure_ascii=False, indent=2))

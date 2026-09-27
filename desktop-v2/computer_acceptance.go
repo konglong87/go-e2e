@@ -37,6 +37,8 @@ type acceptanceRequest struct {
 	Approved      bool       `json:"approved,omitempty"`
 	Action        *cu.Action `json:"action,omitempty"`
 	ObservationID string     `json:"observation_id,omitempty"`
+	DisplayID     string     `json:"display_id,omitempty"`
+	WindowID      string     `json:"window_id,omitempty"`
 }
 type acceptanceResponse struct {
 	Data  any    `json:"data,omitempty"`
@@ -195,7 +197,7 @@ func dispatchAcceptance(hostCtx, ctx context.Context, m *computerManager, r acce
 		}
 		return m.startWithLifetime(ctx, hostCtx, ComputerSessionStartInput{Approved: true})
 	case "observe":
-		return m.observe(ctx, r.SessionID)
+		return m.observeTarget(ctx, r.SessionID, cu.ObserveRequest{SessionID: r.SessionID, DisplayID: r.DisplayID, WindowID: r.WindowID})
 	case "pause":
 		return m.control(ctx, r.SessionID, cu.ActionPause)
 	case "resume":
