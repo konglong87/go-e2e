@@ -385,3 +385,46 @@ Stable release remains **not accepted**. Prior native fixture results are retain
 with their original build/date; they are not silently relabeled as current-build
 passes. The next live attempt is independently tracked and cannot supersede the
 failed navigation record without actual page-transition evidence.
+
+## Fresh-observation protocol clarification and independent navigation pass
+
+Attempt 8 executed a hotkey, skipped the mandatory subsequent Observe, and had
+its click rejected before backend dispatch. `ComputerSession.BeginAction`
+consumes each observation; a receipt after-image does not mint a new actionable
+observation. Both image kinds previously had the same generic caption. The tool
+now explicitly labels fresh observations versus post-action evidence, includes
+the actual decoded image dimensions/ID, and explains full-image pixel coordinates
+and the native scale conversion. This changes model guidance only: no automatic
+retry, coordinate transform, permission, or freshness guard was relaxed.
+
+Regression test `TestScreenshotContextDistinguishesObservationFromActionEvidence`
+failed before and passed after. Full affected tool/query/CLI/domain/backend/bridge/
+desktop/provider packages passed with the race detector. The normal untagged Wails
+app was rebuilt and strict signature verification passed. Source commit: `f8332a2`.
+
+Attempt 9 obeyed observe-between-inputs and reported successful navigation, but
+independent screenshots were taken after the intermediate state had ended. It is
+not used as independent evidence of the Assistant transition.
+
+**Attempt 10 independently passed Assistant -> New Task navigation on this normal
+build.** A passive observer reacted to the model's recorded tool-result events:
+
+- First model click acknowledged at 02:24:47 UTC; native AX/screenshot captured at
+  02:24:51 UTC showed Assistant selected and its existing conversation page.
+- Second model click acknowledged at 02:25:25 UTC; native AX/screenshot captured
+  at 02:25:28 UTC showed New Task selected and an empty composer.
+- Observe followed each click; valid Stop and terminal completion were recorded.
+- The tester made no WorkBuddy clicks/typing. The observer only read AX and
+  captured screenshots; no task, message, assistant execution, update or setting
+  change was submitted by the test.
+
+Private evidence: `desktop-v2/build/validation/20260927/attempt-10/`, particularly
+`native-evidence.json`, `event-10-click.png`, `event-19-click.png`, the terminal
+screenshot, and the redacted conversation. The two transition images were also
+visually inspected. They contain private existing application content and must
+not be committed or included in public release assets.
+
+This is a genuine successful navigation workflow, not a claim that all Computer
+Use capabilities or release gates pass. Cold-launch evidence is still attempt 6
+on its earlier build; a single-run current-build cold launch plus navigation and
+remaining input/safety/distribution gates remain distinct work.

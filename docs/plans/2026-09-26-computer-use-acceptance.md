@@ -188,3 +188,16 @@ and acceptance evidence remain private/ignored; no credentials or DBs are staged
 - Verification for this documentation slice: local JSON evidence inspected,
   source mapping/identity audited, `git diff --check`; private screenshots,
   generated probes, and isolated settings remain ignored and uncommitted.
+
+### Verified slice: screenshot protocol and live navigation
+
+- Source: `internal/tools/computeruse/tool.go`, `tool_test.go`.
+- Red/green caption regression; affected tool/query/CLI/domain/backend/bridge/
+  desktop/provider race suites all passed. Normal app rebuilt and signature checked.
+- Source committed/pushed as `f8332a2`. Receipt images now explicitly remain
+  non-actionable evidence; domain/backend semantics are unchanged.
+- Attempt 10: passive native observer independently captured Assistant selected,
+  then New Task selected/empty editor after two model clicks. Real target-app
+  input came exclusively from go-e2e. Private artifacts remain ignored.
+- Next: same-build cold-launch plus navigation in one run, followed by remaining
+  fixture/safety/distribution gates. Overall stable-release gate stays open.
