@@ -14,6 +14,7 @@ export type ComputerCoordinateSpace = {
   width: number;
   height: number;
   scale_factor: number;
+  bounds?: ComputerWindowFrame;
 };
 
 export type ComputerWindowFrame = { x: number; y: number; width: number; height: number };

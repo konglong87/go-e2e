@@ -26,7 +26,9 @@ struct DisplayGeometry: Equatable {
     }
     var coordinateSpace: JSONValue {
         .object(["display_id": .string(id), "origin": .string("top_left"), "unit": .string("pixels"),
-                 "width": .number(Double(width)), "height": .number(Double(height)), "scale_factor": .number(scale)])
+                 "width": .number(Double(width)), "height": .number(Double(height)), "scale_factor": .number(scale),
+                 "bounds": .object(["x": .number(bounds.origin.x), "y": .number(bounds.origin.y),
+                                    "width": .number(bounds.width), "height": .number(bounds.height)])])
     }
 }
 

@@ -85,8 +85,17 @@ const (
 	OriginTopLeft CoordinateOrigin = "top_left"
 )
 
-// CoordinateSpace is intentionally expressed in image coordinates. Backends
-// own conversion to physical or logical host coordinates.
+type WindowFrame struct {
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
+}
+
+// CoordinateSpace is expressed in image pixels while Bounds identifies the
+// same display in the host's global point coordinate space. Keeping both in
+// one value prevents multi-display callers from guessing negative origins or
+// mixed-DPI placement.
 type CoordinateSpace struct {
 	DisplayID   string           `json:"display_id,omitempty"`
 	Origin      CoordinateOrigin `json:"origin"`
@@ -94,13 +103,7 @@ type CoordinateSpace struct {
 	Width       int              `json:"width"`
 	Height      int              `json:"height"`
 	ScaleFactor float64          `json:"scale_factor"`
-}
-
-type WindowFrame struct {
-	X      float64 `json:"x"`
-	Y      float64 `json:"y"`
-	Width  float64 `json:"width"`
-	Height float64 `json:"height"`
+	Bounds      *WindowFrame     `json:"bounds,omitempty"`
 }
 
 type WindowRef struct {

@@ -315,6 +315,12 @@ func (s *ComputerSession) Receipt(id string) (ActionReceipt, bool) {
 func cloneCapabilities(c Capabilities) Capabilities {
 	c.Actions = append([]ActionKind(nil), c.Actions...)
 	c.Displays = append([]CoordinateSpace(nil), c.Displays...)
+	for i := range c.Displays {
+		if c.Displays[i].Bounds != nil {
+			bounds := *c.Displays[i].Bounds
+			c.Displays[i].Bounds = &bounds
+		}
+	}
 	c.Windows = append([]WindowRef(nil), c.Windows...)
 	for i := range c.Windows {
 		if c.Windows[i].Frame != nil {

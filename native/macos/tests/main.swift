@@ -76,6 +76,13 @@ do {
     let engine = Engine(platform: desktop)
     let ready = engine.readiness()
     expect(ready["displays"]?.array?.count == 2, "readiness exposes all displays")
+    let secondarySpace = ready["displays"]?.array?[1]
+    func number(_ value: JSONValue?) -> Double? {
+        guard case .number(let value) = value else { return nil }
+        return value
+    }
+    expect(number(secondarySpace?["bounds"]?["x"]) == -100 && number(secondarySpace?["bounds"]?["y"]) == 0,
+           "readiness exposes global display origin")
     let result = engine.observe(request("observe", payload: ["observation_id":.string("secondary"), "display_id":.string("2")]))
     expect(result.outcome == .executed, "secondary display observation")
 }
