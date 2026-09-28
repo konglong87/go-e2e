@@ -452,3 +452,31 @@ Independent release acceptance on 2026-09-28:
 Final related-package `go test -race ... -count=1` rerun passed all seven packages
 (controller, macOS backend, native transport, bridge, ComputerUse tool, Wails,
 CLI). Existing Darwin LC_DYSYMTAB linker warnings remain non-fatal.
+
+### Delivery checkpoint — 2026-09-28
+
+Pushed to origin/main:
+- `2c1895a`: cooperative held-button cleanup, Resume after Pause, control ACK barrier.
+- `e7f432b`: native move/resize/minimize/restore/close stale-target acceptance.
+- `5d53053`: host-owned drag broker and actual helper SIGKILL release acceptance.
+
+Cleanup: stopped the acceptance session, verified global button mask zero,
+stopped the fixture by verified PID/path, removed generated fixture bundles and
+standalone test executables. Kept requested PNG/JSON evidence. Restored and
+launched the normal untagged desktop `.app`; private acceptance sockets and
+session files are removed. No formal release/signing work was performed.
+
+Remaining functional acceptance priorities (NOT claimed complete):
+1. A latest-source production model trace that autonomously starts ComputerUse,
+   selects/opens the intended app/window, performs a bounded task, inspects fresh
+   screenshots and stops, without a manually pre-started ComputerUse session.
+   Scripted fixture passes do not replace this gate.
+2. Host-bound permission lifecycle: demonstrably revoked capture/input, actual
+   Observe/Execute failure, regrant/restart as needed, explicit safe recovery
+   without replay. The earlier live reset that still reported ready is not a pass.
+3. Audit non-drag key/modifier held-input lifetime during helper failure. The new
+   independent owner covers drag only; do not generalize its guarantee to every
+   input or simultaneous host death.
+
+Physical second-display real-hardware acceptance and formal signed distribution
+remain explicitly deferred by the user and are not blockers for this phase.
