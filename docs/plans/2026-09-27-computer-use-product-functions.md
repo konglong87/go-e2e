@@ -480,3 +480,55 @@ Remaining functional acceptance priorities (NOT claimed complete):
 
 Physical second-display real-hardware acceptance and formal signed distribution
 remain explicitly deferred by the user and are not blockers for this phase.
+
+### Production model loop investigation (baseline 4343f52, clean/pulled)
+
+Created a separate managed desktop session through the UI, selected the existing
+jiuan gpt-5.6-sol route and retained allow mode. No ComputerUse session was
+manually pre-started. The real model invoked observe with no session_id, received
+observe_failed, then invoked Stop successfully. This establishes model/tool
+connectivity and lazy start, not screenshot/input acceptance. Diagnose the
+host-vs-bridge boundary before fixing; temporary safe error diagnostics are
+limited to host Observe and the trusted runtime bridge wrapper. No screenshots,
+credentials or provider responses will be committed. WorkBuddy was not operated.
+
+The observation-only diagnostic rerun succeeded and the model called Stop;
+the initial observe failure was not reproduced, so no speculative capture fix
+or temporary logging is retained. A subsequent full model run (task 80) used
+only ComputerUse: observe, Spotlight hotkey, type application name, Enter, wait,
+Stop. WorkBuddy cold-launched at 18:16:05 while the preceding image still showed
+the launch surface. The passive wait was rejected after focus changed.
+
+Root cause confirmed with a failing native fake test: Engine applied input
+preflight to an empty operation plan (wait), incorrectly requiring old focus
+even though it posts no event. Scope of fix: skip input preflight only for empty
+plans; retain observation identity/expiry/consumption, generation/Stop, geometry,
+and stable capture checks. A companion test must still reject a focus change
+*during* the screenshot; input focus guards are untouched. Intended source
+changes now only Engine.swift + native tests + this ledger. Fresh desktop/model
+reproduction and native tests remain required before marking this slice passed.
+
+Passive wait slice verified on 2026-09-28:
+- Regression failed before the one-line input-preflight condition and passes
+  after it. Native matrix 240 assertions; platform/client matrix 465 assertions;
+  all seven related Go packages passed. Desktop rebuilt/cold-launched.
+- Through the actual tagged Wails Controller, captured a display, externally
+  changed application focus to the isolated native fixture, then executed wait
+  against the preceding observation. Outcome executed; after-image identified
+  the fixture PID/window; native fixture counters and drag events stayed zero;
+  Stop confirmed. Before focus belonged to the parent test controller's software
+  cursor surface, not the fixture. No claim that this was model-driven input.
+- Evidence: ignored `desktop-v2/build/validation/20260928/passive-wait/`
+  `result.json`, `before-controlled-switch.png`, and
+  `after-controlled-switch-after.png`; the final native image was inspected.
+
+Model gate remains open: task 81 again failed its first observe and stopped.
+Task 82's read-only model observe and Stop succeeded; its final response needed
+provider stream retries and eventually completed (it was not cancelled).
+Successful screenshots were near 5MiB, but repeated full-display probes did not
+reproduce a budget error, including a maximized window. Do not claim a size or
+permission root cause. Temporary host/CLI/native size diagnostics are removed.
+Parent CUA's Software Cursor appeared as a Window Server active surface during
+manual inspection; avoid parent UI intervention during the next autonomous run,
+prefer the desktop's normal trusted session-control API to start it, and inspect
+only task/transcript state until it finishes. No app-specific focus bypass.

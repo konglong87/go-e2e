@@ -196,7 +196,11 @@ final class Engine {
         do {
             let snapshot = try state.begin(request); try target(request, geometry: snapshot.geometry)
             let plan = try ActionPlan(request.payload, geometry: snapshot.geometry)
-            try checkInput(snapshot, request: request)
+            // Passive wait posts no input: a legitimate app launch can change
+            // focus after the preceding screenshot. Keep session/generation/
+            // expiry binding above and stable-target capture below, but reserve
+            // stale-input preflight for operations that actually post events.
+            if !plan.operations.isEmpty { try checkInput(snapshot, request: request) }
             if request.payload["kind"]?.string == ActionKind.drag.rawValue { try platform.prepareDrag(request) }
             for (index, operation) in plan.operations.enumerated() {
                 if plan.doubleClick && index > 0 { try wait(60, request: request) }

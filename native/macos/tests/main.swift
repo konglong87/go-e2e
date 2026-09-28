@@ -435,6 +435,25 @@ do {
     try engine.state.control(.stop,generation:3)
     expectThrows("stop cannot resume") { try engine.state.control(.resume,generation:4) }
 }
+// Waiting is passive. App launch may change frontmost PID after the last
+// observation; this must not be confused with posting stale-coordinate input.
+do {
+    let (engine, desktop) = setup()
+    desktop.focused = 84
+    let result = engine.execute(action("wait", ["duration_ms": .number(1)]))
+    expect(result.outcome == .executed, "passive wait captures new focus after app launch")
+    expect(desktop.posts.isEmpty, "passive wait never posts native input")
+}
+
+do {
+    let (engine, desktop) = setup()
+    desktop.captureHook = { desktop.focused = 84 }
+    let result = engine.execute(action("wait", ["duration_ms": .number(1)]))
+    expect(result.outcome == .rejected && result.error == .focusChanged,
+           "passive wait still rejects focus changes during screenshot capture")
+    expect(desktop.posts.isEmpty, "failed wait capture never posts input")
+}
+
 // A stop on the reader thread can interrupt a long wait on the worker.
 do {
     let (engine,_) = setup()
