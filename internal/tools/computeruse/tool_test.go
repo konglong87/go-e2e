@@ -118,6 +118,10 @@ func (s *coordinatingService) EnsureComputerSession(context.Context, cu.SessionO
 	return s.sessionID, nil
 }
 
+func (s *coordinatingService) CurrentComputerSession(context.Context, cu.SessionOwner) (string, error) {
+	return s.sessionID, nil
+}
+
 func testContext(service cu.Service) tools.Context {
 	return tools.Context{TenantID: 7, UserID: 11, SessionID: 13, ComputerUse: service, ComputerUseImageSupported: true, Invocation: tools.Invocation{RunID: "run-1", ToolUseID: "tool-1"}}
 }
@@ -165,6 +169,16 @@ func TestObserveLazilyCoordinatesMissingSessionID(t *testing.T) {
 	}
 	if service.starts != 1 || service.lastObserve.SessionID != testComputerSession {
 		t.Fatalf("lazy session binding did not run: starts=%d observe=%+v", service.starts, service.lastObserve)
+	}
+}
+
+func TestSubsequentActionBindsCurrentSessionWhenModelOmitsID(t *testing.T) {
+	base := screenshotService(t)
+	base.receipt = cu.ActionReceipt{Outcome: cu.OutcomeRejected, Verification: cu.VerificationNotChecked}
+	service := &coordinatingService{serviceStub: base, sessionID: testComputerSession}
+	result := New().Run(context.Background(), json.RawMessage(`{"action":"move","observation_id":"obs-1","x":10,"y":10}`), testContext(service))
+	if service.lastAction.SessionID != testComputerSession {
+		t.Fatalf("bound session=%q, want %q; result=%s", service.lastAction.SessionID, testComputerSession, result.Content)
 	}
 }
 

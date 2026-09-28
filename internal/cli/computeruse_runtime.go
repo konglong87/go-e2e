@@ -56,6 +56,17 @@ func (s *trackedDesktopComputerService) bind(id string) {
 	s.mu.Unlock()
 }
 
+func (s *trackedDesktopComputerService) CurrentComputerSession(ctx context.Context, _ computeruse.SessionOwner) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	id := s.session()
+	if strings.TrimSpace(id) == "" {
+		return "", errors.New("computer session has not been created")
+	}
+	return id, nil
+}
+
 func (s *trackedDesktopComputerService) session() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()

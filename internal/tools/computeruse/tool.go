@@ -41,6 +41,13 @@ type SessionCoordinator interface {
 	EnsureComputerSession(context.Context, cu.SessionOwner) (string, error)
 }
 
+// SessionBinding exposes the already-created host session for subsequent
+// actions. The model may omit session_id after the first observe; the trusted
+// desktop adapter supplies the bound ID, never model text.
+type SessionBinding interface {
+	CurrentComputerSession(context.Context, cu.SessionOwner) (string, error)
+}
+
 // Tool carries no authority: registry clones may safely share this value.
 type Tool struct{}
 
@@ -80,15 +87,29 @@ func (t Tool) Run(ctx context.Context, input json.RawMessage, tc tools.Context) 
 	}
 	owner := cu.SessionOwner{TenantID: tc.TenantID, UserID: tc.UserID, SessionID: tc.SessionID}
 	if strings.TrimSpace(params.SessionID) == "" {
-		if cu.ActionKind(params.Action) != cu.ActionObserve {
-			return errorResult("invalid_input", "session_id is required for this action")
+		var sessionID string
+		if cu.ActionKind(params.Action) == cu.ActionObserve {
+			coordinator, ok := service.(SessionCoordinator)
+			if !ok {
+				return errorResult("session_start_unavailable", "computer session must be started explicitly")
+			}
+			var startErr error
+			sessionID, startErr = coordinator.EnsureComputerSession(ctx, owner)
+			if startErr != nil {
+				return errorResult("session_start_failed", "computer session could not be started")
+			}
+		} else {
+			binding, ok := service.(SessionBinding)
+			if !ok {
+				return errorResult("invalid_input", "session_id is required for this action")
+			}
+			var bindErr error
+			sessionID, bindErr = binding.CurrentComputerSession(ctx, owner)
+			if bindErr != nil {
+				return errorResult("session_binding_failed", "computer session binding is unavailable")
+			}
 		}
-		coordinator, ok := service.(SessionCoordinator)
-		if !ok {
-			return errorResult("session_start_unavailable", "computer session must be started explicitly")
-		}
-		sessionID, startErr := coordinator.EnsureComputerSession(ctx, owner)
-		if startErr != nil || strings.TrimSpace(sessionID) == "" {
+		if strings.TrimSpace(sessionID) == "" {
 			return errorResult("session_start_failed", "computer session could not be started")
 		}
 		params.SessionID = sessionID
