@@ -102,6 +102,17 @@ do {
     expect(actionResult.outcome == .executed, "window-targeted click")
 }
 
+do {
+    let desktop = FakeDesktop()
+    desktop.targetWindow = NativeWindow(id: "window-10", title: "Fixture", ownerPID: 77, bundleID: "fixture.app", frame: desktop.display.bounds, displayID: desktop.display.id, isVisible: true, isFrontmost: false)
+    let engine = Engine(platform: desktop)
+    let observed = engine.observe(request("observe", payload: ["observation_id":.string("window-stale"), "window_id":.string("window-10")]))
+    expect(observed.outcome == .executed, "window identity baseline")
+    desktop.targetWindow = NativeWindow(id: "window-10", title: "Replaced", ownerPID: 77, bundleID: "fixture.app", frame: desktop.display.bounds, displayID: desktop.display.id, isVisible: true, isFrontmost: false)
+    let result = engine.execute(request("execute", payload: ["kind":.string("click"), "x":.number(2), "y":.number(2), "window_id":.string("window-10"), "observation_id":.string("window-stale")]))
+    expect(result.outcome == .rejected && desktop.posts.isEmpty, "replaced window identity rejects stale input")
+}
+
 // Safe integer conversion, overflow, bounds, NaN, infinity, fractions.
 for n in [Double.nan, Double.infinity, -Double.infinity, 1e99, -1e99, 1.5, -1, 10001] {
     expect(JSONValue.number(n).integer(in: 0...10000) == nil, "invalid integer \(n)")

@@ -50,6 +50,12 @@ final class Engine {
         }
         return try platform.geometry()
     }
+    private func requestedWindow(_ request: Envelope) throws -> NativeWindow? {
+        guard let id = request.payload["window_id"]?.string, !id.isEmpty else { return nil }
+        guard let window = try platform.windows().first(where: { $0.id == id }) else { throw SafetyError.unsupportedDisplay }
+        return window
+    }
+
     private func target(_ request: Envelope, geometry: DisplayGeometry) throws {
         if let window = request.payload["window_id"]?.string, !window.isEmpty && geometry.windowID != window { throw SafetyError.unsupportedDisplay }
         if let display = request.payload["display_id"]?.string, !display.isEmpty && display != geometry.id { throw SafetyError.unsupportedDisplay }
@@ -57,13 +63,19 @@ final class Engine {
     private func displayIDs() throws -> [String] {
         try platform.geometries().map(\.id).sorted()
     }
-    private func capture(_ request: Envelope, geometry: DisplayGeometry) throws -> JSONValue {
+    private func capture(_ request: Envelope, geometry: DisplayGeometry, expectedWindow: NativeWindow? = nil) throws -> JSONValue {
         try state.gate(request)
         guard platform.captureAllowed(), try resolveGeometry(for: request) == geometry else { throw SafetyError.screenshotFailed }
+        if let expectedWindow {
+            guard let current = try requestedWindow(request), current.matchesIdentity(expectedWindow) else { throw SafetyError.unsupportedDisplay }
+        }
         guard let focus = platform.focus() else { throw SafetyError.focusChanged }
         let data = try platform.capture(geometry)
         try state.gate(request)
         guard try resolveGeometry(for: request) == geometry else { throw SafetyError.unsupportedDisplay }
+        if let expectedWindow {
+            guard let current = try requestedWindow(request), current.matchesIdentity(expectedWindow) else { throw SafetyError.unsupportedDisplay }
+        }
         guard platform.focus() == focus else { throw SafetyError.focusChanged }
         if let windowID = geometry.windowID, platform.activeWindowID() != windowID { throw SafetyError.focusChanged }
         var result: [String: JSONValue] = ["media_type": .string("image/png"), "data": .string(data.base64EncodedString()),
@@ -77,14 +89,15 @@ final class Engine {
         do {
             try state.gate(request)
             let geometry = try resolveGeometry(for: request); try target(request, geometry: geometry)
+            let window = try requestedWindow(request)
             guard let id = request.payload["observation_id"]?.string, !id.isEmpty, id.utf8.count <= 256,
                   let focus = platform.focus() else { throw SafetyError.invalidAction }
-            guard case .object(var payload) = try capture(request, geometry: geometry) else { throw SafetyError.screenshotFailed }
+            guard case .object(var payload) = try capture(request, geometry: geometry, expectedWindow: window) else { throw SafetyError.screenshotFailed }
             guard platform.focus() == focus else { throw SafetyError.focusChanged }
             if let windowID = geometry.windowID, platform.activeWindowID() != windowID { throw SafetyError.focusChanged }
             let expires = now().addingTimeInterval(observationTTLSeconds)
             let topology = try displayIDs()
-            try state.save(Snapshot(id: id, session: request.sessionID, geometry: geometry, displayIDs: topology, focus: focus, expires: expires), for: request)
+            try state.save(Snapshot(id: id, session: request.sessionID, geometry: geometry, window: window, displayIDs: topology, focus: focus, expires: expires), for: request)
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
             payload["observation_expires_at"] = .string(formatter.string(from: expires))
@@ -95,6 +108,9 @@ final class Engine {
         guard platform.inputAllowed(), platform.captureAllowed() else { throw SafetyError.permissionRequired }
         guard platform.focus() == snapshot.focus else { throw SafetyError.focusChanged }
         if let windowID = snapshot.geometry.windowID, platform.activeWindowID() != windowID { throw SafetyError.focusChanged }
+        if let expectedWindow = snapshot.window {
+            guard let current = try requestedWindow(request), current.matchesIdentity(expectedWindow) else { throw SafetyError.unsupportedDisplay }
+        }
         guard try resolveGeometry(for: request) == snapshot.geometry else { throw SafetyError.unsupportedDisplay }
         guard try displayIDs() == snapshot.displayIDs else { throw SafetyError.unsupportedDisplay }
     }
@@ -127,16 +143,16 @@ final class Engine {
         }
     }
 
-    private func captureAfterInput(_ request: Envelope, geometry: DisplayGeometry) throws -> JSONValue {
+    private func captureAfterInput(_ request: Envelope, geometry: DisplayGeometry, expectedWindow: NativeWindow?) throws -> JSONValue {
         waitForAppActivation(request, geometry: geometry)
         for attempt in 0..<3 {
             do {
-                return try capture(request, geometry: geometry)
+                return try capture(request, geometry: geometry, expectedWindow: expectedWindow)
             } catch let error as SafetyError where error == .screenshotFailed && attempt < 2 {
                 Thread.sleep(forTimeInterval: 0.05 * Double(attempt + 1))
             }
         }
-        return try capture(request, geometry: geometry)
+        return try capture(request, geometry: geometry, expectedWindow: expectedWindow)
     }
     func execute(_ request: Envelope) -> ActionResult {
         var posted = false
@@ -165,7 +181,7 @@ final class Engine {
             // Capture requires stable current focus, not the consumed binding;
             // subsequent input still needs a fresh observe. This is not visual
             // verification that the action achieved its intended result.
-            let payload = try captureAfterInput(request, geometry: snapshot.geometry)
+            let payload = try captureAfterInput(request, geometry: snapshot.geometry, expectedWindow: snapshot.window)
             return ActionResult(outcome: .executed, payload: payload, error: nil)
         } catch {
             if posted { state.end() } // never run queued work after ambiguous input

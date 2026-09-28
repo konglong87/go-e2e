@@ -40,6 +40,12 @@ struct NativeWindow: Equatable {
     let isVisible: Bool
     let isFrontmost: Bool
 
+    func matchesIdentity(_ other: NativeWindow) -> Bool {
+        id == other.id && title == other.title && ownerPID == other.ownerPID &&
+        bundleID == other.bundleID && frame == other.frame && displayID == other.displayID &&
+        isVisible == other.isVisible
+    }
+
     var json: JSONValue {
         .object([
             "id": .string(id), "title": .string(title), "owner_pid": .number(Double(ownerPID)),
@@ -53,6 +59,7 @@ struct Snapshot {
     let id: String
     let session: String
     let geometry: DisplayGeometry
+    let window: NativeWindow?
     let displayIDs: [String]
     let focus: Int32
     let expires: Date
