@@ -250,3 +250,45 @@ Native target-read-only slice results:
   the desktop switched Spaces/focus; capture failed and session paused. No input
   was dispatched. This is NOT a real window-target success; that acceptance is
   still pending a stable test window. The test session was explicitly stopped.
+
+### Remaining functional gates (explicit user exclusions applied)
+
+| Requirement | Current evidence / next required gate |
+|---|---|
+| Unified target/geometry binding | Native snapshot identity and Go metadata validation in progress; reject mismatched target/capture geometry, no cached bounds blending |
+| Exact same-app window selection | Current MacDesktop activates the application, not an exact AX window; multi-window ambiguity/raise still needs implementation and native acceptance |
+| Single-screen drag | Basic trusted-event fixture passed earlier; real Pause/Stop/focus-loss while holding a button and independent SIGKILL release remain open |
+| Automatic orchestration | Real run 77 (`live-workbuddy-dock-activation`) recorded WorkBuddy bundle identity plus three clicks and Stop. Final screenshot was inspected; a fresh independently captured intermediate Assistant screenshot is still needed for the strongest navigation evidence |
+| Permission lifecycle | Readiness regression now pauses the domain session and restore does not auto-resume. Running-process TCC revocation evidence remains deferred/insufficient, not a pass |
+| Target state changes | Native fakes cover stale identity/geometry and focus perturbation; current-source stable real target, close/minimize/move and same-app windows remain acceptance work |
+| Physical second monitor | Deferred by user; not needed to finish this phase, not verified |
+| Formal signing/distribution | Deferred by user; no release/tag/notarization work in this phase |
+
+### Capture-bound metadata and detached snapshots
+
+The helper now emits the geometry of this capture. The Go backend rejects
+missing/malformed geometry, dimensions/scale/display mismatches, mismatched
+requested/returned window IDs, missing target frames, and any target Frame that
+differs from the capture Bounds. Whole-display capture clears the previous
+TargetWindow instead of inheriting it. All nested frame pointers in capabilities,
+observations and receipts are detached copies.
+
+Verification: 207 fake-platform native assertions; seven focused Go packages
+passed including CLI; five backend/domain/bridge/tool/desktop packages passed
+with race detection. The expiry harness also passed 23 offline tests after
+adapting its wait budget to the existing 120-second native TTL (actual expiry
+still comes from the returned metadata; runtime TTL was not changed).
+
+Latest tagged Wails host capture succeeded after a clean new process launch:
+`target-safety/metadata-target-before.png` is a real window-only `2674x1588` PNG;
+`metadata-result.json` binds window `10151` to global Bounds `(7,35,1337,794)`
+and scale `2`. Evidence is local under
+`desktop-v2/build/validation/20260928/target-safety/` (not committed). Screenshot
+was visually inspected. The subsequent input scenario found no visible test
+window and stopped without dispatch; it is not counted as an input pass. This
+supersedes the earlier failed capture attempt, not the still-open input matrix.
+
+Delivery: target validation committed/pushed as `4ea2b42`, expiry harness as
+`24a0b69`; capture-bound metadata is the coherent source slice accompanying this
+entry. Physical second-monitor and formal release gates remain explicitly out
+of this phase; all other open functional gates above remain in scope.

@@ -88,6 +88,9 @@ do {
            "readiness exposes global display origin")
     let result = engine.observe(request("observe", payload: ["observation_id":.string("secondary"), "display_id":.string("2")]))
     expect(result.outcome == .executed, "secondary display observation")
+    expect(result.payload["coordinate_space"]?["display_id"]?.string == "2", "capture binds selected display geometry")
+    expect(result.payload["coordinate_space"]?["bounds"]?["x"]?.integer(in: -1000...1000) == -100,
+           "capture binds negative global origin")
 }
 
 do {
@@ -107,6 +110,9 @@ do {
     let engine = Engine(platform: desktop)
     let observed = engine.observe(request("observe", payload: ["observation_id":.string("window-observation"), "window_id":.string("window-9")]))
     expect(observed.outcome == .executed, "window observation activates and captures target")
+    expect(observed.payload["target_window"]?["id"]?.string == "window-9", "capture identifies selected target")
+    expect(observed.payload["coordinate_space"]?["bounds"]?["x"]?.integer(in: -1000...1000) == 100,
+           "window capture carries target rather than display bounds")
     let actionRequest = request("execute", payload: ["kind":.string("click"), "x":.number(2), "y":.number(2), "window_id":.string("window-9"), "observation_id":.string("window-observation")])
     let actionResult = engine.execute(actionRequest)
     expect(actionResult.outcome == .executed, "window-targeted click")

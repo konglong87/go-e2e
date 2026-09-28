@@ -121,11 +121,16 @@ bash scripts/build-desktop-v2.sh
 open desktop-v2/build/bin/go-e2e.app
 ```
 
-**当前仍是受限控制面，不是可用的模型自动操作闭环。** Wails 中的 Controller 尚未与
-本地 server 的 Query 共享，生产请求没有设置 Computer profile/service/image capability，
-因此普通聊天不会注册 ComputerUse。provider/model/fallback 图片能力解析、MediaAsset
-失败保留策略和模型真实像素 E2E 仍待实现。验收状态与证据路径见
-[实施与验收记录](../docs/architecture/computer_use_implementation_status.md)。
+模型 ComputerUse 已通过受信任的本地 bridge 接入 Wails Controller；在模型图片路线
+已显式配置、工具权限允许且 macOS 权限就绪时，首次 `observe` 可以自动建立当前会话，
+后续动作使用单次有效的 observation。输入回执并不等于视觉验收；成功动作还会返回
+新截图，结果不明时停止且不重放输入。系统首次授权仍由用户完成。
+
+当前已有单屏真实模型启动 WorkBuddy 的记录及原生输入/窗口目标/基础拖拽的分项证据，
+但不能据此称为全部功能稳定版验收通过。同应用多窗口定向、拖拽异常释放、权限运行中
+撤销与恢复等矩阵仍须闭环。根据用户 2026-09-28 的范围调整，第二块物理显示器实机
+验收及正式签名/分发延期，不作为本阶段阻塞项，也不标记为已验证。最新实现、测试
+和证据边界见 [功能实施与验收台账](../docs/plans/2026-09-27-computer-use-product-functions.md)。
 
 ## 原生窗口控制
 

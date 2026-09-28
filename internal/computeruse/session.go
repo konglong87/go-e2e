@@ -312,33 +312,49 @@ func (s *ComputerSession) Receipt(id string) (ActionReceipt, bool) {
 	r, ok := s.receipts[id]
 	return cloneReceipt(r), ok
 }
+
+// Clone returns a detached snapshot, including nested geometry pointers.
+func (c Capabilities) Clone() Capabilities { return cloneCapabilities(c) }
+
+// Clone returns an observation whose metadata can be mutated independently.
+func (o Observation) Clone() Observation { return cloneObservation(o) }
+
+func cloneFrame(frame *WindowFrame) *WindowFrame {
+	if frame == nil {
+		return nil
+	}
+	copy := *frame
+	return &copy
+}
+func cloneCoordinateSpace(space CoordinateSpace) CoordinateSpace {
+	space.Bounds = cloneFrame(space.Bounds)
+	return space
+}
+func cloneWindowRef(window WindowRef) WindowRef {
+	window.Frame = cloneFrame(window.Frame)
+	return window
+}
 func cloneCapabilities(c Capabilities) Capabilities {
+	c.CoordinateSpace = cloneCoordinateSpace(c.CoordinateSpace)
 	c.Actions = append([]ActionKind(nil), c.Actions...)
 	c.Displays = append([]CoordinateSpace(nil), c.Displays...)
 	for i := range c.Displays {
-		if c.Displays[i].Bounds != nil {
-			bounds := *c.Displays[i].Bounds
-			c.Displays[i].Bounds = &bounds
-		}
+		c.Displays[i] = cloneCoordinateSpace(c.Displays[i])
 	}
 	c.Windows = append([]WindowRef(nil), c.Windows...)
 	for i := range c.Windows {
-		if c.Windows[i].Frame != nil {
-			frame := *c.Windows[i].Frame
-			c.Windows[i].Frame = &frame
-		}
+		c.Windows[i] = cloneWindowRef(c.Windows[i])
 	}
-	if c.TargetWindow.Frame != nil {
-		frame := *c.TargetWindow.Frame
-		c.TargetWindow.Frame = &frame
-	}
+	c.TargetWindow = cloneWindowRef(c.TargetWindow)
 	return c
 }
 func cloneObservation(o Observation) Observation {
 	o.Capabilities = cloneCapabilities(o.Capabilities)
+	o.ActiveWindow = cloneWindowRef(o.ActiveWindow)
 	return o
 }
 func cloneReceipt(r ActionReceipt) ActionReceipt {
+	r.ActiveWindowAfter = cloneWindowRef(r.ActiveWindowAfter)
 	if r.Before != nil {
 		v := *r.Before
 		r.Before = &v

@@ -63,10 +63,19 @@ func TestHelperProcess(t *testing.T) {
 			result = map[string]any{"capture_readiness": "ready", "input_readiness": "ready", "permission_state": "approved", "focus_state": "focused", "image_supported": true, "supports_pause": true, "supports_stop": true, "coordinate_space": map[string]any{"display_id": "1", "width": 2, "height": 2, "scale_factor": 2}}
 		case commandObserve:
 			result = imagePayload()
-			if mode == "target-window" {
-				result["window_id"] = "window-1"
-				result["target_window"] = map[string]any{"id": "window-1", "title": "Fixture", "owner_pid": 42, "bundle_id": "fixture.app", "frame": map[string]any{"x": 10, "y": 20, "width": 100, "height": 80}, "is_visible": true}
+			result["coordinate_space"] = captureGeometryFixture()
+			var observeRequest struct {
+				WindowID string `json:"window_id"`
 			}
+			if err := json.Unmarshal(req.Payload, &observeRequest); err != nil {
+				t.Fatal(err)
+			}
+			if mode == "target-window" && observeRequest.WindowID != "" {
+				result["coordinate_space"].(map[string]any)["bounds"] = map[string]any{"x": 10, "y": 20, "width": 1, "height": 1}
+				result["window_id"] = "window-1"
+				result["target_window"] = map[string]any{"id": "window-1", "title": "Fixture", "owner_pid": 42, "bundle_id": "fixture.app", "frame": map[string]any{"x": 10, "y": 20, "width": 1, "height": 1}, "is_visible": true}
+			}
+			mutateCaptureFixture(mode, result)
 			result["observation_expires_at"] = time.Now().Add(cu.DefaultObservationTTL).Format(time.RFC3339Nano)
 			switch mode {
 			case "missing-expiry":
@@ -257,12 +266,29 @@ func TestBackendObserveExecuteAndStop(t *testing.T) {
 
 func TestObserveBindsTargetWindowMetadata(t *testing.T) {
 	b := newTestBackend(t, "target-window", time.Second, "")
-	obs := observeTest(t, b)
+	obs, err := b.Observe(context.Background(), cu.ObserveRequest{SessionID: "session-1", WindowID: "window-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if obs.WindowID != "window-1" || obs.Capabilities.TargetWindow.ID != "window-1" {
 		t.Fatalf("target window not bound: observation=%+v target=%+v", obs, obs.Capabilities.TargetWindow)
 	}
 	if obs.Capabilities.TargetWindow.BundleID != "fixture.app" || obs.Capabilities.TargetWindow.Frame == nil {
 		t.Fatalf("target metadata incomplete: %+v", obs.Capabilities.TargetWindow)
+	}
+	if *obs.Capabilities.TargetWindow.Frame != *obs.Capabilities.CoordinateSpace.Bounds {
+		t.Fatal("window frame differs from capture geometry")
+	}
+	obs.Capabilities.TargetWindow.Frame.X = 999
+	b.mu.Lock()
+	isolated := b.observation.Capabilities.TargetWindow.Frame.X == 10 && b.capabilities.TargetWindow.Frame.X == 10
+	b.mu.Unlock()
+	if !isolated {
+		t.Fatal("window target aliases backend snapshot")
+	}
+	display := observeTest(t, b)
+	if display.WindowID != "" || display.Capabilities.TargetWindow != (cu.WindowRef{}) {
+		t.Fatal("window target survived transition to display capture")
 	}
 }
 

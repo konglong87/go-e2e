@@ -30,6 +30,8 @@ const (
 	maxTimeout                = 60 * time.Second
 	maxFrameBytes             = 8 * 1024 * 1024
 	maxActions                = 4096
+	// Match the native geometry validity tolerance for point/pixel rounding.
+	geometryScaleTolerance = 0.01
 )
 
 type Config struct {
@@ -70,6 +72,83 @@ func decodeWindowRef(raw any) (cu.WindowRef, bool) {
 		return cu.WindowRef{}, false
 	}
 	return window, true
+}
+
+// decodeFrame requires all four fields; absent/null origins must not silently
+// become zero. Negative global origins are valid, negative dimensions are not.
+func decodeFrame(raw any) (*cu.WindowFrame, bool) {
+	data, err := json.Marshal(raw)
+	if err != nil {
+		return nil, false
+	}
+	var frame struct{ X, Y, Width, Height *float64 }
+	if json.Unmarshal(data, &frame) != nil {
+		return nil, false
+	}
+	for _, v := range []*float64{frame.X, frame.Y, frame.Width, frame.Height} {
+		if v == nil || math.IsNaN(*v) || math.IsInf(*v, 0) {
+			return nil, false
+		}
+	}
+	if *frame.Width <= 0 || *frame.Height <= 0 {
+		return nil, false
+	}
+	return &cu.WindowFrame{X: *frame.X, Y: *frame.Y, Width: *frame.Width, Height: *frame.Height}, true
+}
+
+// Capture geometry comes only from this response, never from readiness caches.
+func decodeCaptureGeometry(result map[string]any, display string, scale float64, width, height int) (cu.CoordinateSpace, error) {
+	invalid := errors.New("invalid screenshot geometry metadata")
+	raw, ok := result["coordinate_space"].(map[string]any)
+	if !ok {
+		return cu.CoordinateSpace{}, invalid
+	}
+	data, err := json.Marshal(raw)
+	var space cu.CoordinateSpace
+	if err != nil || json.Unmarshal(data, &space) != nil {
+		return cu.CoordinateSpace{}, invalid
+	}
+	bounds, valid := decodeFrame(raw["bounds"])
+	if !valid || space.DisplayID != display || space.Origin != cu.OriginTopLeft || space.Unit != cu.CoordinatePixels ||
+		space.Width != width || space.Height != height || space.ScaleFactor != scale {
+		return cu.CoordinateSpace{}, invalid
+	}
+	xScale, yScale := float64(width)/bounds.Width, float64(height)/bounds.Height
+	if math.IsNaN(xScale) || math.IsInf(xScale, 0) || math.IsNaN(yScale) || math.IsInf(yScale, 0) ||
+		math.Abs(xScale-scale) >= geometryScaleTolerance || math.Abs(yScale-scale) >= geometryScaleTolerance {
+		return cu.CoordinateSpace{}, invalid
+	}
+	space.Bounds = bounds
+	return space, nil
+}
+
+func decodeCaptureTarget(result map[string]any, requested string) (cu.WindowRef, error) {
+	invalid := errors.New("invalid screenshot target metadata")
+	windowID := ""
+	if raw, exists := result["window_id"]; exists {
+		var ok bool
+		windowID, ok = raw.(string)
+		if !ok {
+			return cu.WindowRef{}, invalid
+		}
+	}
+	if windowID != requested {
+		return cu.WindowRef{}, invalid
+	}
+	if windowID == "" {
+		return cu.WindowRef{}, nil
+	}
+	target, ok := decodeWindowRef(result["target_window"])
+	raw, object := result["target_window"].(map[string]any)
+	if !ok || !object || target.ID != windowID {
+		return cu.WindowRef{}, invalid
+	}
+	frame, valid := decodeFrame(raw["frame"])
+	if !valid {
+		return cu.WindowRef{}, invalid
+	}
+	target.Frame = frame
+	return target, nil
 }
 
 type helperResponse struct {
@@ -234,7 +313,7 @@ func (b *Backend) Capabilities(ctx context.Context) (cu.Capabilities, error) {
 	b.mu.Lock()
 	b.capabilities = caps
 	b.mu.Unlock()
-	return caps, nil
+	return caps.Clone(), nil
 }
 
 func (b *Backend) acquire(ctx context.Context) (uint64, error) {
@@ -282,6 +361,17 @@ func (b *Backend) Observe(ctx context.Context, req cu.ObserveRequest) (cu.Observ
 	if !ok || display == "" || !okScale || math.IsNaN(scale) || math.IsInf(scale, 0) || scale <= 0 || scale > 8 || (req.DisplayID != "" && req.DisplayID != display) {
 		return cu.Observation{}, errors.New("invalid screenshot coordinate metadata")
 	}
+	coordinateSpace, err := decodeCaptureGeometry(response.Result, display, scale, width, height)
+	if err != nil {
+		return cu.Observation{}, err
+	}
+	targetWindow, err := decodeCaptureTarget(response.Result, req.WindowID)
+	if err != nil {
+		return cu.Observation{}, err
+	}
+	if targetWindow.ID != "" && *targetWindow.Frame != *coordinateSpace.Bounds {
+		return cu.Observation{}, errors.New("screenshot target frame does not match capture bounds")
+	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if !b.validEpoch(epoch) {
@@ -295,31 +385,15 @@ func (b *Backend) Observe(ctx context.Context, req cu.ObserveRequest) (cu.Observ
 	if !okExpiry || expiryErr != nil || !expires.After(now) || expires.After(now.Add(cu.DefaultObservationTTL)) {
 		return cu.Observation{}, errors.New("invalid observation expiration metadata")
 	}
-	caps := b.capabilities
-	windowID, _ := response.Result["window_id"].(string)
-	targetWindow, _ := decodeWindowRef(response.Result["target_window"])
+	caps := b.capabilities.Clone()
 	activeWindow, _ := decodeWindowRef(response.Result["active_window"])
-	coordinateSpace := caps.CoordinateSpace
-	for _, displaySpace := range caps.Displays {
-		if displaySpace.DisplayID == display {
-			coordinateSpace = displaySpace
-			break
-		}
-	}
-	coordinateSpace.DisplayID = display
-	coordinateSpace.Origin = cu.OriginTopLeft
-	coordinateSpace.Unit = cu.CoordinatePixels
-	coordinateSpace.Width = width
-	coordinateSpace.Height = height
-	coordinateSpace.ScaleFactor = scale
 	caps.CoordinateSpace = coordinateSpace
-	if targetWindow.ID != "" {
-		caps.TargetWindow = targetWindow
-	}
-	obs := cu.Observation{ID: id, SessionID: req.SessionID, DisplayID: display, WindowID: windowID, ActiveWindow: activeWindow, Width: width, Height: height, ScaleFactor: scale, Screenshot: cu.NewMediaRef(id, mediaType, data, width, height), Capabilities: caps, ObservedAt: now, ExpiresAt: expires}
+	// A display capture explicitly clears the preceding window target.
+	caps.TargetWindow = targetWindow
+	obs := cu.Observation{ID: id, SessionID: req.SessionID, DisplayID: display, WindowID: req.WindowID, ActiveWindow: activeWindow, Width: width, Height: height, ScaleFactor: scale, Screenshot: cu.NewMediaRef(id, mediaType, data, width, height), Capabilities: caps, ObservedAt: now, ExpiresAt: expires}
 	b.images = map[string]imageData{id: {data: data, mediaType: mediaType}}
-	b.observation = obs
-	b.capabilities = caps
+	b.observation = obs.Clone()
+	b.capabilities = caps.Clone()
 	return obs, nil
 }
 
