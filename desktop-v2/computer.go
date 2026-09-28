@@ -120,7 +120,19 @@ func (m *computerManager) capabilities(ctx context.Context) (cu.Capabilities, er
 	if err != nil {
 		return cu.Capabilities{}, err
 	}
-	return b.Capabilities(ctx)
+	caps, err := b.Capabilities(ctx)
+	if err != nil {
+		return cu.Capabilities{}, err
+	}
+	if m.controller != nil {
+		s := m.controller.Session()
+		if s.State() != cu.SessionStopped && s.State() != cu.SessionFailed {
+			if err := s.UpdateCapabilities(caps); err != nil {
+				return cu.Capabilities{}, err
+			}
+		}
+	}
+	return caps, nil
 }
 func (m *computerManager) start(ctx context.Context, in ComputerSessionStartInput) (ComputerSessionDTO, error) {
 	return m.startWithLifetime(ctx, ctx, in)
@@ -152,6 +164,9 @@ func (m *computerManager) startOwnedWithLifetime(ctx, lifetime context.Context, 
 				if err := s.Approve(owner); err != nil {
 					return ComputerSessionDTO{}, err
 				}
+			}
+			if _, err := m.refreshSessionCapabilitiesLocked(ctx, s); err != nil {
+				return ComputerSessionDTO{}, err
 			}
 			return computerSnapshot(s), nil
 		}
@@ -189,6 +204,20 @@ func (m *computerManager) startOwnedWithLifetime(ctx, lifetime context.Context, 
 	}
 	return computerSnapshot(s), nil
 }
+func (m *computerManager) refreshSessionCapabilitiesLocked(ctx context.Context, s *cu.ComputerSession) (cu.Capabilities, error) {
+	if m.backend == nil {
+		return cu.Capabilities{}, errors.New("computer backend is unavailable")
+	}
+	caps, err := m.backend.Capabilities(ctx)
+	if err != nil {
+		return cu.Capabilities{}, err
+	}
+	if err := s.UpdateCapabilities(caps); err != nil {
+		return cu.Capabilities{}, err
+	}
+	return caps, nil
+}
+
 func (m *computerManager) active(id string) (*cu.Controller, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

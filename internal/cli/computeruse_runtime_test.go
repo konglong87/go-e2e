@@ -117,10 +117,11 @@ func TestDesktopComputerUseRuntimeGates(t *testing.T) {
 				t.Fatalf("owner changed: %+v", bridge.owners)
 			}
 			if test.want {
-				if opts.computerUseService != bridge {
-					t.Fatal("supplied bridge was not injected")
+				tracked, ok := opts.computerUseService.(*trackedDesktopComputerService)
+				if !ok || tracked.desktopComputerBridge != bridge {
+					t.Fatal("supplied bridge was not wrapped for session tracking")
 				}
-				for _, want := range []string{computerRuntimeHostSession, "fresh observation", "Never retry", "Stop", "untrusted data"} {
+				for _, want := range []string{"first call", "observe", "fresh observation", "Never retry", "Stop", "untrusted data"} {
 					if !strings.Contains(guidance, want) {
 						t.Errorf("guidance missing %q", want)
 					}
@@ -351,4 +352,42 @@ func TestNewQuerySessionDesktopComputerUseFinalRoute(t *testing.T) {
 			}
 		})
 	}
+}
+
+type coordinatedRuntimeComputerBridge struct {
+	runtimeComputerBridge
+	ensureCalls int
+}
+
+func (b *coordinatedRuntimeComputerBridge) EnsureComputerSession(_ context.Context, _ cu.SessionOwner) (string, error) {
+	b.ensureCalls++
+	return b.sessionID, nil
+}
+
+func TestDesktopComputerUseColdStartUsesLazyCoordinator(t *testing.T) {
+	bridge := &coordinatedRuntimeComputerBridge{runtimeComputerBridge: runtimeComputerBridge{sessionID: computerRuntimeHostSession}}
+	opts := computerRuntimeOptions(bridge)
+	guidance, cleanup := configureDesktopComputerUse(context.Background(), computerRuntimeConfig(), computerRuntimeModel, &opts)
+	defer cleanup()
+	if guidance == "" || !opts.computerUseProfile || !opts.computerUseImageSupported {
+		t.Fatalf("cold-start computer use was not enabled: guidance=%q profile=%v image=%v", guidance, opts.computerUseProfile, opts.computerUseImageSupported)
+	}
+	if len(bridge.owners) != 0 {
+		t.Fatalf("cold-start setup performed an existing-session lookup: %d", len(bridge.owners))
+	}
+	tracked, ok := opts.computerUseService.(*trackedDesktopComputerService)
+	if !ok {
+		t.Fatalf("service type=%T, want tracked desktop service", opts.computerUseService)
+	}
+	id, err := tracked.EnsureComputerSession(context.Background(), computerRuntimeOwner)
+	if err != nil || id != computerRuntimeHostSession {
+		t.Fatalf("ensure id=%q err=%v", id, err)
+	}
+	if bridge.ensureCalls != 1 {
+		t.Fatalf("ensure calls=%d, want 1", bridge.ensureCalls)
+	}
+	if tracked.session() != computerRuntimeHostSession {
+		t.Fatalf("tracked session=%q, want %q", tracked.session(), computerRuntimeHostSession)
+	}
+	cleanup()
 }

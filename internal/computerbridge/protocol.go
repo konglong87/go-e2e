@@ -1,5 +1,5 @@
-// Package computerbridge proxies an already-approved host computer session over
-// an authenticated Unix socket. It cannot create sessions or grant approval.
+// Package computerbridge proxies a trusted host computer session over an authenticated Unix socket.
+// Session creation remains owned by the host coordinator; the bridge never grants OS permissions.
 package computerbridge
 
 import (
@@ -22,6 +22,7 @@ const (
 	DefaultRequestTimeout = 15 * time.Second
 
 	OpLookup       = "lookup"
+	OpEnsure       = "ensure"
 	OpCapabilities = "capabilities"
 	OpObserve      = "observe"
 	OpExecute      = "execute"
@@ -56,6 +57,12 @@ type SessionLookup interface {
 	Lookup(context.Context, cu.SessionOwner) (string, error)
 }
 
+// SessionCoordinator lazily creates a host-owned session after the normal
+// ComputerUse permission gate. It cannot mint macOS TCC approval.
+type SessionCoordinator interface {
+	EnsureComputerSession(context.Context, cu.SessionOwner) (string, error)
+}
+
 // Request is the host wire contract. Exactly one operation is sent per POST.
 // The host must independently authenticate and authorize every request. Owner's
 // SessionID is a conversation ID, distinct from the host SessionID below.
@@ -76,7 +83,7 @@ type Response struct {
 	Error string          `json:"error,omitempty"`
 }
 
-// SessionResponse acknowledges controls or returns an already-approved lookup.
+// SessionResponse acknowledges controls or returns a host-owned session ID.
 type SessionResponse struct {
 	SessionID string `json:"session_id"`
 }

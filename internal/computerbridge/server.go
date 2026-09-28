@@ -87,6 +87,16 @@ func dispatchHost(r *http.Request, host Host, q Request) (any, error) {
 			err = ErrInvalidResponse
 		}
 		return LookupResponse{SessionID: id}, err
+	case OpEnsure:
+		coordinator, ok := host.(SessionCoordinator)
+		if !ok {
+			return nil, ErrRemote
+		}
+		id, err := coordinator.EnsureComputerSession(ctx, q.Owner)
+		if err == nil && !validID(id) {
+			err = ErrInvalidResponse
+		}
+		return SessionResponse{SessionID: id}, err
 	case OpCapabilities:
 		return host.Capabilities(ctx, q.Owner, q.SessionID)
 	case OpObserve:

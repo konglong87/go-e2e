@@ -23,6 +23,17 @@ func (c *Client) Lookup(ctx context.Context, owner cu.SessionOwner) (string, err
 	return out.SessionID, nil
 }
 
+func (c *Client) EnsureComputerSession(ctx context.Context, owner cu.SessionOwner) (string, error) {
+	var out SessionResponse
+	if err := c.data(ctx, Request{Op: OpEnsure, Owner: owner}, &out); err != nil {
+		return "", err
+	}
+	if !validID(out.SessionID) {
+		return "", ErrInvalidResponse
+	}
+	return out.SessionID, nil
+}
+
 func (c *Client) Capabilities(ctx context.Context, owner cu.SessionOwner, sessionID string) (cu.Capabilities, error) {
 	var out cu.Capabilities
 	if err := c.data(ctx, Request{Op: OpCapabilities, Owner: owner, SessionID: sessionID}, &out); err != nil {

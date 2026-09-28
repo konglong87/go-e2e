@@ -94,6 +94,22 @@ func (s *ComputerSession) Capabilities() Capabilities {
 	defer s.mu.RUnlock()
 	return cloneCapabilities(s.capabilities)
 }
+
+// UpdateCapabilities refreshes dynamic host inventory without changing the
+// session's approval or lifecycle state. Display/window targets are ephemeral
+// Window Server resources; they must not remain frozen at session creation.
+func (s *ComputerSession) UpdateCapabilities(c Capabilities) error {
+	if err := c.Validate(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.state == SessionStopped || s.state == SessionFailed {
+		return errors.New("computer session is terminal")
+	}
+	s.capabilities = cloneCapabilities(c)
+	return nil
+}
 func (s *ComputerSession) Approve(o SessionOwner) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

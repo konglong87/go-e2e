@@ -82,6 +82,7 @@ type helperResponse struct {
 type rejection struct{ code string }
 
 func (e *rejection) Error() string { return "computer helper rejected request: " + e.code }
+func (e *rejection) Code() string  { return e.code }
 
 // Native input needs no model credentials, agent sockets or loader overrides.
 // Apply the same allowlist to explicit env overrides, not just inherited env.
@@ -174,7 +175,11 @@ func (b *Backend) request(ctx context.Context, command, sessionID, actionID stri
 		if *result.OK {
 			err = errors.New("invalid helper rejection")
 		} else {
-			return result, &rejection{"not_dispatched"}
+			code := result.ErrorCode
+			if code == "" {
+				code = "not_dispatched"
+			}
+			return result, &rejection{code: code}
 		}
 	case cu.OutcomeUnknown, cu.OutcomeFailed:
 		return result, errors.New("helper could not confirm action outcome")

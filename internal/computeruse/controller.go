@@ -81,7 +81,19 @@ func (c *Controller) Capabilities(ctx context.Context, owner SessionOwner, id st
 	if err := c.authorize(owner, id); err != nil {
 		return Capabilities{}, err
 	}
-	return c.session.Capabilities(), nil
+	release, err := lockControllerGate(ctx, c.serial)
+	if err != nil {
+		return Capabilities{}, err
+	}
+	defer release()
+	caps, err := c.backend.Capabilities(ctx)
+	if err != nil {
+		return Capabilities{}, err
+	}
+	if err := c.session.UpdateCapabilities(caps); err != nil {
+		return Capabilities{}, err
+	}
+	return caps, nil
 }
 func (c *Controller) Observe(ctx context.Context, owner SessionOwner, r ObserveRequest) (Observation, error) {
 	if err := c.authorize(owner, r.SessionID); err != nil {
@@ -98,7 +110,7 @@ func (c *Controller) Observe(ctx context.Context, owner SessionOwner, r ObserveR
 	o, err := c.backend.Observe(op, r)
 	if err != nil {
 		_ = c.session.Pause()
-		return Observation{}, errors.New("computer capture failed; session paused")
+		return Observation{}, observeFailure(err)
 	}
 	if err = c.session.SetObservation(o); err != nil {
 		_ = c.session.Pause()
@@ -106,6 +118,21 @@ func (c *Controller) Observe(ctx context.Context, owner SessionOwner, r ObserveR
 	}
 	return o, nil
 }
+func observeFailure(err error) error {
+	var coded interface{ Code() string }
+	if errors.As(err, &coded) {
+		switch coded.Code() {
+		case "unsupported_display":
+			return errors.New("computer target is stale; refresh capabilities and observe again")
+		case "permission_required":
+			return errors.New("computer permissions are required; restore Screen Recording and Accessibility, then refresh capabilities")
+		case "focus_changed":
+			return errors.New("computer focus changed; observe again before continuing")
+		}
+	}
+	return errors.New("computer capture failed; session paused")
+}
+
 func (c *Controller) Execute(ctx context.Context, owner SessionOwner, a Action) (ActionReceipt, error) {
 	if err := c.authorize(owner, a.SessionID); err != nil {
 		return ActionReceipt{}, err
