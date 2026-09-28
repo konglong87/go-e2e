@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	cu "github.com/konglong87/go-e2e/internal/computeruse"
 )
@@ -53,6 +54,7 @@ func (s computerAgentService) controller(ctx context.Context, owner cu.SessionOw
 	}
 	session := c.Session()
 	if !session.Owns(owner) || !session.Approved() || (!lookup && session.ID() != id) || session.State() == cu.SessionStopped || session.State() == cu.SessionFailed {
+		startupLog(fmt.Sprintf("computer controller denied: owner=%+v session_owner=%+v requested_session=%q actual_session=%q approved=%t state=%q lookup=%t", owner, session.Owner(), id, session.ID(), session.Approved(), session.State(), lookup))
 		return nil, errComputerAgentUnauthorized
 	}
 	return c, nil
