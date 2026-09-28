@@ -838,3 +838,33 @@ ComputerUse permission gate, an approved managed conversation can create/bind a
 session on the Wails host lifetime; local preview and foreign owners are still
 rejected. A live model-driven proof remains blocked on an available image-capable
 provider route, not on a native input or session-ownership assertion.
+
+## Latest source functional follow-up — 2026-09-28
+
+The latest source adds the missing production bridge path for cold-start
+Computer Use: authenticated local IPC now supports a host-owned `ensure`
+operation. Runtime registration no longer requires `Lookup` to succeed before
+ComputerUse is exposed when the bridge supports the coordinator; the first
+model observe can omit `session_id`, and cleanup stops only the session ID
+created/bound during that query. Existing legacy test adapters keep the old
+lookup compatibility path.
+
+Dynamic Window Server inventory is refreshed into active session capabilities.
+Native allowlisted rejection codes now distinguish stale target, permission,
+and focus failures while preserving fail-closed behavior.
+
+Helper transport recovery was implemented and exercised through the latest
+Wails acceptance host. Evidence is under:
+
+```text
+desktop-v2/build/validation/20260928/real-latest/
+```
+
+The real helper was SIGKILLed after a fresh observation. The next capabilities
+call started a new helper, the session became `paused`, and explicit Resume
+followed by a fresh Observe succeeded. No old action or observation was replayed.
+
+A live `tccutil reset Accessibility/ScreenCapture com.wails.go-e2e` was also
+issued. The already-running process continued to report `permission_state=approved`,
+which is recorded as macOS deferred behavior, not as an active-session revoke
+pass. No permissions were left intentionally disabled by this run.

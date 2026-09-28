@@ -148,3 +148,56 @@ fail-closed; this slice does not silently replay an action after recovery.
 
 Focused frontend verification: typecheck passed; 52 Computer Use hook/workspace
 tests passed.
+
+## Latest functional slices — 2026-09-28
+
+### Lazy cold-start bridge wiring
+
+The desktop bridge now exposes a host-owned `ensure` operation in addition to
+lookup. The runtime no longer requires an existing approved session before it
+registers Computer Use: the first model `observe` may omit `session_id`, the
+trusted host coordinator creates/binds the session, and the runtime tracks the
+created ID for bounded cleanup. Existing non-coordinating test adapters retain
+the explicit lookup compatibility path.
+
+Focused Go tests cover the wire command, owner authorization, lazy setup without
+an existing-session lookup, and cleanup binding. The production host bridge is
+still subject to provider/image-route gating; this change does not bypass that
+operator assertion.
+
+### Dynamic targets and stale-window diagnostics
+
+Active sessions refresh dynamic display/window inventory on capabilities/start
+refresh instead of retaining the window list from session creation. Native
+rejections preserve allowlisted safety codes so stale display/window, focus, and
+permission failures can be distinguished without exposing helper text. Stale
+window IDs remain fail-closed and are never remapped by title alone.
+
+### Helper crash recovery
+
+When an active helper transport dies, the host retries capabilities once with a
+fresh bundled helper. The session is paused and its previous observation is
+invalidated before the replacement controller is exposed; recovery requires
+explicit Resume plus a fresh Observe, and no action is replayed.
+
+Real latest-source Wails acceptance evidence:
+
+```text
+desktop-v2/build/validation/20260928/real-latest/crash-before.png
+desktop-v2/build/validation/20260928/real-latest/helper-before-kill.txt
+desktop-v2/build/validation/20260928/real-latest/crash-capabilities-after.json
+desktop-v2/build/validation/20260928/real-latest/crash-snapshot-after.json
+desktop-v2/build/validation/20260928/real-latest/crash-recovered-observe.png
+```
+
+The helper PID changed after SIGKILL; the session reported `paused`, then
+Resume + a new observation succeeded. This is helper recovery evidence, not a
+claim of SIGKILL-time system mouse-up.
+
+### Permission lifecycle boundary
+
+A live `tccutil reset Accessibility/ScreenCapture` request was issued against
+the current host bundle. macOS kept the running process's readiness approved;
+this is recorded as a deferred live-revocation result rather than a pass. A
+restart-bound TCC revoke/restore remains a separate acceptance gate and no
+permission is claimed revoked when the native probe still reported approved.
