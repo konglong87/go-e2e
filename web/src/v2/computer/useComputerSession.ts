@@ -117,8 +117,9 @@ export function useComputerSession(client: ComputerClient | null) {
 
   const loadCapabilities = useCallback(async () => {
     if (!client) return null;
-    // Never let a readiness refresh supersede a session safety control.
-    if (current.current.session || current.current.loading) return null;
+    // A readiness refresh is allowed while a session is active so TCC revoke /
+    // restore transitions become visible without an Observe or input fallback.
+    if (current.current.loading || current.current.controlIntent) return null;
     return run(() => client.getCapabilities(), (value, state) => ({
       ...state, available: value.available, capabilities: value.capabilities,
       error: value.error_message || value.error_code || (!value.available ? "Computer Use is unavailable on this host." : null)

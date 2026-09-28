@@ -136,3 +136,15 @@ route failed with the same 404. Therefore the new lazy coordinator is covered
 by focused unit tests but has not yet received a live model call in this
 environment; no automatic-session pass is claimed until an available
 vision-capable route is configured.
+
+## Active-session permission lifecycle UI — 2026-09-27
+
+Readiness refreshes are no longer suppressed merely because a session is active.
+Focus/visibility/recheck refreshes can now surface a TCC revoke/restore while
+preserving the session's safety controls. The permission guide is also rendered
+when an active session reports `permission_state=required`, so the user gets a
+recovery path instead of a stale “ready” surface. Native action gates remain
+fail-closed; this slice does not silently replay an action after recovery.
+
+Focused frontend verification: typecheck passed; 52 Computer Use hook/workspace
+tests passed.

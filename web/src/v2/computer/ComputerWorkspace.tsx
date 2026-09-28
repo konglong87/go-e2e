@@ -208,7 +208,7 @@ export function ComputerWorkspace({ client, selectedConversationRef = null }: { 
         onStop={() => action(computer.stop)}
       />
       {active ? <p role="status" style={{ margin: 0, overflowWrap: "anywhere" }}>{approvalLabel}</p> : null}
-      {!computer.session || computer.session.state === "stopped" ? <ComputerPermissionGuide
+      {!computer.session || computer.session.state === "stopped" || computer.capabilities?.permission_state === "required" ? <ComputerPermissionGuide
         available={computer.available}
         capabilities={computer.capabilities}
         client={client}
