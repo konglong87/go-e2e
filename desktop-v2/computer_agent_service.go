@@ -32,6 +32,7 @@ func (s computerAgentService) EnsureComputerSession(ctx context.Context, owner c
 	}
 	snapshot, err := s.manager.startOwnedWithLifetime(ctx, lifetime, ComputerSessionStartInput{Approved: true}, owner)
 	if err != nil {
+		startupLog("computer ensure failed: " + err.Error())
 		return "", err
 	}
 	return snapshot.ID, nil
