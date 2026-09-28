@@ -81,7 +81,14 @@ final class Engine {
         var result: [String: JSONValue] = ["media_type": .string("image/png"), "data": .string(data.base64EncodedString()),
                         "width": .number(Double(geometry.width)), "height": .number(Double(geometry.height)),
                         "scale_factor": .number(geometry.scale), "display_id": .string(geometry.id)]
-        if let windowID = geometry.windowID { result["window_id"] = .string(windowID) }
+        if let windowID = geometry.windowID {
+            result["window_id"] = .string(windowID)
+            do {
+                if let target = try platform.windows().first(where: { $0.id == windowID }) {
+                    result["target_window"] = target.json
+                }
+            } catch { }
+        }
         if let active = try? platform.windows().first(where: { $0.isFrontmost }) { result["active_window"] = active.json }
         return .object(result)
     }

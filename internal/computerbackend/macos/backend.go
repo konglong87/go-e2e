@@ -297,8 +297,25 @@ func (b *Backend) Observe(ctx context.Context, req cu.ObserveRequest) (cu.Observ
 	}
 	caps := b.capabilities
 	windowID, _ := response.Result["window_id"].(string)
+	targetWindow, _ := decodeWindowRef(response.Result["target_window"])
 	activeWindow, _ := decodeWindowRef(response.Result["active_window"])
-	caps.CoordinateSpace = cu.CoordinateSpace{DisplayID: display, Origin: cu.OriginTopLeft, Unit: cu.CoordinatePixels, Width: width, Height: height, ScaleFactor: scale}
+	coordinateSpace := caps.CoordinateSpace
+	for _, displaySpace := range caps.Displays {
+		if displaySpace.DisplayID == display {
+			coordinateSpace = displaySpace
+			break
+		}
+	}
+	coordinateSpace.DisplayID = display
+	coordinateSpace.Origin = cu.OriginTopLeft
+	coordinateSpace.Unit = cu.CoordinatePixels
+	coordinateSpace.Width = width
+	coordinateSpace.Height = height
+	coordinateSpace.ScaleFactor = scale
+	caps.CoordinateSpace = coordinateSpace
+	if targetWindow.ID != "" {
+		caps.TargetWindow = targetWindow
+	}
 	obs := cu.Observation{ID: id, SessionID: req.SessionID, DisplayID: display, WindowID: windowID, ActiveWindow: activeWindow, Width: width, Height: height, ScaleFactor: scale, Screenshot: cu.NewMediaRef(id, mediaType, data, width, height), Capabilities: caps, ObservedAt: now, ExpiresAt: expires}
 	b.images = map[string]imageData{id: {data: data, mediaType: mediaType}}
 	b.observation = obs
