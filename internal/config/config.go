@@ -484,6 +484,15 @@ type ProviderConfig struct {
 	authTokenSet bool
 }
 
+// FallbackRouteName is the runtime identity used for operator assertions and
+// provider telemetry. ordinal is the zero-based position in the original chain.
+func (p ProviderConfig) FallbackRouteName(ordinal int) string {
+	if name := strings.TrimSpace(p.Name); name != "" {
+		return name
+	}
+	return fmt.Sprintf("fallback-%d", ordinal+1)
+}
+
 type FallbackSettings struct {
 	Enabled   *bool            `json:"enabled,omitempty" yaml:"enabled,omitempty"`
 	Providers []ProviderConfig `json:"providers,omitempty" yaml:"providers,omitempty"`

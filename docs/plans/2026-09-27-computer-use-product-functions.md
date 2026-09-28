@@ -532,3 +532,43 @@ Parent CUA's Software Cursor appeared as a Window Server active surface during
 manual inspection; avoid parent UI intervention during the next autonomous run,
 prefer the desktop's normal trusted session-control API to start it, and inspect
 only task/transcript state until it finishes. No app-specific focus bypass.
+
+### Vision-safe fallback selection (baseline aed0641, clean/pushed)
+
+Production normal-build task 83 was submitted via the existing authenticated
+session-control API, with no parent GUI calls during its run. First observe and
+Spotlight hotkey succeeded. Primary gpt-5.6-sol then returned HTTP 200 SSE that
+failed JSON decoding before any event; after its retry was exhausted the client
+attempted glm-5.1 without an image-input assertion. The task eventually stopped
+itself and reported incomplete, with no WorkBuddy click. No restart or duplicate
+submission was issued. The same query still owned ComputerUse authority while
+client-internal fallback changed routes: the existing primary-only registry gate
+is insufficient to constrain that live fallback chain.
+
+Design: keep primary registration gate; before constructing the client for an
+enabled ComputerUse query, copy/filter fallbacks to exactly asserted provider +
+effective model. Ordinary queries retain all existing fallbacks. Canonical
+fallback naming is shared with the client; unnamed original positions must be
+frozen in retained copies to avoid ordinal alias changes. Do not persist settings
+or weaken image/owner/input gates. Independent worker owns only the new CLI tests;
+main owns routing helper/wiring. Verify real local HTTP primary failure after an
+observe screenshot, zero calls to unasserted fallback, approved fallback image
+receipt, model overrides, immutable config, and ordinary-query compatibility.
+
+Vision fallback verification:
+- 17 pure route-table cases and five production newQuerySession/local-HTTP
+  scenarios pass. Primary first invokes Observe; its next request demonstrably
+  contains the returned PNG. HTTP overloaded errors and SSE errors exercise
+  actual failover (ordinary non-retryable 400 would be a false-positive test).
+- With the client-construction filter deliberately removed, the undeclared-route
+  regression fails: one forbidden fallback request receives the image and the
+  query incorrectly succeeds. Restoring the filter passes, including -race.
+  Declared fallback positive controls still receive the actual image and finish;
+  cleanup Stop occurs exactly once on both success and failure.
+- Full config, anthropic transport, and CLI packages pass. The shared canonical
+  naming helper preserves general client behavior; ordinary queries are unfiltered.
+- A minimal gpt-6-sol probe through the actual production Responses client, with
+  fallbacks disabled and a generated 1x1 image, succeeded in 2.81s and returned OK.
+  An earlier bare urllib probe returned 403; that is not evidence that the model
+  is unavailable, given the successful production-client counterexample. This
+  proves connectivity/image acceptance only, not desktop task completion.

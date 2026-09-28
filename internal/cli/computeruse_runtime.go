@@ -182,10 +182,9 @@ func positiveComputerOwnerID(id uint64) bool {
 }
 
 // ComputerUse needs an explicit image-input assertion for the effective
-// primary route. Fallbacks are resolved before a query is constructed; gating
-// on every configured fallback would disable ComputerUse whenever an unrelated
-// text-only fallback exists, even when the selected route is vision-capable.
-// If routing changes to a fallback, the query must be rebuilt and gated again.
+// primary route. Unrelated text-only fallbacks must not disable this route;
+// constrainComputerUseFallbacks separately removes them from the live client
+// chain so client-internal failover cannot bypass the image-input assertion.
 func computerUseRoutesSupportImages(cfg config.Config, model string) bool {
 	settings := cfg.Settings.ComputerUse
 	provider := computerUseRouteProvider(cfg.SelectedProvider, "primary")
@@ -197,4 +196,30 @@ func computerUseRouteProvider(name, fallback string) string {
 		return name
 	}
 	return fallback
+}
+
+// Scope routing constraints to this query, not the operator's stored settings.
+// Every fallback can receive the screenshot history and ComputerUse tools, even
+// before the first tool call, so all retained routes must be explicitly trusted.
+func constrainComputerUseFallbacks(cfg config.Config, model string, enabled bool) config.Config {
+	if !enabled {
+		return cfg
+	}
+	allowed := make([]config.ProviderConfig, 0, len(cfg.FallbackProviders))
+	for index, provider := range cfg.FallbackProviders {
+		name := provider.FallbackRouteName(index)
+		effectiveModel := strings.TrimSpace(provider.Model)
+		if effectiveModel == "" {
+			effectiveModel = strings.TrimSpace(model)
+		}
+		if !cfg.Settings.ComputerUse.SupportsImageInput(name, effectiveModel) {
+			continue
+		}
+		// A filtered unnamed route must not be renamed to another ordinal by
+		// the client. Preserve its original identity on a value copy only.
+		provider.Name = name
+		allowed = append(allowed, provider)
+	}
+	cfg.FallbackProviders = allowed
+	return cfg
 }

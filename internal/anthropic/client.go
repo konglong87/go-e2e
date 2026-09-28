@@ -109,10 +109,7 @@ func NewClient(cfg config.Config) *Client {
 	}, registry)
 	providers := []providerClient{primary}
 	for i, provider := range cfg.FallbackProviders {
-		name := strings.TrimSpace(provider.Name)
-		if name == "" {
-			name = fmt.Sprintf("fallback-%d", i+1)
-		}
+		name := provider.FallbackRouteName(i)
 		fallback := newProviderClient(name, "fallback", provider, registry)
 		providers = append(providers, fallback)
 	}

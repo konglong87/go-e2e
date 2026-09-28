@@ -711,6 +711,7 @@ func newQuerySession(ctx context.Context, opts options, initial []anthropic.Mess
 	if runtimePolicy.DiscoverPlugins {
 		cfg.Settings.MCPServers = mergedMCPServers(opts.cwd, cfg.Settings.MCPServers)
 	}
+	cfg = constrainComputerUseFallbacks(cfg, model, opts.computerUseProfile)
 	client := anthropic.NewClient(cfg)
 	policy := permissions.FromSettings(cfg.Settings.Permissions)
 	hookRunner := hooks.New(cfg.Settings.Hooks)
