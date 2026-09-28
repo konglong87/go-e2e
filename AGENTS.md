@@ -52,3 +52,10 @@ These rules apply to every task in this repository.
 2. Prefer existing project patterns and abstractions. Do not add compatibility code only to preserve an unreleased structure unless requested.
 3. Never use destructive Git commands such as `git reset --hard` or `git checkout --` to clean up work.
 4. Do not create a branch or worktree without user approval.
+
+## Phase Closure And Priority Order
+
+1. After every phase, review all unfinished requirements before starting the next phase.
+2. Update the task's implementation ledger with remaining items in descending priority, dependencies, acceptance gates, and explicit deferrals. Distinguish implementation, automated tests, native scripted acceptance, and autonomous model acceptance.
+3. Finish focused verification, commit and push the coherent slice, then execute the highest-priority unblocked item. If an item is blocked, record the concrete blocker before proceeding to the next unblocked item; do not silently drop it.
+4. For the current Computer Use work, the authoritative remaining queue is at the top of `docs/plans/2026-09-27-computer-use-product-functions.md`. Physical second-display acceptance and formal signing/distribution remain explicitly deferred by the user.

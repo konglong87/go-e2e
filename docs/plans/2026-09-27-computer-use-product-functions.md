@@ -1,5 +1,40 @@
 # Computer Use functional parity — implementation ledger
 
+## Current ordered queue — 2026-09-28
+
+This section is the current execution order. Older sections below are historical
+phase evidence, not an assertion that their pending statuses remain current.
+After **every phase**: verify its actual acceptance boundary, reorder all remaining
+items here, commit/push the verified slice, then take the highest-priority
+unblocked item. Record blockers instead of silently skipping requirements.
+
+| Order | Remaining item | Next acceptance gate |
+|---|---|---|
+| P0-1 | Non-drag helper-crash input release | Implement host-owned bounded press/release batches for click, double-click pairs, key/hotkey and each Unicode scalar; preserve per-operation cancellation/focus checks. Verify deterministic helper death, balanced native events, no held keys/buttons, unknown receipts and no replay. Drag crash-release evidence does not cover these actions. |
+| P0-2 | WorkBuddy autonomous model loop | Fresh built app and authenticated session-control run: automatic session start, launch WorkBuddy, visibly navigate, click New Task, inspect fresh screenshot, Stop. Require actual tool trace and visual evidence, with no parent GUI intervention during the model run. Tasks 84/85 did not complete this gate. |
+| P0-3 | Host permission revoke/regrant lifecycle | Real host-bound revoke, dispatched Observe/Execute failures, recovery (restart if required), fresh capabilities and observation, no old input replay. A disabled UI or ineffective reset is insufficient. |
+| P1-1 | Lost Ensure ACK recovery | Bind startup to an owner/query-attempt token and cancel/query that exact attempt; test permanent ACK loss without guessing another query's session ID. Same-query Stop fix alone does not close this boundary. |
+| P1-2 | Auto-created session visibility in desktop UI | Read-only authoritative discovery/status and exact-session controls; verify a model-created session and its Stop state in the real desktop UI. |
+| P1-3 | Multi-display software coverage without second hardware | Audit/add negative-origin, mixed-DPI, display routing and topology-change tests. Separate mock/virtual results from physical hardware acceptance. |
+| P1-4 | Final functional regression and evidence audit | Rebuild desktop, run affected Go/race and native/UI suites, inspect screenshots, reconcile requirements with actual evidence, remove unrequested temporary outputs. Include development-build restart/upgrade behavior without claiming signed clean-install acceptance. |
+| Deferred | Second physical display | No second physical monitor available; do not mark hardware acceptance passed. |
+| Deferred LAST | Formal signing and distribution | Developer ID, notarization, signed fresh-install/upgrade and release delivery are outside this functional phase. |
+
+### Resume/change ledger
+
+- Baseline: `d1ff501`, clean working tree, `git pull --ff-only origin main`
+  confirmed up to date. No pre-existing dirty files.
+- This documentation slice owns only `AGENTS.md` and this ledger. It persists
+  the user's phase-priority rule; it does not implement the pending input broker.
+- Non-drag batch delegation returned a design only, with no source changes.
+  Protocol remains subject to review: do not expand the existing public hotkey
+  limits or batch an entire text action merely to fit a proposed wire schema.
+- Baseline tests passed: `go test ./internal/computerbackend/macos
+  ./internal/computerbridge ./internal/computeruse`.
+- No new native UI acceptance or screenshots in this documentation slice.
+  Delivery is recorded by the Git commit containing this section and its push.
+
+
 ## Scope and delivery order
 
 Functional work first; Developer ID, notarization, release distribution and
