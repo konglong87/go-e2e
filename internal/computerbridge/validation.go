@@ -36,7 +36,7 @@ func validRequest(r Request) bool {
 	if !validOwner(r.Owner) {
 		return false
 	}
-	if r.Op == OpLookup {
+	if r.Op == OpLookup || r.Op == OpEnsure {
 		return r.SessionID == "" && r.ObserveRequest == nil && r.Action == nil && r.ObservationID == ""
 	}
 	if !validID(r.SessionID) {

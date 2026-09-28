@@ -179,6 +179,9 @@ func TestAgentBridgeUnixControllerIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
+	if got, err := client.EnsureComputerSession(ctx, owner); err != nil || got != id {
+		t.Fatalf("ensure over bridge got=%q err=%v", got, err)
+	}
 	if got, err := client.Lookup(ctx, owner); err != nil || got != id {
 		t.Fatal(got, err)
 	}
