@@ -572,3 +572,29 @@ Vision fallback verification:
   An earlier bare urllib probe returned 403; that is not evidence that the model
   is unavailable, given the successful production-client counterexample. This
   proves connectivity/image acceptance only, not desktop task completion.
+
+### Latest model/readback checkpoint
+
+Normal source `8a7e7c2` cold-launched. Fresh managed session 60 / task 84 used
+`gpt-6-sol` at low effort, launched through the normal authenticated API. No
+manual ComputerUse start or parent GUI calls occurred during the run. Native
+observe/hotkey/type/click succeeded and WorkBuddy cold-launched at 21:45:06 local.
+Independent native screenshot `model-autonomy/gpt6-workbuddy-opened.png` (existing
+window 10676) was inspected. This proves launch only: the run did NOT reach the
+requested New Task click, and the empty landing page is not proof of that click.
+
+The query failed on two HTTP 200 SSE responses with zero decoded events and
+`unexpected end of JSON input` / `responses_sse_json_decode`. With the route guard
+in place, no unasserted fallback was used. Raw frames are still needed to identify
+the decoding cause; no empty-frame/truncation hypothesis is claimed proven.
+
+Additional scope findings: the UI hook lacks read-only discovery of auto-created
+session IDs; its idle panel is not authoritative Stop evidence. Audit whether
+same-query omitted-session Observe can recreate a user-stopped grant. These
+session orchestration items, real permission revoke/regrant, non-drag crash
+release, and complete model navigation remain required. Investigation and
+next-step boundaries are recorded in `memory/2026-09-28-computer-use-runtime-debug.md`.
+
+Task-owned temporary fixture binaries, diagnostic source, test sockets and probe
+source were removed. Normal desktop build is running; requested evidence remains
+under ignored validation paths. No formal signing or release was attempted.
