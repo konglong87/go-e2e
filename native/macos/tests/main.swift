@@ -8,6 +8,8 @@ final class FakeDesktop: DesktopPlatform {
     var extraDisplays: [DisplayGeometry] = []
     var targetWindow: NativeWindow?
     var selectedWindowID: String?
+    var activationCalls = 0
+    var windowGeometryHook: (() -> Void)?
     var capturePermission = true
     var inputPermission = true
     var focused: Int32? = 42
@@ -23,10 +25,11 @@ final class FakeDesktop: DesktopPlatform {
     func geometries() throws -> [DisplayGeometry] { if failGeometry { throw SafetyError.unsupportedDisplay }; return [display] + extraDisplays }
     func windows() throws -> [NativeWindow] { targetWindow.map { [$0] } ?? [] }
     func windowGeometry(_ id: String) throws -> DisplayGeometry {
+        windowGeometryHook?()
         guard let window = targetWindow, window.id == id else { throw SafetyError.unsupportedDisplay }
         return DisplayGeometry(id: window.displayID, bounds: window.frame, width: display.width, height: display.height, windowID: window.id)
     }
-    func activateWindow(_ id: String) -> Bool { guard targetWindow?.id == id else { return false }; selectedWindowID = id; focused = targetWindow?.ownerPID; return true }
+    func activateWindow(_ id: String) -> Bool { activationCalls += 1; guard targetWindow?.id == id else { return false }; selectedWindowID = id; focused = targetWindow?.ownerPID; return true }
     func activeWindowID() -> String? { selectedWindowID }
     func captureAllowed() -> Bool { capturePermission }
     func inputAllowed() -> Bool { inputPermission }
@@ -109,15 +112,33 @@ do {
     expect(actionResult.outcome == .executed, "window-targeted click")
 }
 
-do {
+// Identity is not a mutable document title. No input or evidence read may
+// reactivate a target and mask a user's focus change.
+for change in ["title", "owner", "bundle", "frame", "closed", "focus-during-geometry", "focus-after-input"] {
     let desktop = FakeDesktop()
-    desktop.targetWindow = NativeWindow(id: "window-10", title: "Fixture", ownerPID: 77, bundleID: "fixture.app", frame: desktop.display.bounds, displayID: desktop.display.id, isVisible: true, isFrontmost: false)
+    let original = NativeWindow(id: "window-10", title: "Fixture", ownerPID: 77, bundleID: "fixture.app", frame: desktop.display.bounds, displayID: desktop.display.id, isVisible: true, isFrontmost: false)
+    desktop.targetWindow = original
     let engine = Engine(platform: desktop)
-    let observed = engine.observe(request("observe", payload: ["observation_id":.string("window-stale"), "window_id":.string("window-10")]))
-    expect(observed.outcome == .executed, "window identity baseline")
-    desktop.targetWindow = NativeWindow(id: "window-10", title: "Replaced", ownerPID: 77, bundleID: "fixture.app", frame: desktop.display.bounds, displayID: desktop.display.id, isVisible: true, isFrontmost: false)
-    let result = engine.execute(request("execute", payload: ["kind":.string("click"), "x":.number(2), "y":.number(2), "window_id":.string("window-10"), "observation_id":.string("window-stale")]))
-    expect(result.outcome == .rejected && desktop.posts.isEmpty, "replaced window identity rejects stale input")
+    let observed = engine.observe(request("observe", payload: ["observation_id":.string("window-stale"), "window_id":.string(original.id)]))
+    expect(observed.outcome == .executed, "window identity baseline: \(change)")
+    let activations = desktop.activationCalls
+    if change == "closed" {
+        desktop.targetWindow = nil
+    } else if change == "focus-during-geometry" {
+        desktop.windowGeometryHook = { desktop.selectedWindowID = "other-window" }
+    } else if change == "focus-after-input" {
+        desktop.postHook = { desktop.selectedWindowID = "other-window" }
+    } else {
+        desktop.targetWindow = NativeWindow(id: original.id, title: change == "title" ? "Next page" : original.title,
+            ownerPID: change == "owner" ? 78 : original.ownerPID, bundleID: change == "bundle" ? "other.app" : original.bundleID,
+            frame: change == "frame" ? original.frame.offsetBy(dx: 1, dy: 0) : original.frame,
+            displayID: original.displayID, isVisible: true, isFrontmost: false)
+    }
+    let result = engine.execute(request("execute", payload: ["kind":.string("move"), "x":.number(2), "y":.number(2), "window_id":.string(original.id), "observation_id":.string("window-stale")]))
+    let expected: Outcome = change == "title" ? .executed : (change == "focus-after-input" ? .unknown : .rejected)
+    expect(result.outcome == expected, "target outcome: \(change)")
+    expect(desktop.posts.count == (change == "title" || change == "focus-after-input" ? 1 : 0), "target input count: \(change)")
+    expect(desktop.activationCalls == activations, "Execute never activates window: \(change)")
 }
 
 // Safe integer conversion, overflow, bounds, NaN, infinity, fractions.
@@ -236,9 +257,11 @@ do {
     let (engine, desktop) = setup()
     var focusReads = 0
     var capturedFocus: Int32?
-    desktop.focusHook = {
-        focusReads += 1
-        if focusReads >= 3 { desktop.focused = 7 }
+    desktop.postHook = {
+        desktop.focusHook = {
+            focusReads += 1
+            if focusReads >= 3 { desktop.focused = 7 }
+        }
     }
     desktop.captureHook = { capturedFocus = desktop.focused }
     let result = engine.execute(action("click", ["x": .number(2), "y": .number(99)]))

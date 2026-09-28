@@ -221,3 +221,32 @@ run correctly failed closed because the tool was not in the allow list; the
 allow-mode rerun was stopped before producing a ComputerUse tool trace. The
 native host/bridge acceptance and helper recovery evidence remain independent
 passes.
+
+## Scope update and current safety slice — 2026-09-28
+
+The user explicitly deferred physical second-monitor acceptance as well as
+formal signing/distribution. Neither blocks this phase; neither is claimed
+verified. Single-display window selection, drag cancellation/release, permission
+recovery, and automatic session lifecycle remain required.
+
+Worktree at `31840a0` was clean; no pre-existing user edits. Current slice:
+- Native target resolution must be read-only during Execute and evidence capture.
+  Only an explicit Observe may activate a requested target. Otherwise capture
+  can steal focus back after an action/user focus change and conceal the change.
+- Bind identity to Window Server ID, process and bundle, not a mutable title.
+  Geometry/visibility must remain checked independently before input.
+- Regression matrix: identity/geometry replacement, title-only navigation,
+  external focus between checks/capture; count activation calls in fakes.
+- Verification: native tests, Go controller/backend suites, rebuild Wails app,
+  real window-target before/after screenshot and focus-rejection evidence.
+- Delivery: pending tests, commit and push; no release tag or distribution work.
+
+Native target-read-only slice results:
+- Red/green regression: the new title-navigation test failed before the change;
+  203 fake-platform native assertions pass after it. Execute calls activation
+  zero times, including focus loss during geometry resolution and after input.
+- Go backend/domain/desktop focused suites pass; tagged Wails `.app` built.
+- Real host readiness reports approved/ready. Target Observe was attempted while
+  the desktop switched Spaces/focus; capture failed and session paused. No input
+  was dispatched. This is NOT a real window-target success; that acceptance is
+  still pending a stable test window. The test session was explicitly stopped.

@@ -43,7 +43,7 @@ struct NativeWindow: Equatable {
     let isFrontmost: Bool
 
     func matchesIdentity(_ other: NativeWindow) -> Bool {
-        id == other.id && title == other.title && ownerPID == other.ownerPID &&
+        id == other.id && ownerPID == other.ownerPID &&
         bundleID == other.bundleID && frame == other.frame && displayID == other.displayID &&
         isVisible == other.isVisible
     }

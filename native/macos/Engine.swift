@@ -40,7 +40,6 @@ final class Engine {
     }
     private func resolveGeometry(for request: Envelope) throws -> DisplayGeometry {
         if let windowID = request.payload["window_id"]?.string, !windowID.isEmpty {
-            guard platform.activateWindow(windowID) else { throw SafetyError.focusChanged }
             return try platform.windowGeometry(windowID)
         }
         let all = try platform.geometries()
@@ -63,21 +62,24 @@ final class Engine {
     private func displayIDs() throws -> [String] {
         try platform.geometries().map(\.id).sorted()
     }
-    private func capture(_ request: Envelope, geometry: DisplayGeometry, expectedWindow: NativeWindow? = nil) throws -> JSONValue {
-        try state.gate(request)
-        guard platform.captureAllowed(), try resolveGeometry(for: request) == geometry else { throw SafetyError.screenshotFailed }
+    // Pure revalidation: never raise/activate a window while checking input or
+    // capturing evidence. A focus change must remain visible to the caller.
+    private func checkWindow(_ request: Envelope, geometry: DisplayGeometry, expectedWindow: NativeWindow?) throws {
         if let expectedWindow {
             guard let current = try requestedWindow(request), current.matchesIdentity(expectedWindow) else { throw SafetyError.unsupportedDisplay }
         }
+        if let windowID = geometry.windowID, platform.activeWindowID() != windowID { throw SafetyError.focusChanged }
+    }
+    private func capture(_ request: Envelope, geometry: DisplayGeometry, expectedWindow: NativeWindow? = nil) throws -> JSONValue {
+        try state.gate(request)
+        guard platform.captureAllowed(), try resolveGeometry(for: request) == geometry else { throw SafetyError.screenshotFailed }
+        try checkWindow(request, geometry: geometry, expectedWindow: expectedWindow)
         guard let focus = platform.focus() else { throw SafetyError.focusChanged }
         let data = try platform.capture(geometry)
         try state.gate(request)
         guard try resolveGeometry(for: request) == geometry else { throw SafetyError.unsupportedDisplay }
-        if let expectedWindow {
-            guard let current = try requestedWindow(request), current.matchesIdentity(expectedWindow) else { throw SafetyError.unsupportedDisplay }
-        }
+        try checkWindow(request, geometry: geometry, expectedWindow: expectedWindow)
         guard platform.focus() == focus else { throw SafetyError.focusChanged }
-        if let windowID = geometry.windowID, platform.activeWindowID() != windowID { throw SafetyError.focusChanged }
         var result: [String: JSONValue] = ["media_type": .string("image/png"), "data": .string(data.base64EncodedString()),
                         "width": .number(Double(geometry.width)), "height": .number(Double(geometry.height)),
                         "scale_factor": .number(geometry.scale), "display_id": .string(geometry.id)]
@@ -95,6 +97,10 @@ final class Engine {
     func observe(_ request: Envelope) -> ActionResult {
         do {
             try state.gate(request)
+            if let window = try requestedWindow(request) {
+                guard platform.captureAllowed(), platform.inputAllowed() else { throw SafetyError.permissionRequired }
+                guard window.isVisible, platform.activateWindow(window.id) else { throw SafetyError.focusChanged }
+            }
             let geometry = try resolveGeometry(for: request); try target(request, geometry: geometry)
             let window = try requestedWindow(request)
             guard let id = request.payload["observation_id"]?.string, !id.isEmpty, id.utf8.count <= 256,
@@ -114,12 +120,13 @@ final class Engine {
     private func checkInput(_ snapshot: Snapshot, request: Envelope) throws {
         guard platform.inputAllowed(), platform.captureAllowed() else { throw SafetyError.permissionRequired }
         guard platform.focus() == snapshot.focus else { throw SafetyError.focusChanged }
-        if let windowID = snapshot.geometry.windowID, platform.activeWindowID() != windowID { throw SafetyError.focusChanged }
-        if let expectedWindow = snapshot.window {
-            guard let current = try requestedWindow(request), current.matchesIdentity(expectedWindow) else { throw SafetyError.unsupportedDisplay }
-        }
+        try checkWindow(request, geometry: snapshot.geometry, expectedWindow: snapshot.window)
         guard try resolveGeometry(for: request) == snapshot.geometry else { throw SafetyError.unsupportedDisplay }
         guard try displayIDs() == snapshot.displayIDs else { throw SafetyError.unsupportedDisplay }
+        // Native discovery can take time. Recheck focus after it, immediately
+        // before entering the short event-post gate.
+        guard platform.focus() == snapshot.focus else { throw SafetyError.focusChanged }
+        try checkWindow(request, geometry: snapshot.geometry, expectedWindow: snapshot.window)
     }
     private func wait(_ milliseconds: Int, request: Envelope) throws {
         let end = ProcessInfo.processInfo.systemUptime + Double(milliseconds) / 1000
