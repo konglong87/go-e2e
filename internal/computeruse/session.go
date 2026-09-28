@@ -108,6 +108,14 @@ func (s *ComputerSession) UpdateCapabilities(c Capabilities) error {
 		return errors.New("computer session is terminal")
 	}
 	s.capabilities = cloneCapabilities(c)
+	// A live TCC/readiness regression revokes the ability to observe or input
+	// immediately. Keep approval as an ownership record, but require an
+	// explicit Resume after the host reports ready again; never auto-resume or
+	// replay the last observation/action across a permission transition.
+	if !c.Ready() && s.approved && s.state != SessionPendingApproval {
+		s.state = SessionPaused
+		s.hasObservation = false
+	}
 	return nil
 }
 func (s *ComputerSession) Approve(o SessionOwner) error {
@@ -166,7 +174,7 @@ func (s *ComputerSession) CanObserve() error {
 	return s.canObserveLocked()
 }
 func (s *ComputerSession) canObserveLocked() error {
-	if !s.approved || s.state == SessionStopped || s.state == SessionFailed || s.state == SessionPendingApproval {
+	if !s.approved || !s.capabilities.Ready() || s.state == SessionStopped || s.state == SessionFailed || s.state == SessionPendingApproval {
 		return errors.New("computer observation is not authorized")
 	}
 	if s.inFlight != "" {

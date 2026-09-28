@@ -45,6 +45,42 @@ func TestComputerStartApprovalAndSnapshotContract(t *testing.T) {
 		t.Fatal("legacy wrong ID field retained")
 	}
 }
+func TestComputerPermissionLossPausesAndRequiresExplicitRecovery(t *testing.T) {
+	m, _ := testComputerManager()
+	ctx := context.Background()
+	ready, err := m.start(ctx, ComputerSessionStartInput{Approved: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := m.backend.(*cu.FakeBackend)
+	backend.CapabilitiesValue.CaptureReadiness = cu.ReadinessPermissionRequired
+	backend.CapabilitiesValue.InputReadiness = cu.ReadinessPermissionRequired
+	backend.CapabilitiesValue.PermissionState = cu.PermissionRequired
+	if _, err := m.capabilities(ctx); err != nil {
+		t.Fatal("permission refresh failed:", err)
+	}
+	paused := m.controller.Session()
+	if paused.State() != cu.SessionPaused || !paused.Approved() {
+		t.Fatalf("permission loss did not pause approved session: state=%q approved=%t", paused.State(), paused.Approved())
+	}
+	if _, err := m.control(ctx, ready.ID, cu.ActionResume); err == nil {
+		t.Fatal("resume succeeded while permissions were unavailable")
+	}
+	backend.CapabilitiesValue.CaptureReadiness = cu.ReadinessReady
+	backend.CapabilitiesValue.InputReadiness = cu.ReadinessReady
+	backend.CapabilitiesValue.PermissionState = cu.PermissionApproved
+	if _, err := m.capabilities(ctx); err != nil {
+		t.Fatal("permission restore refresh failed:", err)
+	}
+	if paused.State() != cu.SessionPaused {
+		t.Fatalf("permission restore auto-resumed session: state=%q", paused.State())
+	}
+	recovered, err := m.control(ctx, ready.ID, cu.ActionResume)
+	if err != nil || recovered.State != cu.SessionNeedsObservation {
+		t.Fatalf("explicit recovery failed: snapshot=%+v err=%v", recovered, err)
+	}
+}
+
 func TestComputerControlsReturnStateAndNewSessionReplacesStoppedBackend(t *testing.T) {
 	m, count := testComputerManager()
 	ctx := context.Background()
