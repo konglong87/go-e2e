@@ -116,11 +116,7 @@ func (m *computerManager) ensureBackendLocked(ctx context.Context) (cu.Backend, 
 func (m *computerManager) capabilities(ctx context.Context) (cu.Capabilities, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	b, err := m.ensureBackendLocked(ctx)
-	if err != nil {
-		return cu.Capabilities{}, err
-	}
-	caps, err := b.Capabilities(ctx)
+	caps, err := m.readCapabilitiesLocked(ctx)
 	if err != nil {
 		return cu.Capabilities{}, err
 	}
@@ -181,10 +177,13 @@ func (m *computerManager) startOwnedWithLifetime(ctx, lifetime context.Context, 
 	if err != nil {
 		return ComputerSessionDTO{}, err
 	}
-	caps, err := b.Capabilities(ctx)
+	caps, err := m.readCapabilitiesLocked(ctx)
 	if err != nil {
 		return ComputerSessionDTO{}, err
 	}
+	// readCapabilitiesLocked may replace a crashed helper; bind the new
+	// controller to the backend that actually answered the probe.
+	b = m.backend
 	if err := ctx.Err(); err != nil {
 		return ComputerSessionDTO{}, err
 	}
@@ -205,10 +204,7 @@ func (m *computerManager) startOwnedWithLifetime(ctx, lifetime context.Context, 
 	return computerSnapshot(s), nil
 }
 func (m *computerManager) refreshSessionCapabilitiesLocked(ctx context.Context, s *cu.ComputerSession) (cu.Capabilities, error) {
-	if m.backend == nil {
-		return cu.Capabilities{}, errors.New("computer backend is unavailable")
-	}
-	caps, err := m.backend.Capabilities(ctx)
+	caps, err := m.readCapabilitiesLocked(ctx)
 	if err != nil {
 		return cu.Capabilities{}, err
 	}
@@ -216,6 +212,49 @@ func (m *computerManager) refreshSessionCapabilitiesLocked(ctx context.Context, 
 		return cu.Capabilities{}, err
 	}
 	return caps, nil
+}
+
+// readCapabilitiesLocked retries once with a fresh helper when the current
+// helper transport has died. The session object and approval remain intact,
+// but no observation or action is replayed; callers must observe again.
+func (m *computerManager) readCapabilitiesLocked(ctx context.Context) (cu.Capabilities, error) {
+	b, err := m.ensureBackendLocked(ctx)
+	if err != nil {
+		return cu.Capabilities{}, err
+	}
+	caps, err := b.Capabilities(ctx)
+	if err == nil || ctx.Err() != nil {
+		return caps, err
+	}
+	if replaceErr := m.replaceBackendLocked(ctx); replaceErr != nil {
+		return cu.Capabilities{}, err
+	}
+	return m.backend.Capabilities(ctx)
+}
+
+func (m *computerManager) replaceBackendLocked(ctx context.Context) error {
+	if m.backend != nil {
+		closeCtx, cancel := context.WithTimeout(context.Background(), computerRequestTimeout)
+		_ = m.backend.Close(closeCtx)
+		cancel()
+	}
+	m.backend = nil
+	b, err := m.ensureBackendLocked(ctx)
+	if err != nil {
+		return err
+	}
+	if m.controller != nil {
+		// A replacement helper has no trustworthy observation/action state.
+		// Revoke the old observation before exposing the new controller; the
+		// caller must observe again and no input is replayed.
+		_ = m.controller.Session().Pause()
+		c, err := cu.NewController(m.controller.Session(), b)
+		if err != nil {
+			return err
+		}
+		m.controller = c
+	}
+	return nil
 }
 
 func (m *computerManager) active(id string) (*cu.Controller, error) {

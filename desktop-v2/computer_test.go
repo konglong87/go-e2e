@@ -176,3 +176,44 @@ func TestGetComputerSessionDoesNotInitializeBackend(t *testing.T) {
 		t.Fatal("status lookup initialized backend or session")
 	}
 }
+
+type failingCapabilitiesBackend struct {
+	*cu.FakeBackend
+	err error
+}
+
+func (b *failingCapabilitiesBackend) Capabilities(context.Context) (cu.Capabilities, error) {
+	return cu.Capabilities{}, b.err
+}
+
+func TestComputerManagerRestartsFailedHelperBeforeCreatingSession(t *testing.T) {
+	caps := cu.Capabilities{
+		ProtocolVersion:  cu.ProtocolVersion,
+		Platform:         cu.PlatformMacOS,
+		Backend:          cu.BackendNativeHost,
+		CaptureReadiness: cu.ReadinessReady,
+		InputReadiness:   cu.ReadinessReady,
+		PermissionState:  cu.PermissionApproved,
+		CoordinateSpace:  cu.CoordinateSpace{Origin: cu.OriginTopLeft, Unit: cu.CoordinatePixels},
+	}
+	first := &failingCapabilitiesBackend{FakeBackend: &cu.FakeBackend{CapabilitiesValue: caps}, err: context.DeadlineExceeded}
+	second := &cu.FakeBackend{CapabilitiesValue: caps}
+	created := 0
+	m := &computerManager{owner: cu.SessionOwner{TenantID: 1, UserID: 1}, factory: func(context.Context) (cu.Backend, error) {
+		created++
+		if created == 1 {
+			return first, nil
+		}
+		return second, nil
+	}}
+	started, err := m.start(context.Background(), ComputerSessionStartInput{Approved: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if started.State != cu.SessionReady || created != 2 || m.backend != second {
+		t.Fatalf("state=%q created=%d backend=%T", started.State, created, m.backend)
+	}
+	if m.controller == nil || m.controller.Session().Capabilities().PermissionState != cu.PermissionApproved {
+		t.Fatal("replacement helper did not bind a ready session")
+	}
+}
