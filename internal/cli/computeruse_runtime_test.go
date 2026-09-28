@@ -163,14 +163,14 @@ func TestComputerUseEffectiveImageRoutes(t *testing.T) {
 			c.Settings.Model = "also-stale"
 			c.Settings.ComputerUse.ImageInputRoutes[0].Provider = "named"
 		}},
-		{name: "undeclared fallback", mutate: func(c *config.Config) {
+		{name: "undeclared fallback", want: true, mutate: func(c *config.Config) {
 			c.FallbackProviders = []config.ProviderConfig{{Name: "fallback", Type: "anthropic"}}
 		}},
 		{name: "fallback inherits query model", want: true, mutate: func(c *config.Config) {
 			c.FallbackProviders = []config.ProviderConfig{{Name: "fallback", Type: "openai", Model: "  "}}
 			c.Settings.ComputerUse.ImageInputRoutes = append(c.Settings.ComputerUse.ImageInputRoutes, config.ComputerUseImageInputRoute{Provider: "fallback", Model: computerRuntimeModel})
 		}},
-		{name: "fallback model overrides query", mutate: func(c *config.Config) {
+		{name: "fallback model overrides query", want: true, mutate: func(c *config.Config) {
 			c.FallbackProviders = []config.ProviderConfig{{Name: "fallback", Type: "openai", Model: "other"}}
 			c.Settings.ComputerUse.ImageInputRoutes = append(c.Settings.ComputerUse.ImageInputRoutes, config.ComputerUseImageInputRoute{Provider: "fallback", Model: computerRuntimeModel})
 		}},
@@ -178,16 +178,16 @@ func TestComputerUseEffectiveImageRoutes(t *testing.T) {
 			c.FallbackProviders = []config.ProviderConfig{{Name: "fallback", Type: "openai", Model: " other "}}
 			c.Settings.ComputerUse.ImageInputRoutes = append(c.Settings.ComputerUse.ImageInputRoutes, config.ComputerUseImageInputRoute{Provider: "fallback", Model: "other"})
 		}},
-		{name: "unnamed fallback cannot alias primary", mutate: func(c *config.Config) { c.FallbackProviders = []config.ProviderConfig{{Type: "anthropic"}} }},
+		{name: "unnamed fallback cannot alias primary", want: true, mutate: func(c *config.Config) { c.FallbackProviders = []config.ProviderConfig{{Type: "anthropic"}} }},
 		{name: "unnamed fallback uses runtime name", want: true, mutate: func(c *config.Config) {
 			c.FallbackProviders = []config.ProviderConfig{{Type: "anthropic"}}
 			c.Settings.ComputerUse.ImageInputRoutes = append(c.Settings.ComputerUse.ImageInputRoutes, config.ComputerUseImageInputRoute{Provider: "fallback-1", Model: computerRuntimeModel})
 		}},
-		{name: "two unnamed endpoints require separate declarations", mutate: func(c *config.Config) {
+		{name: "two unnamed endpoints require separate declarations", want: true, mutate: func(c *config.Config) {
 			c.FallbackProviders = []config.ProviderConfig{{Type: "anthropic"}, {Type: "anthropic"}}
 			c.Settings.ComputerUse.ImageInputRoutes = append(c.Settings.ComputerUse.ImageInputRoutes, config.ComputerUseImageInputRoute{Provider: "fallback-1", Model: computerRuntimeModel})
 		}},
-		{name: "every fallback checked", mutate: func(c *config.Config) {
+		{name: "every fallback checked", want: true, mutate: func(c *config.Config) {
 			c.FallbackProviders = []config.ProviderConfig{{Type: "anthropic"}, {Type: "openai"}}
 		}},
 	} {

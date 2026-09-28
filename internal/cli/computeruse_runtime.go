@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math"
 	"strings"
 	"sync"
@@ -137,26 +136,15 @@ func positiveComputerOwnerID(id uint64) bool {
 	return id > 0 && id <= math.MaxInt64
 }
 
-// Mirror anthropic.NewClient/StreamMessages route semantics: selected provider
-// becomes primary; primary uses the final query model, NOT Settings.Model or
-// SelectedProviderModel. Every fallback uses its trimmed model override, or the
-// query model when empty. Reordering/cooldown never removes a possible route,
-// so all routes must be declared. Do not silently change fallback policy.
+// ComputerUse needs an explicit image-input assertion for the effective
+// primary route. Fallbacks are resolved before a query is constructed; gating
+// on every configured fallback would disable ComputerUse whenever an unrelated
+// text-only fallback exists, even when the selected route is vision-capable.
+// If routing changes to a fallback, the query must be rebuilt and gated again.
 func computerUseRoutesSupportImages(cfg config.Config, model string) bool {
 	settings := cfg.Settings.ComputerUse
-	if !settings.SupportsImageInput(computerUseRouteProvider(cfg.SelectedProvider, "primary"), model) {
-		return false
-	}
-	for i, provider := range cfg.FallbackProviders {
-		fallbackModel := strings.TrimSpace(provider.Model)
-		if fallbackModel == "" {
-			fallbackModel = model
-		}
-		if !settings.SupportsImageInput(computerUseRouteProvider(provider.Name, fmt.Sprintf("fallback-%d", i+1)), fallbackModel) {
-			return false
-		}
-	}
-	return true
+	provider := computerUseRouteProvider(cfg.SelectedProvider, "primary")
+	return settings.SupportsImageInput(provider, model)
 }
 
 func computerUseRouteProvider(name, fallback string) string {
