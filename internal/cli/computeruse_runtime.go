@@ -33,8 +33,9 @@ Never retry or replay an action after an error, timeout, or unknown outcome. Sto
 
 type trackedDesktopComputerService struct {
 	desktopComputerBridge
-	mu        sync.Mutex
-	sessionID string
+	mu            sync.Mutex
+	sessionID     string
+	observationID string
 }
 
 func (s *trackedDesktopComputerService) EnsureComputerSession(ctx context.Context, owner computeruse.SessionOwner) (string, error) {
@@ -46,14 +47,47 @@ func (s *trackedDesktopComputerService) EnsureComputerSession(ctx context.Contex
 	if err != nil {
 		return "", err
 	}
-	s.bind(id)
+	s.mu.Lock()
+	s.sessionID = id
+	s.observationID = ""
+	s.mu.Unlock()
 	return id, nil
 }
 
 func (s *trackedDesktopComputerService) bind(id string) {
 	s.mu.Lock()
 	s.sessionID = id
+	s.observationID = ""
 	s.mu.Unlock()
+}
+
+func (s *trackedDesktopComputerService) Observe(ctx context.Context, owner computeruse.SessionOwner, request computeruse.ObserveRequest) (computeruse.Observation, error) {
+	observation, err := s.desktopComputerBridge.Observe(ctx, owner, request)
+	if err == nil {
+		s.mu.Lock()
+		// Some trusted bridge implementations omit SessionID from the
+		// observation because the request already carried the bound session.
+		// Preserve the host-bound session in that case; never replace it with
+		// an empty value after a successful observe.
+		if strings.TrimSpace(observation.SessionID) != "" {
+			s.sessionID = observation.SessionID
+		}
+		s.observationID = observation.ID
+		s.mu.Unlock()
+	}
+	return observation, err
+}
+
+func (s *trackedDesktopComputerService) CurrentComputerObservation(ctx context.Context, _ computeruse.SessionOwner) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if strings.TrimSpace(s.observationID) == "" {
+		return "", errors.New("computer observation has not been created")
+	}
+	return s.observationID, nil
 }
 
 func (s *trackedDesktopComputerService) CurrentComputerSession(ctx context.Context, _ computeruse.SessionOwner) (string, error) {

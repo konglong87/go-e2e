@@ -122,6 +122,10 @@ func (s *coordinatingService) CurrentComputerSession(context.Context, cu.Session
 	return s.sessionID, nil
 }
 
+func (s *coordinatingService) CurrentComputerObservation(context.Context, cu.SessionOwner) (string, error) {
+	return s.observation.ID, nil
+}
+
 func testContext(service cu.Service) tools.Context {
 	return tools.Context{TenantID: 7, UserID: 11, SessionID: 13, ComputerUse: service, ComputerUseImageSupported: true, Invocation: tools.Invocation{RunID: "run-1", ToolUseID: "tool-1"}}
 }
@@ -176,9 +180,12 @@ func TestSubsequentActionBindsCurrentSessionWhenModelOmitsID(t *testing.T) {
 	base := screenshotService(t)
 	base.receipt = cu.ActionReceipt{Outcome: cu.OutcomeRejected, Verification: cu.VerificationNotChecked}
 	service := &coordinatingService{serviceStub: base, sessionID: testComputerSession}
-	result := New().Run(context.Background(), json.RawMessage(`{"action":"move","observation_id":"obs-1","x":10,"y":10}`), testContext(service))
+	result := New().Run(context.Background(), json.RawMessage(`{"action":"move","x":10,"y":10}`), testContext(service))
 	if service.lastAction.SessionID != testComputerSession {
 		t.Fatalf("bound session=%q, want %q; result=%s", service.lastAction.SessionID, testComputerSession, result.Content)
+	}
+	if service.lastAction.ObservationID != testFreshImageID {
+		t.Fatalf("bound observation=%q, want %q; result=%s", service.lastAction.ObservationID, testFreshImageID, result.Content)
 	}
 }
 
@@ -271,7 +278,7 @@ func TestRejectsModelAuthorityAndMalformedInput(t *testing.T) {
 func TestInvocationActionIDRequiredUniqueAndStable(t *testing.T) {
 	service := screenshotService(t)
 	service.receipt = cu.ActionReceipt{Outcome: cu.OutcomeExecuted, AfterObservationID: testAfterImageID}
-	input := json.RawMessage(`{"session_id":"computer-1","action":"type","text":"password-123"}`)
+	input := json.RawMessage(`{"session_id":"computer-1","action":"type","observation_id":"obs-1","text":"password-123"}`)
 	base := testContext(service)
 	for _, invocation := range []tools.Invocation{{}, {RunID: "run-1"}, {ToolUseID: "tool-1"}} {
 		tc := base
@@ -335,7 +342,7 @@ func TestExecutePreservesReceiptAndSelectsFreshOrEvidenceImage(t *testing.T) {
 			if outcome == cu.OutcomeUnknown {
 				service.serviceErr = errors.New("password-123")
 			}
-			result := runRequest(service, `{"session_id":"computer-1","action":"type","text":"password-123"}`)
+			result := runRequest(service, `{"session_id":"computer-1","action":"type","observation_id":"obs-1","text":"password-123"}`)
 			if result.IsError != (outcome == cu.OutcomeUnknown) || strings.Contains(result.Content, "password-123") {
 				t.Fatalf("wrong error: %+v", result)
 			}
@@ -367,7 +374,11 @@ func TestServiceErrorsNeverExposeRawStrings(t *testing.T) {
 		t.Run(action, func(t *testing.T) {
 			service := screenshotService(t)
 			service.serviceErr = errors.New("secret-input")
-			result := runRequest(service, `{"session_id":"computer-1","action":"`+action+`"}`)
+			request := `{"session_id":"computer-1","action":"` + action + `"}`
+			if action == "type" {
+				request = `{"session_id":"computer-1","action":"type","observation_id":"obs-1"}`
+			}
+			result := runRequest(service, request)
 			if !result.IsError || strings.Contains(result.Content, "secret-input") {
 				t.Fatalf("unsafe error: %+v", result)
 			}
@@ -385,7 +396,7 @@ func TestAfterImageFailureDoesNotDiscardUnknownReceipt(t *testing.T) {
 	service.receipt = cu.ActionReceipt{Outcome: cu.OutcomeUnknown, AfterObservationID: "after-1"}
 	service.serviceErr = errors.New("input-secret")
 	service.imageErr = errors.New("image-secret")
-	result := runRequest(service, `{"session_id":"computer-1","action":"click"}`)
+	result := runRequest(service, `{"session_id":"computer-1","action":"click","observation_id":"obs-1"}`)
 	if !result.IsError || !strings.Contains(result.Content, string(cu.OutcomeUnknown)) || strings.Contains(result.Content, "secret") || len(result.ContextMessages) != 0 {
 		t.Fatalf("unsafe receipt: %+v", result)
 	}
@@ -410,7 +421,11 @@ func TestScreenshotContextDistinguishesObservationFromActionEvidence(t *testing.
 				requestAction = "click"
 				service.receipt.Outcome = cu.OutcomeUnknown
 			}
-			result := runRequest(service, `{"session_id":"computer-1","action":"`+requestAction+`"}`)
+			request := `{"session_id":"computer-1","action":"` + requestAction + `"}`
+			if requestAction != "observe" {
+				request = `{"session_id":"computer-1","action":"` + requestAction + `","observation_id":"obs-1"}`
+			}
+			result := runRequest(service, request)
 			if result.IsError != (action == "unknown") {
 				t.Fatal(result.Content)
 			}
@@ -594,7 +609,7 @@ func TestExecuteDoesNotObserveNonExecutedOrErroredReceipt(t *testing.T) {
 				if hasError {
 					service.serviceErr = errors.New(testPrivateError)
 				}
-				result := runRequest(service, `{"session_id":"computer-1","action":"click"}`)
+				result := runRequest(service, `{"session_id":"computer-1","action":"click","observation_id":"obs-1"}`)
 				if !result.IsError {
 					t.Fatalf("non-successful receipt accepted: %s", result.Content)
 				}
@@ -636,7 +651,7 @@ func TestExecuteRequiresValidAfterImageBeforeAutomaticObserve(t *testing.T) {
 			service := executedScreenshotService(t)
 			service.receipt.AfterObservationID = test.afterID
 			service.images[test.afterID] = test.image
-			result := runRequest(service, `{"session_id":"computer-1","action":"click"}`)
+			result := runRequest(service, `{"session_id":"computer-1","action":"click","observation_id":"obs-1"}`)
 			if !result.IsError || len(result.ContextMessages) != 0 {
 				t.Fatalf("invalid after evidence accepted: %+v", result)
 			}
@@ -677,7 +692,7 @@ func TestPostActionCaptureFailurePreservesReceiptAndEvidenceWithoutReplay(t *tes
 			service.observeErr = test.observeErr
 			service.observation.ID = test.freshID
 			service.images[test.freshID] = test.image
-			result := runRequest(service, `{"session_id":"computer-1","action":"type","text":"`+testPrivateError+`"}`)
+			result := runRequest(service, `{"session_id":"computer-1","action":"type","observation_id":"obs-1","text":"`+testPrivateError+`"}`)
 			if !result.IsError {
 				t.Fatalf("post-action capture failure ignored: %s", result.Content)
 			}
@@ -707,7 +722,7 @@ func TestCanceledExecutionDoesNotRefreshOrReplayInput(t *testing.T) {
 	service.serviceErr = context.Canceled
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	result := New().Run(ctx, json.RawMessage(`{"session_id":"computer-1","action":"click"}`), testContext(service))
+	result := New().Run(ctx, json.RawMessage(`{"session_id":"computer-1","action":"click","observation_id":"obs-1"}`), testContext(service))
 	if !result.IsError {
 		t.Fatal("canceled execution accepted")
 	}
@@ -724,7 +739,7 @@ func TestCancellationAfterEvidenceReadDoesNotAutomaticallyObserve(t *testing.T) 
 			cancel()
 		}
 	}
-	result := New().Run(ctx, json.RawMessage(`{"session_id":"computer-1","action":"click"}`), testContext(service))
+	result := New().Run(ctx, json.RawMessage(`{"session_id":"computer-1","action":"click","observation_id":"obs-1"}`), testContext(service))
 	if !result.IsError {
 		t.Fatalf("canceled post-action capture accepted: %s", result.Content)
 	}
@@ -742,7 +757,7 @@ func TestAutomaticObserveUsesOnlyCurrentTrustedService(t *testing.T) {
 	first, second := executedScreenshotService(t), executedScreenshotService(t)
 	second.observation.ID = "second-fresh"
 	second.images[second.observation.ID] = stubImage{data: sizedPNG(t, 9, 7), mediaType: pngMediaType}
-	input := json.RawMessage(`{"session_id":"computer-1","action":"click"}`)
+	input := json.RawMessage(`{"session_id":"computer-1","action":"click","observation_id":"obs-1"}`)
 	for _, service := range []*serviceStub{first, second} {
 		result := tool.Run(context.Background(), input, testContext(service))
 		if result.IsError {
@@ -765,7 +780,7 @@ type serviceWithoutImages struct{ cu.Service }
 
 func TestExecuteWithoutImageProviderDoesNotAutomaticallyObserve(t *testing.T) {
 	service := executedScreenshotService(t)
-	result := runRequest(serviceWithoutImages{Service: service}, `{"session_id":"computer-1","action":"click"}`)
+	result := runRequest(serviceWithoutImages{Service: service}, `{"session_id":"computer-1","action":"click","observation_id":"obs-1"}`)
 	if !result.IsError || len(result.ContextMessages) != 0 {
 		t.Fatalf("missing image provider accepted: %+v", result)
 	}

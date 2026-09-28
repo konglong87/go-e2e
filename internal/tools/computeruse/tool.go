@@ -46,6 +46,7 @@ type SessionCoordinator interface {
 // desktop adapter supplies the bound ID, never model text.
 type SessionBinding interface {
 	CurrentComputerSession(context.Context, cu.SessionOwner) (string, error)
+	CurrentComputerObservation(context.Context, cu.SessionOwner) (string, error)
 }
 
 // Tool carries no authority: registry clones may safely share this value.
@@ -113,6 +114,17 @@ func (t Tool) Run(ctx context.Context, input json.RawMessage, tc tools.Context) 
 			return errorResult("session_start_failed", "computer session could not be started")
 		}
 		params.SessionID = sessionID
+	}
+	if cu.ActionKind(params.Action).IsInput() && strings.TrimSpace(params.ObservationID) == "" {
+		binding, ok := service.(SessionBinding)
+		if !ok {
+			return errorResult("invalid_input", "observation_id is required for this action")
+		}
+		observationID, bindErr := binding.CurrentComputerObservation(ctx, owner)
+		if bindErr != nil || strings.TrimSpace(observationID) == "" {
+			return errorResult("observation_binding_failed", "computer observation binding is unavailable")
+		}
+		params.ObservationID = observationID
 	}
 	switch cu.ActionKind(params.Action) {
 	case cu.ActionObserve:
