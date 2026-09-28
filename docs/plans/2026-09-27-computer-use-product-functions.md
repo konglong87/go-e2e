@@ -20,6 +20,52 @@ unblocked item. Record blockers instead of silently skipping requirements.
 | Deferred | Second physical display | No second physical monitor available; do not mark hardware acceptance passed. |
 | Deferred LAST | Formal signing and distribution | Developer ID, notarization, signed fresh-install/upgrade and release delivery are outside this functional phase. |
 
+## Phase update — P0-1 bounded non-drag input ownership — 2026-09-28
+
+Implementation and deterministic fault-injection tests are complete for the
+host-owned bounded input path; this is **not yet a claim of full real-desktop
+P0-1 acceptance**. The host now precomputes one balanced batch for each click
+pair, each Unicode scalar, and each key/hotkey. The inherited helper channel
+carries only an unguessable token and sequence; it carries no coordinates,
+text, key code, or arbitrary event list. The host allocates and posts the full
+balanced CGEvent sequence synchronously, so helper SIGKILL cannot leave a
+partially posted click or key chord. Drag keeps its separate lease protocol.
+
+Evidence completed:
+
+- Go batch-plan tests cover observed negative/global geometry, left/right click,
+  double-click pair count, Unicode scalar/supplementary scalar, key, hotkey,
+  duplicate modifiers, bounds and invalid UTF-8.
+- Go broker/backend tests cover normal click/double-click/right-click/type/key/
+  hotkey batches and deterministic helper SIGKILL after the first batch. The
+  normal path records the exact expected number of balanced host commits; the
+  crash path returns `unknown` and never replays the already committed batch.
+- `go test -race ./internal/computerbackend/macos` passed.
+- Native helper build passed. `bash native/macos/tests/platform.sh` passed
+  469 assertions, including batch framing, sequence, no event-data leakage,
+  inactive rejection, lost-ACK uncertainty and no reuse. `bash
+  native/macos/tests/run.sh` passed 240 fake-platform safety assertions.
+- No real desktop input was posted by these tests. They prove host ownership,
+  bounded protocol behavior and fault injection, not real fixture event logs or
+  screenshots after the new path is bundled into the desktop app.
+
+Priority reorder after this phase:
+
+1. **P0-1 acceptance follow-up:** build the current desktop app and perform a
+   real isolated fixture run for click, double-click, right-click, Unicode,
+   key and hotkey, collecting trusted event logs, before/after screenshots,
+   receipts, and a helper-crash run. Do not claim P0-1 complete until this
+   evidence exists.
+2. **P0-2:** fresh authenticated `gpt-6-sol` WorkBuddy autonomous loop after
+   the new helper is bundled; require actual observe/click/new-task/after-image/
+   Stop trace and no parent GUI intervention.
+3. **P0-3:** real host-bound permission revoke/regrant lifecycle.
+4. **P1-1:** exact startup-attempt token for permanent Ensure ACK loss.
+5. **P1-2:** authoritative model-created session discovery in desktop UI.
+6. **P1-3:** virtual/mocked multi-display topology and mixed-DPI coverage.
+7. **P1-4:** final functional regression/evidence audit.
+8. Deferred: physical second display and formal signing/distribution.
+
 ### Resume/change ledger
 
 - Baseline: `d1ff501`, clean working tree, `git pull --ff-only origin main`

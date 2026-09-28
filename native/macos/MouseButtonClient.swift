@@ -2,9 +2,9 @@ import Foundation
 import CoreGraphics
 import Darwin
 
-// Only drag events use this private inherited channel. The host is their sole
-// posting/release owner and survives helper death. No named socket or fallback
-// local mouse-down is allowed when the channel is absent or fails.
+// Guarded input uses this private inherited channel. The host owns complete
+// input batches and drag posting/release, and survives helper death. No named
+// socket or local guarded-input fallback is allowed when the channel fails.
 protocol MouseBrokerWire {
     func exchange(_ request: Data) throws -> Data
 }
@@ -72,6 +72,13 @@ final class PipeMouseBrokerWire: MouseBrokerWire {
 }
 
 final class MouseButtonClient {
+    static let batchCountRange = 1...4096
+    private static let maxTokenLength = 128
+    private struct BatchRequest: Encodable {
+        let token: String
+        let sequence: Int
+        let phase = "batch"
+    }
     private enum Phase: String, Encodable { case down, drag, up }
     private struct Request: Encodable {
         let token: String
@@ -89,19 +96,59 @@ final class MouseButtonClient {
     private let wire: MouseBrokerWire
     private var token = ""
     private var sequence = 0
+    private var batchCount = 0
+    private var batchUncertain = false
     private var held: CGMouseButton?
     private var lastPoint = CGPoint.zero
 
     init(wire: MouseBrokerWire) { self.wire = wire }
 
     func prepare(token: String) throws {
-        guard held == nil, !token.isEmpty, token.count <= 128 else { throw SafetyError.inputUnavailable }
+        guard !batchUncertain, held == nil, !token.isEmpty, token.count <= Self.maxTokenLength else { throw SafetyError.inputUnavailable }
         self.token = token
         sequence = 0
+        batchCount = 0
+    }
+
+    func prepareBatch(token: String, count: Int) throws {
+        guard !batchUncertain, held == nil else { throw SafetyError.inputUnavailable }
+        // Failed preparation must not leave an older authorization usable.
+        self.token = ""
+        batchCount = 0
+        guard !token.isEmpty, token.count <= Self.maxTokenLength,
+              Self.batchCountRange.contains(count) else { throw SafetyError.inputUnavailable }
+        self.token = token
+        sequence = 0
+        batchCount = count
+    }
+
+    func batch() throws {
+        guard !batchUncertain, held == nil, !token.isEmpty,
+              sequence < batchCount else { throw SafetyError.inputUnavailable }
+        sequence += 1
+        // No event data crosses this channel: only advance the host-owned plan.
+        let request = try JSONEncoder().encode(BatchRequest(token: token, sequence: sequence))
+        let response: Response
+        do {
+            let reply = try wire.exchange(request)
+            guard let decoded = try? JSONDecoder().decode(Response.self, from: reply),
+                  decoded.sequence == sequence else { throw SafetyError.inputUncertain }
+            response = decoded
+        } catch {
+            // A delayed ACK may remain on the shared FD. Never retry or prepare
+            // another action on this client after an indeterminate exchange.
+            batchUncertain = true
+            token = ""
+            throw SafetyError.inputUncertain
+        }
+        guard response.ok else {
+            token = ""
+            throw response.error_code == SafetyError.inactive.rawValue ? SafetyError.inactive : SafetyError.inputUnavailable
+        }
     }
 
     private func send(_ phase: Phase, point: CGPoint, button: CGMouseButton) throws {
-        guard !token.isEmpty, point.x.isFinite, point.y.isFinite,
+        guard !batchUncertain, batchCount == 0, !token.isEmpty, point.x.isFinite, point.y.isFinite,
               button == .left || button == .right else { throw SafetyError.inputUnavailable }
         sequence += 1
         let request = Request(token: token, sequence: sequence, phase: phase,

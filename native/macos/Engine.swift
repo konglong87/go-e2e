@@ -200,8 +200,10 @@ final class Engine {
             // focus after the preceding screenshot. Keep session/generation/
             // expiry binding above and stable-target capture below, but reserve
             // stale-input preflight for operations that actually post events.
-            if !plan.operations.isEmpty { try checkInput(snapshot, request: request) }
-            if request.payload["kind"]?.string == ActionKind.drag.rawValue { try platform.prepareDrag(request) }
+            if !plan.operations.isEmpty {
+                try checkInput(snapshot, request: request)
+                try platform.prepareInput(request)
+            }
             for (index, operation) in plan.operations.enumerated() {
                 if plan.doubleClick && index > 0 { try wait(60, request: request) }
                 // Revalidate TCC/focus/display just before each pair. Stop only

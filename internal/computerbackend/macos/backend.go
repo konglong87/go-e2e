@@ -44,7 +44,8 @@ type Config struct {
 	RequestHostPermissions func()
 	MaxFrameBytes          int
 	Now                    func() time.Time
-	mouseDriver            mouseDriver // package-private test seam; production always uses host CG
+	batchDriver            inputBatchDriver // private test seam
+	mouseDriver            mouseDriver      // package-private test seam; production always uses host CG
 }
 
 type Backend struct {
@@ -215,7 +216,11 @@ func New(ctx context.Context, c Config) (*Backend, error) {
 	if driver == nil {
 		driver = newHostMouseDriver()
 	}
-	broker, childFiles, err := newMouseBroker(driver)
+	batchDriver := c.batchDriver
+	if batchDriver == nil {
+		batchDriver = newHostInputBatchDriver()
+	}
+	broker, childFiles, err := newMouseBroker(driver, batchDriver)
 	if err != nil {
 		return nil, err
 	}
@@ -506,6 +511,32 @@ func (b *Backend) Execute(ctx context.Context, action cu.Action) (receipt cu.Act
 			}
 		}()
 	}
+	if isBatchAction(action.Kind) {
+		b.mu.Lock()
+		if !b.validEpoch(epoch) || b.mouseBroker == nil {
+			b.mu.Unlock()
+			return finish(&rejection{"inactive"})
+		}
+		token, count, authorizeErr := b.mouseBroker.authorizeBatch(ctx, action, obs, b.config.RequestTimeout)
+		b.mu.Unlock()
+		if authorizeErr != nil {
+			return finish(&rejection{mouseBrokerInputUnavailable})
+		}
+		payload[inputBatchTokenField], payload[inputBatchCountField] = token, count
+		defer func() {
+			batch := b.mouseBroker.finishBatch(token)
+			if (receipt.Outcome == cu.OutcomeExecuted && !batch.complete) || (receipt.Outcome == cu.OutcomeRejected && batch.started) {
+				receipt.Outcome, receipt.Verification = cu.OutcomeUnknown, cu.VerificationUnknown
+				receipt.AfterObservationID, receipt.After = "", nil
+				receipt.ErrorMessage = "computer action did not complete"
+				if resultErr == nil {
+					resultErr = errors.New("input batch outcome unknown")
+				}
+				b.invalidate()
+			}
+		}()
+	}
+
 	response, err := b.request(ctx, commandExecute, action.SessionID, action.ID, payload)
 	if err != nil {
 		var rejected *rejection

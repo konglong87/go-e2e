@@ -33,6 +33,31 @@ struct PlatformTests {
         expect(event.getIntegerValueField(.keyboardEventKeycode) == Int64(key), "\(label): keycode")
         expect(event.flags == flags, "\(label): flags")
     }
+    static func batchChecks() throws {
+        let wire = FakeMouseBrokerWire()
+        let client = MouseButtonClient(wire: wire)
+        try client.prepareBatch(token: "batch-token", count: 4)
+        for _ in 0..<4 { try client.batch() }
+        expect(wire.messages.count == 4, "batch count")
+        expect(wire.messages.compactMap { $0["phase"] as? String } == ["batch", "batch", "batch", "batch"], "batch phase")
+        expect(wire.messages.compactMap { $0["sequence"] as? Int } == [1, 2, 3, 4], "batch sequence")
+        expect(wire.messages.allSatisfy { $0["token"] as? String == "batch-token" && $0["button"] == nil && $0["x"] == nil && $0["y"] == nil }, "batch carries no event data")
+        do { try client.batch(); expect(false, "batch overrun rejected") } catch SafetyError.inputUnavailable { }
+
+        let inactiveWire = FakeMouseBrokerWire()
+        let inactive = MouseButtonClient(wire: inactiveWire)
+        try inactive.prepareBatch(token: "inactive-token", count: 1)
+        inactiveWire.inactive = true
+        do { try inactive.batch(); expect(false, "inactive batch accepted") } catch SafetyError.inactive { }
+
+        let uncertainWire = FakeMouseBrokerWire()
+        let uncertain = MouseButtonClient(wire: uncertainWire)
+        try uncertain.prepareBatch(token: "uncertain-token", count: 1)
+        uncertainWire.lostAck = true
+        do { try uncertain.batch(); expect(false, "lost ACK accepted") } catch SafetyError.inputUncertain { }
+        do { try uncertain.prepareBatch(token: "retry-token", count: 1); expect(false, "uncertain client reused") } catch SafetyError.inputUnavailable { }
+    }
+
     static func brokerPipeChecks() throws {
         var outgoing: [Int32] = [0, 0]
         var incoming: [Int32] = [0, 0]
@@ -91,6 +116,7 @@ struct PlatformTests {
     }
     static func main() throws {
         try brokerChecks()
+        try batchChecks()
         try brokerPipeChecks()
         let commandTab = try KeyboardEventSequence.make(code: CGKeyCode(kVK_Tab), flags: .maskCommand)
         expect(commandTab.count == 4, "command-tab has explicit modifier press/release")

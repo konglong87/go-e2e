@@ -19,6 +19,7 @@ protocol DesktopPlatform {
     func capture(_ geometry: DisplayGeometry) throws -> Data
     func supportsDrag() -> Bool
     func prepareDrag(_ request: Envelope) throws
+    func prepareInput(_ request: Envelope) throws
     func post(_ operation: InputOperation) throws
     func releasePressedButton(_ button: CGMouseButton)
 }
@@ -26,6 +27,7 @@ protocol DesktopPlatform {
 extension DesktopPlatform {
     func supportsDrag() -> Bool { true }
     func prepareDrag(_ request: Envelope) throws {}
+    func prepareInput(_ request: Envelope) throws {}
     func geometries() throws -> [DisplayGeometry] { [try geometry()] }
     func windows() throws -> [NativeWindow] { [] }
     func windowGeometry(_ id: String) throws -> DisplayGeometry { throw SafetyError.unsupportedDisplay }
@@ -44,6 +46,24 @@ struct MacDesktop: DesktopPlatform {
             throw SafetyError.inputUnavailable
         }
         try mouseBroker.prepare(token: token)
+    }
+
+    func prepareInput(_ request: Envelope) throws {
+        guard let rawKind = request.payload["kind"]?.string,
+              let kind = ActionKind(rawValue: rawKind) else { throw SafetyError.invalidAction }
+        switch kind {
+        case .drag:
+            try prepareDrag(request)
+        case .click, .doubleClick, .rightClick, .type, .key, .hotkey:
+            guard let mouseBroker,
+                  let token = request.payload["input_batch_token"]?.string,
+                  let count = request.payload["input_batch_count"]?.integer(in: MouseButtonClient.batchCountRange) else {
+                throw SafetyError.inputUnavailable
+            }
+            try mouseBroker.prepareBatch(token: token, count: count)
+        case .move, .scroll, .wait:
+            break
+        }
     }
 
     func geometry() throws -> DisplayGeometry {
@@ -133,7 +153,7 @@ struct MacDesktop: DesktopPlatform {
     }
 
     func captureAllowed() -> Bool { CGPreflightScreenCaptureAccess() }
-    func inputAllowed() -> Bool { AXIsProcessTrusted() && CGPreflightPostEventAccess() }
+    func inputAllowed() -> Bool { mouseBroker != nil && AXIsProcessTrusted() && CGPreflightPostEventAccess() }
     func requestPermissions() {
         _ = CGRequestScreenCaptureAccess()
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
@@ -174,8 +194,13 @@ struct MacDesktop: DesktopPlatform {
     func post(_ operation: InputOperation) throws {
         switch operation {
         case .mouse(let kind, let point, let clickCount):
-            let events = try MouseEventSequence.make(kind: kind, point: point, clickCount: clickCount)
-            for event in events { event.post(tap: .cghidEventTap) }
+            if kind == .move {
+                let events = try MouseEventSequence.make(kind: kind, point: point, clickCount: clickCount)
+                for event in events { event.post(tap: .cghidEventTap) }
+            } else {
+                guard let mouseBroker else { throw SafetyError.inputUnavailable }
+                try mouseBroker.batch()
+            }
         case .mouseDown(let point, let button):
             guard let mouseBroker else { throw SafetyError.inputUnavailable }
             try mouseBroker.down(point: point, button: button)
@@ -185,16 +210,9 @@ struct MacDesktop: DesktopPlatform {
         case .mouseUp(let point, let button):
             guard let mouseBroker else { throw SafetyError.inputUnavailable }
             try mouseBroker.up(point: point, button: button)
-        case .unicode(let units):
-            guard let down = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true),
-                  let up = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: false) else { throw SafetyError.inputUnavailable }
-            down.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units)
-            up.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units)
-            down.flags = []; up.flags = []; down.post(tap: .cghidEventTap); up.post(tap: .cghidEventTap)
-        case .key(let code, let flags):
-            let events = try KeyboardEventSequence.make(code: code, flags: flags)
-            // Keep press/release together inside Engine's existing input gate.
-            for event in events { event.post(tap: .cghidEventTap) }
+        case .unicode, .key:
+            guard let mouseBroker else { throw SafetyError.inputUnavailable }
+            try mouseBroker.batch()
         case .scroll(let x, let y):
             guard let event = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: y, wheel2: x, wheel3: 0) else { throw SafetyError.inputUnavailable }
             event.flags = []; event.post(tap: .cghidEventTap)

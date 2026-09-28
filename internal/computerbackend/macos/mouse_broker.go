@@ -82,17 +82,19 @@ type mouseLeaseResult struct {
 // revocation share mu; neither IPC reads nor writes hold it. Once revoked or
 // closed, queued child messages cannot publish another down/drag.
 type mouseBroker struct {
-	mu        sync.Mutex
-	driver    mouseDriver
-	lease     *mouseLease
-	closed    bool
-	failure   error
-	requests  *os.File
-	responses *os.File
-	done      chan struct{}
+	mu          sync.Mutex
+	driver      mouseDriver
+	batchDriver inputBatchDriver
+	batch       *inputBatchLease
+	lease       *mouseLease
+	closed      bool
+	failure     error
+	requests    *os.File
+	responses   *os.File
+	done        chan struct{}
 }
 
-func newMouseBroker(driver mouseDriver) (*mouseBroker, []*os.File, error) {
+func newMouseBroker(driver mouseDriver, batches ...inputBatchDriver) (*mouseBroker, []*os.File, error) {
 	requests, childRequests, err := os.Pipe()
 	if err != nil {
 		return nil, nil, err
@@ -104,6 +106,9 @@ func newMouseBroker(driver mouseDriver) (*mouseBroker, []*os.File, error) {
 		return nil, nil, err
 	}
 	b := &mouseBroker{driver: driver, requests: requests, responses: responses, done: make(chan struct{})}
+	if len(batches) > 0 {
+		b.batchDriver = batches[0]
+	}
 	go b.serve()
 	return b, []*os.File{childRequests, childResponses}, nil
 }
@@ -111,7 +116,7 @@ func newMouseBroker(driver mouseDriver) (*mouseBroker, []*os.File, error) {
 func (b *mouseBroker) authorize(ctx context.Context, action cu.Action, epoch uint64, timeout time.Duration) (string, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.closed || b.failure != nil || (b.lease != nil && !b.lease.ended) {
+	if b.closed || b.failure != nil || (b.lease != nil && !b.lease.ended) || (b.batch != nil && !b.batch.ended) {
 		return "", errMouseBrokerUnavailable
 	}
 	if err := ctx.Err(); err != nil {
@@ -152,6 +157,9 @@ func (b *mouseBroker) revoke() {
 	defer b.mu.Unlock()
 	if b.lease != nil {
 		b.lease.revoked = true
+	}
+	if b.batch != nil {
+		b.batch.revoked = true
 	}
 }
 
@@ -261,6 +269,10 @@ func (b *mouseBroker) close() error {
 	b.mu.Lock()
 	if !b.closed {
 		b.closed = true
+		if b.batch != nil {
+			b.batch.revoked = true
+			b.batch.operations = nil
+		}
 		if b.lease != nil {
 			b.lease.revoked = true
 			b.releaseLocked(b.lease, b.lease.x, b.lease.y, false)
@@ -283,11 +295,28 @@ func (b *mouseBroker) serve() {
 		if err != nil || len(line) > mouseBrokerFrameLimit {
 			return
 		}
-		request, err := decodeMouseBrokerRequest(line)
+		fields, err := decodeBrokerFields(line)
 		if err != nil {
 			return
-		} // malformed channel is poisoned, no partial frame reuse
-		response := b.handle(request)
+		}
+		var phase string
+		if json.Unmarshal(fields["phase"], &phase) != nil {
+			return
+		}
+		var response mouseBrokerResponse
+		if phase == inputBatchPhase {
+			request, err := decodeInputBatchRequest(line)
+			if err != nil {
+				return
+			}
+			response = b.handleBatch(request)
+		} else {
+			request, err := decodeMouseBrokerRequest(line)
+			if err != nil {
+				return
+			}
+			response = b.handle(request)
+		}
 		encoded, _ := json.Marshal(response)
 		encoded = append(encoded, '\n')
 		if _, err := b.responses.Write(encoded); err != nil {
@@ -298,37 +327,44 @@ func (b *mouseBroker) serve() {
 
 // Exact fields, including explicit x/y, and no duplicate keys. JSON's default
 // zero values or last-key-wins must not silently authorize a malformed event.
-func decodeMouseBrokerRequest(line []byte) (mouseBrokerRequest, error) {
-	var request mouseBrokerRequest
+func decodeBrokerFields(line []byte) (map[string]json.RawMessage, error) {
 	decoder := json.NewDecoder(bytes.NewReader(line))
 	start, err := decoder.Token()
 	if err != nil || start != json.Delim('{') {
-		return request, errors.New("invalid mouse broker frame")
+		return nil, errors.New("invalid mouse broker frame")
 	}
 	fields := make(map[string]json.RawMessage, 6)
 	for decoder.More() {
 		key, err := decoder.Token()
 		if err != nil {
-			return request, err
+			return nil, err
 		}
 		name, ok := key.(string)
 		if !ok {
-			return request, errors.New("invalid mouse broker key")
+			return nil, errors.New("invalid mouse broker key")
 		}
 		if _, duplicate := fields[name]; duplicate {
-			return request, errors.New("duplicate mouse broker key")
+			return nil, errors.New("duplicate mouse broker key")
 		}
 		var value json.RawMessage
 		if err := decoder.Decode(&value); err != nil {
-			return request, err
+			return nil, err
 		}
 		fields[name] = value
 	}
 	if _, err := decoder.Token(); err != nil {
-		return request, err
+		return nil, err
 	}
 	if _, err := decoder.Token(); err != io.EOF {
-		return request, errors.New("trailing mouse broker data")
+		return nil, errors.New("trailing mouse broker data")
+	}
+	return fields, nil
+}
+func decodeMouseBrokerRequest(line []byte) (mouseBrokerRequest, error) {
+	var request mouseBrokerRequest
+	fields, err := decodeBrokerFields(line)
+	if err != nil {
+		return request, err
 	}
 	if len(fields) != 6 {
 		return request, errors.New("invalid mouse broker fields")

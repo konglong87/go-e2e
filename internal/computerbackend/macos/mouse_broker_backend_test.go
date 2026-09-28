@@ -20,18 +20,55 @@ import (
 func runMouseBrokerHelper(t *testing.T, mode string, req native.Envelope, codec native.Codec) (cu.Outcome, string) {
 	t.Helper()
 	var payload struct {
-		Kind   cu.ActionKind  `json:"kind"`
-		Token  string         `json:"drag_token"`
-		Button cu.MouseButton `json:"button"`
+		Kind       cu.ActionKind  `json:"kind"`
+		Token      string         `json:"drag_token"`
+		BatchToken string         `json:"input_batch_token"`
+		BatchCount int            `json:"input_batch_count"`
+		Button     cu.MouseButton `json:"button"`
 	}
 	if err := json.Unmarshal(req.Payload, &payload); err != nil {
 		t.Fatal(err)
 	}
+	if !strings.Contains(strings.Join(os.Args, " "), mouseBrokerArgument) {
+		t.Fatal("missing broker argument")
+	}
+	if payload.BatchToken != "" {
+		if payload.BatchCount <= 0 {
+			t.Fatal("missing batch count")
+		}
+		requests, responses := os.NewFile(3, "broker requests"), os.NewFile(4, "broker responses")
+		reader := bufio.NewReader(responses)
+		for seq := 1; seq <= payload.BatchCount; seq++ {
+			r := inputBatchRequest{Token: payload.BatchToken, Sequence: int64(seq), Phase: inputBatchPhase}
+			body, _ := json.Marshal(r)
+			if _, err := requests.Write(append(body, '\n')); err != nil {
+				t.Fatal(err)
+			}
+			line, err := reader.ReadBytes('\n')
+			if err != nil {
+				t.Fatal(err)
+			}
+			var response mouseBrokerResponse
+			if err := json.Unmarshal(line, &response); err != nil {
+				t.Fatal(err)
+			}
+			if response.Sequence != int64(seq) || !response.OK || response.ErrorCode != "" {
+				t.Fatalf("unexpected batch response %+v", response)
+			}
+			if mode == "broker-batch-sigkill" && seq == 1 {
+				if err := syscall.Kill(os.Getpid(), syscall.SIGKILL); err != nil {
+					t.Fatal(err)
+				}
+				select {}
+			}
+		}
+		return cu.OutcomeExecuted, ""
+	}
 	if payload.Kind != cu.ActionDrag {
 		return cu.OutcomeExecuted, ""
 	}
-	if payload.Token == "" || !strings.Contains(strings.Join(os.Args, " "), mouseBrokerArgument) {
-		t.Fatal("missing broker token/argument")
+	if payload.Token == "" {
+		t.Fatal("missing drag broker token")
 	}
 	if payload.Button == "" {
 		payload.Button = cu.MouseButtonLeft
@@ -198,6 +235,85 @@ func TestBackendBrokerNormalAndUncertainReceipts(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func batchClickAction(obs cu.Observation, kind cu.ActionKind) cu.Action {
+	a := cu.Action{ID: "action-batch", SessionID: obs.SessionID, ObservationID: obs.ID, Kind: kind, Point: &cu.Point{X: 0, Y: 0}}
+	if kind == cu.ActionRightClick {
+		a.Button = string(cu.MouseButtonRight)
+	}
+	return a
+}
+func newBatchBrokerBackend(t *testing.T, mode string, driver *fakeInputBatchDriver) *Backend {
+	t.Helper()
+	config := helperConfig(t, mode, time.Second, "")
+	config.batchDriver = driver
+	config.mouseDriver = &fakeMouseDriver{}
+	b, err := New(context.Background(), config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = b.Close(context.Background())
+		select {
+		case <-b.mouseBroker.done:
+		case <-time.After(time.Second):
+			t.Error("batch broker leaked")
+		}
+		select {
+		case <-b.process.Exited():
+		case <-time.After(time.Second):
+			t.Error("batch helper not reaped")
+		}
+	})
+	return b
+}
+
+func TestBackendBrokerBatchNormalAndHelperCrash(t *testing.T) {
+	cases := []struct {
+		name   string
+		action func(cu.Observation) cu.Action
+		want   int
+	}{
+		{"click", func(o cu.Observation) cu.Action { return batchClickAction(o, cu.ActionClick) }, 1},
+		{"double-click", func(o cu.Observation) cu.Action { return batchClickAction(o, cu.ActionDoubleClick) }, 2},
+		{"right-click", func(o cu.Observation) cu.Action { return batchClickAction(o, cu.ActionRightClick) }, 1},
+		{"type", func(o cu.Observation) cu.Action {
+			return cu.Action{ID: "action-batch", SessionID: o.SessionID, ObservationID: o.ID, Kind: cu.ActionType, Text: "A😀"}
+		}, 2},
+		{"key", func(o cu.Observation) cu.Action {
+			return cu.Action{ID: "action-batch", SessionID: o.SessionID, ObservationID: o.ID, Kind: cu.ActionKey, Key: "return"}
+		}, 1},
+		{"hotkey", func(o cu.Observation) cu.Action {
+			return cu.Action{ID: "action-batch", SessionID: o.SessionID, ObservationID: o.ID, Kind: cu.ActionHotkey, Keys: []string{"command", "shift", "k"}}
+		}, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name+"/normal", func(t *testing.T) {
+			d := &fakeInputBatchDriver{}
+			b := newBatchBrokerBackend(t, "broker-batch-normal", d)
+			o := observeTest(t, b)
+			receipt, err := b.Execute(context.Background(), tc.action(o))
+			if err != nil || receipt.Outcome != cu.OutcomeExecuted {
+				t.Fatalf("receipt=%+v err=%v", receipt, err)
+			}
+			if len(d.committed) != tc.want {
+				t.Fatalf("committed=%d want=%d", len(d.committed), tc.want)
+			}
+		})
+		t.Run(tc.name+"/helper-sigkill", func(t *testing.T) {
+			d := &fakeInputBatchDriver{}
+			b := newBatchBrokerBackend(t, "broker-batch-sigkill", d)
+			o := observeTest(t, b)
+			receipt, err := b.Execute(context.Background(), tc.action(o))
+			if err == nil || receipt.Outcome != cu.OutcomeUnknown || receipt.Verification != cu.VerificationUnknown {
+				t.Fatalf("unsafe receipt=%+v err=%v", receipt, err)
+			}
+			if len(d.committed) != 1 {
+				t.Fatalf("helper crash committed=%d want=1", len(d.committed))
+			}
+		})
 	}
 }
 
