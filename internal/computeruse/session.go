@@ -19,7 +19,7 @@ const (
 	SessionStopped          SessionState = "stopped"
 	SessionFailed           SessionState = "failed"
 	DefaultMaxActions                    = 30
-	DefaultObservationTTL                = 30 * time.Second
+	DefaultObservationTTL                = 120 * time.Second
 )
 
 type SessionOwner struct {
