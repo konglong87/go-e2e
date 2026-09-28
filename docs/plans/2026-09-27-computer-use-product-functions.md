@@ -634,3 +634,20 @@ SSE slice root cause and verification:
   official documentation fetch was attempted but unavailable; the concrete
   claim rests on pinned SDK code and before/after live + local reproduction,
   not an unverified documentation assertion.
+
+Same-query Stop precedence slice:
+- Before-change regressions reproduced implicit re-Ensure after Stop, concurrent
+  duplicate startup (24 calls), and retry after uncertain startup. Query-local
+  service now consumes exactly one startup attempt, returns the same bound ID,
+  coalesces concurrent callers without holding state locks over IPC, keeps errors
+  sticky, and checks owner/context even on cache hits. Host Stop remains authority;
+  subsequent observe addresses the stopped grant and is denied, not recreated.
+- Cleanup closes the query to new startup. A late ACK containing the exact ID is
+  cleaned up once; callbacks cannot rebind to another session. Independent queries
+  still construct independent trackers and can start under their own lifecycle.
+- New query tests passed under -race for 50 repetitions, existing ComputerUse and
+  cleanup tests passed, and full five-package race run passed with the SSE slice.
+- Explicit open boundary: if the host created a grant but its ACK is permanently
+  lost, no exact session ID is available for Stop. No Lookup-based guessing is
+  used. A future query/start-attempt binding plus cancellation protocol must close
+  that gap; this commit does not claim lost-ACK authority revocation is solved.
