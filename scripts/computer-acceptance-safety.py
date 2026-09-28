@@ -27,8 +27,10 @@ INFLIGHT_WAIT_MS = 5000
 INFLIGHT_RESULT_TIMEOUT_SECONDS = 3
 INTERRUPT_LIMIT_SECONDS = 2
 EXPIRY_GUARD_SECONDS = 0.1
-# Harness bounds only: never change or substitute for the native observation TTL.
-MAX_EXPIRY_FUTURE_SECONDS = 60
+# Harness deadline only, NOT a replacement for expires_at. Allow the current
+# 120-second native TTL plus clock/transport margin; always wait for the actual
+# returned expiry before dispatch. Reject unreasonably distant metadata.
+MAX_EXPIRY_FUTURE_SECONDS = 180
 CLOCK_ADJUSTMENT_BUDGET_SECONDS = 2
 EXPIRY_POLL_SECONDS = 0.25
 RFC3339_EXPIRY = re.compile(

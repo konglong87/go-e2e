@@ -72,6 +72,19 @@ class ExpirySafetyTests(unittest.TestCase):
         runner.record.assert_called_once_with(
             "expired-observation", True, response={"error": "expired"})
 
+    def test_current_two_minute_observation_waits_until_actual_expiry(self):
+        clock = FakeClock()
+        runner = runner_for(observation(120))
+        runner.denied.side_effect = lambda action: (
+            {"error": "expired"},
+            clock.mono >= 120 + SAFETY.EXPIRY_GUARD_SECONDS,
+        )
+        runner.expired(**clock.dependencies())
+        runner.denied.assert_called_once()
+        self.assertGreaterEqual(clock.mono, 120 + SAFETY.EXPIRY_GUARD_SECONDS)
+        runner.record.assert_called_once_with(
+            "expired-observation", True, response={"error": "expired"})
+
     def test_already_expired_needs_no_sleep(self):
         clock = FakeClock()
         runner = runner_for(observation(-1))
