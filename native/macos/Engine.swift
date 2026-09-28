@@ -106,6 +106,20 @@ final class Engine {
         }
         try state.gate(request)
     }
+    // Launching or focusing an app can briefly make Window Server screenshot
+    // capture unavailable after the input has already been posted. Retry only
+    // the screenshot (never the input) for a short bounded interval; focus,
+    // permission, geometry, and topology failures remain fail-closed.
+    private func captureAfterInput(_ request: Envelope, geometry: DisplayGeometry) throws -> JSONValue {
+        for attempt in 0..<3 {
+            do {
+                return try capture(request, geometry: geometry)
+            } catch let error as SafetyError where error == .screenshotFailed && attempt < 2 {
+                Thread.sleep(forTimeInterval: 0.05 * Double(attempt + 1))
+            }
+        }
+        return try capture(request, geometry: geometry)
+    }
     func execute(_ request: Envelope) -> ActionResult {
         var posted = false
         var pressedButton: CGMouseButton?
@@ -133,7 +147,7 @@ final class Engine {
             // Capture requires stable current focus, not the consumed binding;
             // subsequent input still needs a fresh observe. This is not visual
             // verification that the action achieved its intended result.
-            let payload = try capture(request, geometry: snapshot.geometry)
+            let payload = try captureAfterInput(request, geometry: snapshot.geometry)
             return ActionResult(outcome: .executed, payload: payload, error: nil)
         } catch {
             if posted { state.end() } // never run queued work after ambiguous input

@@ -12,6 +12,7 @@ final class FakeDesktop: DesktopPlatform {
     var inputPermission = true
     var focused: Int32? = 42
     var failCapture = false
+    var captureFailuresRemaining = 0
     var failGeometry = false
     var failPost = false
     var posts: [InputOperation] = []
@@ -31,7 +32,11 @@ final class FakeDesktop: DesktopPlatform {
     func requestPermissions() { }
     func focus() -> Int32? { focused }
     func capture(_ g: DisplayGeometry) throws -> Data {
-        if failCapture { throw SafetyError.screenshotFailed }; captureHook?(); return Data([1,2,3])
+        if failCapture || captureFailuresRemaining > 0 {
+            if captureFailuresRemaining > 0 { captureFailuresRemaining -= 1 }
+            throw SafetyError.screenshotFailed
+        }
+        captureHook?(); return Data([1,2,3])
     }
     func post(_ operation: InputOperation) throws {
         if failPost { throw SafetyError.inputUnavailable }; posts.append(operation); postHook?()
@@ -205,6 +210,14 @@ for (kind, payload) in activationActions {
     let staleFocus = engine.execute(request("execute", payload:["kind":.string("key"),"key":.string("return"),"observation_id":.string(nextObservation)]))
     expect(staleFocus.outcome == .rejected && staleFocus.error == .focusChanged && desktop.posts.count == operationCount + 1,
            "new binding rejects old focus before dispatch: \(kind)")
+}
+
+// A transient post-input screenshot failure is retried without replaying input.
+do {
+    let (engine, desktop) = setup()
+    desktop.captureFailuresRemaining = 2
+    let result = engine.execute(action("click", ["x": .number(2), "y": .number(2)]))
+    expect(result.outcome == .executed && desktop.posts.count == 1, "transient after-image capture retries without replay")
 }
 
 // Switching before dispatch must reject even an action intended to activate an app.
