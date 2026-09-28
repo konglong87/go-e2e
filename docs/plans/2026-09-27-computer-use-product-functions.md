@@ -126,3 +126,13 @@ The native fake matrix now covers focus loss after drag mouse-down: the result
 is `unknown`/`focus_changed` and the emergency mouse-up is posted before the
 helper reports the failure. The matrix is now 170 assertions. Real pause/stop,
 permission revoke, and helper-crash drag interruption remain to be run.
+
+## Model-route gate for auto orchestration — 2026-09-27
+
+A real latest-source Wails task was run without starting the Computer Use panel
+manually. The configured `gpt-5.6-sol` route failed before any ComputerUse call
+with provider `404 model is not found`. A retry with the UI-listed `gpt-5.5`
+route failed with the same 404. Therefore the new lazy coordinator is covered
+by focused unit tests but has not yet received a live model call in this
+environment; no automatic-session pass is claimed until an available
+vision-capable route is configured.

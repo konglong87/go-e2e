@@ -824,3 +824,17 @@ desktop-v2/build/validation/20260927/drag-fixture/fixture-run.log
 This proves basic single-display native drag through go-e2e itself. It does not
 prove drag safety under Pause/Stop, external focus change, helper crash, window
 movement/closure, or multi-display topology changes.
+
+## Auto-session orchestration route gate — 2026-09-27
+
+The latest-source desktop was exercised with a task that explicitly prohibited
+manual Computer Use panel startup. The `gpt-5.6-sol` route failed before any
+ComputerUse call with provider `404 model is not found`. A retry using the
+UI-listed `gpt-5.5` model produced the same 404. No WorkBuddy action was
+therefore dispatched in either run and no auto-session pass is claimed.
+
+The code-level lazy coordinator is covered by focused Go tests: after the normal
+ComputerUse permission gate, an approved managed conversation can create/bind a
+session on the Wails host lifetime; local preview and foreign owners are still
+rejected. A live model-driven proof remains blocked on an available image-capable
+provider route, not on a native input or session-ownership assertion.
