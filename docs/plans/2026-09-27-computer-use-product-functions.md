@@ -344,3 +344,38 @@ PNGs; final A image visually inspected. Six related Go packages pass. The
 purpose-built fixture process was stopped and both generated fixture app copies
 were removed; requested screenshots/JSON remain. Normal untagged desktop build
 is restored after testing; no release artifacts/tags were published.
+
+### Held-button interruption slice (baseline 87600b4, clean, pulled)
+
+Review found Stop acknowledged before the helper's executor drained; the Go
+controller then canceled the active RPC, potentially terminating the helper
+before drag cleanup. Also emergency release used AppKit bottom-left cursor
+coordinates as CG top-left coordinates and allocated its event during failure.
+Design: preallocate/reuse the release event in CG coordinates before down;
+keep native reader/control responsive but enqueue control acknowledgements after
+executor cleanup; retain explicit paused state for Resume+fresh Observe, not
+input replay. Close requests bounded Stop before abort. Verify normal drag and
+Pause/Stop/focus interruption in isolated AppKit event fixture, counters and
+screenshots. SIGKILL needs an independent release authority and stays an explicit
+open gate; successful cooperative cleanup is not crash safety.
+
+Held-button slice acceptance on 2026-09-28:
+- Native fake safety matrix: 231 assertions; non-posting platform event matrix:
+  455 assertions. Focused Go tests and race tests passed for controller, macOS
+  backend/native transport, bridge, tool, and Wails host.
+- Actual tagged Wails Controller/helper passed eight native fixture cases:
+  normal left/right drag, Pause left/right, Stop left/right, and independent
+  focus perturbation left/right. Each recorded exactly one down/up pair, up at
+  the last posted CG point, fixture pressed=false, and global mouse mask=0.
+  Normal cases completed the drop; interrupted receipts remained unknown.
+  Pause resumed only with a fresh observation; all cases confirmed Stop.
+- Real execution exposed two extra failures before the passing rerun: Go Abort
+  prevented Pause recovery, and focus-error Abort prevented Stop confirmation.
+  Locally requested, native-acknowledged interruption now keeps the helper for
+  explicit Resume; focus failure quarantines it to Stop/Close only. Neither
+  exception permits replay or changes an unknown receipt into success.
+- Final evidence: ignored `desktop-v2/build/validation/20260928/drag-interruption/final/`
+  (`results.json`, normal-left/right, pause, stop, focus before/after PNGs).
+  Normal-right and Pause native screenshots were visually inspected: completed
+  drop and released-interrupted states respectively. This is scripted native
+  acceptance, not model-autonomous drag acceptance. No SIGKILL safety claim.

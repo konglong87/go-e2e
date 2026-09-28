@@ -305,9 +305,10 @@ func controlResult(ctx context.Context, err error) error {
 	return err
 }
 func (c *Controller) Close(ctx context.Context) error {
-	_ = c.session.Stop(c.session.Owner())
-	c.cancelAction()
-	return c.backend.Close(ctx)
+	// Give the live helper a bounded chance to release held input before
+	// cancellation poisons its RPC transport. Stop revokes authority first.
+	stopErr := c.Stop(ctx, c.session.Owner(), c.session.ID())
+	return errors.Join(stopErr, c.backend.Close(ctx))
 }
 
 var _ Service = (*Controller)(nil)

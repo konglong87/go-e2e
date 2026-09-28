@@ -17,8 +17,12 @@ while let data = readFrame() {
         case .pause, .resume, .stop, .shutdown:
             let generation = request.payload["generation"]?.integer(in: 0...Int(Int32.max)) ?? -1
             try engine.state.control(command, generation: generation)
-            responder.send(request, outcome: .executed)
-            if command == .shutdown { exit(0) }
+            // Invalidate immediately, but acknowledge only after queued input
+            // exits and its mouse-up defer has run. Never block the reader.
+            executor.async {
+                responder.send(request, outcome: .executed)
+                if command == .shutdown { exit(0) }
+            }
         case .readiness: responder.send(request, outcome: .executed, result: engine.readiness())
         case .observe, .execute:
             guard slots.wait(timeout: .now()) == .success else { throw SafetyError.capacity }

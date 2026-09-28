@@ -30,6 +30,8 @@ const (
 	maxTimeout                = 60 * time.Second
 	maxFrameBytes             = 8 * 1024 * 1024
 	maxActions                = 4096
+	helperInactiveCode        = "inactive"
+	helperFocusChangedCode    = "focus_changed"
 	// Match the native geometry validity tolerance for point/pixel rounding.
 	geometryScaleTolerance = 0.01
 )
@@ -51,6 +53,7 @@ type Backend struct {
 	config                  Config
 	requestCounter          atomic.Uint64
 	closed, paused, stopped bool
+	failed                  bool
 	epoch                   uint64
 	images                  map[string]imageData
 	observation             cu.Observation
@@ -462,7 +465,20 @@ func (b *Backend) Execute(ctx context.Context, action cu.Action) (cu.ActionRecei
 		if !errors.As(err, &rejected) && !(errors.As(err, &call) && !call.MayHaveRun) {
 			receipt.Outcome = cu.OutcomeUnknown
 			receipt.Verification = cu.VerificationUnknown
-			b.invalidate()
+			// A locally requested Pause/Stop invalidated this generation and the
+			// native executor acknowledged interruption after releasing input.
+			// Do not kill it before the queued control acknowledgement arrives.
+			// This exception never turns partial input into success or replay.
+			if !b.cooperativeInterruption(epoch, response) {
+				if response.OK != nil && !*response.OK && response.Outcome == cu.OutcomeUnknown && response.ErrorCode == helperFocusChangedCode {
+					// The native executor returned after cleanup and permanently
+					// stopped itself. Retain only Stop/Close transport, not Resume
+					// or input authority, so cleanup can still be acknowledged.
+					b.quarantine()
+				} else {
+					b.invalidate()
+				}
+			}
 		}
 		return finish(err)
 	}
@@ -494,12 +510,25 @@ func (b *Backend) Execute(ctx context.Context, action cu.Action) (cu.ActionRecei
 	return finish(nil)
 }
 
-func (b *Backend) invalidate() {
+func (b *Backend) cooperativeInterruption(epoch uint64, response helperResponse) bool {
+	if response.OK == nil || *response.OK || response.Outcome != cu.OutcomeUnknown || response.ErrorCode != helperInactiveCode {
+		return false
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return !b.closed && b.paused && b.epoch > epoch
+}
+
+func (b *Backend) quarantine() {
 	b.mu.Lock()
 	b.paused = true
+	b.failed = true
 	b.epoch++
 	b.observation = cu.Observation{}
 	b.mu.Unlock()
+}
+func (b *Backend) invalidate() {
+	b.quarantine()
 	b.process.Abort(errors.New("action outcome unknown; new helper required"))
 }
 func (b *Backend) Pause(ctx context.Context) error  { return b.control(ctx, commandPause) }
@@ -507,7 +536,7 @@ func (b *Backend) Resume(ctx context.Context) error { return b.control(ctx, comm
 func (b *Backend) Stop(ctx context.Context) error   { return b.control(ctx, commandStop) }
 func (b *Backend) control(ctx context.Context, command string) error {
 	b.mu.Lock()
-	if b.closed || (b.stopped && command != commandStop) {
+	if b.closed || (b.stopped && command != commandStop) || (b.failed && command != commandStop) {
 		b.mu.Unlock()
 		return &rejection{"inactive"}
 	}

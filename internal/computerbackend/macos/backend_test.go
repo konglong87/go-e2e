@@ -98,7 +98,7 @@ func TestHelperProcess(t *testing.T) {
 				return
 			case "reject":
 				outcome = cu.OutcomeRejected
-			case "unknown":
+			case "unknown", "focus-failed":
 				outcome = cu.OutcomeUnknown
 			case "failed":
 				outcome = cu.OutcomeFailed
@@ -135,7 +135,11 @@ func TestHelperProcess(t *testing.T) {
 		case "block":
 			continue
 		}
-		payload, _ := json.Marshal(map[string]any{"ok": outcome == cu.OutcomeExecuted, "outcome": outcome, "result": result, "error_message": "SECRET-CREDENTIAL"})
+		errorCode := ""
+		if mode == "focus-failed" && req.Command == commandExecute {
+			errorCode = helperFocusChangedCode
+		}
+		payload, _ := json.Marshal(map[string]any{"ok": outcome == cu.OutcomeExecuted, "outcome": outcome, "result": result, "error_code": errorCode, "error_message": "SECRET-CREDENTIAL"})
 		req.Payload = payload
 		_ = codec.WriteFrame(os.Stdout, req)
 		if req.Command == commandShutdown {
@@ -472,5 +476,60 @@ func TestObservationExpirationMetadataFailsClosed(t *testing.T) {
 				t.Fatal("unbounded/missing expiration accepted")
 			}
 		})
+	}
+}
+
+func TestCooperativeInterruptionRequiresLocalControlAndNativeAcknowledgement(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		paused, closed bool
+		epoch          uint64
+		outcome        cu.Outcome
+		code           string
+		want           bool
+	}{
+		{"local pause", true, false, 1, cu.OutcomeUnknown, helperInactiveCode, true},
+		{"same generation", true, false, 0, cu.OutcomeUnknown, helperInactiveCode, false},
+		{"no local pause", false, false, 1, cu.OutcomeUnknown, helperInactiveCode, false},
+		{"closed", true, true, 1, cu.OutcomeUnknown, helperInactiveCode, false},
+		{"focus failure", true, false, 1, cu.OutcomeUnknown, "focus_changed", false},
+		{"missing response", true, false, 1, "", "", false},
+		{"wrong outcome", true, false, 1, cu.OutcomeExecuted, helperInactiveCode, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			b := &Backend{paused: tc.paused, closed: tc.closed, epoch: tc.epoch}
+			ok := false
+			if got := b.cooperativeInterruption(0, helperResponse{OK: &ok, Outcome: tc.outcome, ErrorCode: tc.code}); got != tc.want {
+				t.Fatalf("got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCooperativeInterruptionRejectsMalformedNativeResponse(t *testing.T) {
+	b := &Backend{paused: true, epoch: 1}
+	ok := true
+	for _, flag := range []*bool{nil, &ok} {
+		if b.cooperativeInterruption(0, helperResponse{OK: flag, Outcome: cu.OutcomeUnknown, ErrorCode: helperInactiveCode}) {
+			t.Fatal("malformed response retained helper")
+		}
+	}
+}
+
+func TestAcknowledgedFocusFailureRetainsOnlyStopTransport(t *testing.T) {
+	b := newTestBackend(t, "focus-failed", time.Second, "")
+	obs := observeTest(t, b)
+	receipt, err := b.Execute(context.Background(), waitAction(obs))
+	if err == nil || receipt.Outcome != cu.OutcomeUnknown {
+		t.Fatalf("lost uncertainty: %+v %v", receipt, err)
+	}
+	if err := b.Resume(context.Background()); err == nil {
+		t.Fatal("resumed after focus failure")
+	}
+	if _, err := b.Observe(context.Background(), cu.ObserveRequest{SessionID: obs.SessionID}); err == nil {
+		t.Fatal("observed after focus failure")
+	}
+	if err := b.Stop(context.Background()); err != nil {
+		t.Fatalf("lost cleanup-only transport: %v", err)
 	}
 }

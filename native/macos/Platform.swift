@@ -30,6 +30,8 @@ extension DesktopPlatform {
 }
 
 struct MacDesktop: DesktopPlatform {
+    private let preparedRelease = PreparedMouseRelease()
+
     func geometry() throws -> DisplayGeometry {
         let all = try geometries()
         let mainID = String(CGMainDisplayID())
@@ -158,28 +160,23 @@ struct MacDesktop: DesktopPlatform {
     func post(_ operation: InputOperation) throws {
         switch operation {
         case .mouse(let kind, let point, let clickCount):
-            let button: CGMouseButton = kind == .rightClick ? .right : .left
-            let downType: CGEventType = kind == .move ? .mouseMoved : (button == .right ? .rightMouseDown : .leftMouseDown)
-            guard let down = CGEvent(mouseEventSource: nil, mouseType: downType, mouseCursorPosition: point, mouseButton: button) else { throw SafetyError.inputUnavailable }
-            down.flags = []
-            down.setIntegerValueField(.mouseEventClickState, value: Int64(clickCount))
-            down.post(tap: .cghidEventTap)
-            if kind != .move {
-                guard let up = CGEvent(mouseEventSource: nil, mouseType: button == .right ? .rightMouseUp : .leftMouseUp, mouseCursorPosition: point, mouseButton: button) else { throw SafetyError.inputUnavailable }
-                up.flags = []; up.setIntegerValueField(.mouseEventClickState, value: Int64(clickCount)); up.post(tap: .cghidEventTap)
-            }
+            let events = try MouseEventSequence.make(kind: kind, point: point, clickCount: clickCount)
+            for event in events { event.post(tap: .cghidEventTap) }
         case .mouseDown(let point, let button):
             let type: CGEventType = button == .right ? .rightMouseDown : .leftMouseDown
             guard let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point, mouseButton: button) else { throw SafetyError.inputUnavailable }
+            // Never post down without a preallocated emergency up event.
+            try preparedRelease.arm(button: button, point: point)
             event.flags = []; event.post(tap: .cghidEventTap)
         case .mouseDrag(let point, let button):
             let type: CGEventType = button == .right ? .rightMouseDragged : .leftMouseDragged
             guard let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point, mouseButton: button) else { throw SafetyError.inputUnavailable }
+            preparedRelease.update(point: point)
             event.flags = []; event.post(tap: .cghidEventTap)
         case .mouseUp(let point, let button):
-            let type: CGEventType = button == .right ? .rightMouseUp : .leftMouseUp
-            guard let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point, mouseButton: button) else { throw SafetyError.inputUnavailable }
-            event.flags = []; event.post(tap: .cghidEventTap)
+            preparedRelease.update(point: point)
+            guard let event = preparedRelease.take(button: button) else { throw SafetyError.inputUnavailable }
+            event.post(tap: .cghidEventTap)
         case .unicode(let units):
             guard let down = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true),
                   let up = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: false) else { throw SafetyError.inputUnavailable }
@@ -197,10 +194,9 @@ struct MacDesktop: DesktopPlatform {
     }
 
     func releasePressedButton(_ button: CGMouseButton) {
-        let type: CGEventType = button == .right ? .rightMouseUp : .leftMouseUp
-        if let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: NSEvent.mouseLocation, mouseButton: button) {
-            event.flags = []; event.post(tap: .cghidEventTap)
-        }
+        // Last posted CG event coordinates; do not mix in NSEvent's flipped
+        // AppKit space or allocate during an input failure.
+        preparedRelease.take(button: button)?.post(tap: .cghidEventTap)
     }
 }
 
@@ -239,5 +235,45 @@ enum KeyboardEventSequence {
             try append(modifier.code, down: false, flags: held)
         }
         return events
+    }
+}
+
+// Construction is independently testable without posting any OS input.
+enum MouseEventSequence {
+    typealias Factory = (CGEventType, CGPoint, CGMouseButton) -> CGEvent?
+    static func make(kind: ActionKind, point: CGPoint, clickCount: Int,
+                     create: Factory = { CGEvent(mouseEventSource: nil, mouseType: $0, mouseCursorPosition: $1, mouseButton: $2) }) throws -> [CGEvent] {
+        let button: CGMouseButton = kind == .rightClick ? .right : .left
+        let down: CGEventType = kind == .move ? .mouseMoved : (button == .right ? .rightMouseDown : .leftMouseDown)
+        let types: [CGEventType] = kind == .move ? [down] : [down, button == .right ? .rightMouseUp : .leftMouseUp]
+        return try types.map { type in
+            guard let event = create(type, point, button) else { throw SafetyError.inputUnavailable }
+            event.flags = []
+            event.setIntegerValueField(.mouseEventClickState, value: Int64(clickCount))
+            return event
+        }
+    }
+}
+
+// Owned by the serial native executor. This is cooperative cleanup only;
+// it cannot survive SIGKILL and is not an independent crash-release guard.
+final class PreparedMouseRelease {
+    private var event: CGEvent?
+    private var button: CGMouseButton?
+
+    func arm(button: CGMouseButton, point: CGPoint,
+             create: MouseEventSequence.Factory = { CGEvent(mouseEventSource: nil, mouseType: $0, mouseCursorPosition: $1, mouseButton: $2) }) throws {
+        guard event == nil else { throw SafetyError.invalidAction }
+        let type: CGEventType = button == .right ? .rightMouseUp : .leftMouseUp
+        guard let up = create(type, point, button) else { throw SafetyError.inputUnavailable }
+        up.flags = []
+        self.button = button; event = up
+    }
+    func update(point: CGPoint) { event?.location = point }
+    func take(button: CGMouseButton) -> CGEvent? {
+        guard self.button == button else { return nil }
+        let up = event
+        event = nil; self.button = nil
+        return up
     }
 }

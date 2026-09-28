@@ -168,17 +168,18 @@ final class Engine {
         return y >= max(0, geometry.height - 220)
     }
 
-    private func waitForAppActivation(_ request: Envelope, geometry: DisplayGeometry) {
+    private func waitForAppActivation(_ request: Envelope, geometry: DisplayGeometry) throws {
         guard waitsForAppActivation(request, geometry: geometry), let before = platform.focus() else { return }
         let deadline = ProcessInfo.processInfo.systemUptime + 3.0
         while ProcessInfo.processInfo.systemUptime < deadline {
+            try state.gate(request)
             if platform.focus() != before { return }
-            Thread.sleep(forTimeInterval: 0.1)
+            try wait(100, request: request)
         }
     }
 
     private func captureAfterInput(_ request: Envelope, geometry: DisplayGeometry, expectedWindow: NativeWindow?) throws -> JSONValue {
-        waitForAppActivation(request, geometry: geometry)
+        try waitForAppActivation(request, geometry: geometry)
         for attempt in 0..<3 {
             do {
                 return try capture(request, geometry: geometry, expectedWindow: expectedWindow)
@@ -218,7 +219,10 @@ final class Engine {
             let payload = try captureAfterInput(request, geometry: snapshot.geometry, expectedWindow: snapshot.window)
             return ActionResult(outcome: .executed, payload: payload, error: nil)
         } catch {
-            if posted { state.end() } // never run queued work after ambiguous input
+            // Explicit Pause/Stop already invalidated the generation. Preserve
+            // that state so Pause can Resume with a fresh observation; do not
+            // turn cooperative interruption into an irreversible helper stop.
+            if posted && (error as? SafetyError) != .inactive { state.end() }
             return ActionResult(outcome: posted ? .unknown : .rejected, payload: .object([:]), error: error as? SafetyError ?? .inputUnavailable)
         }
     }

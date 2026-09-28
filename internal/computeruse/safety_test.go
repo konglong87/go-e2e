@@ -408,6 +408,18 @@ func TestControllerStopSendsControlBeforeCancellation(t *testing.T) {
 	}
 }
 
+func TestControllerCloseSendsStopBeforeTransportCancellation(t *testing.T) {
+	c, b, _, done := startWaitingController(t)
+	if err := c.Close(context.Background()); err != nil {
+		t.Fatalf("Close canceled helper before cooperative Stop: %v", err)
+	}
+	awaitControl(t, b.stopSeen)
+	awaitControl(t, done)
+	if c.Session().State() != SessionStopped || c.Session().Approved() {
+		t.Fatal("Close did not revoke authority")
+	}
+}
+
 func TestControllerPauseFallbackIsBoundedAndFailsClosed(t *testing.T) {
 	pauseFailure := errors.New("pause rejected")
 	for _, test := range []struct {

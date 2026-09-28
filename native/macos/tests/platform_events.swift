@@ -73,6 +73,35 @@ struct PlatformTests {
         expect(escape.count == 2, "unmodified escape remains a key pair")
         check(escape[0], .keyDown, kVK_Escape, [], "escape down")
         check(escape[1], .keyUp, kVK_Escape, [], "escape up")
+        for button in [CGMouseButton.left, .right] {
+            let release = PreparedMouseRelease()
+            let start = CGPoint(x: -200, y: 80)
+            let end = CGPoint(x: -75, y: 140)
+            try release.arm(button: button, point: start)
+            expect(release.take(button: button == .left ? .right : .left) == nil, "wrong button cannot consume release")
+            release.update(point: end)
+            let event = release.take(button: button)
+            expect(event?.type == (button == .left ? .leftMouseUp : .rightMouseUp), "prepared release has correct button")
+            expect(event?.location == end, "emergency release uses last CG point without AppKit flip")
+            expect(release.take(button: button) == nil, "release consumed once")
+            do {
+                try release.arm(button: button, point: start, create: { _, _, _ in nil })
+                expect(false, "release allocation must fail before down")
+            } catch SafetyError.inputUnavailable { expect(release.take(button: button) == nil, "failed preparation owns no release") }
+        }
+        for kind in [ActionKind.click, .doubleClick, .rightClick] {
+            let events = try MouseEventSequence.make(kind: kind, point: CGPoint(x: 10, y: 20), clickCount: 2)
+            expect(events.count == 2, "mouse pair preallocated")
+            expect(events[1].getIntegerValueField(.mouseEventClickState) == 2, "click count preserved")
+            var allocation = 0
+            do {
+                _ = try MouseEventSequence.make(kind: kind, point: .zero, clickCount: 1) { type, point, button in
+                    allocation += 1
+                    return allocation == 2 ? nil : CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point, mouseButton: button)
+                }
+                expect(false, "up allocation failure must not return postable down")
+            } catch SafetyError.inputUnavailable { expect(allocation == 2, "mouse construction stops on failed release") }
+        }
         print("PASS: \(assertions) platform event assertions (no events posted)")
     }
 }

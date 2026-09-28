@@ -234,6 +234,31 @@ do {
     expect(desktop.posts.contains { if case .mouseUp = $0 { return true }; return false }, "interrupted drag releases mouse button")
 }
 
+// Cooperative interruption releases before returning; Pause remains resumable
+// only through an explicit new generation + fresh observation, never replay.
+for command in [Command.pause, .stop] {
+    let (engine, desktop) = setup()
+    var interrupted = false
+    desktop.focusHook = {
+        if !interrupted && desktop.posts.count == 1 {
+            interrupted = true
+            try? engine.state.control(command, generation: 1)
+        }
+    }
+    let result = engine.execute(action("drag", ["start_x":.number(10),"start_y":.number(10),"x":.number(190),"y":.number(90),"duration_ms":.number(3000)]))
+    expect(result.outcome == .unknown && result.error == .inactive, "interrupted drag reports unknown, no replay")
+    expect(desktop.posts.count == 2, "interrupted drag posts only down and cleanup up")
+    if case .mouseUp = desktop.posts.last! { expect(true, "cleanup up before execute return") } else { expect(false,"missing cleanup release") }
+    desktop.focusHook = nil
+    if command == .pause {
+        try engine.state.control(.resume, generation: 2)
+        expect(engine.execute(action("key",["key":.string("return"),"generation":.number(2)])).outcome == .rejected, "resume invalidates interrupted observation")
+        expect(engine.observe(request("observe",payload:["observation_id":.string("resumed-drag"),"generation":.number(2)])).outcome == .executed, "pause drag can resume with fresh capture")
+    } else {
+        expectThrows("stop drag cannot resume") { try engine.state.control(.resume,generation:2) }
+    }
+}
+
 for reason in ["permission","capture","focus","geometry","noevent","stopped","paused","expired","session","observation","display","window","generation"] {
     let (engine,desktop) = setup()
     var req = action("type", ["text":.string("abc")])
