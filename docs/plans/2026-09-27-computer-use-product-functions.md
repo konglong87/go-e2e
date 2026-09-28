@@ -335,3 +335,12 @@ This closes the previously missing exact-window activation + same-title native
 selection gate, not arbitrary-app AX compatibility or all Computer Use gates.
 Drag interruption/crash release, move/minimize/close target changes, and full
 permission lifecycle remain work. No physical second-screen or release claim.
+
+Delivery/readback: feature `102aeef` pushed to `origin/main`. Rebuilt that exact
+source and cold-launched the tagged host; repeated A/B/A acceptance passed with
+counts `(3,1) -> (3,2) -> (4,2)`, stale-target rejection and confirmed Stop.
+Evidence: `window-selection/head-rerun/results.json` and corresponding verified
+PNGs; final A image visually inspected. Six related Go packages pass. The
+purpose-built fixture process was stopped and both generated fixture app copies
+were removed; requested screenshots/JSON remain. Normal untagged desktop build
+is restored after testing; no release artifacts/tags were published.
