@@ -44,12 +44,14 @@ type Config struct {
 	RequestHostPermissions func()
 	MaxFrameBytes          int
 	Now                    func() time.Time
+	mouseDriver            mouseDriver // package-private test seam; production always uses host CG
 }
 
 type Backend struct {
 	mu                      sync.Mutex // state only, never held across IPC
 	operation               chan struct{}
 	process                 *native.Process
+	mouseBroker             *mouseBroker
 	config                  Config
 	requestCounter          atomic.Uint64
 	closed, paused, stopped bool
@@ -209,11 +211,26 @@ func New(ctx context.Context, c Config) (*Backend, error) {
 	if c.RequestHostPermissions != nil {
 		c.RequestHostPermissions()
 	}
-	p, err := native.StartProcess(ctx, c.HelperPath, c.HelperArgs, helperEnvironment(c.HelperEnv), native.NewCodec(uint32(c.MaxFrameBytes)))
+	driver := c.mouseDriver
+	if driver == nil {
+		driver = newHostMouseDriver()
+	}
+	broker, childFiles, err := newMouseBroker(driver)
 	if err != nil {
 		return nil, err
 	}
-	b := &Backend{process: p, config: c, operation: make(chan struct{}, 1), images: map[string]imageData{}, actions: map[string]struct{}{}}
+	args := append(append([]string(nil), c.HelperArgs...), mouseBrokerArgument)
+	p, err := native.StartProcess(ctx, c.HelperPath, args, helperEnvironment(c.HelperEnv), native.NewCodec(uint32(c.MaxFrameBytes)),
+		native.WithExtraFiles(childFiles...), native.WithAbortHook(func() { _ = broker.close() }))
+	for _, file := range childFiles {
+		_ = file.Close()
+	}
+	if err != nil {
+		_ = broker.close()
+		<-broker.done
+		return nil, err
+	}
+	b := &Backend{process: p, mouseBroker: broker, config: c, operation: make(chan struct{}, 1), images: map[string]imageData{}, actions: map[string]struct{}{}}
 	if _, err = b.Capabilities(ctx); err != nil {
 		_ = b.Close(context.Background())
 		return nil, err
@@ -413,9 +430,9 @@ func (b *Backend) ObservationImage(ctx context.Context, id string) ([]byte, stri
 	return append([]byte(nil), image.data...), image.mediaType, nil
 }
 
-func (b *Backend) Execute(ctx context.Context, action cu.Action) (cu.ActionReceipt, error) {
+func (b *Backend) Execute(ctx context.Context, action cu.Action) (receipt cu.ActionReceipt, resultErr error) {
 	started := b.config.Now()
-	receipt := cu.ActionReceipt{ActionID: action.ID, SessionID: action.SessionID, Platform: cu.PlatformMacOS, Backend: cu.BackendNativeHost, BeforeObservationID: action.ObservationID, Outcome: cu.OutcomeRejected, Verification: cu.VerificationNotChecked, RedactedActionSummary: action.RedactedSummary()}
+	receipt = cu.ActionReceipt{ActionID: action.ID, SessionID: action.SessionID, Platform: cu.PlatformMacOS, Backend: cu.BackendNativeHost, BeforeObservationID: action.ObservationID, Outcome: cu.OutcomeRejected, Verification: cu.VerificationNotChecked, RedactedActionSummary: action.RedactedSummary()}
 	finish := func(err error) (cu.ActionReceipt, error) {
 		receipt.CompletedAt = b.config.Now()
 		receipt.Duration = receipt.CompletedAt.Sub(started)
@@ -457,6 +474,37 @@ func (b *Backend) Execute(ctx context.Context, action cu.Action) (cu.ActionRecei
 	}
 	if action.Button != "" {
 		payload["button"] = action.Button
+	}
+	if action.Kind == cu.ActionDrag {
+		// Serialize authorization with epoch changes. Broker never calls back
+		// into Backend, preserving the lock order Backend.mu -> broker.mu.
+		b.mu.Lock()
+		if !b.validEpoch(epoch) || b.mouseBroker == nil {
+			b.mu.Unlock()
+			return finish(&rejection{"inactive"})
+		}
+		token, authorizeErr := b.mouseBroker.authorize(ctx, action, epoch, b.config.RequestTimeout)
+		b.mu.Unlock()
+		if authorizeErr != nil {
+			return finish(&rejection{mouseBrokerInputUnavailable})
+		}
+		payload["drag_token"] = token
+		defer func() {
+			lease := b.mouseBroker.finish(token)
+			// Cleanup never upgrades a receipt. A claimed success without a
+			// completed broker gesture, or rejection after down, is uncertain.
+			uncertain := (receipt.Outcome == cu.OutcomeExecuted && !lease.complete) ||
+				(receipt.Outcome == cu.OutcomeRejected && lease.pressed) || lease.err != nil
+			if uncertain {
+				receipt.Outcome, receipt.Verification = cu.OutcomeUnknown, cu.VerificationUnknown
+				receipt.AfterObservationID, receipt.After = "", nil
+				receipt.ErrorMessage = "computer action did not complete"
+				if resultErr == nil {
+					resultErr = errors.New("drag outcome unknown")
+				}
+				b.invalidate()
+			}
+		}()
 	}
 	response, err := b.request(ctx, commandExecute, action.SessionID, action.ID, payload)
 	if err != nil {
@@ -521,6 +569,7 @@ func (b *Backend) cooperativeInterruption(epoch uint64, response helperResponse)
 
 func (b *Backend) quarantine() {
 	b.mu.Lock()
+	b.mouseBroker.revoke()
 	b.paused = true
 	b.failed = true
 	b.epoch++
@@ -544,6 +593,7 @@ func (b *Backend) control(ctx context.Context, command string) error {
 		b.mu.Unlock()
 		return nil
 	}
+	b.mouseBroker.revoke()
 	b.epoch++
 	epoch := b.epoch
 	b.paused = true
@@ -569,6 +619,7 @@ func (b *Backend) control(ctx context.Context, command string) error {
 func (b *Backend) Close(ctx context.Context) error {
 	b.mu.Lock()
 	first := !b.closed
+	b.mouseBroker.revoke()
 	b.closed = true
 	b.stopped = true
 	b.paused = true
@@ -576,6 +627,10 @@ func (b *Backend) Close(ctx context.Context) error {
 	b.images = map[string]imageData{}
 	b.observation = cu.Observation{}
 	b.mu.Unlock()
+	var cleanupErr error
+	if b.mouseBroker != nil {
+		cleanupErr = b.mouseBroker.close()
+	}
 	if first {
 		closeCtx, cancel := context.WithTimeout(ctx, native.ShutdownGrace)
 		_, err := b.request(closeCtx, commandShutdown, "", "", nil)
@@ -584,7 +639,7 @@ func (b *Backend) Close(ctx context.Context) error {
 			b.process.Abort(errors.New("helper shutdown failed"))
 		}
 	}
-	return b.process.Wait(ctx)
+	return errors.Join(b.process.Wait(ctx), cleanupErr)
 }
 
 var _ cu.Backend = (*Backend)(nil)

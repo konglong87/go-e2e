@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"strings"
 	"sync"
@@ -114,16 +115,43 @@ func TestProcessCancellationClosesReaderAndReaps(t *testing.T) {
 	}
 }
 
+type notifyingWriter struct {
+	io.WriteCloser
+	started chan struct{}
+	once    sync.Once
+}
+
+func (w *notifyingWriter) Write(data []byte) (int, error) {
+	w.once.Do(func() { close(w.started) })
+	return w.WriteCloser.Write(data)
+}
+
 func TestProcessBlockedWriteIsCancelled(t *testing.T) {
 	p := startTestProcess(t, "no-read")
 	req := requestFor("write")
 	req.Payload, _ = json.Marshal(map[string]string{"text": strings.Repeat("x", 900000)})
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	writer := &notifyingWriter{WriteCloser: p.stdin, started: make(chan struct{})}
+	p.stdin = writer
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	start := time.Now()
-	_, err := p.Call(ctx, req)
-	if err == nil || time.Since(start) > time.Second {
-		t.Fatalf("blocked write not cancelled: %v", err)
+	result := make(chan error, 1)
+	go func() { _, err := p.Call(ctx, req); result <- err }()
+	// Cancel only after dispatch starts. A deadline during JSON encoding is
+	// correctly rejected without poisoning the helper, not a blocked write.
+	select {
+	case <-writer.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("write never dispatched")
+	}
+	cancel()
+	select {
+	case err := <-result:
+		var call *CallError
+		if !errors.Is(err, context.Canceled) || !errors.As(err, &call) || !call.MayHaveRun {
+			t.Fatalf("blocked write not cancelled after dispatch: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("blocked write cancellation timed out")
 	}
 	waitForProcess(t, p)
 }

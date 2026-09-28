@@ -17,11 +17,15 @@ protocol DesktopPlatform {
     func requestPermissions()
     func focus() -> Int32?
     func capture(_ geometry: DisplayGeometry) throws -> Data
+    func supportsDrag() -> Bool
+    func prepareDrag(_ request: Envelope) throws
     func post(_ operation: InputOperation) throws
     func releasePressedButton(_ button: CGMouseButton)
 }
 
 extension DesktopPlatform {
+    func supportsDrag() -> Bool { true }
+    func prepareDrag(_ request: Envelope) throws {}
     func geometries() throws -> [DisplayGeometry] { [try geometry()] }
     func windows() throws -> [NativeWindow] { [] }
     func windowGeometry(_ id: String) throws -> DisplayGeometry { throw SafetyError.unsupportedDisplay }
@@ -30,7 +34,17 @@ extension DesktopPlatform {
 }
 
 struct MacDesktop: DesktopPlatform {
-    private let preparedRelease = PreparedMouseRelease()
+    private let mouseBroker: MouseButtonClient?
+
+    init(mouseBroker: MouseButtonClient? = nil) { self.mouseBroker = mouseBroker }
+    func supportsDrag() -> Bool { mouseBroker != nil }
+
+    func prepareDrag(_ request: Envelope) throws {
+        guard let mouseBroker, let token = request.payload["drag_token"]?.string else {
+            throw SafetyError.inputUnavailable
+        }
+        try mouseBroker.prepare(token: token)
+    }
 
     func geometry() throws -> DisplayGeometry {
         let all = try geometries()
@@ -163,20 +177,14 @@ struct MacDesktop: DesktopPlatform {
             let events = try MouseEventSequence.make(kind: kind, point: point, clickCount: clickCount)
             for event in events { event.post(tap: .cghidEventTap) }
         case .mouseDown(let point, let button):
-            let type: CGEventType = button == .right ? .rightMouseDown : .leftMouseDown
-            guard let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point, mouseButton: button) else { throw SafetyError.inputUnavailable }
-            // Never post down without a preallocated emergency up event.
-            try preparedRelease.arm(button: button, point: point)
-            event.flags = []; event.post(tap: .cghidEventTap)
+            guard let mouseBroker else { throw SafetyError.inputUnavailable }
+            try mouseBroker.down(point: point, button: button)
         case .mouseDrag(let point, let button):
-            let type: CGEventType = button == .right ? .rightMouseDragged : .leftMouseDragged
-            guard let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point, mouseButton: button) else { throw SafetyError.inputUnavailable }
-            preparedRelease.update(point: point)
-            event.flags = []; event.post(tap: .cghidEventTap)
+            guard let mouseBroker else { throw SafetyError.inputUnavailable }
+            try mouseBroker.drag(point: point, button: button)
         case .mouseUp(let point, let button):
-            preparedRelease.update(point: point)
-            guard let event = preparedRelease.take(button: button) else { throw SafetyError.inputUnavailable }
-            event.post(tap: .cghidEventTap)
+            guard let mouseBroker else { throw SafetyError.inputUnavailable }
+            try mouseBroker.up(point: point, button: button)
         case .unicode(let units):
             guard let down = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true),
                   let up = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: false) else { throw SafetyError.inputUnavailable }
@@ -194,9 +202,7 @@ struct MacDesktop: DesktopPlatform {
     }
 
     func releasePressedButton(_ button: CGMouseButton) {
-        // Last posted CG event coordinates; do not mix in NSEvent's flipped
-        // AppKit space or allocate during an input failure.
-        preparedRelease.take(button: button)?.post(tap: .cghidEventTap)
+        mouseBroker?.release(button: button)
     }
 }
 
@@ -252,28 +258,5 @@ enum MouseEventSequence {
             event.setIntegerValueField(.mouseEventClickState, value: Int64(clickCount))
             return event
         }
-    }
-}
-
-// Owned by the serial native executor. This is cooperative cleanup only;
-// it cannot survive SIGKILL and is not an independent crash-release guard.
-final class PreparedMouseRelease {
-    private var event: CGEvent?
-    private var button: CGMouseButton?
-
-    func arm(button: CGMouseButton, point: CGPoint,
-             create: MouseEventSequence.Factory = { CGEvent(mouseEventSource: nil, mouseType: $0, mouseCursorPosition: $1, mouseButton: $2) }) throws {
-        guard event == nil else { throw SafetyError.invalidAction }
-        let type: CGEventType = button == .right ? .rightMouseUp : .leftMouseUp
-        guard let up = create(type, point, button) else { throw SafetyError.inputUnavailable }
-        up.flags = []
-        self.button = button; event = up
-    }
-    func update(point: CGPoint) { event?.location = point }
-    func take(button: CGMouseButton) -> CGEvent? {
-        guard self.button == button else { return nil }
-        let up = event
-        event = nil; self.button = nil
-        return up
     }
 }

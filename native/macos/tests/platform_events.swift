@@ -1,6 +1,23 @@
 import Foundation
 import CoreGraphics
 import Carbon.HIToolbox
+import Darwin
+
+private final class FakeMouseBrokerWire: MouseBrokerWire {
+    var messages: [[String: Any]] = []
+    var badSequence = false
+    var inactive = false
+    var lostAck = false
+    func exchange(_ request: Data) throws -> Data {
+        let payload = try JSONSerialization.jsonObject(with: request) as! [String: Any]
+        messages.append(payload)
+        if lostAck { throw SafetyError.inputUncertain }
+        return try JSONSerialization.data(withJSONObject: [
+            "sequence": (payload["sequence"] as! Int) + (badSequence ? 1 : 0),
+            "ok": !inactive, "error_code": inactive ? "inactive" : "",
+        ])
+    }
+}
 
 // Constructs events only. Never posts input, prompts for TCC, or captures UI.
 @main
@@ -16,7 +33,65 @@ struct PlatformTests {
         expect(event.getIntegerValueField(.keyboardEventKeycode) == Int64(key), "\(label): keycode")
         expect(event.flags == flags, "\(label): flags")
     }
+    static func brokerPipeChecks() throws {
+        var outgoing: [Int32] = [0, 0]
+        var incoming: [Int32] = [0, 0]
+        guard pipe(&outgoing) == 0, pipe(&incoming) == 0 else { fatalError("pipe setup") }
+        defer { for fd in outgoing + incoming { Darwin.close(fd) } }
+        let wire = try PipeMouseBrokerWire(requestFD: outgoing[1], responseFD: incoming[0])
+        let reply = Data("{\"sequence\":1,\"ok\":true}\n".utf8)
+        _ = reply.withUnsafeBytes { Darwin.write(incoming[1], $0.baseAddress, $0.count) }
+        let request = Data("{\"token\":\"test\"}".utf8)
+        let actualReply = try wire.exchange(request)
+        expect(actualReply == reply.dropLast(), "inherited pipe framing round-trip")
+        var bytes = [UInt8](repeating: 0, count: 256)
+        let size = Darwin.read(outgoing[0], &bytes, bytes.count)
+        expect(Data(bytes.prefix(size)) == request + Data([0x0a]), "one bounded newline request")
+        let start = ProcessInfo.processInfo.systemUptime
+        do {
+            _ = try wire.exchange(request)
+            expect(false, "missing ACK must timeout")
+        } catch SafetyError.inputUncertain {
+            expect(ProcessInfo.processInfo.systemUptime - start < 0.5, "IPC timeout bounded below Stop grace")
+        }
+    }
+    static func brokerChecks() throws {
+        let wire = FakeMouseBrokerWire()
+        let client = MouseButtonClient(wire: wire)
+        for button in [CGMouseButton.left, .right] {
+            try client.prepare(token: "fixture-token")
+            try client.down(point: CGPoint(x: -10, y: 20), button: button)
+            try client.drag(point: CGPoint(x: -5, y: 30), button: button)
+            try client.up(point: CGPoint(x: -5, y: 30), button: button)
+            let count = wire.messages.count
+            client.release(button: button)
+            expect(wire.messages.count == count, "acknowledged up needs no cleanup resend")
+            let triplet = Array(wire.messages.suffix(3))
+            expect(triplet.compactMap { $0["phase"] as? String } == ["down", "drag", "up"], "broker event order")
+            expect(triplet.compactMap { $0["sequence"] as? Int } == [1, 2, 3], "lease sequence starts fresh")
+            expect(triplet.allSatisfy { $0["button"] as? String == (button == .right ? "right" : "left") }, "button binding")
+            expect(triplet.last?["x"] as? Double == -5, "CG negative origin not flipped")
+        }
+        for mode in ["lost", "binding", "inactive"] {
+            try client.prepare(token: "failure-token")
+            wire.lostAck = mode == "lost"
+            wire.badSequence = mode == "binding"
+            wire.inactive = mode == "inactive"
+            do {
+                try client.down(point: .zero, button: .left)
+                expect(false, "bad down reply fails")
+            } catch let error as SafetyError {
+                expect(error == (mode == "inactive" ? .inactive : .inputUncertain), "uncertain ACK or revoked lease classification")
+            }
+            wire.lostAck = false; wire.badSequence = false; wire.inactive = false
+            client.release(button: .left)
+            expect(wire.messages.last?["phase"] as? String == "up", "lost down ACK still requests release")
+        }
+        expect(!MacDesktop().supportsDrag(), "no broker means no unguarded drag capability")
+    }
     static func main() throws {
+        try brokerChecks()
+        try brokerPipeChecks()
         let commandTab = try KeyboardEventSequence.make(code: CGKeyCode(kVK_Tab), flags: .maskCommand)
         expect(commandTab.count == 4, "command-tab has explicit modifier press/release")
         check(commandTab[0], .flagsChanged, kVK_Command, .maskCommand, "command down")
@@ -73,22 +148,6 @@ struct PlatformTests {
         expect(escape.count == 2, "unmodified escape remains a key pair")
         check(escape[0], .keyDown, kVK_Escape, [], "escape down")
         check(escape[1], .keyUp, kVK_Escape, [], "escape up")
-        for button in [CGMouseButton.left, .right] {
-            let release = PreparedMouseRelease()
-            let start = CGPoint(x: -200, y: 80)
-            let end = CGPoint(x: -75, y: 140)
-            try release.arm(button: button, point: start)
-            expect(release.take(button: button == .left ? .right : .left) == nil, "wrong button cannot consume release")
-            release.update(point: end)
-            let event = release.take(button: button)
-            expect(event?.type == (button == .left ? .leftMouseUp : .rightMouseUp), "prepared release has correct button")
-            expect(event?.location == end, "emergency release uses last CG point without AppKit flip")
-            expect(release.take(button: button) == nil, "release consumed once")
-            do {
-                try release.arm(button: button, point: start, create: { _, _, _ in nil })
-                expect(false, "release allocation must fail before down")
-            } catch SafetyError.inputUnavailable { expect(release.take(button: button) == nil, "failed preparation owns no release") }
-        }
         for kind in [ActionKind.click, .doubleClick, .rightClick] {
             let events = try MouseEventSequence.make(kind: kind, point: CGPoint(x: 10, y: 20), clickCount: 2)
             expect(events.count == 2, "mouse pair preallocated")

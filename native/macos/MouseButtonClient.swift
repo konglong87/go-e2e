@@ -1,0 +1,143 @@
+import Foundation
+import CoreGraphics
+import Darwin
+
+// Only drag events use this private inherited channel. The host is their sole
+// posting/release owner and survives helper death. No named socket or fallback
+// local mouse-down is allowed when the channel is absent or fails.
+protocol MouseBrokerWire {
+    func exchange(_ request: Data) throws -> Data
+}
+
+private enum BrokerLimits {
+    static let frameBytes = 4096
+    static let timeoutSeconds: TimeInterval = 0.1
+}
+
+final class PipeMouseBrokerWire: MouseBrokerWire {
+    private let requestFD: Int32
+    private let responseFD: Int32
+
+    init(requestFD: Int32 = 3, responseFD: Int32 = 4) throws {
+        self.requestFD = requestFD
+        self.responseFD = responseFD
+        for fd in [requestFD, responseFD] {
+            let flags = fcntl(fd, F_GETFL)
+            guard flags >= 0, fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0 else {
+                throw SafetyError.inputUnavailable
+            }
+        }
+        signal(SIGPIPE, SIG_IGN)
+    }
+
+    private func ready(_ fd: Int32, events: Int16, deadline: TimeInterval) throws {
+        while true {
+            let remaining = deadline - ProcessInfo.processInfo.systemUptime
+            guard remaining > 0 else { throw SafetyError.inputUncertain }
+            var descriptor = pollfd(fd: fd, events: events, revents: 0)
+            let status = poll(&descriptor, 1, Int32(ceil(remaining * 1000)))
+            if status < 0 && errno == EINTR { continue }
+            guard status > 0, descriptor.revents & events != 0 else { throw SafetyError.inputUncertain }
+            return
+        }
+    }
+
+    func exchange(_ request: Data) throws -> Data {
+        guard request.count < BrokerLimits.frameBytes else { throw SafetyError.inputUnavailable }
+        let deadline = ProcessInfo.processInfo.systemUptime + BrokerLimits.timeoutSeconds
+        var frame = request
+        frame.append(0x0a)
+        try frame.withUnsafeBytes { bytes in
+            var offset = 0
+            while offset < bytes.count {
+                try ready(requestFD, events: Int16(POLLOUT), deadline: deadline)
+                let count = Darwin.write(requestFD, bytes.baseAddress!.advanced(by: offset), bytes.count - offset)
+                if count < 0 && (errno == EINTR || errno == EAGAIN) { continue }
+                guard count > 0 else { throw SafetyError.inputUncertain }
+                offset += count
+            }
+        }
+        var result = Data()
+        while result.count < BrokerLimits.frameBytes {
+            try ready(responseFD, events: Int16(POLLIN), deadline: deadline)
+            var byte: UInt8 = 0
+            let count = Darwin.read(responseFD, &byte, 1)
+            if count < 0 && (errno == EINTR || errno == EAGAIN) { continue }
+            guard count == 1 else { throw SafetyError.inputUncertain }
+            if byte == 0x0a { return result }
+            result.append(byte)
+        }
+        throw SafetyError.inputUncertain
+    }
+}
+
+final class MouseButtonClient {
+    private enum Phase: String, Encodable { case down, drag, up }
+    private struct Request: Encodable {
+        let token: String
+        let sequence: Int
+        let phase: Phase
+        let button: String
+        let x: Double
+        let y: Double
+    }
+    private struct Response: Decodable {
+        let sequence: Int
+        let ok: Bool
+        let error_code: String?
+    }
+    private let wire: MouseBrokerWire
+    private var token = ""
+    private var sequence = 0
+    private var held: CGMouseButton?
+    private var lastPoint = CGPoint.zero
+
+    init(wire: MouseBrokerWire) { self.wire = wire }
+
+    func prepare(token: String) throws {
+        guard held == nil, !token.isEmpty, token.count <= 128 else { throw SafetyError.inputUnavailable }
+        self.token = token
+        sequence = 0
+    }
+
+    private func send(_ phase: Phase, point: CGPoint, button: CGMouseButton) throws {
+        guard !token.isEmpty, point.x.isFinite, point.y.isFinite,
+              button == .left || button == .right else { throw SafetyError.inputUnavailable }
+        sequence += 1
+        let request = Request(token: token, sequence: sequence, phase: phase,
+                              button: button == .right ? "right" : "left", x: point.x, y: point.y)
+        let reply = try wire.exchange(JSONEncoder().encode(request))
+        guard let response = try? JSONDecoder().decode(Response.self, from: reply),
+              response.sequence == sequence else { throw SafetyError.inputUncertain }
+        guard response.ok else {
+            throw response.error_code == SafetyError.inactive.rawValue ? SafetyError.inactive : SafetyError.inputUnavailable
+        }
+    }
+
+    func down(point: CGPoint, button: CGMouseButton) throws {
+        guard held == nil else { throw SafetyError.inputUnavailable }
+        // Track before sending: the host may post down then lose the ACK.
+        held = button
+        lastPoint = point
+        try send(.down, point: point, button: button)
+    }
+    func drag(point: CGPoint, button: CGMouseButton) throws {
+        guard held == button else { throw SafetyError.inputUnavailable }
+        try send(.drag, point: point, button: button)
+        lastPoint = point
+    }
+    func up(point: CGPoint, button: CGMouseButton) throws {
+        guard held == button else { throw SafetyError.inputUnavailable }
+        try send(.up, point: point, button: button)
+        held = nil
+        token = ""
+    }
+    func release(button: CGMouseButton) {
+        guard held == button else { return }
+        // Host release is idempotent and owns the actual last-posted point.
+        // If this exchange fails, host action/process cleanup still releases.
+        try? send(.up, point: lastPoint, button: button)
+        held = nil
+        token = ""
+    }
+}

@@ -53,6 +53,7 @@ func TestHelperProcess(t *testing.T) {
 		}
 		result := map[string]any{}
 		outcome := cu.OutcomeExecuted
+		brokerErrorCode := ""
 		switch req.Command {
 		case commandRequestPermissions:
 			if marker != "" {
@@ -90,6 +91,11 @@ func TestHelperProcess(t *testing.T) {
 		case commandExecute:
 			if marker != "" {
 				_ = os.WriteFile(marker, []byte("execute"), 0600)
+			}
+			if strings.HasPrefix(mode, "broker-") {
+				outcome, brokerErrorCode = runMouseBrokerHelper(t, mode, req, codec)
+				result = imagePayload()
+				break
 			}
 			switch mode {
 			case "hang":
@@ -135,7 +141,7 @@ func TestHelperProcess(t *testing.T) {
 		case "block":
 			continue
 		}
-		errorCode := ""
+		errorCode := brokerErrorCode
 		if mode == "focus-failed" && req.Command == commandExecute {
 			errorCode = helperFocusChangedCode
 		}

@@ -2,7 +2,9 @@ import Foundation
 
 // Reader/control stays independent of the serial desktop executor. Bounded
 // outstanding work avoids retaining arbitrary action/text queues in memory.
-let engine = Engine(platform: MacDesktop())
+let brokerWire = CommandLine.arguments.contains("--mouse-broker") ? try? PipeMouseBrokerWire() : nil
+let mouseBroker = brokerWire.map { MouseButtonClient(wire: $0) }
+let engine = Engine(platform: MacDesktop(mouseBroker: mouseBroker))
 let responder = Responder()
 let executor = DispatchQueue(label: "computer-helper.actions")
 let slots = DispatchSemaphore(value: 2)

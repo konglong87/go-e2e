@@ -402,3 +402,53 @@ before/recovery PNGs. Visually inspected restored A (Clicks: 3) and surviving B
 (Clicks: 1). Initial test runner omitted Resume after failed capture; corrected
 the runner rather than weakening the existing paused-session safety boundary.
 This proves single-display window lifecycle guards, not general AX compatibility.
+
+### Independent helper-crash release (baseline e7f432b)
+
+Architecture review rejected a helper-owned defer or best-effort armed message:
+SIGKILL can destroy it, and cross-process armed/post messages cannot be atomic.
+Use a narrow host-owned mouse broker for drag down/drag/up, with a preallocated
+release event and one active action lease. The helper sends bounded requests on
+inherited private pipes; no public socket, arbitrary-script endpoint, or local
+down fallback. The live host serializes posting and consumes the release once
+on normal up, control revocation, action completion, or helper death. Host TCC
+is checked independently before drag; helper ACK loss remains OutcomeUnknown.
+Scope is helper death with a live, still-authorized host, not simultaneous host
+death or permission revocation during a press. Native control gates and target
+checks stay in place; no automatic replay. Go broker/transport worker and local
+Swift/client/acceptance work have disjoint write scopes. Verify deterministic
+allocation/ACK/revoke/death races, existing eight real drag cases, then left/right
+SIGKILL fixture cases with real native events, mask=0, screenshot and fresh-session
+recovery. Do not mark accepted until that real Wails path passes.
+
+Independent release acceptance on 2026-09-28:
+- Real rebuilt/cold-launched tagged Wails host passed all ten cases: the previous
+  normal/Pause/Stop/focus left/right matrix plus left/right helper SIGKILL.
+  Crash was injected only after fixture down and nonzero system mask, after
+  checking exact helper executable and host parent PID twice. Host stayed alive.
+- Crash left/right each recorded exactly down, one dragged, one up. Up matched
+  the last actual CG point `(182.18182373046875,466.5)`; global masks `1/2 -> 0`,
+  view pressed=false, and no duplicate input. Receipts stayed unknown; old action
+  rejected. New sessions with fresh screenshot executed a move and confirmed Stop.
+  Dead-helper Stop correctly returned an explicit transport error, not a fake ACK.
+- Evidence: ignored `desktop-v2/build/validation/20260928/crash-release/run-1/`
+  `results.json`, `crash-left/right-held.png`, `crash-left/right-after.png`, and
+  recovery evidence. Right-button Holding and Released/interrupted screenshots
+  visually inspected. This is scripted native acceptance, not a model trace.
+- Native fake matrix: 234 assertions; platform/client/real-pipe (non-posting)
+  matrix: 465 assertions. Go worker passed broker/transport normal/race tests,
+  CGO-disabled builds, vet, fake-child SIGKILL, lost ACKs, duplicate releases,
+  permission denial, and concurrent terminal paths. Whole-related-package race
+  rerun is the final delivery gate.
+- A broad race run during desktop compilation exposed an old test assumption:
+  its 100ms deadline could expire during 900KB JSON encoding, before dispatch,
+  when the production contract correctly keeps the unused helper alive. The
+  blocked-write test now waits for dispatch before cancellation, still requires
+  MayHaveRun and reader/reaping completion; 20 race repetitions pass.
+- Scope: independent drag release with live, authorized host. Simultaneous host
+  death, permissions revoked during a held input, and non-drag key/modifier
+  crash release are NOT covered by this pass. No second-display/release claim.
+
+Final related-package `go test -race ... -count=1` rerun passed all seven packages
+(controller, macOS backend, native transport, bridge, ComputerUse tool, Wails,
+CLI). Existing Darwin LC_DYSYMTAB linker warnings remain non-fatal.

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"os/exec"
 	"sync"
 	"time"
@@ -46,13 +47,45 @@ type Process struct {
 	readerDone chan struct{}
 	waitDone   chan struct{}
 	abortOnce  sync.Once
+	onAbort    func()
 }
 
-func StartProcess(ctx context.Context, path string, args, env []string, codec Codec) (*Process, error) {
+// ProcessOption configures optional, platform-neutral process resources.
+type ProcessOption func(*processOptions)
+
+type processOptions struct {
+	extraFiles []*os.File
+	onAbort    func()
+}
+
+// WithExtraFiles maps files in order to child descriptors 3, 4, ... . The
+// caller retains ownership and must close its copies after StartProcess.
+func WithExtraFiles(files ...*os.File) ProcessOption {
+	return func(o *processOptions) { o.extraFiles = append([]*os.File(nil), files...) }
+}
+
+// WithAbortHook installs bounded local cleanup, run exactly once before
+// pending calls are failed. It must not call Process methods or wait on IPC.
+// Stream EOF, explicit Abort and context cancellation all invoke this hook.
+func WithAbortHook(hook func()) ProcessOption {
+	return func(o *processOptions) { o.onAbort = hook }
+}
+
+// Exited closes only after the unique cmd.Wait owner has reaped the child.
+func (p *Process) Exited() <-chan struct{} { return p.waitDone }
+
+func StartProcess(ctx context.Context, path string, args, env []string, codec Codec, options ...ProcessOption) (*Process, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	var config processOptions
+	for _, option := range options {
+		if option != nil {
+			option(&config)
+		}
+	}
 	cmd := exec.Command(path, args...)
+	cmd.ExtraFiles = config.extraFiles
 	cmd.Env = append([]string{}, env...) // empty must not mean inherit
 	cmd.Stderr = nil                     // os.DevNull: no sensitive logs or stderr-copy goroutine
 	cmd.WaitDelay = ShutdownGrace
@@ -70,7 +103,7 @@ func StartProcess(ctx context.Context, path string, args, env []string, codec Co
 		out.Close()
 		return nil, err
 	}
-	p := &Process{cmd: cmd, stdin: in, stdout: out, codec: codec, writer: make(chan struct{}, 1), pending: map[string]pendingCall{}, done: make(chan struct{}), readerDone: make(chan struct{}), waitDone: make(chan struct{})}
+	p := &Process{cmd: cmd, stdin: in, stdout: out, codec: codec, writer: make(chan struct{}, 1), pending: map[string]pendingCall{}, done: make(chan struct{}), readerDone: make(chan struct{}), waitDone: make(chan struct{}), onAbort: config.onAbort}
 	go p.readLoop()
 	// Wait only after the reader stops: StdoutPipe must be drained before Wait.
 	go func() { <-p.readerDone; _ = cmd.Wait(); close(p.waitDone) }()
@@ -114,6 +147,9 @@ func (p *Process) readLoop() {
 // the child. It is independent of the writer gate and never waits for an RPC.
 func (p *Process) Abort(cause error) {
 	p.abortOnce.Do(func() {
+		if p.onAbort != nil {
+			p.onAbort()
+		}
 		p.mu.Lock()
 		p.failure = cause
 		for id, call := range p.pending {

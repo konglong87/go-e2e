@@ -83,7 +83,7 @@ enum JSONValue: Codable {
 enum SafetyError: String, Error {
     case invalidAction = "invalid_action", invalidEnvelope = "invalid_envelope", inactive, expired, staleObservation = "stale_observation"
     case permissionRequired = "permission_required", focusChanged = "focus_changed", unsupportedDisplay = "unsupported_display"
-    case screenshotFailed = "screenshot_failed", inputUnavailable = "input_unavailable", duplicate, capacity
+    case screenshotFailed = "screenshot_failed", inputUnavailable = "input_unavailable", inputUncertain = "input_uncertain", duplicate, capacity
 }
 
 // FileHandle reads may be short; prefix and body both require read-exactly.

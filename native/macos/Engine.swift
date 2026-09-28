@@ -35,7 +35,7 @@ final class Engine {
             "coordinate_space": geometry?.coordinateSpace ?? .object(["origin":.string("top_left"),"unit":.string("pixels"),"width":.number(0),"height":.number(0),"scale_factor":.number(0)]),
             "displays": .array(displays),
             "windows": .array(windows),
-            "actions": .array(ActionKind.allCases.map { .string($0.rawValue) })
+            "actions": .array(ActionKind.allCases.filter { $0 != .drag || platform.supportsDrag() }.map { .string($0.rawValue) })
         ])
     }
     private func resolveGeometry(for request: Envelope) throws -> DisplayGeometry {
@@ -197,6 +197,7 @@ final class Engine {
             let snapshot = try state.begin(request); try target(request, geometry: snapshot.geometry)
             let plan = try ActionPlan(request.payload, geometry: snapshot.geometry)
             try checkInput(snapshot, request: request)
+            if request.payload["kind"]?.string == ActionKind.drag.rawValue { try platform.prepareDrag(request) }
             for (index, operation) in plan.operations.enumerated() {
                 if plan.doubleClick && index > 0 { try wait(60, request: request) }
                 // Revalidate TCC/focus/display just before each pair. Stop only
@@ -222,6 +223,7 @@ final class Engine {
             // Explicit Pause/Stop already invalidated the generation. Preserve
             // that state so Pause can Resume with a fresh observation; do not
             // turn cooperative interruption into an irreversible helper stop.
+            if (error as? SafetyError) == .inputUncertain { posted = true }
             if posted && (error as? SafetyError) != .inactive { state.end() }
             return ActionResult(outcome: posted ? .unknown : .rejected, payload: .object([:]), error: error as? SafetyError ?? .inputUnavailable)
         }

@@ -19,6 +19,7 @@ final class FakeDesktop: DesktopPlatform {
     var captureFailuresRemaining = 0
     var failGeometry = false
     var failPost = false
+    var losePostAcknowledgement = false
     var posts: [InputOperation] = []
     var postHook: (() -> Void)?
     var captureHook: (() -> Void)?
@@ -46,6 +47,7 @@ final class FakeDesktop: DesktopPlatform {
     }
     func post(_ operation: InputOperation) throws {
         if failPost { throw SafetyError.inputUnavailable }; posts.append(operation); postHook?()
+        if losePostAcknowledgement { throw SafetyError.inputUncertain }
     }
     func releasePressedButton(_ button: CGMouseButton) { posts.append(.mouseUp(.zero, button)) }
 }
@@ -476,6 +478,14 @@ for expiredSnapshot in [false, true] {
     } else {
         expect(result.outcome == .executed && desktop.posts.count == 1, "snapshot survives completed capture RPC deadline")
     }
+}
+
+do {
+    let (engine, desktop) = setup()
+    desktop.losePostAcknowledgement = true
+    let result = engine.execute(action("drag", ["start_x": .number(2), "start_y": .number(2), "x": .number(30), "y": .number(30)]))
+    expect(result.outcome == .unknown, "down posted with lost host ACK is unknown, not rejected")
+    expect(desktop.posts.count == 2, "lost down ACK still runs release cleanup")
 }
 
 print("PASS: \(assertions) native safety assertions (fake platform; no real input/capture)")
