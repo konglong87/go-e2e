@@ -256,7 +256,7 @@ Native target-read-only slice results:
 | Requirement | Current evidence / next required gate |
 |---|---|
 | Unified target/geometry binding | Native snapshot identity and Go metadata validation in progress; reject mismatched target/capture geometry, no cached bounds blending |
-| Exact same-app window selection | Current MacDesktop activates the application, not an exact AX window; multi-window ambiguity/raise still needs implementation and native acceptance |
+| Exact same-app window selection | Public AX exact-window activation and identical-title A/B fixture now pass; see exact-window slice below. Ambiguous matches intentionally fail closed |
 | Single-screen drag | Basic trusted-event fixture passed earlier; real Pause/Stop/focus-loss while holding a button and independent SIGKILL release remain open |
 | Automatic orchestration | Real run 77 (`live-workbuddy-dock-activation`) recorded WorkBuddy bundle identity plus three clicks and Stop. Final screenshot was inspected; a fresh independently captured intermediate Assistant screenshot is still needed for the strongest navigation evidence |
 | Permission lifecycle | Readiness regression now pauses the domain session and restore does not auto-resume. Running-process TCC revocation evidence remains deferred/insufficient, not a pass |
@@ -292,3 +292,46 @@ Delivery: target validation committed/pushed as `4ea2b42`, expiry harness as
 `24a0b69`; capture-bound metadata is the coherent source slice accompanying this
 entry. Physical second-monitor and formal release gates remain explicitly out
 of this phase; all other open functional gates above remain in scope.
+
+### Exact-window activation slice
+
+Baseline `bb7bdbf` clean; pulled before editing. Architecture: public macOS AX
+window inventory + unique geometry/title match within the target PID, explicit
+AXRaise, then Window Server ID verification. Ambiguous/missing matches fail
+closed; title alone is never identity, and no private AX-to-CG ID API is used.
+Activation stays exclusively in Observe; Execute remains read-only. Bound AX
+messaging and activation settling; Pause/Stop must interrupt the settle loop.
+Write scope: native selector/adapter, Engine activation gate, build/test source
+lists; independent agent owns only the two-window AppKit fixture. Verification:
+fake selectors and lifecycle cases, tagged Wails build, two identical-title
+native windows with click counters and target screenshots. No physical second
+monitor or formal release work. Commit/push pending focused/native verification.
+
+Exact-window slice verified on 2026-09-28 (single physical display):
+- Public AX adapter matches the selected PID plus geometry/title, rejects
+  ambiguity/unreadable candidates, raises the specific AX window, and confirms
+  the Window Server ID. Each AX object has a 100ms messaging timeout and checks
+  cancellation between reads. Observe settling is bounded and interruptible;
+  input/evidence validation never reactivates a window.
+- 220 native fake assertions and 436 non-posting platform event assertions pass.
+- Tagged Wails build ran the new native AppKit fixture with two identical-title
+  windows: A (`10345`) -> B (`10346`) -> A. Counts were `(1,0)`, `(1,1)`, `(2,1)`.
+  Each positive click was dispatched by the actual Wails Controller/helper.
+- Switching observation to B rejects A's superseded observation. Independently,
+  a tester-injected AXRaise to B after observing A caused the old A click to be
+  rejected by the native backend; B remained frontmost and counts stayed `(2,1)`.
+  The external AXRaise is fault injection, not evidence of model autonomy.
+- Real A/B screenshot pixels and counters were inspected. Evidence retained in
+  ignored `desktop-v2/build/validation/20260928/window-selection/`: `results.json`,
+  `03-A-verified.png`, `02-B-verified.png`, `external-focus-result.json`, and
+  `external-focus-B.png`. Stop confirmed in both scenarios.
+- Reusable fixture builder: `scripts/build-computer-window-fixture.sh`; runner:
+  `scripts/computer-acceptance-windows.py --fixture <absolute state.json>
+  --socket <tagged host socket> --output <evidence directory>`.
+  Open the fixture `.app` with `--args --output <absolute state.json>` before
+  running. The runner scopes every target to the fixture PID and bundle ID.
+
+This closes the previously missing exact-window activation + same-title native
+selection gate, not arbitrary-app AX compatibility or all Computer Use gates.
+Drag interruption/crash release, move/minimize/close target changes, and full
+permission lifecycle remain work. No physical second-screen or release claim.

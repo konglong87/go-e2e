@@ -92,12 +92,34 @@ final class Engine {
         if let active = try? platform.windows().first(where: { $0.isFrontmost }) { result["active_window"] = active.json }
         return .object(result)
     }
+    private static let activationTimeout = 1.0
+    private static let activationPollMS = 20
+
+    private func activateTarget(_ window: NativeWindow, request: Envelope) throws {
+        guard platform.captureAllowed(), platform.inputAllowed() else { throw SafetyError.permissionRequired }
+        guard window.isVisible else { throw SafetyError.unsupportedDisplay }
+        let activated = platform.activateWindow(window.id, permitted: {
+            do { try self.state.gate(request); return true } catch { return false }
+        })
+        try state.gate(request)
+        guard activated else { throw SafetyError.focusChanged }
+        // Activation/AXRaise acknowledgements are asynchronous. Confirm the
+        // exact Window Server target, not merely the application's PID.
+        let until = ProcessInfo.processInfo.systemUptime + Self.activationTimeout
+        while true {
+            try state.gate(request)
+            guard platform.captureAllowed(), platform.inputAllowed() else { throw SafetyError.permissionRequired }
+            if platform.focus() == window.ownerPID && platform.activeWindowID() == window.id { return }
+            guard ProcessInfo.processInfo.systemUptime < until else { throw SafetyError.focusChanged }
+            try wait(Self.activationPollMS, request: request)
+        }
+    }
+
     func observe(_ request: Envelope) -> ActionResult {
         do {
             try state.gate(request)
             if let window = try requestedWindow(request) {
-                guard platform.captureAllowed(), platform.inputAllowed() else { throw SafetyError.permissionRequired }
-                guard window.isVisible, platform.activateWindow(window.id) else { throw SafetyError.focusChanged }
+                try activateTarget(window, request: request)
             }
             let geometry = try resolveGeometry(for: request); try target(request, geometry: geometry)
             let window = try requestedWindow(request)

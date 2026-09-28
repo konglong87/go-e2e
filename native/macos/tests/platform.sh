@@ -6,6 +6,6 @@ trap 'rm -rf "$BUILD_DIR"' EXIT
 swiftc -O -target "$(uname -m)-apple-macosx14.0" \
   -framework AppKit -framework ApplicationServices -framework CoreGraphics \
   -framework Foundation -framework ImageIO -framework UniformTypeIdentifiers \
-  "$NATIVE_DIR/Protocol.swift" "$NATIVE_DIR/Safety.swift" "$NATIVE_DIR/Platform.swift" \
+  "$NATIVE_DIR/Protocol.swift" "$NATIVE_DIR/Safety.swift" "$NATIVE_DIR/Platform.swift" "$NATIVE_DIR/WindowActivation.swift" \
   "$NATIVE_DIR/tests/platform_events.swift" -o "$BUILD_DIR/platform-tests"
 "$BUILD_DIR/platform-tests"

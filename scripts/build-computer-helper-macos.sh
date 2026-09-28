@@ -21,6 +21,7 @@ swiftc -O \
   "$ROOT_DIR/native/macos/Protocol.swift" \
   "$ROOT_DIR/native/macos/Safety.swift" \
   "$ROOT_DIR/native/macos/Platform.swift" \
+  "$ROOT_DIR/native/macos/WindowActivation.swift" \
   "$ROOT_DIR/native/macos/Engine.swift" \
   "$ROOT_DIR/native/macos/main.swift" \
   -o "$OUTPUT"

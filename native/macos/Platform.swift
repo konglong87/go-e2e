@@ -10,7 +10,7 @@ protocol DesktopPlatform {
     func geometries() throws -> [DisplayGeometry]
     func windows() throws -> [NativeWindow]
     func windowGeometry(_ id: String) throws -> DisplayGeometry
-    func activateWindow(_ id: String) -> Bool
+    func activateWindow(_ id: String, permitted: () -> Bool) -> Bool
     func activeWindowID() -> String?
     func captureAllowed() -> Bool
     func inputAllowed() -> Bool
@@ -25,7 +25,7 @@ extension DesktopPlatform {
     func geometries() throws -> [DisplayGeometry] { [try geometry()] }
     func windows() throws -> [NativeWindow] { [] }
     func windowGeometry(_ id: String) throws -> DisplayGeometry { throw SafetyError.unsupportedDisplay }
-    func activateWindow(_ id: String) -> Bool { false }
+    func activateWindow(_ id: String, permitted: () -> Bool) -> Bool { false }
     func activeWindowID() -> String? { nil }
 }
 
@@ -84,17 +84,16 @@ struct MacDesktop: DesktopPlatform {
         return geometry
     }
 
-    func activateWindow(_ id: String) -> Bool {
+    func activateWindow(_ id: String, permitted: () -> Bool) -> Bool {
+        guard permitted() else { return false }
         let list: [NativeWindow]
         do { list = try windows() } catch { return false }
         guard let window = list.first(where: { $0.id == id }), window.ownerPID > 0 else { return false }
-        if window.isFrontmost || activeWindowID() == id { return true }
-        guard let app = NSRunningApplication(processIdentifier: window.ownerPID) else { return false }
-        let activated = app.activate(options: [])
-        if activated { return true }
-        // Activation can return false when the app is already active; verify
-        // the Window Server state instead of treating that as a capture error.
-        return activeWindowID() == id || (try? windows().first(where: { $0.id == id })?.isFrontmost) == true
+        if focus() == window.ownerPID && (window.isFrontmost || activeWindowID() == id) { return true }
+        return AccessibilityWindowActivator.raise(window, permitted: permitted) {
+            guard let current = try? self.windows().first(where: { $0.id == id }) else { return false }
+            return current.matchesIdentity(window)
+        }
     }
 
     func activeWindowID() -> String? {

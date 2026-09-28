@@ -9,6 +9,8 @@ final class FakeDesktop: DesktopPlatform {
     var targetWindow: NativeWindow?
     var selectedWindowID: String?
     var activationCalls = 0
+    var activationHook: (() -> Void)?
+    var activeWindowHook: (() -> Void)?
     var windowGeometryHook: (() -> Void)?
     var capturePermission = true
     var inputPermission = true
@@ -29,8 +31,8 @@ final class FakeDesktop: DesktopPlatform {
         guard let window = targetWindow, window.id == id else { throw SafetyError.unsupportedDisplay }
         return DisplayGeometry(id: window.displayID, bounds: window.frame, width: display.width, height: display.height, windowID: window.id)
     }
-    func activateWindow(_ id: String) -> Bool { activationCalls += 1; guard targetWindow?.id == id else { return false }; selectedWindowID = id; focused = targetWindow?.ownerPID; return true }
-    func activeWindowID() -> String? { selectedWindowID }
+    func activateWindow(_ id: String, permitted: () -> Bool) -> Bool { activationCalls += 1; guard permitted(), targetWindow?.id == id else { return false }; selectedWindowID = id; focused = targetWindow?.ownerPID; activationHook?(); return true }
+    func activeWindowID() -> String? { activeWindowHook?(); return selectedWindowID }
     func captureAllowed() -> Bool { capturePermission }
     func inputAllowed() -> Bool { inputPermission }
     func requestPermissions() { }
@@ -145,6 +147,43 @@ for change in ["title", "owner", "bundle", "frame", "closed", "focus-during-geom
     expect(result.outcome == expected, "target outcome: \(change)")
     expect(desktop.posts.count == (change == "title" || change == "focus-after-input" ? 1 : 0), "target input count: \(change)")
     expect(desktop.activationCalls == activations, "Execute never activates window: \(change)")
+}
+
+// Two same-title windows must be selected by geometry, never inventory order.
+do {
+    let frame = CGRect(x: 50, y: 75, width: 400, height: 300)
+    let target = NativeWindow(id: "target", title: "Same title", ownerPID: 77, bundleID: "fixture", frame: frame, displayID: "1", isVisible: true, isFrontmost: false)
+    let match = AccessibleWindowDescriptor(frame: frame, title: target.title, minimized: false)
+    let other = AccessibleWindowDescriptor(frame: frame.offsetBy(dx: 60, dy: 50), title: target.title, minimized: false)
+    expect(WindowTargetSelector.uniqueIndex(for: target, candidates: [other, match]) == 1, "same-title windows use geometry")
+    expect(WindowTargetSelector.uniqueIndex(for: target, candidates: [match, other]) == 0, "selection independent of inventory order")
+    expect(WindowTargetSelector.uniqueIndex(for: target, candidates: [match, match]) == nil, "identical candidates fail closed")
+    expect(WindowTargetSelector.uniqueIndex(for: target, candidates: [other]) == nil, "title alone cannot select target")
+    expect(WindowTargetSelector.uniqueIndex(for: target, candidates: []) == nil, "missing candidate fails closed")
+    expect(WindowTargetSelector.uniqueIndex(for: target, candidates: [AccessibleWindowDescriptor(frame: frame, title: target.title, minimized: true)]) == nil, "minimized target rejected")
+    expect(WindowTargetSelector.uniqueIndex(for: target, candidates: [AccessibleWindowDescriptor(frame: frame, title: "Wrong", minimized: false)]) == nil, "conflicting title rejected")
+    expect(!WindowTargetSelector.framesMatch(frame, CGRect(x: CGFloat.infinity, y: 75, width: 400, height: 300)), "nonfinite AX geometry rejected")
+    expect(!WindowTargetSelector.framesMatch(frame, CGRect(x: 50, y: 75, width: 0, height: 300)), "empty AX geometry rejected")
+}
+
+// Observe waits for the exact raised ID, and cancellation wins while settling.
+for canceled in [false, true] {
+    let desktop = FakeDesktop()
+    let window = NativeWindow(id: "settling-target", title: "Fixture", ownerPID: 77, bundleID: "fixture.app", frame: desktop.display.bounds, displayID: desktop.display.id, isVisible: true, isFrontmost: false)
+    desktop.targetWindow = window
+    let engine = Engine(platform: desktop)
+    var reads = 0
+    desktop.activationHook = { desktop.selectedWindowID = "previous-window" }
+    desktop.activeWindowHook = {
+        reads += 1
+        if reads == 2 {
+            if canceled { try? engine.state.control(.pause, generation: 1) }
+            else { desktop.selectedWindowID = window.id }
+        }
+    }
+    let result = engine.observe(request("observe", payload: ["observation_id":.string("settling"), "window_id":.string(window.id)]))
+    expect(result.outcome == (canceled ? .rejected : .executed), "activation settle observes exact window/cancellation")
+    expect(desktop.activationCalls == 1 && desktop.posts.isEmpty, "activation does not retry raise or post input")
 }
 
 // Safe integer conversion, overflow, bounds, NaN, infinity, fractions.
