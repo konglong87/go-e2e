@@ -13,6 +13,7 @@ private enum Fixture {
     static let dragAreaSize = NSSize(width: 300, height: 112)
     static let maximumDragEvents = 512
     static let keys = ["A", "B"]
+    static let geometryStep: CGFloat = 20
 }
 
 private struct ScreenFrame: Encodable {
@@ -147,11 +148,13 @@ private struct WindowState: Encodable {
     let dropCompleted: Bool
     let frontmost: Bool
     let keyWindow: Bool
+    let minimized: Bool
+    let visible: Bool
 
     private enum CodingKeys: String, CodingKey {
         case key, windowNumber, width, height, clickCount, frame, buttonScreenFrame
         case dragAreaScreenFrame, dragEvents, lastMouseEvent, pressed, dropCompleted
-        case frontmost, keyWindow
+        case frontmost, keyWindow, minimized, visible
     }
 
     func encode(to encoder: Encoder) throws {
@@ -171,7 +174,26 @@ private struct WindowState: Encodable {
         try values.encode(dropCompleted, forKey: .dropCompleted)
         try values.encode(frontmost, forKey: .frontmost)
         try values.encode(keyWindow, forKey: .keyWindow)
+        try values.encode(minimized, forKey: .minimized)
+        try values.encode(visible, forKey: .visible)
     }
+}
+
+private enum WindowMutation: String, Codable {
+    case move, resize, minimize, restore, close
+}
+
+private struct ControlRequest: Decodable {
+    let id: String
+    let window: String
+    let operation: WindowMutation
+}
+
+private struct ControlResult: Encodable {
+    let id: String
+    let window: String
+    let operation: WindowMutation
+    let success: Bool
 }
 
 private struct Snapshot: Encodable {
@@ -181,6 +203,7 @@ private struct Snapshot: Encodable {
     let pressedMouseButtons: Int = Int(NSEvent.pressedMouseButtons)
     let frontmost: Bool
     let windows: [WindowState]
+    let controlResult: ControlResult?
 }
 
 @MainActor
@@ -245,20 +268,24 @@ private final class FixtureWindow {
                            dragEvents: dragArea.dragEvents, lastMouseEvent: dragArea.lastMouseEvent,
                            pressed: dragArea.pressed, dropCompleted: dragArea.dropCompleted,
                            frontmost: NSApp.isActive && window === frontWindow,
-                           keyWindow: window.isKeyWindow)
+                           keyWindow: window.isKeyWindow, minimized: window.isMiniaturized, visible: window.isVisible)
     }
 }
 
 @MainActor
 private final class FixtureDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let output: URL
+    private let control: URL?
+    private var controlResult: ControlResult?
+    private var seenRequests: Set<String> = []
     private let encoder = JSONEncoder()
     private var windows: [FixtureWindow] = []
     private var timer: Timer?
     private var ready = false
 
-    init(output: URL) {
+    init(output: URL, control: URL?) {
         self.output = output
+        self.control = control
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     }
 
@@ -302,7 +329,37 @@ private final class FixtureDelegate: NSObject, NSApplicationDelegate, NSWindowDe
         publish()
     }
 
-    @objc private func refreshState() { publish() }
+    // Test-only fault injection into this fixture's own NSWindows. It never
+    // activates or changes another application's windows or emits input.
+    private func mutateWindow() {
+        guard let control, let data = try? Data(contentsOf: control), data.count <= 4096,
+              let request = try? JSONDecoder().decode(ControlRequest.self, from: data),
+              !request.id.isEmpty, request.id.count <= 128,
+              seenRequests.count < 256, seenRequests.insert(request.id).inserted else { return }
+        let item = windows.first { $0.key == request.window }
+        controlResult = ControlResult(id: request.id, window: request.window,
+                                      operation: request.operation, success: item != nil)
+        guard let item else { return }
+        switch request.operation {
+        case .move:
+            var frame = item.window.frame
+            frame.origin.x += Fixture.geometryStep
+            frame.origin.y -= Fixture.geometryStep
+            item.window.setFrame(frame, display: true)
+        case .resize:
+            var size = item.window.contentView!.bounds.size
+            size.width = max(Fixture.minimumSize.width, size.width - Fixture.geometryStep)
+            size.height = max(Fixture.minimumSize.height, size.height - Fixture.geometryStep)
+            item.window.setContentSize(size)
+        case .minimize: item.window.miniaturize(nil)
+        case .restore:
+            item.window.deminiaturize(nil)
+            item.window.makeKeyAndOrderFront(nil)
+        case .close: item.window.close()
+        }
+    }
+
+    @objc private func refreshState() { mutateWindow(); publish() }
     func windowDidBecomeKey(_ notification: Notification) { publish() }
     func windowDidResignKey(_ notification: Notification) { publish() }
     func applicationDidBecomeActive(_ notification: Notification) { publish() }
@@ -328,7 +385,8 @@ private final class FixtureDelegate: NSObject, NSApplicationDelegate, NSWindowDe
         let frontWindow = NSApp.orderedWindows.first { $0.isVisible && !$0.isMiniaturized }
         let state = Snapshot(processID: ProcessInfo.processInfo.processIdentifier,
                              frontmost: NSApp.isActive,
-                             windows: windows.map { $0.snapshot(primaryTop: primaryTop, frontWindow: frontWindow) })
+                             windows: windows.map { $0.snapshot(primaryTop: primaryTop, frontWindow: frontWindow) },
+                             controlResult: controlResult)
         do {
             try encoder.encode(state).write(to: output, options: .atomic)
         } catch {
@@ -346,8 +404,9 @@ private func fail(_ message: String) -> Never {
 private struct WindowFixtureMain {
     @MainActor static func main() {
         let args = CommandLine.arguments
-        guard args.count == 3, args[1] == "--output", (args[2] as NSString).isAbsolutePath else {
-            fail("Usage: window-fixture --output <absolute-json-path>")
+        guard (args.count == 3 || args.count == 5), args[1] == "--output", (args[2] as NSString).isAbsolutePath,
+              args.count == 3 || (args[3] == "--control" && (args[4] as NSString).isAbsolutePath && args[4] != args[2]) else {
+            fail("Usage: window-fixture --output <absolute-json-path> [--control <absolute-json-path>]")
         }
         let output = URL(fileURLWithPath: args[2])
         do {
@@ -359,7 +418,7 @@ private struct WindowFixtureMain {
         }
         let application = NSApplication.shared
         application.setActivationPolicy(.regular)
-        let delegate = FixtureDelegate(output: output)
+        let delegate = FixtureDelegate(output: output, control: args.count == 5 ? URL(fileURLWithPath: args[4]) : nil)
         application.delegate = delegate
         withExtendedLifetime(delegate) { application.run() }
     }

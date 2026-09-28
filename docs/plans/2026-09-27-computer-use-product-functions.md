@@ -379,3 +379,26 @@ Held-button slice acceptance on 2026-09-28:
   Normal-right and Pause native screenshots were visually inspected: completed
   drop and released-interrupted states respectively. This is scripted native
   acceptance, not model-autonomous drag acceptance. No SIGKILL safety claim.
+
+### Window lifecycle real acceptance slice (baseline 2c1895a)
+
+Previous drag-release slice committed/pushed. Current task owns only the fixture,
+a new lifecycle runner, and this ledger. Reuse the existing Window Server
+identity/geometry guards and Wails acceptance driver; add an opt-in fixture-only
+mutation channel for move/resize/minimize/restore/close, never cross-app input.
+Verify stale screenshot clicks reject with unchanged native counters; missing
+windows cannot be observed; recover with a fresh target image and real click.
+Keep screenshot and event evidence, then commit/push after actual acceptance.
+
+Lifecycle acceptance passed on 2026-09-28 with the actual tagged Wails host:
+move, resize, minimize/restore, and close each rejected the old-image click with
+unchanged native click counters. Minimized/closed targets could not be observed;
+observe did not silently restore them. Recovery used explicit Resume after the
+failed capture and fresh observations, then native A counts 1/2/3 and B count 1.
+All four Stop acknowledgements passed. Swift6 warnings-as-errors fixture build
+and Python syntax checks passed. Evidence: ignored
+`desktop-v2/build/validation/20260928/window-lifecycle/final/results.json` plus
+before/recovery PNGs. Visually inspected restored A (Clicks: 3) and surviving B
+(Clicks: 1). Initial test runner omitted Resume after failed capture; corrected
+the runner rather than weakening the existing paused-session safety boundary.
+This proves single-display window lifecycle guards, not general AX compatibility.
