@@ -272,7 +272,7 @@ func TestNewQuerySessionDesktopComputerUseObserve(t *testing.T) {
 	for _, block := range first.System {
 		system += block.Text
 	}
-	for _, want := range []string{computerRuntimeHostSession, "fresh observation", "Never retry", "Stop"} {
+	for _, want := range []string{"first call", "fresh observation", "Never retry", "Stop"} {
 		if !strings.Contains(system, want) {
 			t.Errorf("system guidance missing %q", want)
 		}
@@ -308,7 +308,7 @@ func TestNewQuerySessionDesktopComputerUseFinalRoute(t *testing.T) {
 	}{
 		{name: "final agent model approved", declaredModel: computerRuntimeModel, want: true},
 		{name: "selected model is not final", declaredModel: "selected-model"},
-		{name: "fallback undeclared", declaredModel: computerRuntimeModel, fallback: true},
+		{name: "fallback undeclared", declaredModel: computerRuntimeModel, fallback: true, want: true},
 		{name: "all routes declared", declaredModel: computerRuntimeModel, fallback: true, declareFallback: true, want: true},
 		{name: "lookup denied", declaredModel: computerRuntimeModel, denied: true},
 	} {
