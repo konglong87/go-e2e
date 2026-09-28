@@ -598,3 +598,39 @@ next-step boundaries are recorded in `memory/2026-09-28-computer-use-runtime-deb
 Task-owned temporary fixture binaries, diagnostic source, test sockets and probe
 source were removed. Normal desktop build is running; requested evidence remains
 under ignored validation paths. No formal signing or release was attempted.
+
+### SSE framing and same-query Stop slices (baseline f5ae71a, clean/pulled)
+
+Main investigates Responses SSE framing using the pinned SDK v3.32.0, official
+streaming documentation, and a gated synthetic live probe. Capture only field
+counts/data lengths/classification, never frame contents, prompts, keys or images.
+Do not filter frames until the real failure shape is known; corrupt nonempty JSON
+must remain an error. Separate worker owns tracked per-query Ensure and CLI tests
+to prevent omitted-session Observe from recreating a user-stopped grant. No new
+branch/worktree. Each tested coherent slice will be reviewed and pushed separately.
+
+SSE slice root cause and verification:
+- With synthetic generated text plus a one-pixel image (no user data), the live
+  gpt-6-sol endpoint sent HTTP 200 SSE whose first block was three raw bytes,
+  one comment field, zero data bytes. Pinned SDK v3.32.0 dispatches every blank
+  separator even when no data field exists, then JSON-decodes the empty payload.
+  The probe failed with `unexpected end of JSON input` and zero semantic events.
+- Local regression reproducing exactly `:\n\n` failed before the fix. A private
+  Responses-only HTTP body adapter now drops *only blocks without data fields*;
+  any explicit empty/whitespace/malformed data remains byte-for-byte and errors.
+  It does not replace or globally register an SDK decoder, retry calls, rewrite
+  JSON, normalize input, or alter non-SSE/error responses. Memory/aggregate frame
+  size bounded to the SDK ceiling. Underlying close/cancel/partial errors persist.
+- The adapter wraps outside the raw activity timeout guard: comment traffic
+  keeps the network alive even if no semantic event is emitted. Tests cover
+  partial reads, CRLF, multiline data, EOF, malformed/empty data, scoped responses,
+  bounded comments/data, cancellation and idle activity.
+- A second large synthetic live run with the fix saw a comment-only block
+  followed by nine valid data blocks, and completed successfully in 13.45s.
+  Sanitized evidence in ignored `sse-framing/probe-before.json` and
+  `sse-framing/probe-after-large.json` contains counts/lengths only. Raw contents
+  were never persisted. Temporary opt-in probe source is removed after use.
+- Full race suites passed: anthropic client, CLI, bridge, controller, tool. An
+  official documentation fetch was attempted but unavailable; the concrete
+  claim rests on pinned SDK code and before/after live + local reproduction,
+  not an unverified documentation assertion.

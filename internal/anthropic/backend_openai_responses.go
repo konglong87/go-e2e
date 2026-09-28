@@ -147,7 +147,7 @@ func newOpenAIResponsesBackend(spec providerBackendSpec) (providerBackend, error
 	if strings.TrimSpace(auth) == "" {
 		return nil, errors.New("OpenAI Responses API key or auth token is required")
 	}
-	httpClient := newHTTPTraceClient(nil)
+	httpClient := responsesSSEClient{inner: newHTTPTraceClient(nil)}
 	client := openai.NewClient(
 		option.WithBaseURL(spec.baseURL),
 		option.WithAPIKey(auth),
