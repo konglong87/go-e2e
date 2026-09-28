@@ -18,6 +18,7 @@ final class FakeDesktop: DesktopPlatform {
     var posts: [InputOperation] = []
     var postHook: (() -> Void)?
     var captureHook: (() -> Void)?
+    var focusHook: (() -> Void)?
     func geometry() throws -> DisplayGeometry { if failGeometry { throw SafetyError.unsupportedDisplay }; return display }
     func geometries() throws -> [DisplayGeometry] { if failGeometry { throw SafetyError.unsupportedDisplay }; return [display] + extraDisplays }
     func windows() throws -> [NativeWindow] { targetWindow.map { [$0] } ?? [] }
@@ -30,7 +31,7 @@ final class FakeDesktop: DesktopPlatform {
     func captureAllowed() -> Bool { capturePermission }
     func inputAllowed() -> Bool { inputPermission }
     func requestPermissions() { }
-    func focus() -> Int32? { focused }
+    func focus() -> Int32? { focusHook?(); return focused }
     func capture(_ g: DisplayGeometry) throws -> Data {
         if failCapture || captureFailuresRemaining > 0 {
             if captureFailuresRemaining > 0 { captureFailuresRemaining -= 1 }
@@ -210,6 +211,21 @@ for (kind, payload) in activationActions {
     let staleFocus = engine.execute(request("execute", payload:["kind":.string("key"),"key":.string("return"),"observation_id":.string(nextObservation)]))
     expect(staleFocus.outcome == .rejected && staleFocus.error == .focusChanged && desktop.posts.count == operationCount + 1,
            "new binding rejects old focus before dispatch: \(kind)")
+}
+
+// A Dock click waits for a delayed app activation before publishing after-image evidence.
+do {
+    let (engine, desktop) = setup()
+    var focusReads = 0
+    var capturedFocus: Int32?
+    desktop.focusHook = {
+        focusReads += 1
+        if focusReads >= 3 { desktop.focused = 7 }
+    }
+    desktop.captureHook = { capturedFocus = desktop.focused }
+    let result = engine.execute(action("click", ["x": .number(2), "y": .number(99)]))
+    expect(result.outcome == .executed && desktop.posts.count == 1 && capturedFocus == 7,
+           "Dock activation waits before publishing after-image")
 }
 
 // A transient post-input screenshot failure is retried without replaying input.

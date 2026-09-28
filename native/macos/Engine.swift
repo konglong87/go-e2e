@@ -106,11 +106,29 @@ final class Engine {
         }
         try state.gate(request)
     }
-    // Launching or focusing an app can briefly make Window Server screenshot
-    // capture unavailable after the input has already been posted. Retry only
-    // the screenshot (never the input) for a short bounded interval; focus,
-    // permission, geometry, and topology failures remain fail-closed.
+    // Launching an app from the Dock can take longer than a normal input
+    // screenshot. Wait for a frontmost-app transition when the click lands in
+    // the Dock band, then retry only the screenshot (never the input). This
+    // keeps the returned evidence aligned with the actual post-click state
+    // without weakening focus, permission, geometry, or topology guards.
+    private func waitsForAppActivation(_ request: Envelope, geometry: DisplayGeometry) -> Bool {
+        guard let kind = request.payload["kind"]?.string,
+              ["click", "double_click", "right_click"].contains(kind),
+              let y = request.payload["y"]?.integer(in: 0...maxImageDimension) else { return false }
+        return y >= max(0, geometry.height - 220)
+    }
+
+    private func waitForAppActivation(_ request: Envelope, geometry: DisplayGeometry) {
+        guard waitsForAppActivation(request, geometry: geometry), let before = platform.focus() else { return }
+        let deadline = ProcessInfo.processInfo.systemUptime + 3.0
+        while ProcessInfo.processInfo.systemUptime < deadline {
+            if platform.focus() != before { return }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+    }
+
     private func captureAfterInput(_ request: Envelope, geometry: DisplayGeometry) throws -> JSONValue {
+        waitForAppActivation(request, geometry: geometry)
         for attempt in 0..<3 {
             do {
                 return try capture(request, geometry: geometry)
