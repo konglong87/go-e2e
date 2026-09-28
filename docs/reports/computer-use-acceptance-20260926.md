@@ -868,3 +868,20 @@ A live `tccutil reset Accessibility/ScreenCapture com.wails.go-e2e` was also
 issued. The already-running process continued to report `permission_state=approved`,
 which is recorded as macOS deferred behavior, not as an active-session revoke
 pass. No permissions were left intentionally disabled by this run.
+
+## Image route and latest model-run gate — 2026-09-28
+
+The ComputerUse runtime gate was corrected to require an exact image-input
+assertion for the effective primary route rather than all unrelated fallbacks.
+This preserves explicit operator control while preventing a text-only fallback
+from suppressing a selected vision route.
+
+The local settings now explicitly assert the Jiuan Responses route for
+`gpt-5.6-sol` and `gpt-6-sol`. A direct request carrying a 1x1 PNG to the
+configured Responses endpoint returned HTTP 200.
+
+Two latest-source model-driven checks were deliberately not counted as full
+passes: deny-mode correctly reported that ComputerUse was not in the allow
+list; an allow-mode rerun was stopped before a ComputerUse trace was produced.
+Therefore the latest real model orchestration is still an open acceptance gate,
+even though provider image input and the native host/bridge paths are working.

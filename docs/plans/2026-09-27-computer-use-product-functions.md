@@ -201,3 +201,23 @@ the current host bundle. macOS kept the running process's readiness approved;
 this is recorded as a deferred live-revocation result rather than a pass. A
 restart-bound TCC revoke/restore remains a separate acceptance gate and no
 permission is claimed revoked when the native probe still reported approved.
+
+### Effective image-route gate correction — 2026-09-28
+
+The runtime image gate now checks the explicitly asserted effective primary
+route instead of requiring every unrelated configured fallback to advertise
+image input. This keeps the security boundary (no ComputerUse without an exact
+operator assertion) while avoiding a text-only fallback disabling a selected
+vision route before the query starts.
+
+The local settings used for the latest provider probe now contain explicit
+routes for `jiuan-responses-gpt-5.6sol` with `gpt-5.6-sol`/`gpt-6-sol` and the
+primary aliases. A direct Responses request with a 1x1 PNG returned HTTP 200
+from the configured Jiuan route. This proves provider image acceptance, not a
+completed model-driven desktop run.
+
+Latest model-driven reruns remain uncounted as ComputerUse passes: one deny-mode
+run correctly failed closed because the tool was not in the allow list; the
+allow-mode rerun was stopped before producing a ComputerUse tool trace. The
+native host/bridge acceptance and helper recovery evidence remain independent
+passes.
