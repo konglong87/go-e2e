@@ -90,6 +90,15 @@ func TestActionBoundsAndUnknownKind(t *testing.T) {
 		}
 	}
 }
+func TestActionValidateAcceptsExplicitLeftButtonForClick(t *testing.T) {
+	now := time.Now()
+	o := readyObservation("s", now)
+	a := Action{ID: "a", SessionID: "s", ObservationID: o.ID, Kind: ActionClick, Button: string(MouseButtonLeft), Point: &Point{X: 10, Y: 10}}
+	if err := a.Validate(now, o); err != nil {
+		t.Fatalf("explicit left click button rejected: %v", err)
+	}
+}
+
 func TestEventCannotSerializeActionText(t *testing.T) {
 	a := Action{Kind: ActionType, Text: "private"}
 	b, err := json.Marshal(Event{Kind: EventActionRequested, ActionSummary: a.RedactedSummary()})

@@ -305,6 +305,15 @@ func (a Action) Validate(now time.Time, observation Observation) error {
 			return fmt.Errorf("point (%d,%d) is outside observation bounds %dx%d", a.Point.X, a.Point.Y, observation.Width, observation.Height)
 		}
 	}
+	if a.Button != "" {
+		button := MouseButton(strings.ToLower(strings.TrimSpace(a.Button)))
+		allowed := (a.Kind == ActionDrag && button.valid()) ||
+			((a.Kind == ActionClick || a.Kind == ActionDoubleClick || a.Kind == ActionMove) && button == MouseButtonLeft) ||
+			(a.Kind == ActionRightClick && button == MouseButtonRight)
+		if !allowed {
+			return fmt.Errorf("unsupported %s button %q", a.Kind, a.Button)
+		}
+	}
 	if a.Kind == ActionDrag {
 		if a.StartPoint == nil || a.Point == nil {
 			return errors.New("drag requires start_point and point")

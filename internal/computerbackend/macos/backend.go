@@ -338,7 +338,7 @@ func (b *Backend) Execute(ctx context.Context, action cu.Action) (cu.ActionRecei
 	b.mu.Lock()
 	obs := b.observation
 	_, duplicate := b.actions[action.ID]
-	valid := b.validEpoch(epoch) && !duplicate && len(b.actions) < maxActions && action.SessionID == obs.SessionID && action.ObservationID == obs.ID && obs.ID != "" && (action.DisplayID == "" || action.DisplayID == obs.DisplayID) && (action.WindowID == "" || action.WindowID == obs.WindowID) && action.Button == ""
+	valid := b.validEpoch(epoch) && !duplicate && len(b.actions) < maxActions && action.SessionID == obs.SessionID && action.ObservationID == obs.ID && obs.ID != "" && (action.DisplayID == "" || action.DisplayID == obs.DisplayID) && (action.WindowID == "" || action.WindowID == obs.WindowID)
 	if valid {
 		b.actions[action.ID] = struct{}{}
 	}
