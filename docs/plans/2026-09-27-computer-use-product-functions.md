@@ -65,6 +65,44 @@ Priority reorder after this phase:
 7. **P1-4:** final functional regression/evidence audit.
 8. Deferred: physical second display and formal signing/distribution.
 
+## Phase closure — P0-2 autonomous WorkBuddy model loop — 2026-09-29
+
+P0-2 is now **closed and passed** on the rebuilt tagged Wails app using the
+normal authenticated session-control API and `jiuan-responses-gpt-5.6sol` with
+model `gpt-6-sol`. No parent GUI action was used during the successful model
+run.
+
+Evidence:
+
+- Successful run: `run_id=87`, session ref
+  `tenant:computer-live-5142b8da514744a784404c22f96756e9`.
+- Sanitized summary:
+  `desktop-v2/build/validation/20260929/model-autonomy-gpt6-retry/autonomy-summary.json`.
+- Full private transcript copied to the ignored validation directory as
+  `transcript.jsonl`; raw model evidence remains outside Git.
+- The ComputerUse trace contains fresh screenshots/observations with active
+  window `WorkBuddy`, bundle `com.workbuddy.workbuddy`, PID `23941`, including
+  observation IDs 23, 27 and 31, followed by an explicit Stop acknowledgement.
+- The model reported and the trace supports: Spotlight launch, WorkBuddy
+  frontmost confirmation, 助理 navigation, 新建任务 navigation to an empty
+  composer, no assistant run, no task content, no submit/send/login/settings or
+  points changes.
+- The first attempt in the same phase was correctly recorded as **failed**:
+  it clicked Claude instead of WorkBuddy and stopped without continuing. The
+  retry prompt tightened launch disambiguation and then passed; this is kept as
+  negative evidence, not hidden.
+
+Priority reorder after this phase:
+
+1. **P0-3:** real host-bound Screen Recording/Accessibility revoke and regrant,
+   including failed observe/execute, recovery, fresh capabilities/observation,
+   no replay, helper/host restart boundaries.
+2. **P1-1:** exact startup-attempt token for permanent Ensure ACK loss.
+3. **P1-2:** authoritative model-created session discovery in desktop UI.
+4. **P1-3:** virtual/mocked multi-display topology and mixed-DPI coverage.
+5. **P1-4:** final functional regression/evidence audit.
+6. Deferred: physical second display and formal signing/distribution.
+
 ## Phase closure — P0-1 non-drag host-owned input — 2026-09-28
 
 P0-1 is now **closed for the single-screen functional scope**. In addition to
