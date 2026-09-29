@@ -24,11 +24,43 @@ func (c *Client) Lookup(ctx context.Context, owner cu.SessionOwner) (string, err
 }
 
 func (c *Client) EnsureComputerSession(ctx context.Context, owner cu.SessionOwner) (string, error) {
+	return c.ensureComputerSession(ctx, owner, "")
+}
+
+// EnsureComputerSessionAttempt is idempotent for one opaque startup attempt.
+// The attempt ID is never interpreted by the bridge and is never exposed in
+// model-visible errors; it only lets the caller recover a response lost after
+// the host created the session.
+func (c *Client) EnsureComputerSessionAttempt(ctx context.Context, owner cu.SessionOwner, attemptID string) (string, error) {
+	if !validID(attemptID) {
+		return "", ErrInvalidRequest
+	}
+	return c.ensureComputerSession(ctx, owner, attemptID)
+}
+
+func (c *Client) ensureComputerSession(ctx context.Context, owner cu.SessionOwner, attemptID string) (string, error) {
 	var out SessionResponse
-	if err := c.data(ctx, Request{Op: OpEnsure, Owner: owner}, &out); err != nil {
+	if err := c.data(ctx, Request{Op: OpEnsure, Owner: owner, StartupAttemptID: attemptID}, &out); err != nil {
 		return "", err
 	}
-	if !validID(out.SessionID) {
+	if !validID(out.SessionID) || out.StartupAttemptID != attemptID {
+		return "", ErrInvalidResponse
+	}
+	return out.SessionID, nil
+}
+
+// ResolveComputerSessionStart only asks the host about this exact startup
+// attempt. It intentionally does not call Lookup and therefore cannot bind a
+// different query's session after a lost Ensure response.
+func (c *Client) ResolveComputerSessionStart(ctx context.Context, owner cu.SessionOwner, attemptID string) (string, error) {
+	if !validID(attemptID) {
+		return "", ErrInvalidRequest
+	}
+	var out SessionResponse
+	if err := c.data(ctx, Request{Op: OpResolveEnsure, Owner: owner, StartupAttemptID: attemptID}, &out); err != nil {
+		return "", err
+	}
+	if !validID(out.SessionID) || out.StartupAttemptID != attemptID {
 		return "", ErrInvalidResponse
 	}
 	return out.SessionID, nil

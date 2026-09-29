@@ -88,6 +88,17 @@ func dispatchHost(r *http.Request, host Host, q Request) (any, error) {
 		}
 		return LookupResponse{SessionID: id}, err
 	case OpEnsure:
+		if q.StartupAttemptID != "" {
+			coordinator, ok := host.(SessionAttemptCoordinator)
+			if !ok {
+				return nil, ErrRemote
+			}
+			id, err := coordinator.EnsureComputerSessionAttempt(ctx, q.Owner, q.StartupAttemptID)
+			if err == nil && !validID(id) {
+				err = ErrInvalidResponse
+			}
+			return SessionResponse{SessionID: id, StartupAttemptID: q.StartupAttemptID}, err
+		}
 		coordinator, ok := host.(SessionCoordinator)
 		if !ok {
 			return nil, ErrRemote
@@ -97,6 +108,16 @@ func dispatchHost(r *http.Request, host Host, q Request) (any, error) {
 			err = ErrInvalidResponse
 		}
 		return SessionResponse{SessionID: id}, err
+	case OpResolveEnsure:
+		resolver, ok := host.(SessionAttemptResolver)
+		if !ok {
+			return nil, ErrRemote
+		}
+		id, err := resolver.ResolveComputerSessionStart(ctx, q.Owner, q.StartupAttemptID)
+		if err == nil && !validID(id) {
+			err = ErrInvalidResponse
+		}
+		return SessionResponse{SessionID: id, StartupAttemptID: q.StartupAttemptID}, err
 	case OpCapabilities:
 		return host.Capabilities(ctx, q.Owner, q.SessionID)
 	case OpObserve:

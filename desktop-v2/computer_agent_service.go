@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	cu "github.com/konglong87/go-e2e/internal/computeruse"
 )
@@ -22,6 +23,21 @@ type computerAgentService struct {
 // ComputerUse permission gate. It binds an approved model owner lazily, while
 // keeping local preview (owner 0/0/0) outside this path.
 func (s computerAgentService) EnsureComputerSession(ctx context.Context, owner cu.SessionOwner) (string, error) {
+	return s.ensureComputerSession(ctx, owner, "")
+}
+
+func (s computerAgentService) EnsureComputerSessionAttempt(ctx context.Context, owner cu.SessionOwner, attemptID string) (string, error) {
+	if strings.TrimSpace(attemptID) == "" {
+		return "", errComputerAgentUnauthorized
+	}
+	id, err := s.ensureComputerSession(ctx, owner, attemptID)
+	if err == nil {
+		s.manager.rememberStartAttempt(owner, attemptID, id)
+	}
+	return id, err
+}
+
+func (s computerAgentService) ensureComputerSession(ctx context.Context, owner cu.SessionOwner, attemptID string) (string, error) {
 	if s.manager == nil || !validComputerConversationOwner(owner) {
 		return "", errComputerAgentUnauthorized
 	}
@@ -37,6 +53,25 @@ func (s computerAgentService) EnsureComputerSession(ctx context.Context, owner c
 		return "", err
 	}
 	return snapshot.ID, nil
+}
+
+func (s computerAgentService) ResolveComputerSessionStart(ctx context.Context, owner cu.SessionOwner, attemptID string) (string, error) {
+	if s.manager == nil || !validComputerConversationOwner(owner) || strings.TrimSpace(attemptID) == "" {
+		return "", errComputerAgentUnauthorized
+	}
+	id := s.manager.resolveStartAttempt(owner, attemptID)
+	if id == "" {
+		return "", errors.New("computer startup attempt is not known")
+	}
+	s.manager.mu.Lock()
+	c := s.manager.controller
+	valid := c != nil && c.Session().Owns(owner) && c.Session().ID() == id &&
+		c.Session().State() != cu.SessionStopped && c.Session().State() != cu.SessionFailed
+	s.manager.mu.Unlock()
+	if !valid {
+		return "", errors.New("computer startup attempt is no longer active")
+	}
+	return id, nil
 }
 
 func (s computerAgentService) controller(ctx context.Context, owner cu.SessionOwner, id string, lookup bool) (*cu.Controller, error) {

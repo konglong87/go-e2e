@@ -21,15 +21,16 @@ const (
 	MaxImagePixels        = 32 << 20
 	DefaultRequestTimeout = 15 * time.Second
 
-	OpLookup       = "lookup"
-	OpEnsure       = "ensure"
-	OpCapabilities = "capabilities"
-	OpObserve      = "observe"
-	OpExecute      = "execute"
-	OpPause        = "pause"
-	OpResume       = "resume"
-	OpStop         = "stop"
-	OpImage        = "image"
+	OpLookup        = "lookup"
+	OpEnsure        = "ensure"
+	OpResolveEnsure = "resolve_ensure"
+	OpCapabilities  = "capabilities"
+	OpObserve       = "observe"
+	OpExecute       = "execute"
+	OpPause         = "pause"
+	OpResume        = "resume"
+	OpStop          = "stop"
+	OpImage         = "image"
 )
 
 // Errors never contain host error text, response bodies, tokens, or image data.
@@ -63,16 +64,31 @@ type SessionCoordinator interface {
 	EnsureComputerSession(context.Context, cu.SessionOwner) (string, error)
 }
 
+// SessionAttemptCoordinator binds a startup request to an opaque, query-owned
+// attempt ID. It is the stronger cold-start contract used when an IPC response
+// can be lost after the host has created a session.
+type SessionAttemptCoordinator interface {
+	EnsureComputerSessionAttempt(context.Context, cu.SessionOwner, string) (string, error)
+}
+
+// SessionAttemptResolver queries only the exact startup attempt previously sent
+// by this query. It must never fall back to Lookup, which could select another
+// conversation's live grant.
+type SessionAttemptResolver interface {
+	ResolveComputerSessionStart(context.Context, cu.SessionOwner, string) (string, error)
+}
+
 // Request is the host wire contract. Exactly one operation is sent per POST.
 // The host must independently authenticate and authorize every request. Owner's
 // SessionID is a conversation ID, distinct from the host SessionID below.
 type Request struct {
-	Op             string             `json:"op"`
-	Owner          cu.SessionOwner    `json:"owner"`
-	SessionID      string             `json:"session_id,omitempty"`
-	ObserveRequest *cu.ObserveRequest `json:"observe_request,omitempty"`
-	Action         *cu.Action         `json:"action,omitempty"`
-	ObservationID  string             `json:"observation_id,omitempty"`
+	Op               string             `json:"op"`
+	Owner            cu.SessionOwner    `json:"owner"`
+	SessionID        string             `json:"session_id,omitempty"`
+	StartupAttemptID string             `json:"startup_attempt_id,omitempty"`
+	ObserveRequest   *cu.ObserveRequest `json:"observe_request,omitempty"`
+	Action           *cu.Action         `json:"action,omitempty"`
+	ObservationID    string             `json:"observation_id,omitempty"`
 }
 
 // Response wraps one operation's data, or a nonempty error. Only Execute may
@@ -85,7 +101,8 @@ type Response struct {
 
 // SessionResponse acknowledges controls or returns a host-owned session ID.
 type SessionResponse struct {
-	SessionID string `json:"session_id"`
+	SessionID        string `json:"session_id"`
+	StartupAttemptID string `json:"startup_attempt_id,omitempty"`
 }
 
 // LookupResponse identifies an existing host-approved session.

@@ -182,6 +182,13 @@ func TestAgentBridgeUnixControllerIntegration(t *testing.T) {
 	if got, err := client.EnsureComputerSession(ctx, owner); err != nil || got != id {
 		t.Fatalf("ensure over bridge got=%q err=%v", got, err)
 	}
+	attemptID := "cu-attempt-wire-1"
+	if got, err := client.EnsureComputerSessionAttempt(ctx, owner, attemptID); err != nil || got != id {
+		t.Fatalf("attempt ensure over bridge got=%q err=%v", got, err)
+	}
+	if got, err := client.ResolveComputerSessionStart(ctx, owner, attemptID); err != nil || got != id {
+		t.Fatalf("attempt resolve over bridge got=%q err=%v", got, err)
+	}
 	if got, err := client.Lookup(ctx, owner); err != nil || got != id {
 		t.Fatal(got, err)
 	}

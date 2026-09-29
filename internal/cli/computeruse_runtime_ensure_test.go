@@ -32,6 +32,44 @@ type queryComputerBridge struct {
 	ensureACK func(context.Context, string) (string, error)
 }
 
+// attemptQueryComputerBridge models a host that commits the grant but loses
+// the Ensure response. The resolver can return only the exact attempt token.
+type attemptQueryComputerBridge struct {
+	*queryComputerBridge
+	mu          sync.Mutex
+	attempts    map[string]string
+	resolveCall int
+	dropACK     bool
+}
+
+func (b *attemptQueryComputerBridge) EnsureComputerSessionAttempt(ctx context.Context, owner cu.SessionOwner, attemptID string) (string, error) {
+	id, err := b.queryComputerBridge.EnsureComputerSession(ctx, owner)
+	if err != nil && id == "" {
+		return "", err
+	}
+	b.mu.Lock()
+	if b.attempts == nil {
+		b.attempts = make(map[string]string)
+	}
+	b.attempts[attemptID] = id
+	b.mu.Unlock()
+	if b.dropACK {
+		return "", errors.New("simulated lost startup acknowledgement")
+	}
+	return id, err
+}
+
+func (b *attemptQueryComputerBridge) ResolveComputerSessionStart(_ context.Context, _ cu.SessionOwner, attemptID string) (string, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.resolveCall++
+	id := b.attempts[attemptID]
+	if id == "" {
+		return "", errors.New("attempt not found")
+	}
+	return id, nil
+}
+
 func (b *queryComputerBridge) EnsureComputerSession(ctx context.Context, owner cu.SessionOwner) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
@@ -115,6 +153,24 @@ func newTrackedQueryComputer(t *testing.T, bridge desktopComputerBridge) (*track
 	}
 	t.Cleanup(cleanup)
 	return tracked, cleanup
+}
+
+func TestDesktopComputerUseExactStartupAttemptRecoversLostAck(t *testing.T) {
+	base := newQueryComputerBridge(t)
+	bridge := &attemptQueryComputerBridge{queryComputerBridge: base, dropACK: true}
+	tracked, _ := newTrackedQueryComputer(t, bridge)
+
+	id, err := tracked.EnsureComputerSession(context.Background(), computerRuntimeOwner)
+	if err != nil || id == "" {
+		t.Fatalf("lost Ensure ACK was not recovered: id=%q err=%v", id, err)
+	}
+	bridge.mu.Lock()
+	resolved := bridge.resolveCall
+	bridge.mu.Unlock()
+	starts, lookups, _ := base.counts()
+	if resolved != 1 || starts != 1 || lookups != 0 {
+		t.Fatalf("recovery resolved wrong scope: resolves=%d starts=%d lookups=%d", resolved, starts, lookups)
+	}
 }
 
 func TestDesktopComputerUseQueryStopPreventsImplicitRestart(t *testing.T) {

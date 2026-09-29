@@ -891,3 +891,39 @@ Same-query Stop precedence slice:
   lost, no exact session ID is available for Stop. No Lookup-based guessing is
   used. A future query/start-attempt binding plus cancellation protocol must close
   that gap; this commit does not claim lost-ACK authority revocation is solved.
+
+### Phase closure — P1-1 exact startup-attempt recovery — 2026-09-29
+
+The lost-Ensure-ACK boundary is now implemented for the production desktop
+bridge. A query creates one opaque `cu-attempt-*` token and sends it with the
+host Ensure request. The host records the `(tenant, user, conversation,
+startup-attempt)` binding only after it has an approved live session. If the
+Ensure response is lost, the query asks the host to resolve that exact token;
+it never falls back to Lookup and cannot bind another conversation's session.
+The bridge validates and echoes the token on both Ensure and exact resolve
+responses, and legacy bridges retain their previous Ensure-only compatibility
+path.
+
+Verification:
+
+- Runtime regression simulates a host that committed one grant and permanently
+  drops the Ensure acknowledgement. Exact resolution recovers the same ID with
+  one startup and zero Lookup calls.
+- A real Unix-socket bridge integration sends the attempt token over the wire,
+  resolves it, and confirms the existing owner/controller remains the only
+  target. Focused `desktop-v2`, `internal/computerbridge`, and `internal/cli`
+  tests pass (the broad CLI suite still has one pre-existing/flaky agent-eval
+  failure unrelated to this slice).
+
+Priority after this phase:
+
+1. **P0-3:** real host-bound Screen Recording/Accessibility revoke and regrant;
+   user has now confirmed action-time authorization, so perform the native
+   settings transition and failure/recovery evidence next.
+2. **P1-2:** authoritative model-created session discovery/status in the
+   desktop UI, with exact-session controls and real UI evidence.
+3. **P1-3:** software multi-display negative-origin, mixed-DPI, display-routing,
+   and topology-change coverage; physical second-display acceptance remains
+   deferred.
+4. **P1-4:** final functional regression and evidence audit.
+5. Deferred LAST: formal signing/distribution and second physical display.

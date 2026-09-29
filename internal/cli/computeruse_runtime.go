@@ -2,6 +2,8 @@ package cli
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"math"
 	"strings"
@@ -44,8 +46,17 @@ type trackedDesktopComputerService struct {
 	observationID string
 	ensureDone    chan struct{} // Non-nil once the query has consumed its single startup attempt.
 	ensureErr     error         // Sticky: even an error may mean the host created a grant.
+	attemptID     string        // Opaque token for exact host-side startup recovery.
 	closed        bool
 	cleanupStop   sync.Once
+}
+
+func newComputerStartupAttemptID() (string, error) {
+	var raw [16]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", errors.New("computer startup attempt ID unavailable")
+	}
+	return "cu-attempt-" + hex.EncodeToString(raw[:]), nil
 }
 
 func (s *trackedDesktopComputerService) validateCaller(ctx context.Context, owner computeruse.SessionOwner) error {
@@ -88,12 +99,36 @@ func (s *trackedDesktopComputerService) EnsureComputerSession(ctx context.Contex
 		s.mu.Unlock()
 		return "", errors.New("computer session coordinator is unavailable")
 	}
+	attemptID, attemptErr := newComputerStartupAttemptID()
+	if attemptErr != nil {
+		s.mu.Unlock()
+		return "", attemptErr
+	}
 	s.ensureDone = make(chan struct{})
+	s.attemptID = attemptID
 	s.mu.Unlock()
 
 	// Never hold the state mutex across IPC. Cancellation cannot reset this
 	// attempt: a missing ACK is not proof that the host did not start a session.
-	id, err := coordinator.EnsureComputerSession(ctx, owner)
+	var id string
+	var err error
+	if attemptCoordinator, supported := s.desktopComputerBridge.(computerbridge.SessionAttemptCoordinator); supported {
+		id, err = attemptCoordinator.EnsureComputerSessionAttempt(ctx, owner, attemptID)
+		if strings.TrimSpace(id) == "" && supported {
+			if resolver, resolvable := s.desktopComputerBridge.(computerbridge.SessionAttemptResolver); resolvable {
+				resolveCtx, cancel := context.WithTimeout(context.Background(), computerUseCleanupTimeout)
+				recoveredID, resolveErr := resolver.ResolveComputerSessionStart(resolveCtx, owner, attemptID)
+				cancel()
+				if strings.TrimSpace(recoveredID) != "" && resolveErr == nil {
+					// The exact attempt recovered the host grant; this is not a
+					// retry and cannot select another query's session.
+					id, err = recoveredID, nil
+				}
+			}
+		}
+	} else {
+		id, err = coordinator.EnsureComputerSession(ctx, owner)
+	}
 	if strings.TrimSpace(id) == "" {
 		id = ""
 		if err == nil {
@@ -104,7 +139,8 @@ func (s *trackedDesktopComputerService) EnsureComputerSession(ctx context.Contex
 		err = errors.Join(errComputerSessionStartUnknown, err)
 	}
 	s.mu.Lock()
-	// Keep an acknowledged ID even on failure/cancellation for exact-ID Stop.
+	// Keep an acknowledged or exactly recovered ID even on failure/cancellation
+	// for exact-ID Stop.
 	s.sessionID, s.ensureErr = id, err
 	closed := s.closed
 	close(s.ensureDone)

@@ -58,10 +58,36 @@ type computerManager struct {
 	controller *cu.Controller
 	owner      cu.SessionOwner
 	factory    computerBackendFactory
+	attemptsMu sync.Mutex
+	attempts   map[computerStartAttemptKey]string
+}
+
+type computerStartAttemptKey struct {
+	owner     cu.SessionOwner
+	attemptID string
 }
 
 func newComputerManager() *computerManager {
-	return &computerManager{owner: cu.SessionOwner{TenantID: localComputerTenantID, UserID: localComputerUserID}, factory: newComputerBackend}
+	return &computerManager{owner: cu.SessionOwner{TenantID: localComputerTenantID, UserID: localComputerUserID}, factory: newComputerBackend, attempts: make(map[computerStartAttemptKey]string)}
+}
+
+func (m *computerManager) rememberStartAttempt(owner cu.SessionOwner, attemptID, sessionID string) {
+	if strings.TrimSpace(attemptID) == "" || strings.TrimSpace(sessionID) == "" {
+		return
+	}
+	m.attemptsMu.Lock()
+	if m.attempts == nil {
+		m.attempts = make(map[computerStartAttemptKey]string)
+	}
+	m.attempts[computerStartAttemptKey{owner: owner, attemptID: attemptID}] = sessionID
+	m.attemptsMu.Unlock()
+}
+
+func (m *computerManager) resolveStartAttempt(owner cu.SessionOwner, attemptID string) string {
+	m.attemptsMu.Lock()
+	id := m.attempts[computerStartAttemptKey{owner: owner, attemptID: attemptID}]
+	m.attemptsMu.Unlock()
+	return id
 }
 func newComputerBackend(ctx context.Context) (cu.Backend, error) {
 	if runtime.GOOS != "darwin" {

@@ -36,22 +36,27 @@ func validRequest(r Request) bool {
 	if !validOwner(r.Owner) {
 		return false
 	}
-	if r.Op == OpLookup || r.Op == OpEnsure {
-		return r.SessionID == "" && r.ObserveRequest == nil && r.Action == nil && r.ObservationID == ""
+	switch r.Op {
+	case OpLookup:
+		return r.SessionID == "" && r.StartupAttemptID == "" && r.ObserveRequest == nil && r.Action == nil && r.ObservationID == ""
+	case OpEnsure:
+		return r.SessionID == "" && optionalID(r.StartupAttemptID) && r.ObserveRequest == nil && r.Action == nil && r.ObservationID == ""
+	case OpResolveEnsure:
+		return r.SessionID == "" && validID(r.StartupAttemptID) && r.ObserveRequest == nil && r.Action == nil && r.ObservationID == ""
 	}
 	if !validID(r.SessionID) {
 		return false
 	}
 	switch r.Op {
 	case OpCapabilities, OpPause, OpResume, OpStop:
-		return r.ObserveRequest == nil && r.Action == nil && r.ObservationID == ""
+		return r.StartupAttemptID == "" && r.ObserveRequest == nil && r.Action == nil && r.ObservationID == ""
 	case OpObserve:
-		return r.ObserveRequest != nil && r.ObserveRequest.SessionID == r.SessionID &&
+		return r.StartupAttemptID == "" && r.ObserveRequest != nil && r.ObserveRequest.SessionID == r.SessionID &&
 			optionalID(r.ObserveRequest.DisplayID) && optionalID(r.ObserveRequest.WindowID) && r.Action == nil && r.ObservationID == ""
 	case OpExecute:
-		return r.Action != nil && r.Action.SessionID == r.SessionID && validAction(*r.Action) && r.ObserveRequest == nil && r.ObservationID == ""
+		return r.StartupAttemptID == "" && r.Action != nil && r.Action.SessionID == r.SessionID && validAction(*r.Action) && r.ObserveRequest == nil && r.ObservationID == ""
 	case OpImage:
-		return validID(r.ObservationID) && r.ObserveRequest == nil && r.Action == nil
+		return r.StartupAttemptID == "" && validID(r.ObservationID) && r.ObserveRequest == nil && r.Action == nil
 	default:
 		return false
 	}
