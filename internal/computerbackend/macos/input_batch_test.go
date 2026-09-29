@@ -106,10 +106,13 @@ func TestMouseBrokerInputBatchIsSingleUseAndAtomicPerOperation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range files {
-		_ = f.Close()
-	}
-	defer func() { _ = b.close(); <-b.done }()
+	defer func() {
+		_ = b.close()
+		for _, f := range files {
+			_ = f.Close()
+		}
+		<-b.done
+	}()
 	action := cu.Action{ID: "action", SessionID: "session", ObservationID: "obs", Kind: cu.ActionDoubleClick, Point: &cu.Point{X: 20, Y: 40}}
 	token, count, err := b.authorizeBatch(context.Background(), action, batchObservation(), time.Second)
 	if err != nil {
@@ -148,10 +151,13 @@ func TestMouseBrokerInputBatchRevocationBeforeCommitPostsNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range files {
-		_ = f.Close()
-	}
-	defer func() { _ = b.close(); <-b.done }()
+	defer func() {
+		_ = b.close()
+		for _, f := range files {
+			_ = f.Close()
+		}
+		<-b.done
+	}()
 	action := cu.Action{ID: "action", SessionID: "session", ObservationID: "obs", Kind: cu.ActionClick, Point: &cu.Point{X: 1, Y: 1}}
 	token, _, err := b.authorizeBatch(context.Background(), action, batchObservation(), time.Second)
 	if err != nil {

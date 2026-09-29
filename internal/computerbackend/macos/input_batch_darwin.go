@@ -128,18 +128,20 @@ static bool inputBatchAppendKey(inputBatchNative *batch, CGKeyCode code, CGEvent
         { kVK_Command, kCGEventFlagMaskCommand },
     };
     CGEventFlags held = 0;
+    size_t pressedIndices[sizeof(modifiers) / sizeof(modifiers[0])];
     size_t pressed = 0;
     for (size_t i = 0; i < sizeof(modifiers) / sizeof(modifiers[0]); i++) {
         if ((flags & modifiers[i].flag) == 0) continue;
         held |= modifiers[i].flag;
         if (!inputBatchAppendKeyboard(batch, modifiers[i].code, true, held)) return false;
-        pressed++;
+        pressedIndices[pressed++] = i;
     }
     if (!inputBatchAppendKeyboard(batch, code, true, flags) ||
         !inputBatchAppendKeyboard(batch, code, false, flags)) return false;
     for (size_t i = pressed; i > 0; i--) {
-        held &= ~modifiers[i - 1].flag;
-        if (!inputBatchAppendKeyboard(batch, modifiers[i - 1].code, false, held)) return false;
+        size_t modifierIndex = pressedIndices[i - 1];
+        held &= ~modifiers[modifierIndex].flag;
+        if (!inputBatchAppendKeyboard(batch, modifiers[modifierIndex].code, false, held)) return false;
     }
     return true;
 }
