@@ -100,9 +100,13 @@ export type ComputerCapabilitiesResponse = {
   error_message?: string;
 };
 
+export type ComputerSessionOwner = { tenant_id: number; user_id: number; session_id: number };
+
 export type ComputerSessionSnapshot = {
   session_id: string;
   state: ComputerSessionState;
+  owner: ComputerSessionOwner;
+  owner_kind: "local_preview" | "managed_conversation";
   capabilities: ComputerCapabilities;
   observation?: ComputerObservation;
   last_receipt?: ComputerActionReceipt;

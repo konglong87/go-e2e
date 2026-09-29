@@ -927,3 +927,35 @@ Priority after this phase:
    deferred.
 4. **P1-4:** final functional regression and evidence audit.
 5. Deferred LAST: formal signing/distribution and second physical display.
+
+### Phase closure — P1-2 authoritative model-session discovery — 2026-09-29
+
+The desktop UI now exposes a read-only `GetActiveComputerSession` bridge backed
+by the same host manager used by the model runtime. It does not initialize a
+helper, capture a screenshot, refresh observation freshness, or call Lookup.
+Snapshots carry the immutable owner and an explicit `owner_kind`; the frontend
+polls the authoritative status only while it has no bound local session.
+Model-created sessions become visible in the floating Computer Use workspace,
+continue through the existing exact-session status polling, and expose only
+Stop in the UI. Observe/Pause/Resume remain disabled for a model-managed grant
+so the desktop surface cannot inject an unscoped action into the model loop.
+
+Verification:
+
+- Go bridge contract and read-only snapshot tests pass.
+- Web Computer Use tests pass: 83 tests, including discovery of a managed
+  session and exact-ID Stop; typecheck and production Vite build pass.
+- The frontend retains compatibility with older hosts that do not expose the
+  optional discovery method; no fallback to Lookup was added.
+
+Priority after this phase:
+
+1. **P0-3:** finish the real Screen Recording/Accessibility revoke and regrant
+   run now that the user has confirmed it. macOS has currently opened an
+   authentication sheet for the requested toggle; a Touch ID/password action
+   is required at the OS boundary.
+2. **P1-3:** software multi-display negative-origin, mixed-DPI, display-routing,
+   and topology-change coverage; physical second-display acceptance remains
+   deferred.
+3. **P1-4:** final functional regression and evidence audit.
+4. Deferred LAST: formal signing/distribution and second physical display.

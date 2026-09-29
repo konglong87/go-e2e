@@ -8,7 +8,7 @@ export const capabilities: ComputerCapabilities = {
   coordinate_space: { origin: "top_left", unit: "pixels", width: 100, height: 100, scale_factor: 1 },
   image_supported: true, supports_pause: true, supports_stop: true
 };
-export const snapshot = (state: ComputerSessionState = "ready", sessionID = "s1"): ComputerSessionSnapshot => ({ session_id: sessionID, state, capabilities });
+export const snapshot = (state: ComputerSessionState = "ready", sessionID = "s1"): ComputerSessionSnapshot => ({ session_id: sessionID, state, owner: { tenant_id: 1, user_id: 1, session_id: 0 }, owner_kind: "local_preview", capabilities });
 export const observationResponse: ComputerObservationResponse = {
   observation: { id: "o1", session_id: "s1", width: 100, height: 100, scale_factor: 1, screenshot: { id: "image1", media_type: "image/png" }, cursor: { x: 1, y: 1 }, capabilities, observed_at: "2026-09-24T00:00:00Z" },
   image_data: "iVBORw0KGgo=", media_type: "image/png"

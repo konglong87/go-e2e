@@ -9,6 +9,7 @@ type Props = {
   available: boolean;
   busy: boolean;
   controlIntent: "pause" | "stop" | null;
+  readOnly?: boolean;
   onStart: () => void;
   onObserve: () => void;
   onPause: () => void;
@@ -16,7 +17,7 @@ type Props = {
   onStop: () => void;
 };
 
-export function ComputerToolbar({ state, capabilities, available, busy, controlIntent, onStart, onObserve, onPause, onResume, onStop }: Props): ReactElement {
+export function ComputerToolbar({ state, capabilities, available, busy, controlIntent, readOnly = false, onStart, onObserve, onPause, onResume, onStop }: Props): ReactElement {
   useI18n(); // Subscribe to the app language so a settings change rerenders this surface.
   const language = preferredComputerLanguage();
   const copy = computerUICopy[language];
@@ -28,7 +29,7 @@ export function ComputerToolbar({ state, capabilities, available, busy, controlI
     {!active ? <button className="webui2-computer-button" disabled={busy || Boolean(readiness)} title={readiness ?? undefined} onClick={onStart} type="button">{copy.startSession}</button> : null}
     {active ? <button className="webui2-computer-button webui2-computer-button--quiet" disabled={busy || !observable || Boolean(controlIntent)} onClick={onObserve} type="button">{copy.refreshScreenshot}</button> : null}
     {observable ? <button className="webui2-computer-button webui2-computer-button--quiet" disabled={!capabilities?.supports_pause || controlIntent === "stop"} onClick={onPause} type="button">{copy.pause}</button> : null}
-    {state === "paused" ? <button className="webui2-computer-button webui2-computer-button--quiet" disabled={busy || Boolean(readiness) || controlIntent === "stop"} onClick={onResume} type="button">{copy.resume}</button> : null}
+    {state === "paused" && !readOnly ? <button className="webui2-computer-button webui2-computer-button--quiet" disabled={busy || Boolean(readiness) || controlIntent === "stop"} onClick={onResume} type="button">{copy.resume}</button> : null}
     {active ? <button className="webui2-computer-button webui2-computer-button--danger" disabled={!capabilities?.supports_stop} onClick={onStop} type="button">{copy.stop}</button> : null}
   </div>;
 }

@@ -23,6 +23,18 @@ describe("useComputerSession", () => {
   }
   async function start() { await mount(); await act(async () => { await result.start({ approved: true }); }); }
 
+  it("discovers a model-created session through read-only status and binds exact Stop control", async () => {
+    const modelSession = { ...snapshot(), owner: { tenant_id: 9, user_id: 8, session_id: 7 }, owner_kind: "managed_conversation" as const };
+    client.getActiveSession = vi.fn().mockResolvedValue(modelSession);
+    await act(async () => root.render(<StrictMode><Harness /></StrictMode>));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(result.session?.session_id).toBe(modelSession.session_id);
+    expect(result.session?.owner_kind).toBe("managed_conversation");
+    expect(client.getActiveSession).toHaveBeenCalled();
+    await act(async () => { await result.stop(); });
+    expect(client.stop).toHaveBeenCalledWith(modelSession.session_id);
+  });
+
   it("survives StrictMode and observes immediately after awaiting start with the same closure", async () => {
     await mount();
     const actions = result;

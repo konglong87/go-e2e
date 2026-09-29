@@ -59,7 +59,7 @@ func TestWindowStateBridgeContract(t *testing.T) {
 	if !ok || getServiceStatus.Type.NumOut() != 1 || getServiceStatus.Type.Out(0) != reflect.TypeOf(LocalServiceStatus{}) {
 		t.Fatalf("GetLocalServiceStatus has unexpected signature %s", getServiceStatus.Type)
 	}
-	for _, name := range []string{"GetComputerCapabilities", "StartComputerSession", "ObserveComputerSession", "PauseComputerSession", "ResumeComputerSession", "StopComputerSession", "GetComputerActionReceipt"} {
+	for _, name := range []string{"GetComputerCapabilities", "StartComputerSession", "GetComputerSession", "GetActiveComputerSession", "ObserveComputerSession", "PauseComputerSession", "ResumeComputerSession", "StopComputerSession", "GetComputerActionReceipt"} {
 		if _, ok := appType.MethodByName(name); !ok {
 			t.Fatalf("computer bridge method %s is missing", name)
 		}

@@ -6,6 +6,7 @@ export type ComputerClient = {
   openPermissionSettings: (target: ComputerPermissionTarget) => Promise<void>;
   start: (input: StartComputerSessionInput) => Promise<ComputerSessionSnapshot>;
   getSession: (sessionID: string) => Promise<ComputerSessionSnapshot>;
+  getActiveSession?: () => Promise<ComputerSessionSnapshot>;
   observe: (sessionID: string) => Promise<ComputerObservationResponse>;
   pause: (sessionID: string) => Promise<ComputerSessionSnapshot>;
   resume: (sessionID: string) => Promise<ComputerSessionSnapshot>;
@@ -13,7 +14,7 @@ export type ComputerClient = {
   getReceipt: (sessionID: string, actionID: string) => Promise<ComputerActionReceipt>;
 };
 
-export type ComputerBridge = Pick<Required<DesktopServiceBridge>, "GetComputerCapabilities" | "StartComputerSession" | "GetComputerSession" | "ObserveComputerSession" | "PauseComputerSession" | "ResumeComputerSession" | "StopComputerSession" | "GetComputerActionReceipt"> & Pick<DesktopServiceBridge, "OpenComputerPermissionSettings">;
+export type ComputerBridge = Pick<Required<DesktopServiceBridge>, "GetComputerCapabilities" | "StartComputerSession" | "GetComputerSession" | "ObserveComputerSession" | "PauseComputerSession" | "ResumeComputerSession" | "StopComputerSession" | "GetComputerActionReceipt"> & Pick<DesktopServiceBridge, "OpenComputerPermissionSettings" | "GetActiveComputerSession">;
 
 export function getComputerBridge(): ComputerBridge | null {
   const bridge = getDesktopServiceBridge();
@@ -23,6 +24,7 @@ export function getComputerBridge(): ComputerBridge | null {
     OpenComputerPermissionSettings: bridge.OpenComputerPermissionSettings,
     StartComputerSession: bridge.StartComputerSession,
     GetComputerSession: bridge.GetComputerSession,
+    GetActiveComputerSession: bridge.GetActiveComputerSession,
     ObserveComputerSession: bridge.ObserveComputerSession,
     PauseComputerSession: bridge.PauseComputerSession,
     ResumeComputerSession: bridge.ResumeComputerSession,
@@ -37,6 +39,7 @@ export function createComputerClient(bridge: ComputerBridge): ComputerClient {
     openPermissionSettings: (target) => bridge.OpenComputerPermissionSettings?.(target) ?? Promise.reject(new Error("Computer permission settings are unavailable.")),
     start: (input) => bridge.StartComputerSession(input),
     getSession: (sessionID) => bridge.GetComputerSession(sessionID),
+    getActiveSession: bridge.GetActiveComputerSession ? () => bridge.GetActiveComputerSession!() : undefined,
     observe: (sessionID) => bridge.ObserveComputerSession(sessionID),
     pause: (sessionID) => bridge.PauseComputerSession(sessionID),
     resume: (sessionID) => bridge.ResumeComputerSession(sessionID),

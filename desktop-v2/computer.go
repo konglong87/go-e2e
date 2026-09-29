@@ -43,6 +43,8 @@ type ComputerObservationDTO struct {
 type ComputerSessionDTO struct {
 	ID           string            `json:"session_id"`
 	State        cu.SessionState   `json:"state"`
+	Owner        cu.SessionOwner   `json:"owner"`
+	OwnerKind    string            `json:"owner_kind"`
 	Capabilities cu.Capabilities   `json:"capabilities"`
 	Observation  *cu.Observation   `json:"observation,omitempty"`
 	LastReceipt  *cu.ActionReceipt `json:"last_receipt,omitempty"`
@@ -292,7 +294,12 @@ func (m *computerManager) active(id string) (*cu.Controller, error) {
 	return m.controller, nil
 }
 func computerSnapshot(s *cu.ComputerSession) ComputerSessionDTO {
-	result := ComputerSessionDTO{ID: s.ID(), State: s.State(), Capabilities: s.Capabilities()}
+	owner := s.Owner()
+	ownerKind := "managed_conversation"
+	if owner.TenantID == localComputerTenantID && owner.UserID == localComputerUserID && owner.SessionID == 0 {
+		ownerKind = "local_preview"
+	}
+	result := ComputerSessionDTO{ID: s.ID(), State: s.State(), Owner: owner, OwnerKind: ownerKind, Capabilities: s.Capabilities()}
 	if o, ok := s.CurrentObservation(); ok {
 		result.Observation = &o
 	}
@@ -384,6 +391,19 @@ func (a *app) GetComputerSession(id string) (ComputerSessionDTO, error) {
 		return ComputerSessionDTO{}, err
 	}
 	return computerSnapshot(c.Session()), nil
+}
+
+// GetActiveComputerSession is read-only authoritative discovery for sessions
+// created by the model bridge. It never initializes a backend, captures a
+// screenshot, refreshes observation freshness, or guesses an owner.
+func (a *app) GetActiveComputerSession() (ComputerSessionDTO, error) {
+	m := a.computer()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.controller == nil {
+		return ComputerSessionDTO{}, errors.New("computer session not found")
+	}
+	return computerSnapshot(m.controller.Session()), nil
 }
 func (a *app) ObserveComputerSession(id string) (ComputerObservationDTO, error) {
 	return a.computer().observe(a.windowContext(), id)

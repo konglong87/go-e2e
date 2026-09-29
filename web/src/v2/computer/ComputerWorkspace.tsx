@@ -82,7 +82,8 @@ export function ComputerWorkspace({ client, selectedConversationRef = null }: { 
   const status = readiness ? "attention" : state;
   const backend = computer.capabilities?.backend || copy.backendDetecting;
   const active = computer.session && computer.session.state !== "stopped";
-  const approvalLabel = computer.approvedConversationRef
+  const modelManaged = computer.session?.owner_kind === "managed_conversation";
+  const approvalLabel = modelManaged ? copy.modelManagedSession : computer.approvedConversationRef
     ? `${copy.boundConversation}: ${computer.approvedConversationRef}` : copy.localPreview;
   const openApproval = (): void => {
     const ref = managedComputerConversationRef(selectedConversationRef);
@@ -201,6 +202,7 @@ export function ComputerWorkspace({ client, selectedConversationRef = null }: { 
         available={computer.available}
         busy={computer.loading}
         controlIntent={computer.controlIntent}
+        readOnly={modelManaged}
         onStart={openApproval}
         onObserve={() => action(computer.observe)}
         onPause={() => action(computer.pause)}

@@ -53,6 +53,34 @@ export function useComputerSession(client: ComputerClient | null) {
   const snapshotPending = useRef(false);
   const sessionID = state.session?.session_id;
   const polling = !!state.session && !isTerminal(state.session);
+
+  // Discover model-created sessions through an authoritative read-only host
+  // status probe. Never infer an ID from Lookup or capture a screenshot here.
+  useEffect(() => {
+    if (!client?.getActiveSession || sessionID) return;
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const schedule = () => {
+      if (!disposed) timer = setTimeout(() => { void discover(); }, COMPUTER_SESSION_POLL_INTERVAL_MS);
+    };
+    const discover = async () => {
+      const before = current.current;
+      if (disposed || before.loading || before.session?.session_id) return;
+      try {
+        const snapshot = await client.getActiveSession!();
+        const latest = current.current;
+        if (!disposed && mounted.current && !latest.loading && !latest.session) {
+          update({ ...mergeSnapshot(latest, snapshot), approvedConversationRef: null });
+        }
+      } catch {
+        // Idle with no active session is expected; do not surface polling errors.
+      } finally {
+        if (!disposed && !current.current.session) schedule();
+      }
+    };
+    void discover();
+    return () => { disposed = true; clearTimeout(timer); };
+  }, [client, sessionID, update]);
   useEffect(() => {
     if (!client || !sessionID || !polling) return;
     let disposed = false;
