@@ -65,6 +65,50 @@ Priority reorder after this phase:
 7. **P1-4:** final functional regression/evidence audit.
 8. Deferred: physical second display and formal signing/distribution.
 
+## Phase closure — P0-1 non-drag host-owned input — 2026-09-28
+
+P0-1 is now **closed for the single-screen functional scope**. In addition to
+the real trusted-input matrix recorded above, a deterministic production
+host/helper fault-injection run was completed with the tagged Wails app:
+
+- The opt-in validation hold was propagated through the host's deliberate
+  helper environment allowlist; normal environments remain unchanged.
+- The helper was verified by exact host PID/path and exact helper PID/parent
+  path. The execute future was still pending after the batch request had been
+  sent and the helper environment contained the hold hook.
+- The helper was SIGKILLed while a real Unicode batch was in flight. The host
+  had already committed the balanced key sequence. The receipt was
+  `outcome=unknown`, `verification=unknown`; the next observe was rejected and
+  the session paused, with no action replay.
+- The real fixture recorded the trusted `Z` keydown/beforeinput/input/keyup and
+  final state `验收ABZ`, proving the host-owned batch completed physically even
+  though the helper died before its ACK reached the caller. Evidence:
+  `desktop-v2/build/validation/20260928/p0-1-real-acceptance/evidence-crash-type/crash-type-result.json`
+  and `crash-type-fixture-after.json`.
+
+P0-1 delivery commits:
+
+- `9a9dabc` host-owned bounded batches;
+- `b6e1e83` correct modifier-release mapping, caught by the real fixture;
+- `6ec8d17` deterministic validation hold hook;
+- `3450d7d` explicit helper environment propagation for that local validation.
+
+The test-only hold is an acceptance instrument, not a production default, and
+formal signing/distribution remains deferred.
+
+Priority reorder after P0-1 closure:
+
+1. **P0-2:** fresh authenticated `gpt-6-sol` autonomous WorkBuddy loop using
+   the rebuilt helper; require automatic startup, WorkBuddy launch, visible
+   navigation, New Task click, fresh after-observation and Stop, with no parent
+   GUI input during the model run. Previous Tasks 84/85 remain non-passing.
+2. **P0-3:** real host-bound Screen Recording/Accessibility revoke and regrant.
+3. **P1-1:** exact startup-attempt token for permanent Ensure ACK loss.
+4. **P1-2:** authoritative model-created session discovery in desktop UI.
+5. **P1-3:** virtual/mocked multi-display topology and mixed-DPI coverage.
+6. **P1-4:** final functional regression/evidence audit.
+7. Deferred: physical second display and formal signing/distribution.
+
 ## Phase update — P0-1 bounded non-drag input ownership — 2026-09-28
 
 Implementation and deterministic fault-injection tests are complete for the
