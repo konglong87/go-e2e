@@ -65,6 +65,38 @@ Priority reorder after this phase:
 7. **P1-4:** final functional regression/evidence audit.
 8. Deferred: physical second display and formal signing/distribution.
 
+## Phase update — P0-3 permission lifecycle audit — 2026-09-29
+
+The restart-bound CLI revoke attempt was re-run against the current tagged host:
+
+1. stopped the desktop host/helper;
+2. ran `tccutil reset ScreenCapture com.wails.go-e2e` and
+   `tccutil reset Accessibility com.wails.go-e2e` successfully;
+3. launched a fresh host/helper with a new acceptance socket;
+4. queried fresh capabilities.
+
+The fresh host still reported `capture_readiness=ready`,
+`input_readiness=ready`, and `permission_state=approved`. This is **negative
+lifecycle evidence, not a pass**. It confirms that a successful `tccutil reset`
+exit code is insufficient on this development machine and that no code or
+report may claim permissions were revoked. The current host remains stopped
+again after the audit.
+
+Next gate requires an action-time user-authorized System Settings toggle for
+both Screen Recording and Accessibility, followed by: fresh host launch,
+failed capabilities/observe/execute evidence, regrant, host/helper restart if
+required, fresh capabilities and observe, and proof that no old action replayed.
+
+Priority reorder after this phase:
+
+1. **P0-3 continuation:** user-authorized real TCC toggle/regrant lifecycle;
+   do not substitute `tccutil` output or a disabled UI.
+2. **P1-1:** exact startup-attempt token for permanent Ensure ACK loss.
+3. **P1-2:** authoritative model-created session discovery in desktop UI.
+4. **P1-3:** virtual/mocked multi-display topology and mixed-DPI coverage.
+5. **P1-4:** final functional regression/evidence audit.
+6. Deferred: physical second display and formal signing/distribution.
+
 ## Phase closure — P0-2 autonomous WorkBuddy model loop — 2026-09-29
 
 P0-2 is now **closed and passed** on the rebuilt tagged Wails app using the
