@@ -42,10 +42,13 @@ type Config struct {
 	HelperEnv              []string
 	RequestTimeout         time.Duration
 	RequestHostPermissions func()
-	MaxFrameBytes          int
-	Now                    func() time.Time
-	batchDriver            inputBatchDriver // private test seam
-	mouseDriver            mouseDriver      // package-private test seam; production always uses host CG
+	// CheckHostPermissions is the signed host's TCC source of truth. Production
+	// must not trust the nested helper's own TCC identity.
+	CheckHostPermissions func() (captureAllowed, inputAllowed bool)
+	MaxFrameBytes        int
+	Now                  func() time.Time
+	batchDriver          inputBatchDriver // private test seam
+	mouseDriver          mouseDriver      // package-private test seam; production always uses host CG
 }
 
 type Backend struct {
@@ -299,14 +302,33 @@ func (b *Backend) request(ctx context.Context, command, sessionID, actionID stri
 }
 
 func (b *Backend) requestPermissions(ctx context.Context) error {
-	// Permission state can change while the helper is alive after the user
-	// toggles a macOS Privacy setting. Keep this probe idempotent but do not
-	// cache it: every capabilities refresh must re-run the native request so
-	// the UI can become ready without forcing an app restart.
+	// A production host checker owns the TCC decision. Never ask the nested
+	// helper to request its own grant: macOS may attribute that prompt to a
+	// different identity and make a revoked host permission look approved.
+	if b.config.CheckHostPermissions != nil {
+		return nil
+	}
+	// Legacy test/fake configurations retain the old probe contract.
 	if _, err := b.request(ctx, commandRequestPermissions, "", "", nil); err != nil {
 		return err
 	}
 	return nil
+}
+
+func (b *Backend) hostCaptureAllowed() bool {
+	if b.config.CheckHostPermissions == nil {
+		return true
+	}
+	captureAllowed, _ := b.config.CheckHostPermissions()
+	return captureAllowed
+}
+
+func (b *Backend) hostInputAllowed() bool {
+	if b.config.CheckHostPermissions == nil {
+		return true
+	}
+	_, inputAllowed := b.config.CheckHostPermissions()
+	return inputAllowed
 }
 
 func (b *Backend) Capabilities(ctx context.Context) (cu.Capabilities, error) {
@@ -327,6 +349,20 @@ func (b *Backend) Capabilities(ctx context.Context) (cu.Capabilities, error) {
 	var caps cu.Capabilities
 	if err = json.Unmarshal(data, &caps); err != nil {
 		return caps, errors.New("invalid helper capabilities")
+	}
+	// Overlay the signed host's current TCC state. The helper response is
+	// useful for geometry/window metadata but is not permission authority.
+	if b.config.CheckHostPermissions != nil {
+		captureAllowed, inputAllowed := b.config.CheckHostPermissions()
+		if !captureAllowed {
+			caps.CaptureReadiness = cu.ReadinessPermissionRequired
+		}
+		if !inputAllowed {
+			caps.InputReadiness = cu.ReadinessPermissionRequired
+		}
+		if !captureAllowed || !inputAllowed {
+			caps.PermissionState = cu.PermissionRequired
+		}
 	}
 	caps.ProtocolVersion = cu.ProtocolVersion
 	caps.Platform = cu.PlatformMacOS
@@ -366,6 +402,9 @@ func (b *Backend) validEpoch(epoch uint64) bool {
 }
 
 func (b *Backend) Observe(ctx context.Context, req cu.ObserveRequest) (cu.Observation, error) {
+	if !b.hostCaptureAllowed() {
+		return cu.Observation{}, &rejection{"permission_required"}
+	}
 	epoch, err := b.acquire(ctx)
 	if err != nil {
 		return cu.Observation{}, err
@@ -447,6 +486,9 @@ func (b *Backend) Execute(ctx context.Context, action cu.Action) (receipt cu.Act
 			receipt.ErrorMessage = "computer action did not complete"
 		}
 		return receipt, err
+	}
+	if !b.hostCaptureAllowed() || !b.hostInputAllowed() {
+		return finish(&rejection{"permission_required"})
 	}
 	epoch, err := b.acquire(ctx)
 	if err != nil {

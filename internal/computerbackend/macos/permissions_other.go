@@ -2,4 +2,5 @@
 
 package macos
 
-func RequestHostPermissions() {}
+func RequestHostPermissions()            {}
+func CheckHostPermissions() (bool, bool) { return true, true }

@@ -986,3 +986,29 @@ Priority after this phase:
    fresh desktop build, real single-screen input/model evidence reconciliation,
    and cleanup of unrequested validation artifacts.
 3. Deferred LAST: second physical display and formal signing/distribution.
+
+### P0-3 implementation slice — host-bound TCC authority — 2026-09-29
+
+The real permission probe exposed a lifecycle defect: the nested helper could
+report its own TCC grant as ready even after the signed desktop host entry was
+toggled off. Production `macos.Backend` now accepts a host-owned TCC checker,
+uses it to overlay capabilities, skips the helper's permission-request prompt,
+and blocks Observe/Execute before helper dispatch when host capture/input access
+is revoked. The helper remains responsible for geometry/readiness metadata, not
+permission authority. The signed desktop factory wires the macOS host checker;
+legacy test/fake configurations retain their old helper probe behavior.
+
+Focused and race tests pass, including host-gate capability override, nested
+prompt suppression, and pre-dispatch Observe/Execute rejection. This closes the
+implementation defect but **does not close the real P0-3 acceptance gate yet**:
+the manual System Settings revoke/regrant run must be repeated against this
+fresh build, with screenshots and a recovery-after-regrant observation/input
+proof. The current desktop build requested another macOS authentication when
+attempting the revoke transition.
+
+Priority remains:
+
+1. Finish real P0-3 revoke/failure/regrant/recovery evidence against the fresh
+   host-gated build.
+2. Run P1-4 final regression/evidence audit and clean temporary artifacts.
+3. Deferred LAST: physical second display and formal signing/distribution.

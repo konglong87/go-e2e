@@ -103,6 +103,7 @@ func newComputerBackend(ctx context.Context) (cu.Backend, error) {
 		HelperPath:             path,
 		RequestTimeout:         computerRequestTimeout,
 		RequestHostPermissions: macbackend.RequestHostPermissions,
+		CheckHostPermissions:   macbackend.CheckHostPermissions,
 	})
 }
 func locateComputerHelper() (string, error) {

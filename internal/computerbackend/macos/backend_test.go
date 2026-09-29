@@ -215,6 +215,54 @@ func TestNewCallsHostPermissionRequest(t *testing.T) {
 	}
 }
 
+func TestHostPermissionGateOverridesHelperAndSkipsNestedPrompt(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "permissions")
+	cfg := helperConfig(t, "", time.Second, marker)
+	cfg.CheckHostPermissions = func() (bool, bool) { return false, false }
+	b, err := New(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = b.Close(context.Background()) }()
+	caps, err := b.Capabilities(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if caps.CaptureReadiness != cu.ReadinessPermissionRequired || caps.InputReadiness != cu.ReadinessPermissionRequired || caps.PermissionState != cu.PermissionRequired {
+		t.Fatalf("host TCC state was not authoritative: %+v", caps)
+	}
+	if data := readMarker(t, marker); len(data) != 0 {
+		t.Fatalf("nested helper requested permissions despite host checker: %q", data)
+	}
+}
+
+func TestHostPermissionRevokeBlocksObserveAndExecuteBeforeHelperDispatch(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "execute")
+	allowed := true
+	cfg := helperConfig(t, "", time.Second, marker)
+	cfg.CheckHostPermissions = func() (bool, bool) { return allowed, allowed }
+	b, err := New(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = b.Close(context.Background()) }()
+	obs := observeTest(t, b)
+	allowed = false
+	if _, err := b.Capabilities(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Observe(context.Background(), cu.ObserveRequest{SessionID: obs.SessionID}); err == nil {
+		t.Fatal("observe succeeded after host permission revoke")
+	}
+	receipt, err := b.Execute(context.Background(), waitAction(obs))
+	if err == nil || receipt.Outcome != cu.OutcomeRejected {
+		t.Fatalf("execute after host permission revoke: receipt=%+v err=%v", receipt, err)
+	}
+	if data := readMarker(t, marker); strings.Contains(string(data), "execute") {
+		t.Fatal("helper received execute after host permission revoke")
+	}
+}
+
 func TestCapabilitiesRefreshesPermissionProbe(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "permissions")
 	b := newTestBackend(t, "", time.Second, marker)
