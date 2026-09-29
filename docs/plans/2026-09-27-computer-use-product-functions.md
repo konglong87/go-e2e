@@ -20,6 +20,51 @@ unblocked item. Record blockers instead of silently skipping requirements.
 | Deferred | Second physical display | No second physical monitor available; do not mark hardware acceptance passed. |
 | Deferred LAST | Formal signing and distribution | Developer ID, notarization, signed fresh-install/upgrade and release delivery are outside this functional phase. |
 
+## Phase update — P0-1 real host acceptance — 2026-09-28
+
+The rebuilt tagged Wails app (`computeracceptance`) was exercised through the
+actual host acceptance socket with a real Chrome window and the isolated trusted
+event fixture. The run used the new host-owned batch path, not the old helper
+local CGEvent path.
+
+Real evidence under
+`desktop-v2/build/validation/20260928/p0-1-real-acceptance/evidence-fix/`:
+
+- trusted left click, double-click, right-click and move;
+- trusted drag with source/drop endpoints;
+- trusted scroll;
+- focus input, Unicode text `go-e2e 中文🙂`, ⌘A selection, replacement,
+  backspace and arrow-left;
+- all receipts were `executed`; fixture event logs reported `isTrusted=true`,
+  `client dropped/uncertain=0`, and final screenshot shows `验收AB` with the
+  caret at the expected position;
+- key-event inspection proves each ⌘ chord ends with `MetaLeft` keyup and
+  `meta=false`; no incorrect `ControlLeft` release remains. This caught and
+  fixed the host C batch modifier-index bug in `b6e1e83`.
+
+This closes the real functional input matrix for click/type/key/hotkey on the
+current single-screen build. It does **not** yet close the entire P0-1 safety
+gate: real desktop helper-SIGKILL during a non-drag batch still needs a
+purpose-built deterministic fault-injection run. The Go backend test already
+covers deterministic `broker-batch-sigkill` with a host fake driver; that is
+strong protocol evidence but not a substitute for the production host/helper
+fault-injection evidence.
+
+Priority reorder after this phase:
+
+1. **P0-1 remaining safety gate:** production helper SIGKILL during a real
+   non-drag batch, then confirm unknown receipt, no replay, no stuck modifier or
+   mouse button, fresh session recovery, trusted fixture state and screenshots.
+2. **P0-2:** fresh authenticated `gpt-6-sol` autonomous WorkBuddy loop using
+   this rebuilt helper; require launch, visible navigation, New Task click,
+   fresh after-observation and Stop with no parent GUI input during the run.
+3. **P0-3:** real host-bound Screen Recording/Accessibility revoke and regrant.
+4. **P1-1:** exact startup-attempt token for permanent Ensure ACK loss.
+5. **P1-2:** authoritative model-created session discovery in desktop UI.
+6. **P1-3:** virtual/mocked multi-display topology and mixed-DPI coverage.
+7. **P1-4:** final functional regression/evidence audit.
+8. Deferred: physical second display and formal signing/distribution.
+
 ## Phase update — P0-1 bounded non-drag input ownership — 2026-09-28
 
 Implementation and deterministic fault-injection tests are complete for the
