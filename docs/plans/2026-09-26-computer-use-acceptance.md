@@ -404,3 +404,26 @@ normal Wails build and fresh autonomous cold-launch/native screenshot evidence.
   ad-hoc build. Developer ID signing, clean-install/upgrade TCC continuity,
   notarization, stapling, and distribution gates remain open; stable release
   is still not accepted.
+
+### Active-session Screen Recording revoke and restore — 2026-09-29
+
+- With a fresh tagged current-source Wails host and an active native Computer Use
+  session, Screen Recording was toggled off in macOS System Settings. The next
+  Observe failed with `computer capture failed; session paused`; a click using
+  the pre-revoke observation was rejected with `computer session is not ready`.
+  The rejected action produced no native dispatch or after-image.
+- macOS kept the host capability snapshot at `ready` until the next capture
+  attempt. This is recorded as deferred TCC behavior, not as a false pass for
+  capture. The action-time capture gate still failed closed.
+- Screen Recording and Accessibility were restored through System Settings and
+  Touch ID. A fresh host then returned `start=ready`, produced a new native
+  observation, executed a click without a window override, captured an
+  after-image, and stopped cleanly.
+- Evidence is retained under the ignored
+  `desktop-v2/build/validation/20260929/p0-3-active-runtime-revoke/`, with the
+  consolidated result in `active-runtime-summary.json`. The complete state in
+  which both permissions are off remains covered by the earlier real lifecycle
+  evidence under `p0-3-permission-lifecycle/`.
+- This closes the action-time fail-closed and recovery check for the tested
+  Screen Recording revoke path. It does not change the previously recorded
+  limitations: no second physical display and no formal signing/distribution.

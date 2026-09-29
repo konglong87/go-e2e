@@ -885,3 +885,45 @@ passes: deny-mode correctly reported that ComputerUse was not in the allow
 list; an allow-mode rerun was stopped before a ComputerUse trace was produced.
 Therefore the latest real model orchestration is still an open acceptance gate,
 even though provider image input and the native host/bridge paths are working.
+
+## Active-session Screen Recording revoke and recovery — 2026-09-29
+
+A fresh tagged current-source Wails host was started with the real bundled
+helper and a live Computer Use session. While that session was active, the
+`go-e2e` Screen Recording entry was toggled off in macOS System Settings.
+
+The runtime behavior was fail-closed:
+
+- the next Observe returned `computer capture failed; session paused`;
+- a click reusing the pre-revoke observation returned `outcome=rejected` with
+  `computer session is not ready`;
+- no native input was dispatched and no after-image was produced;
+- Stop still completed cleanly.
+
+The capabilities endpoint continued to report `ready` before the capture
+attempt. This is the known macOS deferred TCC behavior for an already-running
+process; it is not counted as permission success. The action-time capture gate
+is the authoritative result and rejected the operation.
+
+The user then authenticated the System Settings change with Touch ID. Both
+`go-e2e` Screen Recording and Accessibility entries were visibly on again. A
+fresh current-source host passed the recovery path: `start=ready`, fresh
+observation succeeded, a click returned `executed` with a new after-image, and
+Stop completed. Evidence is retained at:
+
+```text
+desktop-v2/build/validation/20260929/p0-3-active-runtime-revoke/active-runtime-summary.json
+desktop-v2/build/validation/20260929/p0-3-active-runtime-revoke/01-capabilities-after-screen-recording-revoke.json
+desktop-v2/build/validation/20260929/p0-3-active-runtime-revoke/02-execute-after-screen-recording-revoke.json
+desktop-v2/build/validation/20260929/p0-3-active-runtime-revoke/restored-observe.png
+desktop-v2/build/validation/20260929/p0-3-active-runtime-revoke/restored-click-retry-after.png
+desktop-v2/build/validation/20260929/p0-3-active-runtime-revoke/10-click-restored-retry.json
+desktop-v2/build/validation/20260929/p0-3-active-runtime-revoke/11-stop-restored-retry.json
+```
+
+The earlier same-build run in `p0-3-permission-lifecycle/` remains the evidence
+for the complete state with both Screen Recording and Accessibility revoked,
+followed by regrant and a fresh successful screenshot/input probe. This
+subrun adds active-session action-time behavior and recovery; it does not claim
+that macOS changes the in-process capability snapshot immediately after a TCC
+toggle.
