@@ -12,6 +12,10 @@ protocol MouseBrokerWire {
 private enum BrokerLimits {
     static let frameBytes = 4096
     static let timeoutSeconds: TimeInterval = 0.1
+    // Opt-in validation-only hook. It is inert unless a local acceptance run
+    // explicitly sets this environment variable; production builds never set it.
+    static let testBatchHoldEnvironment = "GO_E2E_TEST_HELPER_HOLD_AFTER_BATCH_MS"
+    static let maxTestBatchHoldMS = 60_000
 }
 
 final class PipeMouseBrokerWire: MouseBrokerWire {
@@ -42,6 +46,14 @@ final class PipeMouseBrokerWire: MouseBrokerWire {
         }
     }
 
+    private func holdForValidationIfRequested(_ request: Data) {
+        guard request.range(of: Data("\"phase\":\"batch\"".utf8)) != nil,
+              let raw = ProcessInfo.processInfo.environment[BrokerLimits.testBatchHoldEnvironment],
+              let milliseconds = Int(raw), milliseconds > 0,
+              milliseconds <= BrokerLimits.maxTestBatchHoldMS else { return }
+        usleep(useconds_t(milliseconds * 1000))
+    }
+
     func exchange(_ request: Data) throws -> Data {
         guard request.count < BrokerLimits.frameBytes else { throw SafetyError.inputUnavailable }
         let deadline = ProcessInfo.processInfo.systemUptime + BrokerLimits.timeoutSeconds
@@ -57,6 +69,11 @@ final class PipeMouseBrokerWire: MouseBrokerWire {
                 offset += count
             }
         }
+        // This occurs after the host has received and committed the bounded
+        // batch request, but before the helper reads its ACK. A validation run
+        // can SIGKILL the helper here to prove the host-owned batch is balanced
+        // and the caller reports unknown rather than replaying input.
+        holdForValidationIfRequested(request)
         var result = Data()
         while result.count < BrokerLimits.frameBytes {
             try ready(responseFD, events: Int16(POLLIN), deadline: deadline)
