@@ -1012,3 +1012,34 @@ Priority remains:
    host-gated build.
 2. Run P1-4 final regression/evidence audit and clean temporary artifacts.
 3. Deferred LAST: physical second display and formal signing/distribution.
+
+### Phase closure — P0-3 real host permission revoke/regrant — 2026-09-29
+
+The real macOS lifecycle gate is now closed for the current single-screen
+functional scope. Using the freshly built `computeracceptance` desktop app and
+its actual host acceptance socket:
+
+- Screen Recording and Accessibility were manually revoked in System Settings,
+  with screenshots saved under
+  `desktop-v2/build/validation/20260929/p0-3-permission-lifecycle/`.
+- A fresh host/helper capability probe reported
+  `capture_readiness=permission_required`, `input_readiness=permission_required`,
+  and `permission_state=required`.
+- Start was rejected with `computer backend is not ready`; Observe and Execute
+  were not dispatched and were rejected (`computer session not found`).
+- Both permissions were restored, the app/helper were restarted fresh, and a
+  new capability probe reported `ready/ready/approved`.
+- A fresh observation produced a real PNG, a real click returned
+  `outcome=executed` with an after-observation screenshot, and Stop returned a
+  confirmed stopped session.
+
+This evidence also verified the host-owned TCC fix from `ed74542`: helper-side
+permission state can no longer make a revoked desktop host appear ready.
+Evidence manifest: `desktop-v2/build/validation/20260929/p0-3-permission-lifecycle/p0-3-summary.json`.
+
+Priority after this phase:
+
+1. **P1-4 final regression/evidence audit:** rerun the affected Go/race,
+   native, web, and desktop build suites; inspect the real evidence manifest;
+   clean temporary sockets/processes and reconcile the release checklist.
+2. Deferred LAST: second physical display and formal signing/distribution.
