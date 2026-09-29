@@ -1043,3 +1043,34 @@ Priority after this phase:
    native, web, and desktop build suites; inspect the real evidence manifest;
    clean temporary sockets/processes and reconcile the release checklist.
 2. Deferred LAST: second physical display and formal signing/distribution.
+
+### Phase closure — P1-4 final functional regression/evidence audit — 2026-09-29
+
+The functional Computer Use phase is now reconciled against current evidence.
+The fresh P0-3 manifest proves host-bound revoke/failure/regrant/recovery;
+prior real evidence proves single-screen click/double-click/right-click/move,
+drag, scroll, Unicode/key/hotkey input, helper crash uncertainty, and the
+authenticated gpt-6-sol WorkBuddy navigation loop. The desktop UI now exposes
+model-managed sessions read-only with exact Stop, startup ACK recovery uses an
+exact attempt token, and software multi-display coverage includes negative
+origin, mixed DPI, routing, and topology invalidation.
+
+Final regression results on 2026-09-29:
+
+- `go test ./internal/computerbackend/macos ./internal/computeruse
+  ./internal/computerbridge ./desktop-v2 ./internal/tools/computeruse ./internal/cli`
+  passed.
+- The corresponding `go test -race` suite passed. macOS linker emitted only
+  the existing malformed `LC_DYSYMTAB` warnings.
+- `bash native/macos/tests/run.sh`: 244 native safety assertions passed.
+- `bash native/macos/tests/platform.sh`: 469 platform event assertions passed.
+- Web Computer Use tests: 83 passed; web typecheck and production build passed.
+- Fresh `bash scripts/build-desktop-v2.sh -tags computeracceptance` completed;
+  the app and helper passed local ad-hoc `codesign --verify` validation. This
+  is not formal Developer ID signing, notarization, or distribution evidence.
+- Worktree is clean and `HEAD` equals `origin/main`.
+
+Functional-phase conclusion: all requested in-scope features are implemented
+and supported by matching evidence, subject to the explicitly deferred physical
+second-display and formal signing/distribution gates. No claim is made that
+those deferred gates passed.
