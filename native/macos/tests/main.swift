@@ -99,6 +99,25 @@ do {
 
 do {
     let desktop = FakeDesktop()
+    // Software-only mixed-DPI topology: the secondary display has a different
+    // pixel/point ratio and a negative global origin.
+    desktop.extraDisplays = [DisplayGeometry(id: "3", bounds: CGRect(x: -240, y: 20, width: 100, height: 50), width: 150, height: 75)]
+    let engine = Engine(platform: desktop)
+    let ready = engine.readiness()
+    let mixed = ready["displays"]?.array?.first { $0["display_id"]?.string == "3" }
+    let mixedScale: Double? = { guard case .number(let value) = mixed?["scale_factor"] else { return nil }; return value }()
+    expect(mixedScale == 1.5, "readiness exposes mixed-DPI scale")
+    let observed = engine.observe(request("observe", payload: ["observation_id":.string("mixed-dpi"), "display_id":.string("3")]))
+    expect(observed.outcome == .executed, "mixed-DPI display observation")
+    let result = engine.execute(request("execute", payload: ["kind":.string("click"), "x":.number(149), "y":.number(74), "display_id":.string("3"), "observation_id":.string("mixed-dpi")]))
+    expect(result.outcome == .executed, "mixed-DPI routed click")
+    if case .mouse(_, let point, _) = desktop.posts.last! {
+        expect(abs(point.x - (-140.6666666667)) < 0.01 && abs(point.y - 69.3333333333) < 0.01, "mixed-DPI point maps through selected display")
+    } else { expect(false, "mixed-DPI click posted") }
+}
+
+do {
+    let desktop = FakeDesktop()
     desktop.extraDisplays = [DisplayGeometry(id: "2", bounds: CGRect(x: -100, y: 0, width: 100, height: 50), width: 200, height: 100)]
     let engine = Engine(platform: desktop)
     let observed = engine.observe(request("observe", payload: ["observation_id":.string("topology")]))

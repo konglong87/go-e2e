@@ -959,3 +959,30 @@ Priority after this phase:
    deferred.
 3. **P1-4:** final functional regression and evidence audit.
 4. Deferred LAST: formal signing/distribution and second physical display.
+
+### Phase closure — P1-3 software multi-display coverage — 2026-09-29
+
+The native safety fixture now explicitly covers a mixed-DPI secondary display in
+addition to the existing negative-origin and topology-change cases. The test
+routes an observation and click to the selected display, verifies the reported
+scale factor (`1.5`), and checks pixel-to-global-point conversion at the
+negative global origin. Existing window-target identity, display routing,
+and topology invalidation tests remain in the same deterministic fake-platform
+suite. This is software/mocked coverage only; no physical second monitor is
+claimed.
+
+Verification:
+
+- `bash native/macos/tests/run.sh` passes 244 native safety assertions.
+- `bash native/macos/tests/platform.sh` passes 469 platform event assertions.
+- The suite posts no real input and captures no real desktop during this gate.
+
+Priority after this phase:
+
+1. **P0-3:** complete real host-bound permission revoke/regrant and collect
+   failure/recovery screenshots. System Settings is currently waiting for a
+   user Touch ID/password authentication at the OS security boundary.
+2. **P1-4:** final functional regression/evidence audit after P0-3, including
+   fresh desktop build, real single-screen input/model evidence reconciliation,
+   and cleanup of unrequested validation artifacts.
+3. Deferred LAST: second physical display and formal signing/distribution.
