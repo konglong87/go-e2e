@@ -172,7 +172,9 @@ func (e *rejection) Code() string  { return e.code }
 // Native input needs no model credentials, agent sockets or loader overrides.
 // Apply the same allowlist to explicit env overrides, not just inherited env.
 func helperEnvironment(extra []string) []string {
-	allowed := map[string]bool{"HOME": true, "USER": true, "LOGNAME": true, "TMPDIR": true, "LANG": true, "LC_CTYPE": true, "__CF_USER_TEXT_ENCODING": true}
+	allowed := map[string]bool{"HOME": true, "USER": true, "LOGNAME": true, "TMPDIR": true, "LANG": true, "LC_CTYPE": true, "__CF_USER_TEXT_ENCODING": true,
+		// Opt-in local acceptance fault injection; absent from normal environments.
+		"GO_E2E_TEST_HELPER_HOLD_AFTER_BATCH_MS": true}
 	values := map[string]string{"PATH": "/usr/bin:/bin:/usr/sbin:/sbin"}
 	for _, entry := range append(os.Environ(), extra...) {
 		k, v, ok := strings.Cut(entry, "=")
