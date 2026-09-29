@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  开源桌面级 AI Agent，覆盖 Desktop / TUI / CLI / WebUI
+  go-e2e 是基于 Go 开发的开源全功能 Coding Agent，覆盖桌面Desktop、TUI、CLI 和网页端WebUI，集成代码编辑、命令执行、任务规划、记忆与多智能体协作。支持 Skills、MCP 和多模型接入，本地优先、灵活扩展，适合日常开发，也适合学习和实践 Agent 开发。
 </p>
 
 <p align="center">
