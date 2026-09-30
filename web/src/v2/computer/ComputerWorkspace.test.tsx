@@ -16,7 +16,7 @@ describe("ComputerWorkspace", () => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     container = document.createElement("div");
     document.body.append(container);
-    storage = { "go-e2e.computer-workspace.v1": JSON.stringify({ collapsed: false, position: null }) };
+    storage = { "go-e2e.computer-workspace.v1": JSON.stringify({ displayMode: "expanded", collapsed: false, position: null }) };
     Object.defineProperty(window, "localStorage", { configurable: true, value: {
       getItem: (key: string) => storage[key] ?? null,
       setItem: (key: string, value: string) => { storage[key] = value; },
@@ -38,6 +38,13 @@ describe("ComputerWorkspace", () => {
     return found;
   }
   async function click(label: string) { await act(async () => { button(label).click(); }); }
+  async function clickAria(label: string) {
+    await act(async () => {
+      const target = document.body.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`);
+      if (!target) throw new Error(`Missing aria button: ${label}`);
+      target.click();
+    });
+  }
 
   it("has no panel with a non-desktop / unavailable bridge", async () => {
     await act(async () => root.render(<I18nProvider><ComputerWorkspace client={null} /></I18nProvider>));
@@ -52,6 +59,35 @@ describe("ComputerWorkspace", () => {
     await act(async () => { (document.body.querySelector('[aria-label="Open Computer Use workspace"]') as HTMLButtonElement).click(); });
     expect(document.body.querySelector('[aria-label="Computer workspace"]')).not.toBeNull();
     expect(document.body.querySelector('[aria-label="Collapse Computer Use workspace"]')).not.toBeNull();
+  });
+
+  it("auto mode keeps idle compact, expands for a session, and collapses after Stop", async () => {
+    storage = { "go-e2e.computer-workspace.v1": JSON.stringify({ displayMode: "auto", collapsed: false, position: null }), "golang-cc-webui.language.v1": "en" };
+    const client = createTestClient();
+    await act(async () => root.render(<I18nProvider><ComputerWorkspace client={client} /></I18nProvider>));
+    expect(document.body.querySelector('[aria-label="Open Computer Use workspace"]')).not.toBeNull();
+    expect(document.body.querySelector('[aria-label="Computer workspace"]')).toBeNull();
+
+    await clickAria("Open Computer Use workspace");
+    await click("Start session");
+    await click("Approve session");
+    expect(document.body.querySelector('[aria-label="Computer workspace"]')).not.toBeNull();
+
+    await click("Stop");
+    expect(document.body.querySelector('[aria-label="Computer workspace"]')).toBeNull();
+    expect(document.body.querySelector('[aria-label="Open Computer Use workspace"]')).not.toBeNull();
+  });
+
+  it.each(["compact", "expanded"] as const)("honors the %s display mode while preserving manual toggles", async (mode) => {
+    storage = { "go-e2e.computer-workspace.v1": JSON.stringify({ displayMode: mode, collapsed: mode === "compact", position: null }), "golang-cc-webui.language.v1": "en" };
+    const client = createTestClient();
+    await act(async () => root.render(<I18nProvider><ComputerWorkspace client={client} /></I18nProvider>));
+    const initiallyExpanded = mode === "expanded";
+    expect(document.body.querySelector('[aria-label="Computer workspace"]') !== null).toBe(initiallyExpanded);
+
+    const toggleLabel = initiallyExpanded ? "Collapse Computer Use workspace" : "Open Computer Use workspace";
+    await clickAria(toggleLabel);
+    expect(document.body.querySelector('[aria-label="Computer workspace"]') !== null).toBe(!initiallyExpanded);
   });
 
   it("opens the matching macOS permission page and refreshes readiness after returning", async () => {

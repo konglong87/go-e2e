@@ -1,5 +1,6 @@
 export const COMPUTER_WORKSPACE_PREFERENCES_KEY = "go-e2e.computer-workspace.v1";
 export const COMPUTER_WORKSPACE_VIEWPORT_MARGIN = 12;
+export const COMPUTER_WORKSPACE_PREFERENCES_CHANGED_EVENT = "go-e2e:computer-workspace-preferences-changed";
 
 export const COMPUTER_WORKSPACE_DISPLAY_MODES = {
   AUTO: "auto",

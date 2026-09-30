@@ -14,12 +14,13 @@ import { managedComputerConversationRef } from "./conversationApproval";
 import { ComputerPreview } from "./ComputerPreview";
 import { ComputerTimeline } from "./ComputerTimeline";
 import { ComputerToolbar } from "./ComputerToolbar";
-import { clampComputerWorkspacePosition, loadComputerWorkspacePreferences, saveComputerWorkspacePreferences, type ComputerWorkspacePoint } from "./computerWorkspacePreferences";
+import { COMPUTER_WORKSPACE_DISPLAY_MODES, COMPUTER_WORKSPACE_PREFERENCES_CHANGED_EVENT, clampComputerWorkspacePosition, loadComputerWorkspacePreferences, saveComputerWorkspacePreferences, type ComputerWorkspaceDisplayMode, type ComputerWorkspacePoint } from "./computerWorkspacePreferences";
 import { useComputerSession } from "./useComputerSession";
 
 const DRAG_THRESHOLD_PX = 6;
 const DEFAULT_TOP_PX = 76;
 const DEFAULT_RIGHT_PX = 20;
+const AUTO_EXPAND_SESSION_STATES = new Set<string>(["preparing", "pending_approval", "running", "ready", "needs_observation", "paused", "failed"]);
 
 type DragState = {
   pointerId: number;
@@ -42,15 +43,51 @@ export function ComputerWorkspace({ client, selectedConversationRef = null }: { 
   // Capture the payload when opening the dialog, not when approving it.
   const [approval, setApproval] = useState<StartComputerSessionInput | null>(null);
   const [preferences, setPreferences] = useState(loadComputerWorkspacePreferences);
+  const [displayMode, setDisplayMode] = useState<ComputerWorkspaceDisplayMode>(preferences.displayMode);
   const [position, setPosition] = useState<ComputerWorkspacePoint | null>(preferences.position);
+  const [autoExpanded, setAutoExpanded] = useState(false);
+  const [manualExpanded, setManualExpanded] = useState(() => preferences.displayMode === COMPUTER_WORKSPACE_DISPLAY_MODES.EXPANDED);
   const [dragging, setDragging] = useState(false);
   const panelRef = useRef<HTMLElement>(null);
   const dragRef = useRef<DragState | null>(null);
+  const wasAutoExpandable = useRef(false);
 
   useEffect(() => {
     setApproval(null);
     void computer.loadCapabilities().catch(() => undefined); // Hook renders the error.
   }, [computer.loadCapabilities]);
+
+  useEffect(() => {
+    const refreshPreferences = (): void => {
+      const next = loadComputerWorkspacePreferences();
+      setPreferences(next);
+      setDisplayMode(next.displayMode);
+      setPosition(next.position);
+      setManualExpanded(next.displayMode === COMPUTER_WORKSPACE_DISPLAY_MODES.EXPANDED);
+    };
+    window.addEventListener(COMPUTER_WORKSPACE_PREFERENCES_CHANGED_EVENT, refreshPreferences);
+    return () => window.removeEventListener(COMPUTER_WORKSPACE_PREFERENCES_CHANGED_EVENT, refreshPreferences);
+  }, []);
+
+  const state = computer.session?.state ?? "idle";
+  const readiness = computerReadinessMessage(computer.available, computer.capabilities, language);
+  const autoExpandable = AUTO_EXPAND_SESSION_STATES.has(state)
+    || (computer.capabilities !== null && Boolean(readiness));
+
+  useEffect(() => {
+    if (displayMode !== COMPUTER_WORKSPACE_DISPLAY_MODES.AUTO) return;
+    if (!autoExpandable) {
+      setAutoExpanded(false);
+    } else if (!wasAutoExpandable.current) {
+      setAutoExpanded(true);
+    }
+    wasAutoExpandable.current = autoExpandable;
+  }, [autoExpandable, displayMode]);
+
+  useEffect(() => {
+    if (displayMode !== COMPUTER_WORKSPACE_DISPLAY_MODES.AUTO) return;
+    if (!computer.session || state === "stopped") setAutoExpanded(false);
+  }, [computer.session, displayMode, state]);
 
   useEffect(() => {
     const onResize = (): void => {
@@ -77,8 +114,6 @@ export function ComputerWorkspace({ client, selectedConversationRef = null }: { 
 
   if (!client) return null;
 
-  const readiness = computerReadinessMessage(computer.available, computer.capabilities, language);
-  const state = computer.session?.state ?? "idle";
   const status = readiness ? "attention" : state;
   const backend = computer.capabilities?.backend || copy.backendDetecting;
   const active = computer.session && computer.session.state !== "stopped";
@@ -101,8 +136,15 @@ export function ComputerWorkspace({ client, selectedConversationRef = null }: { 
   const action = (operation: () => Promise<unknown>) => { void operation().catch(() => undefined); };
 
   const toggleCollapsed = (): void => {
-    const collapsed = !preferences.collapsed;
-    persist({ collapsed });
+    if (displayMode === COMPUTER_WORKSPACE_DISPLAY_MODES.AUTO) {
+      setAutoExpanded((expanded) => !expanded);
+      return;
+    }
+    setManualExpanded((expanded) => {
+      const next = !expanded;
+      persist({ collapsed: !next });
+      return next;
+    });
   };
 
   const onDragStart = (event: ReactPointerEvent<HTMLButtonElement>): void => {
@@ -155,7 +197,8 @@ export function ComputerWorkspace({ client, selectedConversationRef = null }: { 
   };
 
   const panelStyle = position ? { left: position.x, top: position.y } : { right: DEFAULT_RIGHT_PX, top: DEFAULT_TOP_PX };
-  const panel = preferences.collapsed
+  const collapsed = displayMode === COMPUTER_WORKSPACE_DISPLAY_MODES.AUTO ? !autoExpanded : !manualExpanded;
+  const panel = collapsed
     ? <button
       aria-expanded={false}
       aria-label={copy.launcher}
