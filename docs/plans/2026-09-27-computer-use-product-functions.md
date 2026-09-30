@@ -57,7 +57,8 @@ Priority after this phase:
 - The main WebView now hides its active Computer Use surface when the native
   overlay bridge is available; approval remains in the main window and Stop /
   Pause / Resume are handled by the native panel. Auto mode no longer creates a
-  second progress overlay.
+  second progress overlay. Idle/stopped auto mode intentionally retains a small
+  launcher so users can start a local preview without opening Settings.
 - Verification passed: full web suite 77 files / 763 tests, TypeScript
   typecheck, focused Go packages and race suite, tagged normal Wails build, and
   local ad-hoc codesign verification. The macOS app cold-started successfully
