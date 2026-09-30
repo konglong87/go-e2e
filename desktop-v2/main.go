@@ -42,6 +42,7 @@ type app struct {
 	windowDone        chan struct{}
 	computerPanel     computerPanel
 	computerPanelDone chan struct{}
+	computerOverlay   computerOverlayState
 }
 
 func main() {

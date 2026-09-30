@@ -16,7 +16,7 @@ import { ComputerTimeline } from "./ComputerTimeline";
 import { ComputerToolbar } from "./ComputerToolbar";
 import { COMPUTER_WORKSPACE_DISPLAY_MODES, COMPUTER_WORKSPACE_PREFERENCES_CHANGED_EVENT, clampComputerWorkspacePosition, loadComputerWorkspacePreferences, saveComputerWorkspacePreferences, type ComputerWorkspaceDisplayMode, type ComputerWorkspacePoint } from "./computerWorkspacePreferences";
 import { useComputerSession } from "./useComputerSession";
-import { getDesktopServiceBridge } from "../desktopServiceBridge";
+import { useNativeComputerOverlay } from "./useNativeComputerOverlay";
 import { createComputerWorkspaceDisplayState, projectComputerWorkspaceDisplay, reduceComputerWorkspaceDisplay } from "./computerWorkspaceDisplay";
 
 const DRAG_THRESHOLD_PX = 6;
@@ -69,6 +69,7 @@ export function ComputerWorkspace({ client, selectedConversationRef = null, nati
   const state = computer.session?.state ?? "idle";
   const readiness = computerReadinessMessage(computer.available, computer.capabilities, language);
   const hasDisplayError = Boolean(computer.error || readiness);
+  const overlay = useNativeComputerOverlay(nativeOverlay && client !== null, computer.session, language, readiness, displayMode);
   useEffect(() => {
     dispatchDisplay({
       type: "sync",
@@ -80,10 +81,13 @@ export function ComputerWorkspace({ client, selectedConversationRef = null, nati
   }, [computer.session?.session_id, displayMode, hasDisplayError, state]);
 
   useEffect(() => {
-    const openWorkspace = (): void => dispatchDisplay({ type: "open" });
+    const openWorkspace = (): void => {
+      if (overlay.active) overlay.show();
+      else dispatchDisplay({ type: "open" });
+    };
     window.addEventListener("go-e2e:computer-workspace-open", openWorkspace);
     return () => window.removeEventListener("go-e2e:computer-workspace-open", openWorkspace);
-  }, []);
+  }, [overlay.active, overlay.show]);
 
   const status = readiness ? "attention" : state;
   const backend = computer.capabilities?.backend || copy.backendDetecting;
@@ -92,28 +96,6 @@ export function ComputerWorkspace({ client, selectedConversationRef = null, nati
   const approvalLabel = modelManaged ? copy.modelManagedSession : computer.approvedConversationRef
     ? `${copy.boundConversation}: ${computer.approvedConversationRef}` : copy.localPreview;
   const projection = projectComputerWorkspaceDisplay(displayState);
-  const desktopBridge = getDesktopServiceBridge();
-  const nativeOverlayAvailable = nativeOverlay && Boolean(desktopBridge?.UpdateComputerOverlay);
-
-  useEffect(() => {
-    if (!desktopBridge?.UpdateComputerOverlay) return;
-    const session = computer.session;
-    const activeSession = session && session.state !== "stopped" ? session : null;
-    const snapshot = {
-      visible: nativeOverlayAvailable && Boolean(activeSession) && projection.visible,
-      expanded: projection.expanded,
-      session_id: activeSession?.session_id ?? "",
-      title: copy.workspace,
-      detail: readiness || (activeSession ? `${backend} · ${state}` : backend),
-      image_data: computer.observation?.image_data ?? "",
-      can_stop: Boolean(activeSession?.capabilities.supports_stop),
-      can_pause: activeSession?.state === "ready" || activeSession?.state === "needs_observation",
-      can_resume: activeSession?.state === "paused",
-      language: language === "zh" ? "zh" : "en",
-    } as const;
-    void desktopBridge.UpdateComputerOverlay(snapshot);
-  }, [backend, computer.observation?.id, computer.observation?.image_data, computer.session, copy.workspace, desktopBridge, language, nativeOverlayAvailable, projection.expanded, projection.visible, readiness, state]);
-
   useEffect(() => {
     const onResize = (): void => {
       const rect = panelRef.current?.getBoundingClientRect();
@@ -150,7 +132,8 @@ export function ComputerWorkspace({ client, selectedConversationRef = null, nati
     setApproval(null);
     try {
       const session = await computer.start(approvedInput);
-      if (session?.state === "ready" || session?.state === "needs_observation") await computer.observe();
+      if (!overlay.available && session?.owner_kind !== "managed_conversation"
+        && (session?.state === "ready" || session?.state === "needs_observation")) await computer.observe();
     } catch { /* surfaced in the panel */ }
   };
   const action = (operation: () => Promise<unknown>) => { void operation().catch(() => undefined); };
@@ -208,9 +191,20 @@ export function ComputerWorkspace({ client, selectedConversationRef = null, nati
     setDragging(false);
   };
 
-  const nativeOverlaySession = nativeOverlay && Boolean(active);
+  const nativeOverlaySession = overlay.active;
   const panelStyle = position ? { left: position.x, top: position.y } : { right: DEFAULT_RIGHT_PX, top: DEFAULT_TOP_PX };
-  const panel = !projection.visible || nativeOverlaySession
+  const panel = nativeOverlaySession
+    ? <button
+      aria-label={copy.reopenNativePanel}
+      className="webui2-computer-launcher"
+      onClick={overlay.show}
+      title={copy.reopenNativePanel}
+      type="button"
+    >
+      <Monitor aria-hidden="true" size={17} strokeWidth={2.2} />
+      <span className="webui2-computer-launcher-label">{copy.nativeTitle}</span>
+    </button>
+    : !projection.visible
     ? null
     : !projection.expanded
     ? <button

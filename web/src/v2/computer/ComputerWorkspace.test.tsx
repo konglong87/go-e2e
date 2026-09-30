@@ -2,6 +2,9 @@ import { act, StrictMode } from "react";
 import { I18nProvider } from "../../lib/i18n";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { DesktopServiceBridge } from "../desktopServiceBridge";
+import { COMPUTER_SESSION_POLL_INTERVAL_MS } from "./useComputerSession";
+import { COMPUTER_WORKSPACE_PREFERENCES_CHANGED_EVENT, saveComputerWorkspacePreferences } from "./computerWorkspacePreferences";
 import type { SessionRef } from "../routes";
 import { ComputerWorkspace } from "./ComputerWorkspace";
 import { ComputerApprovalDialog } from "./ComputerApprovalDialog";
@@ -29,6 +32,8 @@ describe("ComputerWorkspace", () => {
   afterEach(() => {
     act(() => root.unmount());
     container.remove();
+    delete window.go;
+    vi.useRealTimers();
     storage = {};
     delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
   });
@@ -44,6 +49,18 @@ describe("ComputerWorkspace", () => {
       if (!target) throw new Error(`Missing aria button: ${label}`);
       target.click();
     });
+  }
+
+  function nativeBridge(overrides: Partial<DesktopServiceBridge> = {}) {
+    const bridge = {
+      RestartLocalService: vi.fn().mockResolvedValue(undefined),
+      IsComputerOverlayAvailable: vi.fn().mockResolvedValue(true),
+      ShowComputerOverlay: vi.fn().mockResolvedValue(undefined),
+      UpdateComputerOverlay: vi.fn().mockResolvedValue(undefined),
+      ...overrides,
+    };
+    window.go = { main: { app: bridge } };
+    return bridge;
   }
 
   it("has no panel with a non-desktop / unavailable bridge", async () => {
@@ -92,6 +109,7 @@ describe("ComputerWorkspace", () => {
   });
 
   it("keeps model-managed sessions out of the main WebView when native overlay owns them", async () => {
+    const bridge = nativeBridge();
     const client = createTestClient();
     client.start = vi.fn().mockResolvedValue({ ...snapshot(), owner_kind: "managed_conversation" });
     await act(async () => root.render(<I18nProvider><ComputerWorkspace client={client} nativeOverlay /></I18nProvider>));
@@ -99,6 +117,145 @@ describe("ComputerWorkspace", () => {
     await click("Approve session");
     expect(document.body.querySelector('[aria-label="Computer workspace"]')).toBeNull();
     expect(document.body.querySelector('[aria-label="Computer Use progress"]')).toBeNull();
+    expect(document.body.querySelector('[aria-label="Show Computer Use panel"]')).not.toBeNull();
+    expect(bridge.IsComputerOverlayAvailable).toHaveBeenCalledOnce();
+    expect(bridge.UpdateComputerOverlay).toHaveBeenLastCalledWith(expect.objectContaining({
+      visible: true, session_id: "s1", can_stop: true, can_pause: false, can_resume: false,
+    }));
+    expect(client.observe).not.toHaveBeenCalled();
+  });
+
+  it.each(["false", "absent", "rejected"] as const)("retains DOM controls when the native capability probe is %s", async (probe) => {
+    const bridge = nativeBridge({ IsComputerOverlayAvailable: probe === "absent" ? undefined
+      : probe === "false" ? vi.fn().mockResolvedValue(false) : vi.fn().mockRejectedValue(new Error("unsupported")) });
+    const client = createTestClient();
+    await act(async () => root.render(<I18nProvider><ComputerWorkspace client={client} nativeOverlay /></I18nProvider>));
+    await click("Start session");
+    await click("Approve session");
+    expect(button("Stop").disabled).toBe(false);
+    expect(button("Pause").disabled).toBe(false);
+    expect(document.body.querySelector('[aria-label="Computer workspace"]')).not.toBeNull();
+    expect(document.body.querySelector('[aria-label="Show Computer Use panel"]')).toBeNull();
+    expect(bridge.UpdateComputerOverlay).not.toHaveBeenCalled();
+    expect(client.observe).toHaveBeenCalledWith("s1");
+  });
+
+  it("keeps DOM controls until the asynchronous capability probe actually succeeds", async () => {
+    const probe = deferred<boolean>();
+    nativeBridge({ IsComputerOverlayAvailable: vi.fn().mockReturnValue(probe.promise) });
+    const client = createTestClient();
+    vi.useFakeTimers();
+    client.getActiveSession = vi.fn().mockResolvedValue(snapshot());
+    await act(async () => root.render(<I18nProvider><ComputerWorkspace client={client} nativeOverlay /></I18nProvider>));
+    await act(async () => vi.advanceTimersByTimeAsync(COMPUTER_SESSION_POLL_INTERVAL_MS));
+    expect(button("Stop").disabled).toBe(false);
+    expect(document.body.querySelector('[aria-label="Show Computer Use panel"]')).toBeNull();
+    await act(async () => probe.resolve(true));
+    expect(document.body.querySelector('[aria-label="Computer workspace"]')).toBeNull();
+    expect(document.body.querySelector('[aria-label="Show Computer Use panel"]')).not.toBeNull();
+    expect(client.observe).not.toHaveBeenCalled();
+  });
+
+  it.each(["UpdateComputerOverlay", "ShowComputerOverlay"] as const)("retains DOM controls when %s is missing even if the probe exists", async (method) => {
+    nativeBridge({ [method]: undefined });
+    const client = createTestClient();
+    vi.useFakeTimers();
+    client.getActiveSession = vi.fn().mockResolvedValue(snapshot());
+    await act(async () => root.render(<I18nProvider><ComputerWorkspace client={client} nativeOverlay /></I18nProvider>));
+    await act(async () => vi.advanceTimersByTimeAsync(COMPUTER_SESSION_POLL_INTERVAL_MS));
+    expect(button("Stop").disabled).toBe(false);
+    expect(document.body.querySelector('[aria-label="Show Computer Use panel"]')).toBeNull();
+  });
+
+  it("keeps the reopen launcher through host Hide and state polls, without Observe or automatic Show", async () => {
+    vi.useFakeTimers();
+    const bridge = nativeBridge();
+    const client = createTestClient();
+    client.getSession = vi.fn().mockResolvedValue(snapshot("paused"));
+    await act(async () => root.render(<I18nProvider><ComputerWorkspace client={client} nativeOverlay /></I18nProvider>));
+    await click("Start session");
+    await click("Approve session");
+    expect(client.observe).not.toHaveBeenCalled();
+    expect(bridge.ShowComputerOverlay).not.toHaveBeenCalled();
+    // Hide is host-owned and has no frontend event. Its reopen launcher must
+    // remain usable even as subsequent status snapshots change session state.
+    await act(async () => vi.advanceTimersByTimeAsync(COMPUTER_SESSION_POLL_INTERVAL_MS));
+    expect(bridge.UpdateComputerOverlay).toHaveBeenLastCalledWith(expect.objectContaining({
+      expanded: false, display_mode: "expanded", session_id: "s1", detail: "paused", can_resume: true,
+    }));
+    expect(bridge.ShowComputerOverlay).not.toHaveBeenCalled();
+    await clickAria("Show Computer Use panel");
+    expect(bridge.ShowComputerOverlay).toHaveBeenCalledOnce();
+    await act(async () => { window.dispatchEvent(new Event("go-e2e:computer-workspace-open")); });
+    expect(bridge.ShowComputerOverlay).toHaveBeenCalledTimes(2);
+    expect(client.observe).not.toHaveBeenCalled();
+    expect(document.body.querySelector('[aria-label="Computer workspace"]')).toBeNull();
+    client.getSession = vi.fn().mockResolvedValue(snapshot("stopped"));
+    await act(async () => vi.advanceTimersByTimeAsync(COMPUTER_SESSION_POLL_INTERVAL_MS));
+    expect(document.body.querySelector('[aria-label="Show Computer Use panel"]')).toBeNull();
+    expect(bridge.UpdateComputerOverlay).toHaveBeenLastCalledWith(expect.objectContaining({ visible: false, session_id: "" }));
+    expect(button("Start session").disabled).toBe(false);
+  });
+
+  it("sends the display preference on every snapshot, without Show on preference changes", async () => {
+    const bridge = nativeBridge();
+    const client = createTestClient();
+    vi.useFakeTimers();
+    client.getActiveSession = vi.fn().mockResolvedValue(snapshot());
+    await act(async () => root.render(<I18nProvider><ComputerWorkspace client={client} nativeOverlay /></I18nProvider>));
+    await act(async () => vi.advanceTimersByTimeAsync(COMPUTER_SESSION_POLL_INTERVAL_MS));
+    for (const displayMode of ["auto", "compact", "expanded"] as const) {
+      await act(async () => {
+        saveComputerWorkspacePreferences({ displayMode, collapsed: displayMode !== "expanded", position: null });
+        window.dispatchEvent(new Event(COMPUTER_WORKSPACE_PREFERENCES_CHANGED_EVENT));
+      });
+      expect(bridge.UpdateComputerOverlay).toHaveBeenLastCalledWith(expect.objectContaining({ display_mode: displayMode, expanded: false }));
+      expect(document.body.querySelector('[aria-label="Show Computer Use panel"]')).not.toBeNull();
+    }
+    expect(vi.mocked(bridge.UpdateComputerOverlay!).mock.calls.every(([value]) => value.display_mode !== undefined)).toBe(true);
+    expect(bridge.ShowComputerOverlay).not.toHaveBeenCalled();
+    expect(client.observe).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["en", "Computer Use", "ready", "Show Computer Use panel"],
+    ["zh", "电脑操作", "已就绪", "显示电脑操作面板"],
+  ])("uses friendly %s copy in the native snapshot and tiny launcher", async (language, title, detail, label) => {
+    storage["golang-cc-webui.language.v1"] = language;
+    const bridge = nativeBridge();
+    const client = createTestClient();
+    vi.useFakeTimers();
+    client.getActiveSession = vi.fn().mockResolvedValue(snapshot());
+    await act(async () => root.render(<I18nProvider><ComputerWorkspace client={client} nativeOverlay /></I18nProvider>));
+    await act(async () => vi.advanceTimersByTimeAsync(COMPUTER_SESSION_POLL_INTERVAL_MS));
+    expect(bridge.UpdateComputerOverlay).toHaveBeenLastCalledWith(expect.objectContaining({ title, detail, language }));
+    expect(document.body.textContent).not.toContain("native_host");
+    expect(document.body.querySelector(`[aria-label="${label}"]`)?.textContent).toBe(title);
+    await clickAria(label);
+    expect(bridge.ShowComputerOverlay).toHaveBeenCalledOnce();
+  });
+
+  it.each(["ready", "paused"] as const)("keeps model-managed %s sessions Stop-only in native and DOM fallback", async (state) => {
+    const bridge = nativeBridge();
+    const client = createTestClient();
+    vi.useFakeTimers();
+    client.getActiveSession = vi.fn().mockResolvedValue({ ...snapshot(state), owner_kind: "managed_conversation" });
+    await act(async () => root.render(<I18nProvider><ComputerWorkspace client={client} nativeOverlay /></I18nProvider>));
+    await act(async () => vi.advanceTimersByTimeAsync(COMPUTER_SESSION_POLL_INTERVAL_MS));
+    expect(bridge.UpdateComputerOverlay).toHaveBeenLastCalledWith(expect.objectContaining({ can_stop: true, can_pause: false, can_resume: false }));
+    // A failed reopen falls back safely instead of leaving users without Stop.
+    vi.mocked(bridge.ShowComputerOverlay!).mockRejectedValue(new Error("panel unavailable"));
+    await clickAria("Show Computer Use panel");
+    expect(button("Stop").disabled).toBe(false);
+    const controls = Array.from(document.body.querySelectorAll("button"), (element) => element.textContent);
+    expect(controls).not.toContain("Refresh screenshot");
+    expect(controls).not.toContain("Pause");
+    expect(controls).not.toContain("Resume");
+    await click("Stop");
+    expect(client.stop).toHaveBeenCalledWith("s1");
+    expect(client.pause).not.toHaveBeenCalled();
+    expect(client.resume).not.toHaveBeenCalled();
+    expect(client.observe).not.toHaveBeenCalled();
   });
 
   it("opens the matching macOS permission page and refreshes readiness after returning", async () => {

@@ -2,55 +2,64 @@
 
 ## Current ordered queue — 2026-09-30
 
-**Independent screenshot acceptance — bounded result:** agent-side validation is
-possible. The explicit capture-enabled acceptance build produced a real composed
-desktop screenshot of WorkBuddy with the native panel above it. Window metadata
-confirmed WorkBuddy frontmost and the go-e2e panel at layer 3. This proves the
-cross-app stacking case, not full product acceptance. Normal capture exclusion
-is unchanged. Actual screenshot exposed overlapping compact detail/control rows.
-
-Active slice ledger: resumed clean at `89c844c` except task-generated `s/`
-(socket/session metadata). Intended files: native panel layout and this ledger.
-Completed compact three-row layout and wider localized hide button. Verification:
-`go test ./desktop-v2`, `go test -tags computeracceptance ./desktop-v2`, tagged
-Wails build and native screenshot inspection passed for this layout slice.
-Evidence (ignored `desktop-v2/build/validation/20260930/overlay-independent/`):
-- `after-launch-error-desktop.png`: actual WorkBuddy + overlapping old overlay.
-- `workbuddy-layout.png` + `workbuddy-layout-windows.json`: WorkBuddy frontmost,
-  panel above it, compact rows no longer overlap (intermediate button-width build).
-- `final-host-overlay.png`: final build, readable expand/hide and separated
-  title/detail/control rows. This is the host window, not WorkBuddy.
-Full-screen Space activation reproduced an unknown action receipt twice; no
-blind input retries. Latest WorkBuddy recheck was not completed while the user
-was actively typing in another foreground app. Test session stopped; temporary
-socket/session files and unrelated screenshots removed; normal build restored.
-Commit/push: this coherent layout/evidence slice; final report records its hash.
-This is native scripted + independently inspected screenshot evidence, NOT a
-new autonomous-model end-to-end acceptance run.
-
-Remaining priority (descending):
-1. P0: native expand/collapse/dismiss command state, host-driven discovery while
-   main UI hidden, and platform capability gating; require actual control clicks.
-2. P0: investigate go-e2e post-action capture failure when Spotlight activates
-   WorkBuddy on its full-screen Space. Action receipt is unknown, session pauses;
-   independent desktop capture succeeds. Do not blindly retry input.
-3. P1: preview ownership/model-managed controls and geometry persistence; require
-   focused tests and native screenshots. Autonomous model acceptance still open.
-4. P2: blocked release artifacts; physical second display and signing deferred.
-
-
-This section is authoritative. Older queues below are historical checkpoints.
-The user approved the Codex-style Computer Use display direction. Formal signing/
-distribution and physical second-display acceptance remain deferred, not passed.
+This queue is authoritative; older phase notes below are historical and must not
+be read as evidence that the native overlay or the whole product fully passed.
 
 | Order | Remaining item | Acceptance / dependency |
 |---|---|---|
-| P0 — implementation gaps and acceptance open | Phase 2B: native macOS overlay panel | Project-owned macOS `NSPanel` adapter, nonactivating/floating behavior, shared Wails snapshot bridge, Stop/Pause/Resume command polling, drag/position persistence, and no-op non-macOS implementation are built. Real cross-App WorkBuddy/focus acceptance remains next. |
-| P1 | Unify execution progress with the overlay surface | Auto mode no longer renders the duplicate progress panel; native panel now owns the active surface when available. Full WorkBuddy focus and screenshot acceptance remains open. |
-| P2 — blocked | Optional GitHub Release binary artifacts | Tag-triggered run `36656985414` did not start: GitHub reports failed account payments or spending limit. Requires account-owner action; no billing changes made. Source tag and local desktop are delivered. |
-| Deferred | Second physical display | Requires hardware; software tests do not replace physical acceptance. |
-| Deferred LAST | Formal signing and distribution acceptance | Developer ID, notarization, signed clean install/upgrade; source tag and local ad-hoc build are not substitutes. |
+| P0 | Preserve capture/backend error codes and diagnose paused/unknown outcomes | Spotlight activation into full-screen WorkBuddy and a later Observe on the capture-enabled build failed. Current receipts lose the originating helper code; do not claim permissions, focus changes, or PNG size as proven causes. No input replay or weakened safety guards. |
+| P0 | Complete native control acceptance across apps and model ownership | Expand, collapse, hide/reopen and Pause verified below. Resume/Stop native-click acceptance and autonomous model-managed preview/control run remain open; manager Stop alone is not a UI pass. |
+| P1 | Geometry persistence and broader display-mode/hidden-window acceptance | Host-owned discovery and presentation tests pass; full native restart-position, mode transition, and hidden-main-window acceptance remain separate. |
+| P2 — blocked | Optional GitHub Release binary artifacts | Previous tag run blocked by account payment/spending limit; no billing changes made. |
+| Deferred | Second physical display | Requires hardware; not passed. |
+| Deferred LAST | Formal signing and distribution | Developer ID/notarization/clean installation and upgrade; local ad-hoc builds do not substitute. |
 
+### Native interaction and preview repair — bounded closure
+
+- Initial tree clean at `ca9ac8d`; pulled origin/main before editing. No pre-existing
+  user work. Source slice: host overlay/state/shared types, native renderer,
+  read-only preview/tests, frontend native-support/reopen/copy tests and this ledger.
+- Root causes confirmed in code: expand/collapse commands were ignored; hiding
+  was overwritten by frontend snapshots; metadata-only model status did not carry
+  preview bytes. These were project UI defects, not macOS system dialogs.
+- Host now owns per-session hidden/expanded state and polls the existing manager
+  independently of the WebView. Session/mode changes reset overrides; status
+  refresh does not. Commands reject stale sessions; managed sessions remain
+  Stop-only. Frontend probes actual native availability and retains a reopen
+  launcher; unsupported platforms keep DOM controls. Control errors are surfaced.
+- Preview reads existing current-observation bytes, or the latest successfully
+  executed receipt's after-image between actions. It does not Observe, refresh
+  freshness, grant input authority, or install receipt metadata as an observation.
+  Stop/replacement/permission and evidence-source changes reject in-flight reads.
+  This is **latest operation imagery, not continuous live video**.
+- Native copy now uses “电脑操作”, “已就绪，等待下一步操作”, “操作已暂停”, and
+  “最近操作画面 · <window>” rather than `native_host · ready`.
+- Ordinary builds still request `NSWindowSharingNone`; only the explicit tagged
+  acceptance build with its capture environment switch is screenshot-visible.
+  Targeted app-window screenshots also differ from composed desktop captures.
+  No blanket claim of exclusion from every screenshot method is made.
+
+Verification for this slice:
+- Full web tests: **77 files / 775 passed**; TypeScript typecheck passed.
+- Desktop, computeruse, macOS backend Go tests passed; desktop race tests passed;
+  tagged desktop build and ad-hoc signature validation passed.
+- Real native input: project driver clicked Expand/Collapse/Hide; screenshots show
+  correct state after polling. CUA clicked the main-window reopen launcher and
+  the native panel reappeared. Native Pause click resulted in `paused`; its own
+  in-flight test action was interrupted/unknown, not counted as executed success.
+- Real preview: `03-preview-visible.png` shows current observation; final build
+  `final-after-action-preview.png` shows after-action image while snapshot remains
+  `needs_observation` with an executed receipt—without an extra Observe for preview.
+- Stop-click attempt was blocked at its prerequisite Observe, before input; it
+  is **not a native Stop pass**. Session was then stopped through the manager.
+  Resume native-click attempt did not establish a successful state transition.
+- Evidence: ignored `desktop-v2/build/validation/20260930/overlay-controls/`,
+  including `04-collapsed.png`, `05-hidden-after-polls.png`, `06-reopened.png`,
+  `07-paused.png`, `final-after-action-preview.png`, session JSON and build/test logs.
+- Cleanup: test sessions stopped, temporary socket/session files and redundant
+  screenshots removed. Normal desktop build restored without the capture switch.
+- Delivery: this source slice is committed/pushed together; final response gives
+  the commit hash. No new tag and no claim of complete product parity.
 
 ### Phase 2A closure — automatic display orchestration — 2026-09-30
 

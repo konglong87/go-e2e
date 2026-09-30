@@ -38,6 +38,7 @@ struct goe2e_computer_panel {
 @property(nonatomic, retain) NSTextField *titleLabel;
 @property(nonatomic, retain) NSTextField *detailLabel;
 @property(nonatomic, retain) NSImageView *previewView;
+@property(nonatomic, retain) NSTextField *previewLabel;
 @property(nonatomic, retain) NSButton *toggleButton;
 @property(nonatomic, retain) NSButton *dismissButton;
 @property(nonatomic, retain) NSButton *stopButton;
@@ -160,6 +161,9 @@ static void EnqueueCommand(goe2e_computer_panel *bridge, NSString *kind, NSStrin
     _previewView = [[NSImageView alloc] initWithFrame:NSZeroRect];
     _previewView.imageScaling = NSImageScaleProportionallyUpOrDown;
     _previewView.hidden = YES;
+    _previewLabel = [self labelWithSize:11 weight:NSFontWeightRegular];
+    _previewLabel.textColor = [NSColor colorWithCalibratedWhite:0.75 alpha:1.0];
+    _previewLabel.hidden = YES;
 
     _toggleButton = [self buttonWithTitle:@"Expand" action:@selector(toggleExpanded:)];
     _dismissButton = [self buttonWithTitle:@"×" action:@selector(dismiss:)];
@@ -170,6 +174,7 @@ static void EnqueueCommand(goe2e_computer_panel *bridge, NSString *kind, NSStrin
     [_panel.contentView addSubview:_titleLabel];
     [_panel.contentView addSubview:_detailLabel];
     [_panel.contentView addSubview:_previewView];
+    [_panel.contentView addSubview:_previewLabel];
     [_panel.contentView addSubview:_toggleButton];
     [_panel.contentView addSubview:_dismissButton];
     [_panel.contentView addSubview:_stopButton];
@@ -209,6 +214,7 @@ static void EnqueueCommand(goe2e_computer_panel *bridge, NSString *kind, NSStrin
     [_titleLabel release];
     [_detailLabel release];
     [_previewView release];
+    [_previewLabel release];
     [_toggleButton release];
     [_dismissButton release];
     [_stopButton release];
@@ -243,6 +249,7 @@ static void EnqueueCommand(goe2e_computer_panel *bridge, NSString *kind, NSStrin
     [self applyLanguage:language expanded:expanded];
     [_titleLabel setStringValue:StringValue(snapshot, @"title")];
     [_detailLabel setStringValue:StringValue(snapshot, @"detail")];
+    [_previewLabel setStringValue:StringValue(snapshot, @"preview_detail")];
     _stopButton.enabled = BoolValue(snapshot, @"can_stop");
     _pauseButton.enabled = BoolValue(snapshot, @"can_pause");
     _resumeButton.enabled = BoolValue(snapshot, @"can_resume");
@@ -277,6 +284,9 @@ static void EnqueueCommand(goe2e_computer_panel *bridge, NSString *kind, NSStrin
     CGFloat width = expanded ? kExpandedWidth : kCompactWidth;
     CGFloat height = expanded ? kExpandedHeight : kCompactHeight;
     NSRect frame = _panel.frame;
+    // Preserve the top-right anchor when expanding/collapsing after a drag.
+    frame.origin.x += frame.size.width - width;
+    frame.origin.y += frame.size.height - height;
     frame.size = NSMakeSize(width, height);
     [_panel setFrame:frame display:YES];
 
@@ -288,7 +298,9 @@ static void EnqueueCommand(goe2e_computer_panel *bridge, NSString *kind, NSStrin
     [_stopButton setFrame:NSMakeRect(16, expanded ? height - 94 : 12, 52, 22)];
     [_pauseButton setFrame:NSMakeRect(74, expanded ? height - 94 : 12, 58, 22)];
     [_resumeButton setFrame:NSMakeRect(74, expanded ? height - 94 : 12, 64, 22)];
-    [_previewView setFrame:NSMakeRect(16, 16, width - 32, expanded ? height - 124 : 0)];
+    [_previewView setFrame:NSMakeRect(16, 16, width - 32, expanded ? height - 148 : 0)];
+    [_previewLabel setFrame:NSMakeRect(16, height - 120, width - 32, 18)];
+    _previewLabel.hidden = !expanded;
     _previewView.hidden = !expanded || _previewView.image == nil;
 }
 

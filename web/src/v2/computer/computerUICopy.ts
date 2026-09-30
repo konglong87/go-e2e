@@ -2,6 +2,7 @@ import type { Language } from "../../lib/i18n";
 import type { ComputerCapabilities, ComputerFocusState, ComputerOutcome, ComputerPermissionState, ComputerReadiness, ComputerSessionState, ComputerVerification } from "./types";
 
 const en = {
+  nativeTitle: "Computer Use", reopenNativePanel: "Show Computer Use panel",
   workspace: "Computer workspace", controlSurface: "CONTROL SURFACE", launcher: "Open Computer Use workspace", collapseWorkspace: "Collapse Computer Use workspace", dragWorkspace: "Drag Computer Use workspace", collapse: "Collapse", backendDetecting: "detecting", idle: "idle", requested: "requested",
   startSession: "Start session", refreshScreenshot: "Refresh screenshot", pause: "Pause", resume: "Resume", stop: "Stop",
   systemPermissions: "SYSTEM PERMISSIONS", permissionsTitle: "Computer Use needs system permissions", permissionsIntro: "Open the relevant macOS settings, enable access for Computer Use, then recheck permissions.", accessibility: "Accessibility", accessibilityDescription: "Allow Computer Use to control the desktop.", screenRecording: "Screen Recording", screenRecordingDescription: "Allow Computer Use to read the desktop.", openAccessibility: "Open Accessibility settings", openScreenRecording: "Open Screen Recording settings", openingSettings: "Opening settings…", recheckPermissions: "Recheck permissions", checkingPermissions: "Checking permissions…", settingsError: "Unable to open Computer Use permission settings.",
@@ -20,6 +21,7 @@ const en = {
 };
 
 const zh: typeof en = {
+  nativeTitle: "电脑操作", reopenNativePanel: "显示电脑操作面板",
   workspace: "电脑操作窗口", controlSurface: "控制界面", launcher: "展开电脑操作窗口", collapseWorkspace: "收起电脑操作窗口", dragWorkspace: "拖动电脑操作窗口", collapse: "收起", backendDetecting: "检测中", idle: "空闲", requested: "已请求",
   startSession: "开始会话", refreshScreenshot: "刷新截图", pause: "暂停", resume: "继续", stop: "停止",
   systemPermissions: "系统权限", permissionsTitle: "电脑操作需要系统权限", permissionsIntro: "打开对应的 macOS 设置，为电脑操作开启权限，然后返回此处重新检测。", accessibility: "辅助功能", accessibilityDescription: "允许电脑操作控制桌面。", screenRecording: "屏幕录制", screenRecordingDescription: "允许电脑操作读取桌面画面。", openAccessibility: "打开辅助功能设置", openScreenRecording: "打开屏幕录制设置", openingSettings: "正在打开设置…", recheckPermissions: "重新检测权限", checkingPermissions: "正在检测权限…", settingsError: "无法打开电脑操作权限设置。",

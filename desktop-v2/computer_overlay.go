@@ -2,13 +2,16 @@ package main
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	cu "github.com/konglong87/go-e2e/internal/computeruse"
 )
 
-const computerPanelPollInterval = 60 * time.Millisecond
+const (
+	computerPanelPollInterval    = 60 * time.Millisecond
+	computerPanelRefreshInterval = 500 * time.Millisecond
+	computerPanelPreviewTimeout  = 2 * time.Second
+)
 
 func (a *app) startComputerPanel(ctx context.Context) {
 	panel := newNativeComputerPanel()
@@ -22,10 +25,9 @@ func (a *app) startComputerPanel(ctx context.Context) {
 		panel.Close()
 		return
 	}
-	a.computerPanel = panel
-	a.computerPanelDone = done
+	a.computerPanel, a.computerPanelDone = panel, done
 	a.mu.Unlock()
-
+	// Keep safety commands independent of image retrieval and hidden WebViews.
 	go func() {
 		ticker := time.NewTicker(computerPanelPollInterval)
 		defer ticker.Stop()
@@ -40,12 +42,27 @@ func (a *app) startComputerPanel(ctx context.Context) {
 			}
 		}
 	}()
+	go func() {
+		ticker := time.NewTicker(computerPanelRefreshInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-done:
+				return
+			case <-ticker.C:
+				a.refreshComputerPanel(ctx)
+			}
+		}
+	}()
 }
 
 func (a *app) stopComputerPanel() {
 	a.mu.Lock()
 	panel, done := a.computerPanel, a.computerPanelDone
 	a.computerPanel, a.computerPanelDone = nil, nil
+	a.computerOverlay = computerOverlayState{}
 	a.mu.Unlock()
 	if done != nil {
 		close(done)
@@ -55,15 +72,57 @@ func (a *app) stopComputerPanel() {
 	}
 }
 
-// UpdateComputerOverlay is a display-only bridge. It never creates a session,
-// captures a screenshot, or changes Computer Use authority.
+func (a *app) IsComputerOverlayAvailable() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.computerPanel != nil
+}
+
+// Only updates presentation preferences. Session discovery, command state, and
+// preview data are host-owned; an old WebView poll cannot undo Hide or Expand.
 func (a *app) UpdateComputerOverlay(snapshot ComputerPanelSnapshot) {
 	a.mu.Lock()
-	panel := a.computerPanel
-	a.mu.Unlock()
-	if panel != nil {
-		panel.Update(snapshot)
+	defer a.mu.Unlock()
+	a.computerOverlay.configure(snapshot)
+	a.renderComputerPanelLocked()
+}
+
+func (a *app) ShowComputerOverlay() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.computerOverlay.show()
+	a.renderComputerPanelLocked()
+}
+
+func (a *app) renderComputerPanelLocked() {
+	if a.computerPanel != nil {
+		a.computerPanel.Update(a.computerOverlay.render())
 	}
+}
+
+func (a *app) refreshComputerPanel(ctx context.Context) {
+	session, err := a.GetActiveComputerSession()
+	if err != nil {
+		session = ComputerSessionDTO{}
+	}
+	var image ComputerObservationDTO
+	if session.ID != "" && session.State != cu.SessionStopped {
+		previewCtx, cancel := context.WithTimeout(ctx, computerPanelPreviewTimeout)
+		image, _ = a.computer().preview(previewCtx, session.ID)
+		cancel()
+	}
+	// Stop or replacement may have happened while an image read was in flight.
+	current, currentErr := a.GetActiveComputerSession()
+	if currentErr != nil || current.ID != session.ID || current.State != session.State {
+		session, image = current, ComputerObservationDTO{}
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.computerPanel == nil {
+		return
+	}
+	a.computerOverlay.update(computerOverlaySnapshot(session, a.computerOverlay.language, image))
+	a.renderComputerPanelLocked()
 }
 
 func (a *app) handleComputerPanelCommand(ctx context.Context) {
@@ -77,18 +136,45 @@ func (a *app) handleComputerPanelCommand(ctx context.Context) {
 	if command == nil {
 		return
 	}
+	// Validate the displayed session before any command, including presentation.
+	session, err := a.GetActiveComputerSession()
+	if err != nil || session.ID != command.SessionID || session.State == cu.SessionStopped {
+		return
+	}
+	a.mu.Lock()
+	handled := a.computerOverlay.command(*command)
+	if handled {
+		a.renderComputerPanelLocked()
+	}
+	a.mu.Unlock()
+	if handled {
+		return
+	}
+	allowed := computerOverlaySnapshot(session, "", ComputerObservationDTO{})
 	switch command.Kind {
-	case computerPanelCommandDismiss:
-		panel.Update(ComputerPanelSnapshot{Visible: false})
-	case computerPanelCommandStop, computerPanelCommandPause, computerPanelCommandResume:
-		if strings.TrimSpace(command.SessionID) == "" {
+	case computerPanelCommandStop:
+		if !allowed.CanStop {
 			return
 		}
-		kind, ok := mapComputerPanelCommand(command.Kind)
-		if !ok {
+	case computerPanelCommandPause:
+		if !allowed.CanPause {
 			return
 		}
-		_, _ = a.computer().control(ctx, command.SessionID, kind)
+	case computerPanelCommandResume:
+		if !allowed.CanResume {
+			return
+		}
+	default:
+		return
+	}
+	if kind, ok := mapComputerPanelCommand(command.Kind); ok {
+		_, controlErr := a.computer().control(ctx, command.SessionID, kind)
+		a.mu.Lock()
+		if a.computerOverlay.latest.SessionID == command.SessionID {
+			a.computerOverlay.controlFailed = controlErr != nil
+		}
+		a.mu.Unlock()
+		a.refreshComputerPanel(ctx)
 	}
 }
 

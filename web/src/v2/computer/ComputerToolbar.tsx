@@ -27,8 +27,8 @@ export function ComputerToolbar({ state, capabilities, available, busy, controlI
   return <div className="webui2-computer-toolbar">
     <span className="webui2-computer-state">{controlIntent ? `${controlIntent === "pause" ? copy.pause : copy.stop} ${copy.requested}` : state ? copy.session[state] : copy.idle}</span>
     {!active ? <button className="webui2-computer-button" disabled={busy || Boolean(readiness)} title={readiness ?? undefined} onClick={onStart} type="button">{copy.startSession}</button> : null}
-    {active ? <button className="webui2-computer-button webui2-computer-button--quiet" disabled={busy || !observable || Boolean(controlIntent)} onClick={onObserve} type="button">{copy.refreshScreenshot}</button> : null}
-    {observable ? <button className="webui2-computer-button webui2-computer-button--quiet" disabled={!capabilities?.supports_pause || controlIntent === "stop"} onClick={onPause} type="button">{copy.pause}</button> : null}
+    {active && !readOnly ? <button className="webui2-computer-button webui2-computer-button--quiet" disabled={busy || !observable || Boolean(controlIntent)} onClick={onObserve} type="button">{copy.refreshScreenshot}</button> : null}
+    {observable && !readOnly ? <button className="webui2-computer-button webui2-computer-button--quiet" disabled={!capabilities?.supports_pause || controlIntent === "stop"} onClick={onPause} type="button">{copy.pause}</button> : null}
     {state === "paused" && !readOnly ? <button className="webui2-computer-button webui2-computer-button--quiet" disabled={busy || Boolean(readiness) || controlIntent === "stop"} onClick={onResume} type="button">{copy.resume}</button> : null}
     {active ? <button className="webui2-computer-button webui2-computer-button--danger" disabled={!capabilities?.supports_stop} onClick={onStop} type="button">{copy.stop}</button> : null}
   </div>;

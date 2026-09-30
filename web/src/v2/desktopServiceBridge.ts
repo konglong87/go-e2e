@@ -12,6 +12,7 @@ export type DesktopBackgroundMode = "external" | "local";
 export type ComputerOverlaySnapshot = {
   visible: boolean;
   expanded: boolean;
+  display_mode?: "auto" | "compact" | "expanded";
   session_id: string;
   title: string;
   detail: string;
@@ -50,6 +51,8 @@ export type DesktopServiceBridge = {
   ResumeComputerSession?: (sessionID: string) => Promise<ComputerSessionSnapshot>;
   StopComputerSession?: (sessionID: string) => Promise<ComputerSessionSnapshot>;
   GetComputerActionReceipt?: (sessionID: string, actionID: string) => Promise<ComputerActionReceipt>;
+  IsComputerOverlayAvailable?: () => Promise<boolean> | boolean;
+  ShowComputerOverlay?: () => Promise<void> | void;
   UpdateComputerOverlay?: (snapshot: ComputerOverlaySnapshot) => Promise<void> | void;
 };
 
