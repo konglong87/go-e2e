@@ -14,6 +14,29 @@ be read as evidence that the native overlay or the whole product fully passed.
 | Deferred | Second physical display | Requires hardware; not passed. |
 | Deferred LAST | Formal signing and distribution | Developer ID/notarization/clean installation and upgrade; local ad-hoc builds do not substitute. |
 
+### Screenshot visibility policy — user-requested follow-up
+
+- Initial tree clean at `4a1de20`; pulled origin/main before edits.
+- Scope: remove native panel screenshot exclusion in ordinary builds; delete
+  the acceptance-only capture switch. No changes to TUI/CLI/browser UI scope.
+- Intended files: native panel renderer, capture-policy regression test, deleted
+  acceptance-only flag file, and this ledger. Desktop/region screenshots should
+  include the visible panel; single-window capture still has its own target.
+- Automated checks completed before the user deferred desktop acceptance:
+  `go test ./desktop-v2`, `go test -tags computeracceptance ./desktop-v2`,
+  ordinary Wails build and ad-hoc signature validation passed.
+- User requested commit/push now and native verification tomorrow (2026-10-01).
+  **Native screenshot acceptance remains PENDING, not passed.** Resume with a
+  cold start of the ordinary build (no capture env/tag), actual preview start,
+  and desktop/region screenshot inspection. Old-process quit attempts did not
+  confirm exit, so verify process identity rather than assuming a cold start.
+- Build log: ignored `desktop-v2/build/validation/20260930/capture-visible/build-normal.log`.
+  No native screenshot evidence was produced for this policy change today.
+- Risk: desktop operation imagery may contain the panel/its preview recursively;
+  this does not change input authorization or the existing safety guards.
+- Remaining priority after this slice: P0 capture-error diagnostics and native
+  control/model acceptance; P1 geometry; blocked release assets; explicit deferrals.
+
 ### Native interaction and preview repair — bounded closure
 
 - Initial tree clean at `ca9ac8d`; pulled origin/main before editing. No pre-existing
@@ -34,8 +57,9 @@ be read as evidence that the native overlay or the whole product fully passed.
   This is **latest operation imagery, not continuous live video**.
 - Native copy now uses “电脑操作”, “已就绪，等待下一步操作”, “操作已暂停”, and
   “最近操作画面 · <window>” rather than `native_host · ready`.
-- Ordinary builds still request `NSWindowSharingNone`; only the explicit tagged
-  acceptance build with its capture environment switch is screenshot-visible.
+- Historical behavior (superseded by the screenshot visibility follow-up above):
+  ordinary builds requested `NSWindowSharingNone`; the tagged acceptance build
+  could explicitly enable screenshot visibility.
   Targeted app-window screenshots also differ from composed desktop captures.
   No blanket claim of exclusion from every screenshot method is made.
 

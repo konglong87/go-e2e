@@ -139,12 +139,9 @@ static void EnqueueCommand(goe2e_computer_panel *bridge, NSString *kind, NSStrin
     _panel.opaque = NO;
     _panel.backgroundColor = NSColor.clearColor;
     _panel.hasShadow = YES;
-    _panel.sharingType = NSWindowSharingNone;
-#ifdef GO_E2E_PANEL_ACCEPTANCE
-    // Independent QA capture only; never enabled in ordinary builds.
-    if (getenv("GO_E2E_PANEL_CAPTURE_EVIDENCE") != NULL && strcmp(getenv("GO_E2E_PANEL_CAPTURE_EVIDENCE"), "1") == 0)
-        _panel.sharingType = NSWindowSharingReadOnly;
-#endif
+    // The floating controls are user-visible UI and must appear in ordinary
+    // desktop/region screenshots, just like the rest of the application.
+    _panel.sharingType = NSWindowSharingReadOnly;
     _panel.collectionBehavior = NSWindowCollectionBehaviorCanJoinAllSpaces | NSWindowCollectionBehaviorFullScreenAuxiliary | NSWindowCollectionBehaviorIgnoresCycle;
     _panel.delegate = self;
 
