@@ -30,16 +30,18 @@ import (
 var bundledAssets embed.FS
 
 type app struct {
-	mu              sync.Mutex
-	config          desktopConfig
-	port            int
-	token           string
-	service         *localServiceController
-	computerManager *computerManager
-	acceptanceClose func()
-	computerBridge  *computerbridge.Listener
-	windowCtx       context.Context
-	windowDone      chan struct{}
+	mu                sync.Mutex
+	config            desktopConfig
+	port              int
+	token             string
+	service           *localServiceController
+	computerManager   *computerManager
+	acceptanceClose   func()
+	computerBridge    *computerbridge.Listener
+	windowCtx         context.Context
+	windowDone        chan struct{}
+	computerPanel     computerPanel
+	computerPanelDone chan struct{}
 }
 
 func main() {
@@ -95,6 +97,7 @@ func desktopWailsOptions(application *app, config desktopConfig, target *url.URL
 
 func (a *app) startup(ctx context.Context) {
 	a.setWindowContext(ctx)
+	a.startComputerPanel(ctx)
 	closeAcceptance, acceptanceErr := startComputerAcceptance(ctx, a.computer(), os.Args[1:])
 	if acceptanceErr != nil {
 		startupLog("computer acceptance: " + acceptanceErr.Error())
@@ -291,6 +294,7 @@ func (a *app) shutdown(ctx context.Context) {
 		wailsruntime.LogErrorf(ctx, "save window state: %v", err)
 	}
 	a.stopWindowStateWatcher()
+	a.stopComputerPanel()
 	a.mu.Lock()
 	service := a.service
 	computer := a.computerManager

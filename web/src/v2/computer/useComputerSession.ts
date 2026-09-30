@@ -25,9 +25,13 @@ function mergeSnapshot(current: ComputerState, snapshot: ComputerSessionSnapshot
   const receipt = snapshot.last_receipt;
   const receipts = receipt ? [...current.receipts.filter((item) => item.action_id !== receipt.action_id), receipt] : current.receipts;
   // A snapshot contains metadata only. Preserve image bytes only for the same observation.
-  const observation = snapshot.observation?.id === current.observation?.id
-    ? current.observation : snapshot.observation ?? current.observation;
-  return { ...current, session: snapshot, capabilities: snapshot.capabilities, observation, receipts };
+  const stopped = snapshot.state === "stopped";
+  const observation = stopped
+    ? null
+    : snapshot.observation?.id === current.observation?.id
+      ? current.observation : snapshot.observation ?? current.observation;
+  const session = stopped ? { ...snapshot, observation: undefined } : snapshot;
+  return { ...current, session, capabilities: snapshot.capabilities, observation, receipts };
 }
 
 export function useComputerSession(client: ComputerClient | null) {

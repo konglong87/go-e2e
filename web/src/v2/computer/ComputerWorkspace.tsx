@@ -1,7 +1,7 @@
 import { ChevronDown, GripVertical, Monitor, Minus } from "lucide-react";
 import { createPortal } from "react-dom";
 import type { ReactElement, PointerEvent as ReactPointerEvent } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useI18n } from "../../lib/i18n";
 import { computerReadinessMessage, computerUICopy, preferredComputerLanguage, localizeComputerError } from "./computerUICopy";
 import { ComputerApprovalDialog } from "./ComputerApprovalDialog";
@@ -16,12 +16,12 @@ import { ComputerTimeline } from "./ComputerTimeline";
 import { ComputerToolbar } from "./ComputerToolbar";
 import { COMPUTER_WORKSPACE_DISPLAY_MODES, COMPUTER_WORKSPACE_PREFERENCES_CHANGED_EVENT, clampComputerWorkspacePosition, loadComputerWorkspacePreferences, saveComputerWorkspacePreferences, type ComputerWorkspaceDisplayMode, type ComputerWorkspacePoint } from "./computerWorkspacePreferences";
 import { useComputerSession } from "./useComputerSession";
+import { getDesktopServiceBridge } from "../desktopServiceBridge";
+import { createComputerWorkspaceDisplayState, projectComputerWorkspaceDisplay, reduceComputerWorkspaceDisplay } from "./computerWorkspaceDisplay";
 
 const DRAG_THRESHOLD_PX = 6;
 const DEFAULT_TOP_PX = 76;
 const DEFAULT_RIGHT_PX = 20;
-const AUTO_EXPAND_SESSION_STATES = new Set<string>(["preparing", "pending_approval", "running", "ready", "needs_observation", "paused", "failed"]);
-
 type DragState = {
   pointerId: number;
   startX: number;
@@ -35,7 +35,7 @@ function portalHost(): HTMLElement {
   return document.querySelector<HTMLElement>(".webui2-page") ?? document.body;
 }
 
-export function ComputerWorkspace({ client, selectedConversationRef = null }: { client: ComputerClient | null; selectedConversationRef?: SessionRef | null }): ReactElement | null {
+export function ComputerWorkspace({ client, selectedConversationRef = null, nativeOverlay = false }: { client: ComputerClient | null; selectedConversationRef?: SessionRef | null; nativeOverlay?: boolean }): ReactElement | null {
   useI18n(); // Subscribe to the app language so a settings change rerenders this surface.
   const language = preferredComputerLanguage();
   const copy = computerUICopy[language];
@@ -45,12 +45,10 @@ export function ComputerWorkspace({ client, selectedConversationRef = null }: { 
   const [preferences, setPreferences] = useState(loadComputerWorkspacePreferences);
   const [displayMode, setDisplayMode] = useState<ComputerWorkspaceDisplayMode>(preferences.displayMode);
   const [position, setPosition] = useState<ComputerWorkspacePoint | null>(preferences.position);
-  const [autoExpanded, setAutoExpanded] = useState(false);
-  const [manualExpanded, setManualExpanded] = useState(() => preferences.displayMode === COMPUTER_WORKSPACE_DISPLAY_MODES.EXPANDED);
+  const [displayState, dispatchDisplay] = useReducer(reduceComputerWorkspaceDisplay, preferences.displayMode, createComputerWorkspaceDisplayState);
   const [dragging, setDragging] = useState(false);
   const panelRef = useRef<HTMLElement>(null);
   const dragRef = useRef<DragState | null>(null);
-  const wasAutoExpandable = useRef(false);
 
   useEffect(() => {
     setApproval(null);
@@ -63,7 +61,6 @@ export function ComputerWorkspace({ client, selectedConversationRef = null }: { 
       setPreferences(next);
       setDisplayMode(next.displayMode);
       setPosition(next.position);
-      setManualExpanded(next.displayMode === COMPUTER_WORKSPACE_DISPLAY_MODES.EXPANDED);
     };
     window.addEventListener(COMPUTER_WORKSPACE_PREFERENCES_CHANGED_EVENT, refreshPreferences);
     return () => window.removeEventListener(COMPUTER_WORKSPACE_PREFERENCES_CHANGED_EVENT, refreshPreferences);
@@ -71,23 +68,51 @@ export function ComputerWorkspace({ client, selectedConversationRef = null }: { 
 
   const state = computer.session?.state ?? "idle";
   const readiness = computerReadinessMessage(computer.available, computer.capabilities, language);
-  const autoExpandable = AUTO_EXPAND_SESSION_STATES.has(state)
-    || (computer.capabilities !== null && Boolean(readiness));
+  const hasDisplayError = Boolean(computer.error || readiness);
+  useEffect(() => {
+    dispatchDisplay({
+      type: "sync",
+      mode: displayMode,
+      sessionID: computer.session?.session_id ?? null,
+      sessionState: state,
+      hasError: hasDisplayError,
+    });
+  }, [computer.session?.session_id, displayMode, hasDisplayError, state]);
 
   useEffect(() => {
-    if (displayMode !== COMPUTER_WORKSPACE_DISPLAY_MODES.AUTO) return;
-    if (!autoExpandable) {
-      setAutoExpanded(false);
-    } else if (!wasAutoExpandable.current) {
-      setAutoExpanded(true);
-    }
-    wasAutoExpandable.current = autoExpandable;
-  }, [autoExpandable, displayMode]);
+    const openWorkspace = (): void => dispatchDisplay({ type: "open" });
+    window.addEventListener("go-e2e:computer-workspace-open", openWorkspace);
+    return () => window.removeEventListener("go-e2e:computer-workspace-open", openWorkspace);
+  }, []);
+
+  const status = readiness ? "attention" : state;
+  const backend = computer.capabilities?.backend || copy.backendDetecting;
+  const active = computer.session && computer.session.state !== "stopped";
+  const modelManaged = computer.session?.owner_kind === "managed_conversation";
+  const approvalLabel = modelManaged ? copy.modelManagedSession : computer.approvedConversationRef
+    ? `${copy.boundConversation}: ${computer.approvedConversationRef}` : copy.localPreview;
+  const projection = projectComputerWorkspaceDisplay(displayState);
+  const desktopBridge = getDesktopServiceBridge();
+  const nativeOverlayAvailable = nativeOverlay && Boolean(desktopBridge?.UpdateComputerOverlay);
 
   useEffect(() => {
-    if (displayMode !== COMPUTER_WORKSPACE_DISPLAY_MODES.AUTO) return;
-    if (!computer.session || state === "stopped") setAutoExpanded(false);
-  }, [computer.session, displayMode, state]);
+    if (!desktopBridge?.UpdateComputerOverlay) return;
+    const session = computer.session;
+    const activeSession = session && session.state !== "stopped" ? session : null;
+    const snapshot = {
+      visible: nativeOverlayAvailable && Boolean(activeSession) && projection.visible,
+      expanded: projection.expanded,
+      session_id: activeSession?.session_id ?? "",
+      title: copy.workspace,
+      detail: readiness || (activeSession ? `${backend} · ${state}` : backend),
+      image_data: computer.observation?.image_data ?? "",
+      can_stop: Boolean(activeSession?.capabilities.supports_stop),
+      can_pause: activeSession?.state === "ready" || activeSession?.state === "needs_observation",
+      can_resume: activeSession?.state === "paused",
+      language: language === "zh" ? "zh" : "en",
+    } as const;
+    void desktopBridge.UpdateComputerOverlay(snapshot);
+  }, [backend, computer.observation?.id, computer.observation?.image_data, computer.session, copy.workspace, desktopBridge, language, nativeOverlayAvailable, projection.expanded, projection.visible, readiness, state]);
 
   useEffect(() => {
     const onResize = (): void => {
@@ -114,13 +139,8 @@ export function ComputerWorkspace({ client, selectedConversationRef = null }: { 
 
   if (!client) return null;
 
-  const status = readiness ? "attention" : state;
-  const backend = computer.capabilities?.backend || copy.backendDetecting;
-  const active = computer.session && computer.session.state !== "stopped";
-  const modelManaged = computer.session?.owner_kind === "managed_conversation";
-  const approvalLabel = modelManaged ? copy.modelManagedSession : computer.approvedConversationRef
-    ? `${copy.boundConversation}: ${computer.approvedConversationRef}` : copy.localPreview;
   const openApproval = (): void => {
+    dispatchDisplay({ type: "attempt" });
     const ref = managedComputerConversationRef(selectedConversationRef);
     setApproval(ref ? { approved: true, conversation_ref: ref } : { approved: true });
   };
@@ -136,15 +156,7 @@ export function ComputerWorkspace({ client, selectedConversationRef = null }: { 
   const action = (operation: () => Promise<unknown>) => { void operation().catch(() => undefined); };
 
   const toggleCollapsed = (): void => {
-    if (displayMode === COMPUTER_WORKSPACE_DISPLAY_MODES.AUTO) {
-      setAutoExpanded((expanded) => !expanded);
-      return;
-    }
-    setManualExpanded((expanded) => {
-      const next = !expanded;
-      persist({ collapsed: !next });
-      return next;
-    });
+    dispatchDisplay({ type: "toggle" });
   };
 
   const onDragStart = (event: ReactPointerEvent<HTMLButtonElement>): void => {
@@ -196,9 +208,11 @@ export function ComputerWorkspace({ client, selectedConversationRef = null }: { 
     setDragging(false);
   };
 
+  const nativeOverlaySession = nativeOverlay && Boolean(active);
   const panelStyle = position ? { left: position.x, top: position.y } : { right: DEFAULT_RIGHT_PX, top: DEFAULT_TOP_PX };
-  const collapsed = displayMode === COMPUTER_WORKSPACE_DISPLAY_MODES.AUTO ? !autoExpanded : !manualExpanded;
-  const panel = collapsed
+  const panel = !projection.visible || nativeOverlaySession
+    ? null
+    : !projection.expanded
     ? <button
       aria-expanded={false}
       aria-label={copy.launcher}
@@ -253,14 +267,14 @@ export function ComputerWorkspace({ client, selectedConversationRef = null }: { 
         onStop={() => action(computer.stop)}
       />
       {active ? <p role="status" style={{ margin: 0, overflowWrap: "anywhere" }}>{approvalLabel}</p> : null}
-      {!computer.session || computer.session.state === "stopped" || computer.capabilities?.permission_state === "required" ? <ComputerPermissionGuide
+      {projection.showFeedback && (!computer.session || computer.session.state === "stopped" || computer.capabilities?.permission_state === "required") ? <ComputerPermissionGuide
         available={computer.available}
         capabilities={computer.capabilities}
         client={client}
         onRecheck={async () => { await computer.loadCapabilities(); }}
       /> : null}
-      {!computer.error && readiness ? <p className="webui2-computer-error" role="status">{readiness}</p> : null}
-      {computer.error ? <p className="webui2-computer-error" role="alert">{localizeComputerError(computer.error, language)}</p> : null}
+      {projection.showError && !computer.error && readiness ? <p className="webui2-computer-error" role="status">{readiness}</p> : null}
+      {projection.showError && computer.error ? <p className="webui2-computer-error" role="alert">{localizeComputerError(computer.error, language)}</p> : null}
       <ComputerPreview observation={computer.observation} capabilities={computer.capabilities} />
       <ComputerTimeline receipts={computer.receipts} />
       {approval ? <ComputerApprovalDialog
@@ -274,8 +288,8 @@ export function ComputerWorkspace({ client, selectedConversationRef = null }: { 
     </aside>;
 
   const activeSession = computer.session;
-  const showExecutionProgress = activeSession !== null && activeSession.state !== "stopped"
-    && (displayMode !== COMPUTER_WORKSPACE_DISPLAY_MODES.AUTO || collapsed);
+  const showExecutionProgress = !nativeOverlaySession && displayMode !== COMPUTER_WORKSPACE_DISPLAY_MODES.AUTO
+    && activeSession !== null && activeSession.state !== "stopped";
   const executionProgress = showExecutionProgress && activeSession ? <ComputerExecutionProgress
     controlIntent={computer.controlIntent}
     error={computer.error ? localizeComputerError(computer.error, language) : null}

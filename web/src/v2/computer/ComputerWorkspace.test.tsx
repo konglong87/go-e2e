@@ -51,12 +51,12 @@ describe("ComputerWorkspace", () => {
     expect(container.innerHTML).toBe("");
   });
 
-  it("opens as a compact launcher and expands into a draggable workspace", async () => {
-    storage = { "golang-cc-webui.language.v1": "en" };
+  it("opens from the explicit workspace event and expands into a draggable workspace", async () => {
+    storage = { "go-e2e.computer-workspace.v1": JSON.stringify({ displayMode: "auto", collapsed: true, position: null }), "golang-cc-webui.language.v1": "en" };
     const client = createTestClient();
     await act(async () => root.render(<I18nProvider><ComputerWorkspace client={client} /></I18nProvider>));
-    expect(document.body.querySelector('[aria-label="Open Computer Use workspace"]')).not.toBeNull();
-    await act(async () => { (document.body.querySelector('[aria-label="Open Computer Use workspace"]') as HTMLButtonElement).click(); });
+    expect(document.body.querySelector('[aria-label="Computer workspace"]')).toBeNull();
+    await act(async () => { window.dispatchEvent(new Event("go-e2e:computer-workspace-open")); });
     expect(document.body.querySelector('[aria-label="Computer workspace"]')).not.toBeNull();
     expect(document.body.querySelector('[aria-label="Collapse Computer Use workspace"]')).not.toBeNull();
   });
@@ -65,10 +65,10 @@ describe("ComputerWorkspace", () => {
     storage = { "go-e2e.computer-workspace.v1": JSON.stringify({ displayMode: "auto", collapsed: false, position: null }), "golang-cc-webui.language.v1": "en" };
     const client = createTestClient();
     await act(async () => root.render(<I18nProvider><ComputerWorkspace client={client} /></I18nProvider>));
-    expect(document.body.querySelector('[aria-label="Open Computer Use workspace"]')).not.toBeNull();
+    expect(document.body.querySelector('[aria-label="Open Computer Use workspace"]')).toBeNull();
     expect(document.body.querySelector('[aria-label="Computer workspace"]')).toBeNull();
 
-    await clickAria("Open Computer Use workspace");
+    await act(async () => { window.dispatchEvent(new Event("go-e2e:computer-workspace-open")); });
     await click("Start session");
     await click("Approve session");
     expect(document.body.querySelector('[aria-label="Computer workspace"]')).not.toBeNull();
@@ -76,7 +76,7 @@ describe("ComputerWorkspace", () => {
 
     await click("Stop");
     expect(document.body.querySelector('[aria-label="Computer workspace"]')).toBeNull();
-    expect(document.body.querySelector('[aria-label="Open Computer Use workspace"]')).not.toBeNull();
+    expect(document.body.querySelector('[aria-label="Open Computer Use workspace"]')).toBeNull();
   });
 
   it.each(["compact", "expanded"] as const)("honors the %s display mode while preserving manual toggles", async (mode) => {
@@ -91,12 +91,23 @@ describe("ComputerWorkspace", () => {
     expect(document.body.querySelector('[aria-label="Computer workspace"]') !== null).toBe(!initiallyExpanded);
   });
 
+  it("keeps model-managed sessions out of the main WebView when native overlay owns them", async () => {
+    const client = createTestClient();
+    client.start = vi.fn().mockResolvedValue({ ...snapshot(), owner_kind: "managed_conversation" });
+    await act(async () => root.render(<I18nProvider><ComputerWorkspace client={client} nativeOverlay /></I18nProvider>));
+    await click("Start session");
+    await click("Approve session");
+    expect(document.body.querySelector('[aria-label="Computer workspace"]')).toBeNull();
+    expect(document.body.querySelector('[aria-label="Computer Use progress"]')).toBeNull();
+  });
+
   it("opens the matching macOS permission page and refreshes readiness after returning", async () => {
     const client = createTestClient();
     client.getCapabilities = vi.fn()
       .mockResolvedValueOnce({ available: true, capabilities: { ...capabilities, input_readiness: "permission_required", permission_state: "required" } })
       .mockResolvedValue({ available: true, capabilities });
     await act(async () => root.render(<I18nProvider><ComputerWorkspace client={client} /></I18nProvider>));
+    await act(async () => { window.dispatchEvent(new Event("go-e2e:computer-workspace-open")); });
     expect(document.body.textContent).toContain("Open Accessibility settings");
     await click("Open Accessibility settings");
     expect(client.openPermissionSettings).toHaveBeenCalledWith("accessibility");
@@ -245,7 +256,7 @@ describe("ComputerWorkspace", () => {
     const client = createTestClient();
     client.getCapabilities = vi.fn().mockRejectedValue(new Error("native helper unavailable"));
     await act(async () => root.render(<I18nProvider><StrictMode><ComputerWorkspace client={client} /></StrictMode></I18nProvider>));
-    expect(document.body.querySelector('[role="alert"]')?.textContent).toBe("native helper unavailable");
+    expect(document.body.querySelector('[role="alert"]')).toBeNull();
     expect(button("Start session").disabled).toBe(true);
   });
 
@@ -254,7 +265,7 @@ describe("ComputerWorkspace", () => {
     client.getCapabilities = vi.fn().mockResolvedValue({ available: false, capabilities, error_code: "disabled", error_message: "Computer Use disabled by host" });
     await act(async () => root.render(<I18nProvider><ComputerWorkspace client={client} /></I18nProvider>));
     expect(button("Start session").disabled).toBe(true);
-    expect(document.body.querySelector('[role="alert"]')?.textContent).toBe("Computer Use disabled by host");
+    expect(document.body.querySelector('[role="alert"]')).toBeNull();
   });
 
   const readinessCases: Partial<ComputerCapabilities>[] = [
@@ -269,7 +280,7 @@ describe("ComputerWorkspace", () => {
     client.getCapabilities = vi.fn().mockResolvedValue({ available: true, capabilities: blocked });
     await act(async () => root.render(<I18nProvider><ComputerWorkspace client={client} /></I18nProvider>));
     expect(button("Start session").disabled).toBe(true);
-    expect(document.body.querySelector('[role="status"]')?.textContent).toBeTruthy();
+    expect(document.body.querySelector('[role="status"]')).toBeNull();
     const approve = vi.fn();
     await act(async () => root.render(<I18nProvider><ComputerApprovalDialog capabilities={blocked} available busy={false} onApprove={approve} onCancel={vi.fn()} /></I18nProvider>));
     expect(button("Approve session").disabled).toBe(true);

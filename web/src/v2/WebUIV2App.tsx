@@ -370,7 +370,7 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
     {sidebarOpen ? <button aria-label={t("webui2.closeSessions")} className="webui2-mobile-sidebar-backdrop" onClick={() => setSidebarOpen(false)} tabIndex={-1} type="button" /> : null}
     <button aria-controls="webui2-session-sidebar" aria-expanded={sidebarOpen} aria-label={t("webui2.openSessions")} className="webui2-mobile-sidebar-open" onClick={() => setSidebarOpen(true)} title={t("webui2.openSessions")} type="button"><PanelLeftOpen aria-hidden="true" size={18} /></button>
     <div className="webui2-content">
-      {isDesktop ? <ComputerWorkspace client={computerClient} selectedConversationRef={state.selectedRef} /> : null}
+      {isDesktop ? <ComputerWorkspace client={computerClient} selectedConversationRef={state.selectedRef} nativeOverlay={Boolean(desktopServiceBridge?.UpdateComputerOverlay)} /> : null}
       <section className="webui2-workspace">
         {state.route.kind === "invalid" ? <div className="webui2-route-error" role="alert"><p>{t("webui2.invalidRoute")}</p><button onClick={recoverToIndex} type="button">{t("webui2.backToSessions")}</button></div> : null}
         {state.route.kind === "index" && !sessionList.isLoading && !sessionList.isError ? !showTaskFirstHome

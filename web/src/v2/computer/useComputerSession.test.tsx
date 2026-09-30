@@ -99,6 +99,16 @@ describe("useComputerSession", () => {
     expect(result.observation).toBeNull();
   });
 
+  it("clears the last preview when Stop is confirmed", async () => {
+    await start();
+    await act(async () => { await result.observe(); });
+    expect(result.observation).not.toBeNull();
+    await act(async () => { await result.stop(); });
+    expect(result.session?.state).toBe("stopped");
+    expect(result.observation).toBeNull();
+    expect(result.session?.observation).toBeUndefined();
+  });
+
   it("shows Stop failures without claiming stopped; blocks resume and allows Stop retry", async () => {
     await start();
     client.stop = vi.fn().mockRejectedValueOnce(new Error("Stop outcome unknown")).mockResolvedValue(snapshot("stopped"));

@@ -9,6 +9,19 @@ export type DesktopServiceStatus = {
 
 export type DesktopBackgroundMode = "external" | "local";
 
+export type ComputerOverlaySnapshot = {
+  visible: boolean;
+  expanded: boolean;
+  session_id: string;
+  title: string;
+  detail: string;
+  image_data: string;
+  can_stop: boolean;
+  can_pause: boolean;
+  can_resume: boolean;
+  language: "zh" | "en";
+};
+
 export type DesktopBackgroundImage = {
   mode: DesktopBackgroundMode;
   enabled: boolean;
@@ -37,6 +50,7 @@ export type DesktopServiceBridge = {
   ResumeComputerSession?: (sessionID: string) => Promise<ComputerSessionSnapshot>;
   StopComputerSession?: (sessionID: string) => Promise<ComputerSessionSnapshot>;
   GetComputerActionReceipt?: (sessionID: string, actionID: string) => Promise<ComputerActionReceipt>;
+  UpdateComputerOverlay?: (snapshot: ComputerOverlaySnapshot) => Promise<void> | void;
 };
 
 declare global {

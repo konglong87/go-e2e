@@ -8,8 +8,8 @@ distribution and physical second-display acceptance remain deferred, not passed.
 
 | Order | Remaining item | Acceptance / dependency |
 |---|---|---|
-| P0 | Phase 2B: native macOS overlay panel | Add a project-owned macOS `NSPanel` adapter with a platform-neutral controller, nonactivating/floating behavior, shared session snapshot, and real WorkBuddy focus/screenshot acceptance. Do not modify Wails module cache. |
-| P1 | Unify execution progress with the overlay surface | Prevent duplicate active auto-mode panels; phase 2A hides the separate progress panel while the expanded Computer Use workspace is visible. Full native surface consolidation belongs with 2B. |
+| P0 — implementation complete, acceptance open | Phase 2B: native macOS overlay panel | Project-owned macOS `NSPanel` adapter, nonactivating/floating behavior, shared Wails snapshot bridge, Stop/Pause/Resume command polling, drag/position persistence, and no-op non-macOS implementation are built. Real cross-App WorkBuddy/focus acceptance remains next. |
+| P1 | Unify execution progress with the overlay surface | Auto mode no longer renders the duplicate progress panel; native panel now owns the active surface when available. Full WorkBuddy focus and screenshot acceptance remains open. |
 | P2 — blocked | Optional GitHub Release binary artifacts | Tag-triggered run `36656985414` did not start: GitHub reports failed account payments or spending limit. Requires account-owner action; no billing changes made. Source tag and local desktop are delivered. |
 | Deferred | Second physical display | Requires hardware; software tests do not replace physical acceptance. |
 | Deferred LAST | Formal signing and distribution acceptance | Developer ID, notarization, signed clean install/upgrade; source tag and local ad-hoc build are not substitutes. |
@@ -40,6 +40,42 @@ Priority after this phase:
 1. Implement Phase 2B native macOS NSPanel adapter and shared snapshot bridge.
 2. Re-run real WorkBuddy focus/target/screenshot acceptance with the panel.
 3. Then return to optional blocked release assets and explicit deferrals.
+
+### Phase 2B implementation slice — native macOS overlay — 2026-09-30
+
+- Added a project-owned AppKit `NSPanel` adapter instead of modifying the Wails
+  module cache. The panel is borderless, non-activating, floating, joins Spaces,
+  preserves WorkBuddy focus, supports compact/expanded rendering, drag, Stop,
+  Pause/Resume, dismiss-without-stop, screenshot preview, and bounded command
+  polling. `NSWindowSharingNone` is used so the overlay is not fed back into the
+  Computer Use observation capture; this also means ordinary screen-capture
+  evidence intentionally cannot show the panel itself.
+- Added a platform-neutral Go controller and Wails `UpdateComputerOverlay`
+  snapshot bridge. The existing `computerManager` remains the only authority;
+  native commands are checked against the rendered session ID before dispatch.
+  Non-macOS builds use a no-op adapter.
+- The main WebView now hides its active Computer Use surface when the native
+  overlay bridge is available; approval remains in the main window and Stop /
+  Pause / Resume are handled by the native panel. Auto mode no longer creates a
+  second progress overlay.
+- Verification passed: full web suite 77 files / 763 tests, TypeScript
+  typecheck, focused Go packages and race suite, tagged normal Wails build, and
+  local ad-hoc codesign verification. The macOS app cold-started successfully
+  with the native adapter.
+- Acceptance boundary still open: because the panel deliberately uses
+  `NSWindowSharingNone`, the normal Computer Use screenshot/observation cannot
+  be used as visual evidence of the panel. A separate native WorkBuddy focus
+  acceptance must verify the panel is physically visible above WorkBuddy without
+  contaminating the target observation, and verify native Stop/drag behavior.
+
+Priority after this phase:
+
+1. Run the native WorkBuddy focus/overlay acceptance with independent frontmost
+   and panel-window evidence; fix any panel visibility or command-routing issue.
+2. Add a user-facing setting/shortcut for “show native overlay” only if the
+   acceptance reveals a discoverability gap; current display mode controls remain
+   the source of truth.
+3. Return to the blocked optional release assets and explicit deferrals.
 
 ### Delivery ledger — 2026-09-30
 
