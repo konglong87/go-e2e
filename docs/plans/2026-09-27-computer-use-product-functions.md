@@ -8,8 +8,7 @@ second-display acceptance remain deferred, not passed.
 
 | Order | Remaining item | Acceptance / dependency |
 |---|---|---|
-| P1 | v0.2.0 source delivery and latest desktop handoff | Release/package regression, focused Computer Use regression, normal desktop build (without acceptance tag), native screenshot inspection, annotated tag pushed and resolved against origin. |
-| P2 | Reclaim generated build/test storage | After verification, remove regenerable Go cache and positively identified obsolete test binaries only; retain current app, evidence, dependencies and user data; record measured reclaimed bytes. |
+| P2 — blocked | Optional GitHub Release binary artifacts | Tag-triggered run `36656985414` did not start: GitHub reports failed account payments or spending limit. Requires account-owner action; no billing changes made. Source tag and local desktop are delivered. |
 | Deferred | Second physical display | Requires hardware; software tests do not replace physical acceptance. |
 | Deferred LAST | Formal signing and distribution acceptance | Developer ID, notarization, signed clean install/upgrade; source tag and local ad-hoc build are not substitutes. |
 
@@ -28,13 +27,20 @@ second-display acceptance remain deferred, not passed.
   a handoff smoke test, not a new autonomous-model or full input-matrix run.
 - Cleanup slice: removed 683,356,160 allocated bytes of obsolete test binaries,
   duplicate build output and Vite cache; retained current app and evidence.
-- Release handoff sequence after this commit: create annotated `v0.2.0`, rebuild
-  that exact revision without acceptance hooks, verify embedded version/clean
-  identity, push the tag, open the final app, then clear Go build/test cache.
-  Post-commit results and screenshots stay in ignored
-  `desktop-v2/build/validation/20260930/release-v0.2.0/`.
-- Next priorities: finish the two delivery rows above; afterward only the two
-  explicitly deferred acceptance items remain in this Computer Use queue.
+- Delivered: annotated `v0.2.0` pushed, resolving to `a068279c2ecffb1022795fdf08c96ef3aef477e5`.
+  Rebuilt that exact revision without acceptance hooks; embedded sidecar identity
+  is `v0.2.0`, same revision, `dirty=false`. Normal app is open; actual native
+  click expanded the Computer Use panel and screenshot shows ready status.
+- Cleanup complete: Go build/test cache removed another 4,542,111,744 allocated
+  bytes; total approximately 4.87 GiB including the earlier cleanup slice.
+  Current sealed app, dependencies, user data, screenshots and receipts retained.
+- Local handoff artifacts: `desktop-v2/build/validation/20260930/release-v0.2.0/`
+  contains `desktop-ready.png`, `build-identity.json`, and `cleanup.json`.
+- Tag-triggered Release workflow failed before any step ran: GitHub annotation
+  reports recent payment failures or a spending-limit prerequisite. No GitHub
+  Release/installer assets were published. This is distinct from source-tag
+  delivery; record the blocked optional binary delivery first, then the explicit
+  physical-display/signing deferrals. No unblocked in-scope item remains.
 
 ## Phase update — P0-1 real host acceptance — 2026-09-28
 
