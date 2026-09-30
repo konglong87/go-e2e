@@ -24,7 +24,7 @@ const (
 	computerPanelCommandDismiss  = "dismiss"
 )
 
-type computerPanelSnapshot struct {
+type ComputerPanelSnapshot struct {
 	Visible   bool   `json:"visible"`
 	Expanded  bool   `json:"expanded"`
 	SessionID string `json:"session_id"`
@@ -43,7 +43,7 @@ type computerPanelCommand struct {
 }
 
 type computerPanel interface {
-	Update(computerPanelSnapshot)
+	Update(ComputerPanelSnapshot)
 	Poll() *computerPanelCommand
 	Close()
 }
@@ -56,7 +56,7 @@ type nativeComputerPanelState struct {
 	mu      sync.Mutex
 	closed  bool
 	hasLast bool
-	last    computerPanelSnapshot
+	last    ComputerPanelSnapshot
 }
 
 var nativeComputerPanelStates sync.Map // map[*nativeComputerPanel]*nativeComputerPanelState
@@ -83,7 +83,7 @@ func (p *nativeComputerPanel) state() *nativeComputerPanelState {
 	return state
 }
 
-func (p *nativeComputerPanel) Update(snapshot computerPanelSnapshot) {
+func (p *nativeComputerPanel) Update(snapshot ComputerPanelSnapshot) {
 	state := p.state()
 	if state == nil {
 		return

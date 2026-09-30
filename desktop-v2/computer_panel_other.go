@@ -2,7 +2,7 @@
 
 package main
 
-type computerPanelSnapshot struct {
+type ComputerPanelSnapshot struct {
 	Visible   bool   `json:"visible"`
 	Expanded  bool   `json:"expanded"`
 	SessionID string `json:"session_id"`
@@ -21,7 +21,7 @@ type computerPanelCommand struct {
 }
 
 type computerPanel interface {
-	Update(computerPanelSnapshot)
+	Update(ComputerPanelSnapshot)
 	Poll() *computerPanelCommand
 	Close()
 }
@@ -32,6 +32,6 @@ func newNativeComputerPanel() computerPanel {
 	return nil
 }
 
-func (nativeComputerPanel) Update(computerPanelSnapshot) {}
+func (nativeComputerPanel) Update(ComputerPanelSnapshot) {}
 func (nativeComputerPanel) Poll() *computerPanelCommand  { return nil }
 func (nativeComputerPanel) Close()                       {}

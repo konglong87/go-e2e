@@ -57,7 +57,7 @@ func (a *app) stopComputerPanel() {
 
 // UpdateComputerOverlay is a display-only bridge. It never creates a session,
 // captures a screenshot, or changes Computer Use authority.
-func (a *app) UpdateComputerOverlay(snapshot computerPanelSnapshot) {
+func (a *app) UpdateComputerOverlay(snapshot ComputerPanelSnapshot) {
 	a.mu.Lock()
 	panel := a.computerPanel
 	a.mu.Unlock()
@@ -79,7 +79,7 @@ func (a *app) handleComputerPanelCommand(ctx context.Context) {
 	}
 	switch command.Kind {
 	case computerPanelCommandDismiss:
-		panel.Update(computerPanelSnapshot{Visible: false})
+		panel.Update(ComputerPanelSnapshot{Visible: false})
 	case computerPanelCommandStop, computerPanelCommandPause, computerPanelCommandResume:
 		if strings.TrimSpace(command.SessionID) == "" {
 			return
