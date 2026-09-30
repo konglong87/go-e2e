@@ -85,6 +85,21 @@ function WebUIV2RouteShell({ identity }: { identity: IdentityConfig }): JSX.Elem
   const [visualPreview, setVisualPreview] = useState<GlobalVisualSettings | null>(null);
   const [errorCode, setErrorCode] = useState("");
   const isDesktop = isDesktopV2Host();
+  const [, refreshDesktopBridge] = useState(0);
+  useEffect(() => {
+    if (!isDesktop) return;
+    let attempts = 0;
+    const probe = (): void => {
+      attempts += 1;
+      if (getDesktopServiceBridge() || attempts >= 40) {
+        refreshDesktopBridge((value) => value + 1);
+        if (attempts >= 40) window.clearInterval(timer);
+      }
+    };
+    const timer = window.setInterval(probe, 250);
+    probe();
+    return () => window.clearInterval(timer);
+  }, [isDesktop]);
   const refreshDesktopData = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ["webui2-server-status"] });
     void queryClient.invalidateQueries({ queryKey: ["webui2-providers"] });
