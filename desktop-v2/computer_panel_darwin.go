@@ -13,6 +13,7 @@ import "C"
 import (
 	"encoding/json"
 	"sync"
+	"unsafe"
 )
 
 const (
@@ -48,7 +49,7 @@ type computerPanel interface {
 	Close()
 }
 
-type nativeComputerPanel struct{}
+type nativeComputerPanel struct{ owned *nativeComputerPanelState }
 
 type nativeComputerPanelState struct {
 	handle *C.goe2e_computer_panel
@@ -59,28 +60,19 @@ type nativeComputerPanelState struct {
 	last    ComputerPanelSnapshot
 }
 
-var nativeComputerPanelStates sync.Map // map[*nativeComputerPanel]*nativeComputerPanelState
-
 func newNativeComputerPanel() computerPanel {
 	handle := C.goe2e_computer_panel_create()
 	if handle == nil {
 		return nil
 	}
-	panel := &nativeComputerPanel{}
-	nativeComputerPanelStates.Store(panel, &nativeComputerPanelState{handle: handle})
-	return panel
+	return &nativeComputerPanel{owned: &nativeComputerPanelState{handle: handle}}
 }
 
 func (p *nativeComputerPanel) state() *nativeComputerPanelState {
 	if p == nil {
 		return nil
 	}
-	value, ok := nativeComputerPanelStates.Load(p)
-	if !ok {
-		return nil
-	}
-	state, _ := value.(*nativeComputerPanelState)
-	return state
+	return p.owned
 }
 
 func (p *nativeComputerPanel) Update(snapshot ComputerPanelSnapshot) {
@@ -89,22 +81,21 @@ func (p *nativeComputerPanel) Update(snapshot ComputerPanelSnapshot) {
 		return
 	}
 	state.mu.Lock()
+	defer state.mu.Unlock()
 	if state.closed || (state.hasLast && state.last == snapshot) {
-		state.mu.Unlock()
 		return
 	}
 	state.last = snapshot
 	state.hasLast = true
 	handle := state.handle
-	state.mu.Unlock()
 
 	payload, err := json.Marshal(snapshot)
 	if err != nil {
 		return
 	}
-	cPayload := C.CBytes(payload)
-	defer C.free(cPayload)
-	C.goe2e_computer_panel_update(handle, (*C.char)(cPayload))
+	cPayload := C.CString(string(payload))
+	defer C.free(unsafe.Pointer(cPayload))
+	C.goe2e_computer_panel_update(handle, cPayload)
 }
 
 func (p *nativeComputerPanel) Poll() *computerPanelCommand {
@@ -113,12 +104,11 @@ func (p *nativeComputerPanel) Poll() *computerPanelCommand {
 		return nil
 	}
 	state.mu.Lock()
+	defer state.mu.Unlock()
 	if state.closed {
-		state.mu.Unlock()
 		return nil
 	}
 	handle := state.handle
-	state.mu.Unlock()
 
 	raw := C.goe2e_computer_panel_poll(handle)
 	if raw == nil {
@@ -145,14 +135,12 @@ func (p *nativeComputerPanel) Close() {
 		return
 	}
 	state.mu.Lock()
+	defer state.mu.Unlock()
 	if state.closed {
-		state.mu.Unlock()
 		return
 	}
 	state.closed = true
 	handle := state.handle
-	state.mu.Unlock()
 
 	C.goe2e_computer_panel_close(handle)
-	nativeComputerPanelStates.Delete(p)
 }

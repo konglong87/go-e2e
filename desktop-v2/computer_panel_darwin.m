@@ -129,6 +129,7 @@ static void EnqueueCommand(goe2e_computer_panel *bridge, NSString *kind, NSStrin
                                            styleMask:(NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel)
                                              backing:NSBackingStoreBuffered
                                                defer:NO];
+    _panel.title = @"go-e2e Computer Use";
     _panel.floatingPanel = YES;
     _panel.level = NSFloatingWindowLevel;
     _panel.hidesOnDeactivate = NO;
@@ -138,6 +139,11 @@ static void EnqueueCommand(goe2e_computer_panel *bridge, NSString *kind, NSStrin
     _panel.backgroundColor = NSColor.clearColor;
     _panel.hasShadow = YES;
     _panel.sharingType = NSWindowSharingNone;
+#ifdef GO_E2E_PANEL_ACCEPTANCE
+    // Independent QA capture only; never enabled in ordinary builds.
+    if (getenv("GO_E2E_PANEL_CAPTURE_EVIDENCE") != NULL && strcmp(getenv("GO_E2E_PANEL_CAPTURE_EVIDENCE"), "1") == 0)
+        _panel.sharingType = NSWindowSharingReadOnly;
+#endif
     _panel.collectionBehavior = NSWindowCollectionBehaviorCanJoinAllSpaces | NSWindowCollectionBehaviorFullScreenAuxiliary | NSWindowCollectionBehaviorIgnoresCycle;
     _panel.delegate = self;
 
@@ -193,7 +199,7 @@ static void EnqueueCommand(goe2e_computer_panel *bridge, NSString *kind, NSStrin
     NSButton *button = [NSButton buttonWithTitle:title target:self action:action];
     button.bezelStyle = NSBezelStyleRounded;
     button.font = [NSFont systemFontOfSize:11 weight:NSFontWeightMedium];
-    return button;
+    return [button retain];
 }
 
 - (void)dealloc {
@@ -221,6 +227,8 @@ static void EnqueueCommand(goe2e_computer_panel *bridge, NSString *kind, NSStrin
 
     BOOL visible = BoolValue(snapshot, @"visible");
     if (!visible) {
+        _previewView.image = nil;
+        self.renderedSessionID = @"";
         [_panel orderOut:nil];
         return;
     }
@@ -384,9 +392,10 @@ void goe2e_computer_panel_close(goe2e_computer_panel *bridge) {
     bridge->commandCount = 0;
     pthread_mutex_unlock(&bridge->mutex);
 
-    OnMainThread(^{
+    // Queue after prior updates even when Close originates on the main thread.
+    dispatch_async(dispatch_get_main_queue(), ^{
         [controller release];
+        pthread_mutex_destroy(&bridge->mutex);
+        free(bridge);
     });
-    pthread_mutex_destroy(&bridge->mutex);
-    free(bridge);
 }

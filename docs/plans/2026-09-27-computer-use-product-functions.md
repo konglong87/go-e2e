@@ -2,6 +2,19 @@
 
 ## Current ordered queue — 2026-09-30
 
+**Audit correction (independent screenshot gate):** earlier claims that panel
+sharing restrictions make agent-side validation impossible were premature.
+The native panel is NOT accepted yet. Read-only ScreenCaptureKit capture of the
+production panel returned black pixels. A `computeracceptance`-only capture
+switch is being used for independent QA; production sharing behavior remains
+unchanged. Do not infer focus preservation or command success from compilation.
+
+Active slice ledger: initial tree clean at `6515fa5`; fix native UTF-8 NUL
+termination, per-instance ownership and queued teardown, then build the explicit
+capture-enabled acceptance app and inspect real overlay/window-order evidence.
+Next P0: verify native controls and host-driven discovery while main UI is hidden.
+
+
 This section is authoritative. Older queues below are historical checkpoints.
 The user approved the Codex-style Computer Use display direction. Formal signing/
 distribution and physical second-display acceptance remain deferred, not passed.
