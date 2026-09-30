@@ -234,9 +234,11 @@ go-e2e 不只是一个聊天界面，而是一套可以执行任务、连接外�
 | 人机协作 | ✅ 已实现 | 用户提问、权限确认、暂停等待、恢复和交互结果回传 | 高风险动作仍需要结合具体入口做真实交互验收 | `internal/tools/askuserquestion/`、`internal/permissions/`、`internal/pendinginput/` |
 | 权限与安全边界 | ✅ 较完整 | 工具审批、危险命令识别、目录和敏感路径限制、网络策略、沙箱和审计 | 安全能力的最终效果还需要持续做攻击性回归测试 | `internal/permissions/`、`internal/sandbox/`、`internal/tools/guarded.go` |
 | 评测与运行观测 | 🟡 基础能力已实现 | 有测试、Golden、运行轨迹、Trace、Telemetry、行为评测和能力评分脚本 | 还需要稳定的任务集、独立验证器、Pass@k / Pass^k 和失败首因分析 | `internal/agenteval/`、`internal/observability/`、`scripts/` |
-| Computer Use 电脑操作 | 🟡 架构和后端基础已实现 | 有会话状态、截图观察、动作回执、权限门控、Fake Backend、macOS 原生助手和 Go 侧适配层 | 上层会话服务装配、桌面入口、真实点击/截图和完整证据闭环仍需端到端验收 | `internal/computeruse/`、`internal/computerbackend/`、`internal/tools/computeruse/`、`native/macos/` |
+| Computer Use 电脑操作 | 🟡 macOS 桌面能力已接入，持续验收中 | 原生悬浮控制面板、展开／收起／隐藏、最近操作画面预览，以及会话、权限和动作回执。<br><a href="docs/web_agent/images/computer-use-native-overlay.jpg"><img src="docs/web_agent/images/computer-use-native-overlay.jpg" alt="go-e2e macOS Computer Use 原生悬浮面板与操作画面预览" width="220"></a><br><sub>桌面运行截图 · 点击查看大图</sub> | 部分原生点击与预览已验证；跨全屏空间、完整控制及自主模型闭环仍需继续验收，第二物理屏幕与正式签名分发暂缓 | `desktop-v2/computer_overlay.go`、`internal/computeruse/`、`internal/computerbackend/`、`native/macos/` |
 | RAG / 知识检索 | 🟡 部分实现 | 支持文件、网页和项目上下文检索，并能把结果带回 Agent | 目前还不是完整的“向量索引—语义检索—重排—来源引用”体系 | `internal/memory/`、`internal/tools/websearch/`、`internal/tools/webfetch/` |
 | 持续进化 | 🟡 部分实现 | 可以沉淀项目记忆、运行经验、Skills 和评测结果 | 尚未形成自动从轨迹生成知识、程序或模型更新的完整闭环 | `internal/memory/`、`internal/skills/`、`internal/agenteval/` |
+
+Computer Use 行更新：**2026-09-30**；其余模块仍以以上审查快照为准。
 
 > 表中的“已实现”表示代码和测试中已经具备对应能力，不代表所有外部 Provider、MCP Server、数据库或桌面权限默认已经配置完成。
 
