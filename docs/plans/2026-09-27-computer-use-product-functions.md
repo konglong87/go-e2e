@@ -2,17 +2,41 @@
 
 ## Current ordered queue — 2026-09-30
 
-**Audit correction (independent screenshot gate):** earlier claims that panel
-sharing restrictions make agent-side validation impossible were premature.
-The native panel is NOT accepted yet. Read-only ScreenCaptureKit capture of the
-production panel returned black pixels. A `computeracceptance`-only capture
-switch is being used for independent QA; production sharing behavior remains
-unchanged. Do not infer focus preservation or command success from compilation.
+**Independent screenshot acceptance — bounded result:** agent-side validation is
+possible. The explicit capture-enabled acceptance build produced a real composed
+desktop screenshot of WorkBuddy with the native panel above it. Window metadata
+confirmed WorkBuddy frontmost and the go-e2e panel at layer 3. This proves the
+cross-app stacking case, not full product acceptance. Normal capture exclusion
+is unchanged. Actual screenshot exposed overlapping compact detail/control rows.
 
-Active slice ledger: initial tree clean at `6515fa5`; fix native UTF-8 NUL
-termination, per-instance ownership and queued teardown, then build the explicit
-capture-enabled acceptance app and inspect real overlay/window-order evidence.
-Next P0: verify native controls and host-driven discovery while main UI is hidden.
+Active slice ledger: resumed clean at `89c844c` except task-generated `s/`
+(socket/session metadata). Intended files: native panel layout and this ledger.
+Completed compact three-row layout and wider localized hide button. Verification:
+`go test ./desktop-v2`, `go test -tags computeracceptance ./desktop-v2`, tagged
+Wails build and native screenshot inspection passed for this layout slice.
+Evidence (ignored `desktop-v2/build/validation/20260930/overlay-independent/`):
+- `after-launch-error-desktop.png`: actual WorkBuddy + overlapping old overlay.
+- `workbuddy-layout.png` + `workbuddy-layout-windows.json`: WorkBuddy frontmost,
+  panel above it, compact rows no longer overlap (intermediate button-width build).
+- `final-host-overlay.png`: final build, readable expand/hide and separated
+  title/detail/control rows. This is the host window, not WorkBuddy.
+Full-screen Space activation reproduced an unknown action receipt twice; no
+blind input retries. Latest WorkBuddy recheck was not completed while the user
+was actively typing in another foreground app. Test session stopped; temporary
+socket/session files and unrelated screenshots removed; normal build restored.
+Commit/push: this coherent layout/evidence slice; final report records its hash.
+This is native scripted + independently inspected screenshot evidence, NOT a
+new autonomous-model end-to-end acceptance run.
+
+Remaining priority (descending):
+1. P0: native expand/collapse/dismiss command state, host-driven discovery while
+   main UI hidden, and platform capability gating; require actual control clicks.
+2. P0: investigate go-e2e post-action capture failure when Spotlight activates
+   WorkBuddy on its full-screen Space. Action receipt is unknown, session pauses;
+   independent desktop capture succeeds. Do not blindly retry input.
+3. P1: preview ownership/model-managed controls and geometry persistence; require
+   focused tests and native screenshots. Autonomous model acceptance still open.
+4. P2: blocked release artifacts; physical second display and signing deferred.
 
 
 This section is authoritative. Older queues below are historical checkpoints.
@@ -21,7 +45,7 @@ distribution and physical second-display acceptance remain deferred, not passed.
 
 | Order | Remaining item | Acceptance / dependency |
 |---|---|---|
-| P0 — implementation complete, acceptance open | Phase 2B: native macOS overlay panel | Project-owned macOS `NSPanel` adapter, nonactivating/floating behavior, shared Wails snapshot bridge, Stop/Pause/Resume command polling, drag/position persistence, and no-op non-macOS implementation are built. Real cross-App WorkBuddy/focus acceptance remains next. |
+| P0 — implementation gaps and acceptance open | Phase 2B: native macOS overlay panel | Project-owned macOS `NSPanel` adapter, nonactivating/floating behavior, shared Wails snapshot bridge, Stop/Pause/Resume command polling, drag/position persistence, and no-op non-macOS implementation are built. Real cross-App WorkBuddy/focus acceptance remains next. |
 | P1 | Unify execution progress with the overlay surface | Auto mode no longer renders the duplicate progress panel; native panel now owns the active surface when available. Full WorkBuddy focus and screenshot acceptance remains open. |
 | P2 — blocked | Optional GitHub Release binary artifacts | Tag-triggered run `36656985414` did not start: GitHub reports failed account payments or spending limit. Requires account-owner action; no billing changes made. Source tag and local desktop are delivered. |
 | Deferred | Second physical display | Requires hardware; software tests do not replace physical acceptance. |

@@ -12,7 +12,7 @@ static const NSUInteger kCommandCapacity = 16;
 static NSString * const kGeometryDefaultsKey = @"go-e2e.computer-panel.geometry.v1";
 static CGFloat const kPanelMargin = 14.0;
 static CGFloat const kCompactWidth = 360.0;
-static CGFloat const kCompactHeight = 64.0;
+static CGFloat const kCompactHeight = 100.0;
 static CGFloat const kExpandedWidth = 400.0;
 static CGFloat const kExpandedHeight = 310.0;
 
@@ -265,7 +265,9 @@ static void EnqueueCommand(goe2e_computer_panel *bridge, NSString *kind, NSStrin
 - (void)applyLanguage:(NSString *)language expanded:(BOOL)expanded {
     BOOL zh = [language.lowercaseString hasPrefix:@"zh"];
     [_toggleButton setTitle:(expanded ? (zh ? @"收起" : @"Collapse") : (zh ? @"展开" : @"Expand") )];
-    [_dismissButton setTitle:zh ? @"关闭" : @"×"];
+    [_dismissButton setTitle:zh ? @"隐藏" : @"Hide"];
+    _dismissButton.toolTip = zh ? @"隐藏浮层（不会停止会话）" : @"Hide panel (session continues)";
+    [_dismissButton setAccessibilityLabel:zh ? @"隐藏浮层" : @"Hide panel"];
     [_stopButton setTitle:zh ? @"停止" : @"Stop"];
     [_pauseButton setTitle:zh ? @"暂停" : @"Pause"];
     [_resumeButton setTitle:zh ? @"继续" : @"Resume"];
@@ -279,10 +281,10 @@ static void EnqueueCommand(goe2e_computer_panel *bridge, NSString *kind, NSStrin
     [_panel setFrame:frame display:YES];
 
     CGFloat top = height - 38.0;
-    [_titleLabel setFrame:NSMakeRect(16, top, width - 104, 22)];
-    [_detailLabel setFrame:NSMakeRect(16, expanded ? height - 62 : 12, width - 32, 18)];
-    [_dismissButton setFrame:NSMakeRect(width - 30, top + 1, 22, 22)];
-    [_toggleButton setFrame:NSMakeRect(width - 86, top + 1, 52, 22)];
+    [_titleLabel setFrame:NSMakeRect(16, top, width - 148, 22)];
+    [_detailLabel setFrame:NSMakeRect(16, height - 62, width - 32, 18)];
+    [_dismissButton setFrame:NSMakeRect(width - 64, top + 1, 52, 22)];
+    [_toggleButton setFrame:NSMakeRect(width - 126, top + 1, 58, 22)];
     [_stopButton setFrame:NSMakeRect(16, expanded ? height - 94 : 12, 52, 22)];
     [_pauseButton setFrame:NSMakeRect(74, expanded ? height - 94 : 12, 58, 22)];
     [_resumeButton setFrame:NSMakeRect(74, expanded ? height - 94 : 12, 64, 22)];
