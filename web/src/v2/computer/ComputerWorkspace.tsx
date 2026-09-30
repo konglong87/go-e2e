@@ -273,12 +273,15 @@ export function ComputerWorkspace({ client, selectedConversationRef = null }: { 
       /> : null}
     </aside>;
 
-  const executionProgress = computer.session && computer.session.state !== "stopped" ? <ComputerExecutionProgress
+  const activeSession = computer.session;
+  const showExecutionProgress = activeSession !== null && activeSession.state !== "stopped"
+    && (displayMode !== COMPUTER_WORKSPACE_DISPLAY_MODES.AUTO || collapsed);
+  const executionProgress = showExecutionProgress && activeSession ? <ComputerExecutionProgress
     controlIntent={computer.controlIntent}
     error={computer.error ? localizeComputerError(computer.error, language) : null}
     loading={computer.loading}
     receipts={computer.receipts}
-    state={computer.session.state}
+    state={activeSession.state}
   /> : null;
 
   return createPortal(<>{panel}{executionProgress}</>, portalHost());

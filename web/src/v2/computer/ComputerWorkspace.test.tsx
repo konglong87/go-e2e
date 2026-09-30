@@ -72,6 +72,7 @@ describe("ComputerWorkspace", () => {
     await click("Start session");
     await click("Approve session");
     expect(document.body.querySelector('[aria-label="Computer workspace"]')).not.toBeNull();
+    expect(document.body.querySelector('[aria-label="Computer Use progress"]')).toBeNull();
 
     await click("Stop");
     expect(document.body.querySelector('[aria-label="Computer workspace"]')).toBeNull();
