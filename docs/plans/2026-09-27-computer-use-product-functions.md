@@ -32,8 +32,10 @@ be read as evidence that the native overlay or the whole product fully passed.
   confirm exit, so verify process identity rather than assuming a cold start.
 - Build log: ignored `desktop-v2/build/validation/20260930/capture-visible/build-normal.log`.
   No native screenshot evidence was produced for this policy change today.
-- Risk: desktop operation imagery may contain the panel/its preview recursively;
-  this does not change input authorization or the existing safety guards.
+- Known risk: display-wide Computer Use observations may now include the panel or
+  its preview recursively. This is an intentional user-visible screenshot policy
+  requested by the user; it does not change input authorization or safety guards
+  and should be evaluated separately if model observation quality regresses.
 - Remaining priority after this slice: P0 capture-error diagnostics and native
   control/model acceptance; P1 geometry; blocked release assets; explicit deferrals.
 
