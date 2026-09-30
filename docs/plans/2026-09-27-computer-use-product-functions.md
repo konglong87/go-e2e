@@ -3,14 +3,43 @@
 ## Current ordered queue — 2026-09-30
 
 This section is authoritative. Older queues below are historical checkpoints.
-The user approved an open-source tag; formal signing/distribution and physical
-second-display acceptance remain deferred, not passed.
+The user approved the Codex-style Computer Use display direction. Formal signing/
+distribution and physical second-display acceptance remain deferred, not passed.
 
 | Order | Remaining item | Acceptance / dependency |
 |---|---|---|
+| P0 | Phase 2B: native macOS overlay panel | Add a project-owned macOS `NSPanel` adapter with a platform-neutral controller, nonactivating/floating behavior, shared session snapshot, and real WorkBuddy focus/screenshot acceptance. Do not modify Wails module cache. |
+| P1 | Unify execution progress with the overlay surface | Prevent duplicate active auto-mode panels; phase 2A hides the separate progress panel while the expanded Computer Use workspace is visible. Full native surface consolidation belongs with 2B. |
 | P2 — blocked | Optional GitHub Release binary artifacts | Tag-triggered run `36656985414` did not start: GitHub reports failed account payments or spending limit. Requires account-owner action; no billing changes made. Source tag and local desktop are delivered. |
 | Deferred | Second physical display | Requires hardware; software tests do not replace physical acceptance. |
 | Deferred LAST | Formal signing and distribution acceptance | Developer ID, notarization, signed clean install/upgrade; source tag and local ad-hoc build are not substitutes. |
+
+
+### Phase 2A closure — automatic display orchestration — 2026-09-30
+
+- Added explicit `auto`, `compact`, and `expanded` display modes with a default of
+  `auto` for new preferences; legacy `collapsed` records are normalized without
+  breaking existing users.
+- Auto mode keeps the idle surface as a small launcher, expands when a session is
+  preparing/running/paused/failed or has a readiness error, and collapses after
+  Stop. Compact and expanded modes remain user-controlled from Settings.
+- Added Settings > General > Computer Use display mode with a cross-component
+  browser event so the running workspace updates without restart.
+- Auto mode avoids rendering the separate execution-progress overlay while the
+  detailed Computer Use surface is visible; this prevents two overlapping panels.
+- Verification: ComputerWorkspace tests 29/29; full web suite 76 files / 758
+  tests; TypeScript typecheck passed; current desktop `.app` built and local
+  ad-hoc signature verified. Native UI smoke used actual clicks: idle launcher,
+  manual expansion, local preview approval, live session panel, and Stop.
+- Evidence: ignored `desktop-v2/build/validation/20260930/` build log and native
+  screenshots. The running app still uses the main WebView DOM, so it cannot yet
+  remain above WorkBuddy when go-e2e is not frontmost.
+
+Priority after this phase:
+
+1. Implement Phase 2B native macOS NSPanel adapter and shared snapshot bridge.
+2. Re-run real WorkBuddy focus/target/screenshot acceptance with the panel.
+3. Then return to optional blocked release assets and explicit deferrals.
 
 ### Delivery ledger — 2026-09-30
 
