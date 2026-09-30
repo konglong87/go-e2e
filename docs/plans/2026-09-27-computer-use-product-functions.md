@@ -1,24 +1,40 @@
 # Computer Use functional parity — implementation ledger
 
-## Current ordered queue — 2026-09-28
+## Current ordered queue — 2026-09-30
 
-This section is the current execution order. Older sections below are historical
-phase evidence, not an assertion that their pending statuses remain current.
-After **every phase**: verify its actual acceptance boundary, reorder all remaining
-items here, commit/push the verified slice, then take the highest-priority
-unblocked item. Record blockers instead of silently skipping requirements.
+This section is authoritative. Older queues below are historical checkpoints.
+The user approved an open-source tag; formal signing/distribution and physical
+second-display acceptance remain deferred, not passed.
 
-| Order | Remaining item | Next acceptance gate |
+| Order | Remaining item | Acceptance / dependency |
 |---|---|---|
-| P0-1 | Non-drag helper-crash input release | Implement host-owned bounded press/release batches for click, double-click pairs, key/hotkey and each Unicode scalar; preserve per-operation cancellation/focus checks. Verify deterministic helper death, balanced native events, no held keys/buttons, unknown receipts and no replay. Drag crash-release evidence does not cover these actions. |
-| P0-2 | WorkBuddy autonomous model loop | Fresh built app and authenticated session-control run: automatic session start, launch WorkBuddy, visibly navigate, click New Task, inspect fresh screenshot, Stop. Require actual tool trace and visual evidence, with no parent GUI intervention during the model run. Tasks 84/85 did not complete this gate. |
-| P0-3 | Host permission revoke/regrant lifecycle | Real host-bound revoke, dispatched Observe/Execute failures, recovery (restart if required), fresh capabilities and observation, no old input replay. A disabled UI or ineffective reset is insufficient. |
-| P1-1 | Lost Ensure ACK recovery | Bind startup to an owner/query-attempt token and cancel/query that exact attempt; test permanent ACK loss without guessing another query's session ID. Same-query Stop fix alone does not close this boundary. |
-| P1-2 | Auto-created session visibility in desktop UI | Read-only authoritative discovery/status and exact-session controls; verify a model-created session and its Stop state in the real desktop UI. |
-| P1-3 | Multi-display software coverage without second hardware | Audit/add negative-origin, mixed-DPI, display routing and topology-change tests. Separate mock/virtual results from physical hardware acceptance. |
-| P1-4 | Final functional regression and evidence audit | Rebuild desktop, run affected Go/race and native/UI suites, inspect screenshots, reconcile requirements with actual evidence, remove unrequested temporary outputs. Include development-build restart/upgrade behavior without claiming signed clean-install acceptance. |
-| Deferred | Second physical display | No second physical monitor available; do not mark hardware acceptance passed. |
-| Deferred LAST | Formal signing and distribution | Developer ID, notarization, signed fresh-install/upgrade and release delivery are outside this functional phase. |
+| P1 | v0.2.0 source delivery and latest desktop handoff | Release/package regression, focused Computer Use regression, normal desktop build (without acceptance tag), native screenshot inspection, annotated tag pushed and resolved against origin. |
+| P2 | Reclaim generated build/test storage | After verification, remove regenerable Go cache and positively identified obsolete test binaries only; retain current app, evidence, dependencies and user data; record measured reclaimed bytes. |
+| Deferred | Second physical display | Requires hardware; software tests do not replace physical acceptance. |
+| Deferred LAST | Formal signing and distribution acceptance | Developer ID, notarization, signed clean install/upgrade; source tag and local ad-hoc build are not substitutes. |
+
+### Delivery ledger — 2026-09-30
+
+- Initial worktree clean at `42b9b4f`; `git pull --ff-only origin main` up to date.
+- Intended tracked files: `CHANGELOG.md` and this queue; no application code changes.
+- Implementation: preceding functional slices landed; automated/native scripted
+  acceptance and autonomous WorkBuddy model acceptance are separate historical
+  evidence, not newly rerun model tests for this documentation-only release.
+- Verification passed: packaging regression (1), six focused Go packages,
+  Computer Use web tests (83), native safety assertions (244), platform event
+  assertions (469), normal Wails build and local ad-hoc signature verification.
+- Native UI smoke: launched the normal app, confirmed the ready Computer Use
+  panel and collapsed it with an actual click; main workspace rendered. This is
+  a handoff smoke test, not a new autonomous-model or full input-matrix run.
+- Cleanup slice: removed 683,356,160 allocated bytes of obsolete test binaries,
+  duplicate build output and Vite cache; retained current app and evidence.
+- Release handoff sequence after this commit: create annotated `v0.2.0`, rebuild
+  that exact revision without acceptance hooks, verify embedded version/clean
+  identity, push the tag, open the final app, then clear Go build/test cache.
+  Post-commit results and screenshots stay in ignored
+  `desktop-v2/build/validation/20260930/release-v0.2.0/`.
+- Next priorities: finish the two delivery rows above; afterward only the two
+  explicitly deferred acceptance items remain in this Computer Use queue.
 
 ## Phase update — P0-1 real host acceptance — 2026-09-28
 
