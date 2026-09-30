@@ -65,7 +65,7 @@ describe("ComputerWorkspace", () => {
     storage = { "go-e2e.computer-workspace.v1": JSON.stringify({ displayMode: "auto", collapsed: false, position: null }), "golang-cc-webui.language.v1": "en" };
     const client = createTestClient();
     await act(async () => root.render(<I18nProvider><ComputerWorkspace client={client} /></I18nProvider>));
-    expect(document.body.querySelector('[aria-label="Open Computer Use workspace"]')).toBeNull();
+    expect(document.body.querySelector('[aria-label="Open Computer Use workspace"]')).not.toBeNull();
     expect(document.body.querySelector('[aria-label="Computer workspace"]')).toBeNull();
 
     await act(async () => { window.dispatchEvent(new Event("go-e2e:computer-workspace-open")); });
@@ -76,7 +76,7 @@ describe("ComputerWorkspace", () => {
 
     await click("Stop");
     expect(document.body.querySelector('[aria-label="Computer workspace"]')).toBeNull();
-    expect(document.body.querySelector('[aria-label="Open Computer Use workspace"]')).toBeNull();
+    expect(document.body.querySelector('[aria-label="Open Computer Use workspace"]')).not.toBeNull();
   });
 
   it.each(["compact", "expanded"] as const)("honors the %s display mode while preserving manual toggles", async (mode) => {

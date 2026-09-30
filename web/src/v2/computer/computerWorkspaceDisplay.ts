@@ -94,8 +94,11 @@ export function projectComputerWorkspaceDisplay(state: ComputerWorkspaceDisplayS
   const overrideExpanded = state.manualOverride === "expanded";
 
   if (state.mode === "auto") {
-    const visible = !stopped && !overrideCollapsed && (active || showError || state.opened);
-    return { visible, expanded: visible && (active || showError || overrideExpanded), showError, showFeedback: state.opened || state.attempted || active || showError };
+    // Keep a small launcher available while idle/stopped so a user can start a
+    // local preview; only the detailed surface is automatically hidden.
+    const launcher = !overrideCollapsed && !active && !showError;
+    const visible = launcher || active || showError || state.opened;
+    return { visible, expanded: visible && (showError || (active && !overrideCollapsed) || overrideExpanded), showError, showFeedback: state.opened || state.attempted || active || showError };
   }
 
   const visible = true;
