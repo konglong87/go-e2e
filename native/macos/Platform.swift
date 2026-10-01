@@ -133,8 +133,9 @@ struct MacDesktop: DesktopPlatform {
                 guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
                     throw SafetyError.launchFailed
                 }
-                let running = try NSWorkspace.shared.launchApplication(at: url, options: [.default], configuration: [:])
-                _ = running.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+                // Use Launch Services through AppKit. This stays inside the trusted
+                // native helper and avoids shell/open/osascript launch paths.
+                guard NSWorkspace.shared.open(url) else { throw SafetyError.launchFailed }
             }
         } catch let error as SafetyError {
             throw error
