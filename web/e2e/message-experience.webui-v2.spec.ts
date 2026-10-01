@@ -111,3 +111,78 @@ test("conversation cards and composer share one content width without decorative
   expect(geometry.footer.borderTopStyle).toBe("none");
   await page.screenshot({ path: testInfo.outputPath("conversation-width-aligned.png"), fullPage: false });
 });
+
+test("Computer Use thumbnails stay compact and proportional without shrinking the original preview", async ({ page }) => {
+  const thumbnailSize = 160;
+  const session = { id: 1000001, ref: "tenant:compact-observations", source: "tenant", title: "Compact observations", status: "completed", updated_at: "2026-10-01T00:00:00Z", short_id: "compact" };
+  const dimensions = [
+    { asset: "landscape", width: 1280, height: 720 },
+    { asset: "portrait", width: 720, height: 1280 },
+    { asset: "square", width: 900, height: 900 }
+  ];
+  const events = dimensions.flatMap(({ asset }, index) => [
+    { id: index * 2 + 1, task_id: 1, event_type: "tool_call", payload_json: JSON.stringify({ tool_id: asset, tool_name: "ComputerUse", input: { action: "observe" } }), created_at: session.updated_at },
+    { id: index * 2 + 2, task_id: 1, event_type: "tool_result", payload_json: JSON.stringify({ tool_id: asset, output: "Observed", computer_observation: { observation_id: `obs-${asset}`, asset_id: asset, media_type: "image/svg+xml" } }), created_at: session.updated_at }
+  ]);
+  events.push(
+    { id: 7, task_id: 1, event_type: "image_artifact", payload_json: JSON.stringify({ asset_id: "ordinary" }), created_at: session.updated_at },
+    { id: 8, task_id: 1, event_type: "completed", payload_json: JSON.stringify({ response: "Screenshots ready." }), created_at: session.updated_at }
+  );
+  const data = { schema_version: "golang-cc.session-conversation.v1", session, events, cursor: String(events.length), has_more: false };
+  await page.addInitScript(() => localStorage.setItem("golang-cc-webui.language.v1", "en"));
+  await page.route("**/tenant/session-control/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/conversations/stream")) return route.fulfill({ contentType: "text/event-stream", body: `event: conversation\ndata: ${JSON.stringify(data)}\n\n` });
+    if (url.pathname.endsWith("/conversation")) return route.fulfill({ json: { data } });
+    return route.fulfill({ json: { data: url.searchParams.get("source") === "local" ? [] : [session] } });
+  });
+  await page.route("**/tenant/agent-tasks/*/pending-inputs", (route) => route.fulfill({ json: { data: [] } }));
+  await page.route("**/tenant/media/assets/*", (route) => {
+    const asset = new URL(route.request().url()).pathname.split("/").at(-1);
+    const { width, height } = dimensions.find((image) => image.asset === asset) ?? dimensions[0];
+    return route.fulfill({ contentType: "image/svg+xml", body: `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="#237c57"/></svg>` });
+  });
+  await page.goto(`/webui/v2/sessions/${encodeURIComponent(session.ref)}?token=test-token`);
+  const observations = page.locator(".webui2-tool-observation");
+  await expect(observations).toHaveCount(dimensions.length);
+  for (const [index, { width, height }] of dimensions.entries()) {
+    const observation = observations.nth(index);
+    const image = observation.locator("img");
+    await expect.poll(() => image.evaluate((node: HTMLImageElement) => node.naturalWidth)).toBe(width);
+    const geometry = await image.evaluate((node) => {
+      const imageBox = node.getBoundingClientRect();
+      const wrapper = node.closest(".agent-generated-image-wrap")?.getBoundingClientRect();
+      return { width: imageBox.width, height: imageBox.height, wrapperHeight: wrapper?.height };
+    });
+    expect(Math.max(geometry.width, geometry.height)).toBeCloseTo(thumbnailSize, 0);
+    expect(geometry.width / geometry.height).toBeCloseTo(width / height, 2);
+    expect(geometry.wrapperHeight).toBeCloseTo(geometry.height, 0);
+    const summary = observation.locator("..").locator("details");
+    await expect(summary).not.toHaveAttribute("open", "");
+  }
+
+  const thumbnail = observations.first().getByRole("button", { name: "Open generated asset" });
+  const originalSource = await thumbnail.locator("img").getAttribute("src");
+  await thumbnail.click();
+  const preview = page.getByRole("dialog", { name: "Generated asset preview" });
+  await expect(preview).toBeVisible();
+  const previewImage = preview.getByRole("img");
+  await expect(previewImage).toHaveAttribute("src", originalSource ?? "");
+  await expect.poll(() => previewImage.evaluate((node: HTMLImageElement) => node.naturalWidth)).toBe(dimensions[0].width);
+  const previewBox = await previewImage.boundingBox();
+  expect(previewBox?.width).toBeGreaterThan(thumbnailSize);
+  expect((previewBox?.width ?? 0) / (previewBox?.height ?? 1)).toBeCloseTo(dimensions[0].width / dimensions[0].height, 2);
+  await page.keyboard.press("Escape");
+  await expect(preview).not.toBeVisible();
+  await expect(thumbnail).toBeFocused();
+
+  const ordinaryImage = page.locator(".agent-message-artifacts img");
+  await expect.poll(() => ordinaryImage.evaluate((node: HTMLImageElement) => node.naturalWidth)).toBe(dimensions[0].width);
+  expect((await ordinaryImage.boundingBox())?.width).toBeGreaterThan(thumbnailSize);
+  for (const divisor of [6, 8]) {
+    await observations.first().evaluate((node, value) => (node as HTMLElement).style.setProperty("--computer-observation-thumbnail-divisor", String(value)), divisor);
+    const box = await thumbnail.locator("img").boundingBox();
+    expect(box?.width).toBeCloseTo(thumbnailSize * 4 / divisor, 0);
+    expect((box?.width ?? 0) / (box?.height ?? 1)).toBeCloseTo(dimensions[0].width / dimensions[0].height, 2);
+  }
+});

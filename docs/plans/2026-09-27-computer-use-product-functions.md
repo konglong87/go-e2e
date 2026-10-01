@@ -14,6 +14,41 @@ be read as evidence that the native overlay or the whole product fully passed.
 | Deferred | Second physical display | Requires hardware; not passed. |
 | Deferred LAST | Formal signing and distribution | Developer ID/notarization/clean installation and upgrade; local ad-hoc builds do not substitute. |
 
+### Compact chat screenshots — user-prioritized follow-up (2026-10-01)
+
+- Initial tree clean at `c71ecaf`; pulled origin/main before editing. No pre-existing
+  user work. Intended files: scoped message CSS, browser layout regression tests,
+  and this ledger. No backend, image-reference protocol, or live-preview changes.
+- Implementation: Computer Use message thumbnails use one divisor (initially 4)
+  against the existing 640 px limit, with proportional sizing and a matching
+  height bound for tall images. Titles remain readable; original-resolution
+  lightbox and ordinary images retain existing behavior. Divisors 6/8 remain
+  optional visual tuning, not additional requirements.
+- Automated acceptance passed: `ConversationMessage` / `GeneratedArtifactImage`
+  focused Vitest suites (23 tests), `npm run typecheck`, focused Biome lint, and
+  the full message-experience Playwright file across desktop/narrow/mobile
+  (9 tests). Browser geometry checks cover landscape/portrait/square proportions,
+  layout height, original-source enlargement, Escape/focus restoration, ordinary
+  image isolation, and optional divisor 6/8 behavior.
+- Native scripted acceptance passed: ordinary Wails `.app` build and ad-hoc
+  signature verification; quit confirmed, cold-started the new build, selected
+  an existing persisted screenshot, clicked its thumbnail, inspected the large
+  original preview, and pressed Escape back to the focused thumbnail. No model
+  run, external message send, or computer-control command was triggered.
+- Native evidence (ignored, not committed):
+  `desktop-v2/build/validation/20261001/compact-observations/before-thumbnail.png`,
+  `desktop-v2/build/validation/20261001/compact-observations/after-thumbnail.png`,
+  `desktop-v2/build/validation/20261001/compact-observations/original-preview.png`.
+  The same landscape image now occupies approximately one quarter of its former
+  width/height, with later message cards visible; the preview remains large.
+- Delivery: focused acceptance passed; commit/push receipts and final HEAD vs
+  origin/main equality are recorded in Git and the final report. No unrelated
+  source changes are included. No implementation/acceptance items remain in this
+  bounded slice; user feedback may request divisor 6/8 later.
+- Autonomous model acceptance: not required for this CSS-only slice; no model
+  run or computer action authorization is changed. Existing P0/P1 queue and
+  physical-second-display/formal-distribution deferrals above remain unchanged.
+
 ### Screenshot visibility policy — user-requested follow-up
 
 - Initial tree clean at `4a1de20`; pulled origin/main before edits.

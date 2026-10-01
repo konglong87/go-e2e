@@ -58,5 +58,19 @@ details[open] > summary > .webui2-disclosure-chevron { transform: rotate(90deg);
 }
 
 .webui2-tool-message-container { min-width: 0; }
-.webui2-tool-observation { margin-top: 10px; max-width: min(100%, 640px); }
+.webui2-tool-observation {
+  /* Change only the divisor to try 1/6 or 1/8; keep the original asset untouched. */
+  --computer-observation-thumbnail-divisor: 4;
+  --computer-observation-thumbnail-size: calc(640px / var(--computer-observation-thumbnail-divisor));
+  margin-top: 10px;
+  max-width: min(100%, 640px);
+}
+.webui2-tool-observation .agent-generated-image-wrap { width: min(100%, var(--computer-observation-thumbnail-size)); }
+.webui2-tool-observation .agent-generated-image {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: var(--computer-observation-thumbnail-size);
+  object-fit: contain;
+}
 .webui2-tool-observation > small { display: block; margin: 0 0 6px; color: var(--webui2-text-muted); }
