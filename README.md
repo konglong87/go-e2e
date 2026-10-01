@@ -7,11 +7,11 @@
 </p>
 
 <p align="center">
-  go-e2e 是基于 Go 开发的开源全功能 Coding Agent，覆盖桌面Desktop、TUI、CLI 和网页端WebUI，集成代码编辑、命令执行、任务规划、记忆与多智能体协作。支持 Skills、MCP 和多模型接入，本地优先、灵活扩展，适合日常开发，也适合学习和实践 Agent 开发。
+  go-e2e 是基于 Go 开发的开源全功能 Coding Agent，覆盖桌面Desktop、TUI、CLI 和网页端WebUI，集成代码编辑、命令执行、任务规划、记忆与多智能体协作。支持 Skills、MCP 和多模型接入，本地优先、灵活扩展，可连接飞书渠道，always on，适合日常开发，也适合学习和实践 Agent 开发。
 </p>
 
 <p align="center">
-  本地优先 · 开放扩展 · 一句话驱动 · 端到端交付
+  本地部署 · 开放扩展 · 自主可控 · 端到端交付
 </p>
 
 <p align="center">
@@ -54,7 +54,7 @@ go-e2e 是一套可以执行任务、连接外部工具、保留上下文并持�
 | **WebUI** | 浏览器工作台、服务端运行和团队部署 | `scripts/webui-dev.sh` |
 | **Feishu** | 飞书机器人、渠道会话和持续在线 Worker | 见[飞书渠道文档](docs/README.md) |
 
-## 六大核心亮点
+## 六大核心
 
 | 核心亮点 | 主要能力 | 用户收益 |
 | --- | --- | --- |
