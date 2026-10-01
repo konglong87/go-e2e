@@ -129,7 +129,9 @@ func dispatchHost(r *http.Request, host Host, q Request) (any, error) {
 		if !validLaunchReceipt(receipt, q.SessionID, q.Application) {
 			return nil, ErrInvalidResponse
 		}
-		receipt.ErrorCode = cu.PublicErrorCode(receipt.ErrorCode)
+		if receipt.ErrorCode != "" {
+			receipt.ErrorCode = cu.PublicErrorCode(receipt.ErrorCode)
+		}
 		return receipt, err
 	case OpObserve:
 		return host.Observe(ctx, q.Owner, *q.ObserveRequest)
