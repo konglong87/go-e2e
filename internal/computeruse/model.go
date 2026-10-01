@@ -402,6 +402,36 @@ const (
 	VerificationUnknown    VerificationStatus = "unknown"
 )
 
+const (
+	ErrorCodeActionFailed       = "action_failed"
+	ErrorCodeSelfTarget         = "self_target"
+	ErrorCodePermissionRequired = "permission_required"
+	ErrorCodeFocusChanged       = "focus_changed"
+	ErrorCodeUnsupportedDisplay = "unsupported_display"
+	ErrorCodeInvalidAction      = "invalid_action"
+	ErrorCodeInvalidBinding     = "invalid_action_binding"
+	ErrorCodeInactive           = "inactive"
+	ErrorCodeClosed             = "closed"
+	ErrorCodeInputUnavailable   = "input_unavailable"
+	ErrorCodeTimeout            = "timeout"
+	ErrorCodeCanceled           = "canceled"
+)
+
+// PublicErrorCode preserves only stable, non-sensitive diagnostics across the
+// native/bridge/model boundaries. Unknown helper strings are deliberately
+// collapsed so private host details never reach a model or UI.
+func PublicErrorCode(code string) string {
+	switch strings.TrimSpace(code) {
+	case ErrorCodeSelfTarget, ErrorCodePermissionRequired, ErrorCodeFocusChanged,
+		ErrorCodeUnsupportedDisplay, ErrorCodeInvalidAction, ErrorCodeInvalidBinding,
+		ErrorCodeInactive, ErrorCodeClosed, ErrorCodeInputUnavailable,
+		ErrorCodeTimeout, ErrorCodeCanceled:
+		return strings.TrimSpace(code)
+	default:
+		return ErrorCodeActionFailed
+	}
+}
+
 type Outcome string
 
 const (

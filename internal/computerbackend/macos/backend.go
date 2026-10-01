@@ -32,14 +32,18 @@ const (
 	maxActions                = 4096
 	helperInactiveCode        = "inactive"
 	helperFocusChangedCode    = "focus_changed"
+	selfTargetCode            = cu.ErrorCodeSelfTarget
 	// Match the native geometry validity tolerance for point/pixel rounding.
 	geometryScaleTolerance = 0.01
 )
 
 type Config struct {
-	HelperPath             string
-	HelperArgs             []string
-	HelperEnv              []string
+	HelperPath string
+	HelperArgs []string
+	HelperEnv  []string
+	// HostBundleID identifies the owning desktop UI for self-target safety.
+	// Empty keeps the backend platform-neutral in isolated tests.
+	HostBundleID           string
 	RequestTimeout         time.Duration
 	RequestHostPermissions func()
 	// CheckHostPermissions is the signed host's TCC source of truth. Production
@@ -49,6 +53,34 @@ type Config struct {
 	Now                  func() time.Time
 	batchDriver          inputBatchDriver // private test seam
 	mouseDriver          mouseDriver      // package-private test seam; production always uses host CG
+}
+
+func (b *Backend) selfTargetRejected(obs cu.Observation, action cu.Action) bool {
+	if strings.TrimSpace(b.config.HostBundleID) == "" || action.WindowID != "" ||
+		obs.ActiveWindow.BundleID != b.config.HostBundleID {
+		return false
+	}
+	if action.Kind == cu.ActionHotkey {
+		if len(action.Keys) == 2 {
+			first, second := strings.ToLower(strings.TrimSpace(action.Keys[0])), strings.ToLower(strings.TrimSpace(action.Keys[1]))
+			return !((first == "command" || first == "cmd" || first == "meta") && second == "space") &&
+				!((second == "command" || second == "cmd" || second == "meta") && first == "space")
+		}
+		return true
+	}
+	if action.Kind == cu.ActionClick || action.Kind == cu.ActionDoubleClick || action.Kind == cu.ActionRightClick {
+		// A click outside the active app window can be the Dock/Spotlight launch
+		// step. A click inside the owning window is a self-target and is blocked.
+		if action.Point == nil || obs.ActiveWindow.Frame == nil || obs.Capabilities.CoordinateSpace.Bounds == nil || obs.ScaleFactor <= 0 {
+			return true
+		}
+		space := obs.Capabilities.CoordinateSpace.Bounds
+		globalX := space.X + float64(action.Point.X)/obs.ScaleFactor
+		globalY := space.Y + float64(action.Point.Y)/obs.ScaleFactor
+		frame := obs.ActiveWindow.Frame
+		return globalX >= frame.X && globalX <= frame.X+frame.Width && globalY >= frame.Y && globalY <= frame.Y+frame.Height
+	}
+	return true
 }
 
 type Backend struct {
@@ -484,6 +516,12 @@ func (b *Backend) Execute(ctx context.Context, action cu.Action) (receipt cu.Act
 		receipt.Duration = receipt.CompletedAt.Sub(started)
 		if err != nil {
 			receipt.ErrorMessage = "computer action did not complete"
+			var rejected *rejection
+			if errors.As(err, &rejected) {
+				receipt.ErrorCode = cu.PublicErrorCode(rejected.Code())
+			} else if receipt.ErrorCode == "" {
+				receipt.ErrorCode = cu.ErrorCodeActionFailed
+			}
 		}
 		return receipt, err
 	}
@@ -524,6 +562,10 @@ func (b *Backend) Execute(ctx context.Context, action cu.Action) (receipt cu.Act
 	if action.Button != "" {
 		payload["button"] = action.Button
 	}
+	if b.selfTargetRejected(obs, action) {
+		return finish(&rejection{selfTargetCode})
+	}
+
 	if action.Kind == cu.ActionDrag {
 		// Serialize authorization with epoch changes. Broker never calls back
 		// into Backend, preserving the lock order Backend.mu -> broker.mu.

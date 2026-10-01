@@ -132,7 +132,7 @@ func dispatchHost(r *http.Request, host Host, q Request) (any, error) {
 		receipt.ErrorMessage = ""
 		receipt.RedactedActionSummary = string(q.Action.Kind)
 		if receipt.ErrorCode != "" {
-			receipt.ErrorCode = "action_failed"
+			receipt.ErrorCode = cu.PublicErrorCode(receipt.ErrorCode)
 		}
 		return receipt, err
 	case OpPause:

@@ -64,6 +64,13 @@ func TestHelperProcess(t *testing.T) {
 			result = map[string]any{"capture_readiness": "ready", "input_readiness": "ready", "permission_state": "approved", "focus_state": "focused", "image_supported": true, "supports_pause": true, "supports_stop": true, "coordinate_space": map[string]any{"display_id": "1", "width": 2, "height": 2, "scale_factor": 2}}
 		case commandObserve:
 			result = imagePayload()
+			if mode == "self-target" {
+				result["active_window"] = map[string]any{
+					"id": "self", "title": "go-e2e", "owner_pid": 7,
+					"bundle_id": "com.wails.go-e2e", "is_visible": true, "is_frontmost": true,
+					"frame": map[string]any{"x": -100, "y": -20, "width": 1, "height": 1},
+				}
+			}
 			result["coordinate_space"] = captureGeometryFixture()
 			var observeRequest struct {
 				WindowID string `json:"window_id"`
@@ -319,6 +326,27 @@ func TestBackendObserveExecuteAndStop(t *testing.T) {
 	}
 	if err = b.Resume(context.Background()); err == nil {
 		t.Fatal("resume after stop")
+	}
+}
+
+func TestBackendRejectsSelfTargetBeforeDispatch(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "execute-marker")
+	b := newTestBackend(t, "self-target", time.Second, marker)
+	b.config.HostBundleID = "com.wails.go-e2e"
+	obs, err := b.Observe(context.Background(), cu.ObserveRequest{SessionID: "session-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if obs.ActiveWindow.BundleID != "com.wails.go-e2e" {
+		t.Fatalf("active window=%+v", obs.ActiveWindow)
+	}
+	action := cu.Action{ID: "self-click", SessionID: "session-1", ObservationID: obs.ID, Kind: cu.ActionClick, Point: &cu.Point{X: 0, Y: 0}}
+	receipt, err := b.Execute(context.Background(), action)
+	if err == nil || receipt.Outcome != cu.OutcomeRejected || receipt.ErrorCode != cu.ErrorCodeSelfTarget {
+		t.Fatalf("receipt=%+v err=%v", receipt, err)
+	}
+	if data, readErr := os.ReadFile(marker); readErr != nil || strings.Contains(string(data), "execute") {
+		t.Fatalf("native helper received a self-target action: data=%q err=%v", data, readErr)
 	}
 }
 

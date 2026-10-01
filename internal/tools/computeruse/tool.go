@@ -238,7 +238,7 @@ func (t Tool) execute(ctx context.Context, service cu.Service, owner cu.SessionO
 	// discard that receipt or suggest the caller should replay the action.
 	receipt.ErrorMessage = ""
 	if receipt.ErrorCode != "" {
-		receipt.ErrorCode = "action_failed"
+		receipt.ErrorCode = cu.PublicErrorCode(receipt.ErrorCode)
 	}
 	receipt.RedactedActionSummary = string(action.Kind)
 	payload := map[string]any{"receipt": receipt}
@@ -246,6 +246,9 @@ func (t Tool) execute(ctx context.Context, service cu.Service, owner cu.SessionO
 	if out.IsError {
 		payload["error_code"] = "action_failed"
 		payload["message"] = "computer action failed; inspect receipt before any further action"
+		if receipt.ErrorCode == cu.ErrorCodeSelfTarget {
+			payload["message"] = "the action was not dispatched because the go-e2e control window was the target; observe again and launch or switch to the requested app before continuing"
+		}
 	}
 	// In fast-path mode, a successful input immediately performs an authoritative
 	// fresh Observe below. The receipt evidence image would be discarded, so do
