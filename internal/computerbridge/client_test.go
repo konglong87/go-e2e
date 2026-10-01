@@ -600,3 +600,16 @@ func TestClientLaunchAppPreservesControlledRemoteFailureReceipt(t *testing.T) {
 		t.Fatalf("receipt=%+v err=%v", receipt, err)
 	}
 }
+
+func TestClientExecutePreservesControlledHostErrorCode(t *testing.T) {
+	client := newUnixClient(t, 0, func(w http.ResponseWriter, r *http.Request) {
+		receipt := testReceipt()
+		receipt.Outcome = cu.OutcomeRejected
+		receipt.ErrorCode = cu.ErrorCodeSelfTarget
+		writeData(t, w, receipt)
+	})
+	receipt, err := client.Execute(context.Background(), testOwner(), testAction())
+	if err == nil || !errors.Is(err, ErrRemote) || receipt.ErrorCode != cu.ErrorCodeSelfTarget {
+		t.Fatalf("receipt=%+v err=%v", receipt, err)
+	}
+}

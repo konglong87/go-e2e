@@ -138,10 +138,12 @@ func (c *Client) Execute(ctx context.Context, owner cu.SessionOwner, action cu.A
 	receipt.ErrorMessage = ""
 	receipt.RedactedActionSummary = action.RedactedSummary()
 	if receipt.ErrorCode != "" {
-		receipt.ErrorCode = receiptHostErrorCode
+		receipt.ErrorCode = cu.PublicErrorCode(receipt.ErrorCode)
 	}
 	if receipt.Outcome != cu.OutcomeExecuted {
-		receipt.ErrorCode = receiptHostErrorCode
+		if receipt.ErrorCode == "" {
+			receipt.ErrorCode = receiptHostErrorCode
+		}
 		return receipt, ErrRemote
 	}
 	return receipt, nil

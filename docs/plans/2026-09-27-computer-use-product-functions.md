@@ -37,7 +37,10 @@ be read as evidence that the native overlay or the whole product fully passed.
   controlled launch failure receipt instead of collapsing it to an empty result.
   It also prevents successful launch receipts from being mislabeled as
   `action_failed` when their optional error code is empty, and rebinds launch
-  requests to the query-owned session ID rather than trusting model text.
+  requests to the query-owned session ID rather than trusting model text. The
+  bridge now preserves controlled host error codes such as `self_target` instead
+  of collapsing rejected receipts to `action_failed`, so the model receives a
+  safe corrective instruction instead of losing the target diagnosis.
 - This closes the implementation dependency for reliable launch/bind, but does
   **not** close the real acceptance gate: WorkBuddy must still be cold-started
   from the latest desktop build and prove real screenshots, receipts, input,
