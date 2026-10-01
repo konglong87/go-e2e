@@ -13,8 +13,6 @@ let maxPNGBytes = 5 * 1024 * 1024
 let maxTextUnits = 4096
 let maxWaitMS = 10000
 let maxScrollDelta = 10000
-let workBuddyAppName = "WorkBuddy"
-let workBuddyBundleID = "com.workbuddy.workbuddy"
 let appLaunchTimeoutSeconds: TimeInterval = 8
 let appLaunchPollMS = 50
 

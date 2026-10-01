@@ -108,12 +108,18 @@ func (s computerAgentService) Capabilities(ctx context.Context, owner cu.Session
 	}
 	return c.Capabilities(ctx, owner, id)
 }
-func (s computerAgentService) LaunchApp(ctx context.Context, owner cu.SessionOwner, id, application string) (cu.LaunchReceipt, error) {
+func (s computerAgentService) LaunchTarget(ctx context.Context, owner cu.SessionOwner, id string, targetID cu.TargetID) (cu.LaunchReceipt, error) {
 	c, err := s.controller(ctx, owner, id, false)
 	if err != nil {
-		return cu.LaunchReceipt{Application: cu.ComputerApplication(application), Outcome: cu.OutcomeRejected, ErrorCode: cu.ErrorCodeInactive}, err
+		return cu.LaunchReceipt{TargetID: targetID, Outcome: cu.OutcomeRejected, ErrorCode: cu.ErrorCodeInactive}, err
 	}
-	return c.LaunchApp(ctx, owner, id, application)
+	return c.LaunchTarget(ctx, owner, id, targetID)
+}
+
+// LaunchApp remains a compatibility adapter for pre-target clients. New model
+// calls use LaunchTarget and the host registry.
+func (s computerAgentService) LaunchApp(ctx context.Context, owner cu.SessionOwner, id, application string) (cu.LaunchReceipt, error) {
+	return s.LaunchTarget(ctx, owner, id, cu.TargetID(application))
 }
 func (s computerAgentService) Observe(ctx context.Context, owner cu.SessionOwner, r cu.ObserveRequest) (cu.Observation, error) {
 	c, err := s.controller(ctx, owner, r.SessionID, false)

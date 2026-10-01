@@ -38,25 +38,33 @@ final class Engine {
             "actions": .array(ActionKind.allCases.filter { $0 != .drag || platform.supportsDrag() }.map { .string($0.rawValue) })
         ])
     }
-    private func requestedApplication(_ payload: JSONValue) throws {
+    private func requestedTarget(_ payload: JSONValue) throws -> (id: String, displayName: String, bundleID: String) {
         guard case .object(let fields) = payload,
-              let app = fields["app"]?.string,
-              app == workBuddyAppName,
-              fields.keys.allSatisfy({ $0 == "app" || $0 == "generation" }) else {
+              let id = fields["target_id"]?.string, !id.isEmpty,
+              let displayName = fields["display_name"]?.string, !displayName.isEmpty,
+              let bundleID = fields["bundle_id"]?.string, !bundleID.isEmpty,
+              fields.keys.allSatisfy({ $0 == "target_id" || $0 == "display_name" || $0 == "bundle_id" || $0 == "generation" }) else {
             throw SafetyError.unsupportedApplication
         }
+        // The signed host resolves target IDs to an allowlisted bundle before
+        // reaching the helper. The helper still rejects malformed bundle IDs
+        // and binds the discovered window to the exact requested identity.
+        guard bundleID.split(separator: ".").count >= 2,
+              bundleID.utf8.count <= 256 else { throw SafetyError.unsupportedApplication }
+        return (id, displayName, bundleID)
     }
     func launchApp(_ request: Envelope) -> ActionResult {
         do {
-            try requestedApplication(request.payload)
+            let target = try requestedTarget(request.payload)
             try state.beginControl(request)
-            let window = try platform.launchApplication(bundleID: workBuddyBundleID) { self.state.permitted(request) }
-            guard window.bundleID == workBuddyBundleID else { throw SafetyError.targetWindowMismatch }
-            try state.bindTarget(window, for: request)
+            let window = try platform.launchApplication(bundleID: target.bundleID) { self.state.permitted(request) }
+            guard window.bundleID == target.bundleID else { throw SafetyError.targetWindowMismatch }
+            try state.bindTarget(window, expectedBundleID: target.bundleID, for: request)
             return ActionResult(outcome: .executed, payload: .object([
                 "operation": .string(Command.launchApp.rawValue),
-                "app": .string(workBuddyAppName),
-                "bundle_id": .string(workBuddyBundleID),
+                "target_id": .string(target.id),
+                "display_name": .string(target.displayName),
+                "bundle_id": .string(target.bundleID),
                 "window": window.json
             ]), error: nil)
         } catch {

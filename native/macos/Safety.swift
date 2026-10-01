@@ -125,11 +125,12 @@ final class SafetyState {
         try check(request, requireGeneration: false)
         try consumeActionLocked(request)
     }
-    func bindTarget(_ target: NativeWindow, for request: Envelope) throws {
+    func bindTarget(_ target: NativeWindow, expectedBundleID: String, for request: Envelope) throws {
         lock.lock(); defer { lock.unlock() }
         try check(request, requireGeneration: false)
-        guard target.id != "", target.ownerPID > 0, target.bundleID == workBuddyBundleID,
-              target.isVisible, target.frame.width > 0, target.frame.height > 0 else { throw SafetyError.targetWindowMismatch }
+        guard target.id != "", target.ownerPID > 0, !expectedBundleID.isEmpty,
+              target.bundleID == expectedBundleID, target.isVisible,
+              target.frame.width > 0, target.frame.height > 0 else { throw SafetyError.targetWindowMismatch }
         if let boundTarget, !boundTarget.matchesIdentity(target) { throw SafetyError.targetWindowMismatch }
         boundTarget = target
         observation = nil

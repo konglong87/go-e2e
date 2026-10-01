@@ -121,12 +121,27 @@ func dispatchHost(r *http.Request, host Host, q Request) (any, error) {
 	case OpCapabilities:
 		return host.Capabilities(ctx, q.Owner, q.SessionID)
 	case OpLaunchApp:
+		if q.TargetID != "" {
+			launcher, ok := host.(cu.TargetLauncher)
+			if !ok {
+				return nil, ErrRemote
+			}
+			receipt, err := launcher.LaunchTarget(ctx, q.Owner, q.SessionID, cu.TargetID(q.TargetID))
+			if !validLaunchReceipt(receipt, q.SessionID, q.TargetID, "") {
+				return nil, ErrInvalidResponse
+			}
+			if receipt.ErrorCode != "" {
+				receipt.ErrorCode = cu.PublicErrorCode(receipt.ErrorCode)
+			}
+			return receipt, err
+		}
+		// Legacy application launch remains available only for older adapters.
 		launcher, ok := host.(cu.ApplicationLauncher)
 		if !ok {
 			return nil, ErrRemote
 		}
 		receipt, err := launcher.LaunchApp(ctx, q.Owner, q.SessionID, q.Application)
-		if !validLaunchReceipt(receipt, q.SessionID, q.Application) {
+		if !validLaunchReceipt(receipt, q.SessionID, "", q.Application) {
 			return nil, ErrInvalidResponse
 		}
 		if receipt.ErrorCode != "" {

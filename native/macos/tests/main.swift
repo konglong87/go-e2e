@@ -1,6 +1,9 @@
 import Foundation
 import CoreGraphics
 
+let workBuddyAppName = "WorkBuddy"
+let workBuddyBundleID = "com.workbuddy.workbuddy"
+
 // Pure fake platform. This executable never constructs MacDesktop or posts a
 // CGEvent, asks for permissions, focuses apps, or captures the actual desktop.
 final class FakeDesktop: DesktopPlatform {
@@ -38,7 +41,7 @@ final class FakeDesktop: DesktopPlatform {
     func launchApplication(bundleID: String, permitted: () -> Bool) throws -> NativeWindow {
         launchCalls += 1
         guard permitted() else { throw SafetyError.inactive }
-        guard bundleID == workBuddyBundleID else { throw SafetyError.unsupportedApplication }
+        guard bundleID.split(separator: ".").count >= 2 else { throw SafetyError.unsupportedApplication }
         if let launchError { throw launchError }
         guard let launchResult else { throw SafetyError.launchTimeout }
         targetWindow = launchResult
@@ -97,20 +100,19 @@ func launchWindow() -> NativeWindow {
                  displayID: "1", isVisible: true, isFrontmost: true)
 }
 
-// launch_app is a trusted allowlisted operation. The model cannot select an
-// arbitrary bundle identifier or filesystem path, and rejected requests never
-// reach the platform launcher.
+// launch_app accepts only a host-resolved target descriptor. The model cannot
+// supply a filesystem path; the host registry owns the provider bundle key.
 do {
     let desktop = FakeDesktop()
     let engine = Engine(platform: desktop)
-    let unknown = engine.launchApp(request("launch_app", payload: ["app": .string("Safari"), "generation": .number(0)]))
+    let unknown = engine.launchApp(request("launch_app", payload: ["target_id": .string("safari"), "display_name": .string("Safari"), "bundle_id": .string("Safari"), "generation": .number(0)]))
     expect(unknown.outcome == .rejected && unknown.error == .unsupportedApplication, "launch allowlist rejects unknown app")
     expect(desktop.launchCalls == 0, "unknown app never reaches platform launcher")
 
-    let forged = engine.launchApp(request("launch_app", payload: [
-        "app": .string(workBuddyAppName), "bundle_id": .string("com.example.anything"), "generation": .number(0)
+    let malformed = engine.launchApp(request("launch_app", payload: [
+        "target_id": .string("workbuddy"), "display_name": .string(workBuddyAppName), "generation": .number(0)
     ]))
-    expect(forged.outcome == .rejected && forged.error == .unsupportedApplication, "launch rejects model bundle override")
+    expect(malformed.outcome == .rejected && malformed.error == .unsupportedApplication, "launch rejects incomplete trusted target descriptor")
     expect(desktop.launchCalls == 0, "model bundle override never reaches platform launcher")
 }
 
@@ -120,10 +122,10 @@ do {
     let desktop = FakeDesktop()
     desktop.launchResult = launchWindow()
     let engine = Engine(platform: desktop)
-    let launched = engine.launchApp(request("launch_app", payload: ["app": .string(workBuddyAppName), "generation": .number(0)]))
+    let launched = engine.launchApp(request("launch_app", payload: ["target_id": .string("workbuddy"), "display_name": .string(workBuddyAppName), "bundle_id": .string(workBuddyBundleID), "generation": .number(0)]))
     expect(launched.outcome == .executed && launched.error == nil, "launch returns executed receipt")
     guard case .object(let payload) = launched.payload,
-          payload["app"]?.string == workBuddyAppName,
+          payload["target_id"]?.string == "workbuddy",
           payload["bundle_id"]?.string == workBuddyBundleID,
           case .object(let window)? = payload["window"],
           window["id"]?.string == "workbuddy-window",
@@ -160,7 +162,7 @@ do {
     let desktop = FakeDesktop()
     desktop.launchError = .launchTimeout
     let engine = Engine(platform: desktop)
-    let timedOut = engine.launchApp(request("launch_app", payload: ["app": .string(workBuddyAppName), "generation": .number(0)]))
+    let timedOut = engine.launchApp(request("launch_app", payload: ["target_id": .string("workbuddy"), "display_name": .string(workBuddyAppName), "bundle_id": .string(workBuddyBundleID), "generation": .number(0)]))
     expect(timedOut.outcome == .rejected && timedOut.error == .launchTimeout, "launch timeout is controlled")
 }
 

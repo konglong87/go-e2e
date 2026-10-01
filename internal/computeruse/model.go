@@ -407,7 +407,8 @@ const (
 	ErrorCodeActionFailed           = "action_failed"
 	ErrorCodeSelfTarget             = "self_target"
 	ErrorCodeTargetWindowMismatch   = "target_window_mismatch"
-	ErrorCodeUnsupportedApplication = "unsupported_application"
+	ErrorCodeUnsupportedApplication = "unsupported_application" // deprecated compatibility code
+	ErrorCodeUnsupportedTarget      = "unsupported_target"
 	ErrorCodeLaunchFailed           = "launch_failed"
 	ErrorCodeLaunchTimeout          = "launch_timeout"
 	ErrorCodePermissionRequired     = "permission_required"
@@ -430,7 +431,7 @@ func PublicErrorCode(code string) string {
 	case ErrorCodeSelfTarget, ErrorCodeTargetWindowMismatch, ErrorCodePermissionRequired, ErrorCodeFocusChanged,
 		ErrorCodeUnsupportedDisplay, ErrorCodeInvalidAction, ErrorCodeInvalidBinding,
 		ErrorCodeInactive, ErrorCodeClosed, ErrorCodeInputUnavailable,
-		ErrorCodeUnsupportedApplication, ErrorCodeLaunchFailed, ErrorCodeLaunchTimeout,
+		ErrorCodeUnsupportedApplication, ErrorCodeUnsupportedTarget, ErrorCodeLaunchFailed, ErrorCodeLaunchTimeout,
 		ErrorCodeTimeout, ErrorCodeCanceled:
 		return strings.TrimSpace(code)
 	default:
@@ -462,7 +463,11 @@ const (
 // accepted and that the target window was discovered and bound. It contains no
 // untrusted helper error text.
 type LaunchReceipt struct {
-	Application ComputerApplication `json:"application"`
+	TargetID    TargetID `json:"target_id,omitempty"`
+	DisplayName string   `json:"display_name,omitempty"`
+	// Application is retained for native/backend compatibility. Generic callers
+	// must identify launches with TargetID and resolve it through TargetRegistry.
+	Application ComputerApplication `json:"application,omitempty"`
 	BundleID    string              `json:"bundle_id"`
 	Window      WindowRef           `json:"window"`
 	Outcome     Outcome             `json:"outcome"`

@@ -20,22 +20,27 @@ type ImageReader interface {
 // Controller is one approved host session's execution authority. Agent and UI
 // adapters must share this instance; constructing a Tool never grants approval.
 type Controller struct {
-	session      *ComputerSession
-	backend      Backend
-	serial       chan struct{}
-	control      chan struct{} // Pause/Resume only; Stop must never queue behind them.
-	stopping     chan struct{} // Repeat Stop must not abort an earlier Stop acknowledgement.
-	mu           sync.Mutex
-	cancel       context.CancelFunc
-	pausing      int
-	pauseVersion uint64
+	session        *ComputerSession
+	backend        Backend
+	serial         chan struct{}
+	control        chan struct{} // Pause/Resume only; Stop must never queue behind them.
+	stopping       chan struct{} // Repeat Stop must not abort an earlier Stop acknowledgement.
+	mu             sync.Mutex
+	cancel         context.CancelFunc
+	targetRegistry TargetRegistry
+	pausing        int
+	pauseVersion   uint64
 }
 
 func NewController(s *ComputerSession, b Backend) (*Controller, error) {
+	return NewControllerWithRegistry(s, b, nil)
+}
+
+func NewControllerWithRegistry(s *ComputerSession, b Backend, registry TargetRegistry) (*Controller, error) {
 	if s == nil || b == nil {
 		return nil, errors.New("computer session and backend are required")
 	}
-	return &Controller{session: s, backend: b, serial: make(chan struct{}, 1), control: make(chan struct{}, 1), stopping: make(chan struct{}, 1)}, nil
+	return &Controller{session: s, backend: b, targetRegistry: registry, serial: make(chan struct{}, 1), control: make(chan struct{}, 1), stopping: make(chan struct{}, 1)}, nil
 }
 func (c *Controller) Session() *ComputerSession { return c.session }
 func (c *Controller) authorize(owner SessionOwner, id string) error {
@@ -119,8 +124,65 @@ func (c *Controller) Observe(ctx context.Context, owner SessionOwner, r ObserveR
 	return o, nil
 }
 
-// LaunchApp starts one allowlisted application through the trusted backend. It
-// does not consume an observation because it is not a coordinate input action.
+// LaunchTarget starts a registered target through the trusted backend. The
+// model-visible TargetID is resolved before any provider key crosses the
+// backend boundary.
+func (c *Controller) LaunchTarget(ctx context.Context, owner SessionOwner, id string, targetID TargetID) (LaunchReceipt, error) {
+	if err := c.authorize(owner, id); err != nil {
+		return LaunchReceipt{TargetID: targetID, Outcome: OutcomeRejected, ErrorCode: ErrorCodeInactive, CompletedAt: time.Now()}, err
+	}
+	release, err := lockControllerGate(ctx, c.serial)
+	if err != nil {
+		return LaunchReceipt{TargetID: targetID, Outcome: OutcomeRejected, ErrorCode: ErrorCodeTimeout, CompletedAt: time.Now()}, err
+	}
+	defer release()
+	receipt := LaunchReceipt{TargetID: targetID, Outcome: OutcomeRejected, CompletedAt: time.Now()}
+	if c.targetRegistry == nil {
+		receipt.ErrorCode = ErrorCodeUnsupportedTarget
+		return receipt, errors.New("computer target registry is unavailable")
+	}
+	target, err := c.targetRegistry.Resolve(targetID)
+	if err != nil {
+		receipt.ErrorCode = ErrorCodeUnsupportedTarget
+		return receipt, errors.New("computer target is not registered")
+	}
+	receipt.DisplayName = target.DisplayName
+	if !c.session.Approved() || c.session.State() == SessionStopped || c.session.State() == SessionFailed {
+		receipt.ErrorCode = ErrorCodeInactive
+		return receipt, errors.New("computer session is not ready")
+	}
+	launcher, ok := c.backend.(BackendLauncher)
+	if !ok {
+		receipt.ErrorCode = ErrorCodeLaunchFailed
+		return receipt, errors.New("computer target launcher is unavailable")
+	}
+	receipt, err = launcher.LaunchApp(ctx, target.Launch.ProviderKey)
+	receipt.TargetID = target.ID
+	receipt.DisplayName = target.DisplayName
+	if receipt.ErrorCode != "" {
+		receipt.ErrorCode = PublicErrorCode(receipt.ErrorCode)
+	}
+	if receipt.Outcome == OutcomeExecuted {
+		if target.Window.BundleID != "" && receipt.Window.BundleID != target.Window.BundleID {
+			receipt.Outcome = OutcomeRejected
+			receipt.ErrorCode = ErrorCodeTargetWindowMismatch
+			err = errors.New("computer target window does not match registry policy")
+		}
+		if target.Window.RequireVisible && !receipt.Window.IsVisible {
+			receipt.Outcome = OutcomeRejected
+			receipt.ErrorCode = ErrorCodeTargetWindowMismatch
+			err = errors.New("computer target window is not visible")
+		}
+		if target.Window.RequireFrontmost && !receipt.Window.IsFrontmost {
+			receipt.Outcome = OutcomeRejected
+			receipt.ErrorCode = ErrorCodeTargetWindowMismatch
+			err = errors.New("computer target window is not frontmost")
+		}
+	}
+	return receipt, err
+}
+
+// LaunchApp is retained for older adapters. New callers must use LaunchTarget.
 func (c *Controller) LaunchApp(ctx context.Context, owner SessionOwner, id, app string) (LaunchReceipt, error) {
 	if err := c.authorize(owner, id); err != nil {
 		return LaunchReceipt{}, err

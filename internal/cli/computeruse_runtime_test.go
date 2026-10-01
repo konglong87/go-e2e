@@ -143,7 +143,7 @@ func TestComputerUseGuidanceIsBoundedAndForbidsAlternateGUIRoutes(t *testing.T) 
 		"AgentGet",
 		"AgentCreate",
 		"deep accessibility or UI-tree inspection",
-		"launch_app(WorkBuddy) when the target is closed → observe the returned WorkBuddy window → click/type → click send → one wait/observe → stop",
+		"launch_app with its registered target_id → observe the returned bound window → click/type/key as needed → verify with one fresh observe or wait → stop",
 		"at most 8 turns and 6 input actions",
 	} {
 		if !strings.Contains(computerUseSystemGuidance, want) {

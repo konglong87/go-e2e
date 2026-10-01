@@ -78,8 +78,32 @@ func (c *Client) Capabilities(ctx context.Context, owner cu.SessionOwner, sessio
 	return out, nil
 }
 
+func (c *Client) LaunchTarget(ctx context.Context, owner cu.SessionOwner, sessionID string, targetID cu.TargetID) (cu.LaunchReceipt, error) {
+	if targetID == "" || !validID(string(targetID)) {
+		return cu.LaunchReceipt{TargetID: targetID, Outcome: cu.OutcomeRejected, ErrorCode: cu.ErrorCodeUnsupportedTarget, CompletedAt: time.Now()}, ErrInvalidRequest
+	}
+	response, attempted, err := c.call(ctx, Request{Op: OpLaunchApp, Owner: owner, SessionID: sessionID, TargetID: string(targetID)})
+	if !attempted {
+		return cu.LaunchReceipt{}, err
+	}
+	var out cu.LaunchReceipt
+	if decodeStrict(response.Data, &out) != nil || !validLaunchReceipt(out, sessionID, string(targetID), "") {
+		return cu.LaunchReceipt{TargetID: targetID, Outcome: cu.OutcomeRejected, ErrorCode: cu.ErrorCodeLaunchFailed, CompletedAt: time.Now()}, ErrInvalidResponse
+	}
+	if out.ErrorCode != "" {
+		out.ErrorCode = cu.PublicErrorCode(out.ErrorCode)
+	}
+	if err != nil {
+		return out, err
+	}
+	if out.Outcome != cu.OutcomeExecuted {
+		return out, ErrRemote
+	}
+	return out, nil
+}
+
 func (c *Client) LaunchApp(ctx context.Context, owner cu.SessionOwner, sessionID, application string) (cu.LaunchReceipt, error) {
-	if application != string(cu.ApplicationWorkBuddy) {
+	if !validID(application) {
 		return cu.LaunchReceipt{Application: cu.ComputerApplication(application), Outcome: cu.OutcomeRejected, ErrorCode: cu.ErrorCodeUnsupportedApplication}, ErrInvalidRequest
 	}
 	response, attempted, err := c.call(ctx, Request{Op: OpLaunchApp, Owner: owner, SessionID: sessionID, Application: application})
@@ -87,8 +111,8 @@ func (c *Client) LaunchApp(ctx context.Context, owner cu.SessionOwner, sessionID
 		return cu.LaunchReceipt{}, err
 	}
 	var out cu.LaunchReceipt
-	if decodeStrict(response.Data, &out) != nil || !validLaunchReceipt(out, sessionID, application) {
-		return cu.LaunchReceipt{Application: cu.ApplicationWorkBuddy, Outcome: cu.OutcomeRejected, ErrorCode: cu.ErrorCodeLaunchFailed, CompletedAt: time.Now()}, ErrInvalidResponse
+	if decodeStrict(response.Data, &out) != nil || !validLaunchReceipt(out, sessionID, "", application) {
+		return cu.LaunchReceipt{Application: cu.ComputerApplication(application), Outcome: cu.OutcomeRejected, ErrorCode: cu.ErrorCodeLaunchFailed, CompletedAt: time.Now()}, ErrInvalidResponse
 	}
 	if out.ErrorCode != "" {
 		out.ErrorCode = cu.PublicErrorCode(out.ErrorCode)

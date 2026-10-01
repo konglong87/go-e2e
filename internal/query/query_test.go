@@ -158,7 +158,7 @@ func TestSimpleComputerUsePromptAutoEnablesOnlyForWorkBuddyGUIIntent(t *testing.
 		{name: "simple WorkBuddy GUI flow", prompt: "In WorkBuddy, type hello and click Send.", want: true},
 		{name: "simple Chinese WorkBuddy GUI flow", prompt: "帮我在WorkBuddy中新建会话，输入1+1=2并点击发送。", want: true},
 		{name: "normal code query", prompt: "Fix the WorkBuddy integration code in the repository and add a test.", want: false},
-		{name: "unrelated GUI prompt", prompt: "Click Send in another desktop app.", want: false},
+		{name: "generic GUI prompt", prompt: "Click Send in another desktop app.", want: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if got := isSimpleComputerUsePrompt(test.prompt); got != test.want {

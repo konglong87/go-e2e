@@ -6916,8 +6916,7 @@ const defaultQuerySource = "repl_main_thread"
 func isSimpleComputerUsePrompt(prompt string) bool {
 	prompt = strings.ToLower(strings.TrimSpace(prompt))
 	// The classifier budget is expressed in user-visible characters, not UTF-8
-	// bytes. A Chinese WorkBuddy request otherwise exceeds the limit three times
-	// faster and silently misses the Computer Use fast path.
+	// bytes, so multilingual GUI requests receive the same fast-path budget.
 	if prompt == "" || utf8.RuneCountInString(prompt) > 600 || strings.Contains(prompt, "don't") {
 		return false
 	}
@@ -6929,7 +6928,15 @@ func isSimpleComputerUsePrompt(prompt string) bool {
 	for _, word := range strings.Fields(normalized) {
 		words[word] = struct{}{}
 	}
-	if !strings.Contains(prompt, "workbuddy") {
+	guiHints := []string{"computer use", "computeruse", "gui", "desktop", "应用", "窗口", "界面", "电脑", "workbuddy"}
+	guiMentioned := false
+	for _, hint := range guiHints {
+		if strings.Contains(prompt, hint) {
+			guiMentioned = true
+			break
+		}
+	}
+	if !guiMentioned {
 		return false
 	}
 	for _, blocked := range []string{"code", "coding", "repo", "repository", "file", "function", "git", "bash", "shell", "implement", "debug"} {

@@ -24,9 +24,12 @@ type Backend interface {
 	Close(context.Context) error
 }
 
-// ApplicationLauncher is an optional trusted host capability. Launching is a
-// session-management operation, not a model-generated input event, and must
-// be implemented by an allowlisted native host launcher.
-type BackendApplicationLauncher interface {
+// BackendLauncher is the compatibility boundary used by a trusted host
+// backend. Controller launch calls resolve TargetID through TargetRegistry
+// before passing this opaque provider key to the backend.
+type BackendLauncher interface {
 	LaunchApp(context.Context, string) (LaunchReceipt, error)
 }
+
+// BackendApplicationLauncher is retained as a source-compatible alias.
+type BackendApplicationLauncher = BackendLauncher

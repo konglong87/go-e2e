@@ -14,9 +14,14 @@ type Service interface {
 	Stop(context.Context, SessionOwner, string) error
 }
 
-// ApplicationLauncher is the optional service boundary for allowlisted host
-// application startup. It is intentionally separate from Service so existing
-// platform/test implementations cannot gain launch authority accidentally.
+// TargetLauncher is the generic trusted launch boundary. Callers provide only
+// a registered TargetID; launch metadata is resolved by the host registry.
+type TargetLauncher interface {
+	LaunchTarget(context.Context, SessionOwner, string, TargetID) (LaunchReceipt, error)
+}
+
+// ApplicationLauncher is retained for source compatibility with older host
+// adapters. New generic Computer Use paths must use TargetLauncher.
 type ApplicationLauncher interface {
 	LaunchApp(context.Context, SessionOwner, string, string) (LaunchReceipt, error)
 }

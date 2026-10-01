@@ -14,6 +14,33 @@ be read as evidence that the native overlay or the whole product fully passed.
 | Deferred | Second physical display | Requires hardware; not passed. |
 | Deferred LAST | Formal signing and distribution | Developer ID/notarization/clean installation and upgrade; local ad-hoc builds do not substitute. |
 
+### Phase update — generic target/binding foundation — 2026-10-01
+
+- Replaced the model-visible application allowlist boundary with a generic
+  `TargetID` and host-owned `ApplicationTarget` registry. The model supplies
+  only a registered target ID; the host resolves the provider launch key and
+  window policy before any native launch request.
+- Added reusable `TargetBinding` identity validation (`window_id`, owner PID,
+  bundle ID, frame, visibility, generation, and bind time). The macOS backend
+  now stores and revalidates this binding on every window-scoped observation;
+  stale identity fails closed and never falls back to display-level input.
+- Generalized the native launch protocol to carry a trusted target descriptor
+  (`target_id`, display name, provider bundle key) without WorkBuddy-specific
+  logic in the Computer Use core, bridge, or native engine. WorkBuddy is now a
+  desktop fixture registration only.
+- Added the platform-neutral `RunBudget`/FSM runner with bounded total,
+  launch/bind/observe, input, wait, model-turn, and zero-unknown-replay
+  budgets. It is independently tested and ready to be wired into the host
+  controller lifecycle.
+- Generic GUI fast-path guidance/classification no longer requires WorkBuddy;
+  existing WorkBuddy acceptance artifacts remain fixture evidence only.
+
+Acceptance boundary: this slice proves generic contracts and fake/native safety
+coverage, not a new real WorkBuddy send/reply acceptance. The next slice must
+wire the runner into the controller lifecycle, expose registered targets to the
+model/tool surface, and add at least one non-WorkBuddy fixture (Calculator or a
+native fixture app) before rerunning the 120-second WorkBuddy fixture loop.
+
 ### Phase update — trusted WorkBuddy launch and window binding — 2026-10-01
 
 - Native helper slice delivered in `9ade442`: `launch_app` is an allowlisted

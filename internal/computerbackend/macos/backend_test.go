@@ -67,12 +67,14 @@ func TestHelperProcess(t *testing.T) {
 				t.Fatalf("launch session=%q, want session-1", req.SessionID)
 			}
 			var launchRequest struct {
-				App string `json:"app"`
+				TargetID  string `json:"target_id"`
+				BundleID  string `json:"bundle_id"`
+				LegacyApp string `json:"app"`
 			}
 			if err := json.Unmarshal(req.Payload, &launchRequest); err != nil {
 				t.Fatal(err)
 			}
-			if launchRequest.App != string(cu.ApplicationWorkBuddy) {
+			if launchRequest.BundleID != cu.WorkBuddyBundleID && launchRequest.LegacyApp != string(cu.ApplicationWorkBuddy) {
 				outcome = cu.OutcomeRejected
 				result = map[string]any{}
 				brokerErrorCode = cu.ErrorCodeUnsupportedApplication
@@ -85,7 +87,7 @@ func TestHelperProcess(t *testing.T) {
 				break
 			}
 			result = map[string]any{
-				"app":       string(cu.ApplicationWorkBuddy),
+				"target_id": launchRequest.TargetID,
 				"bundle_id": cu.WorkBuddyBundleID,
 				"window": map[string]any{
 					"id": "workbuddy-window", "title": "WorkBuddy", "owner_pid": 84,
@@ -210,7 +212,7 @@ func readMarker(t *testing.T, path string) []byte {
 }
 func helperConfig(t *testing.T, mode string, timeout time.Duration, marker string) Config {
 	t.Helper()
-	return Config{HelperPath: os.Args[0], HelperArgs: []string{"-test.run=^TestHelperProcess$", "--", "computer-test-helper", mode, marker}, RequestTimeout: timeout}
+	return Config{HelperPath: os.Args[0], HelperArgs: []string{"-test.run=^TestHelperProcess$", "--", "computer-test-helper", mode, marker}, RequestTimeout: timeout, AllowedProviderKeys: []string{cu.WorkBuddyBundleID}}
 }
 func newTestBackend(t *testing.T, mode string, timeout time.Duration, marker string) *Backend {
 	t.Helper()
@@ -655,7 +657,7 @@ func TestAcknowledgedFocusFailureRetainsOnlyStopTransport(t *testing.T) {
 func TestBackendLaunchAppBindsWindowAndObserveUsesIt(t *testing.T) {
 	b := newTestBackend(t, "launch", time.Second, "")
 	_ = observeTest(t, b)
-	receipt, err := b.LaunchApp(context.Background(), string(cu.ApplicationWorkBuddy))
+	receipt, err := b.LaunchApp(context.Background(), cu.WorkBuddyBundleID)
 	if err != nil || receipt.Outcome != cu.OutcomeExecuted {
 		t.Fatalf("launch receipt=%+v err=%v", receipt, err)
 	}
@@ -674,7 +676,7 @@ func TestBackendLaunchAppBindsWindowAndObserveUsesIt(t *testing.T) {
 func TestBackendLaunchAppTimeoutIsControlled(t *testing.T) {
 	b := newTestBackend(t, "launch-timeout", time.Second, "")
 	_ = observeTest(t, b)
-	receipt, err := b.LaunchApp(context.Background(), string(cu.ApplicationWorkBuddy))
+	receipt, err := b.LaunchApp(context.Background(), cu.WorkBuddyBundleID)
 	if err == nil || receipt.Outcome != cu.OutcomeRejected || receipt.ErrorCode != cu.ErrorCodeLaunchTimeout {
 		t.Fatalf("timeout receipt=%+v err=%v", receipt, err)
 	}
@@ -683,8 +685,8 @@ func TestBackendLaunchAppTimeoutIsControlled(t *testing.T) {
 func TestBackendLaunchAppRejectsUnknownApplicationBeforeHelper(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "launch")
 	b := newTestBackend(t, "launch", time.Second, marker)
-	receipt, err := b.LaunchApp(context.Background(), "Safari")
-	if err == nil || receipt.Outcome != cu.OutcomeRejected || receipt.ErrorCode != cu.ErrorCodeUnsupportedApplication {
+	receipt, err := b.LaunchApp(context.Background(), "com.apple.Safari")
+	if err == nil || receipt.Outcome != cu.OutcomeRejected || receipt.ErrorCode != cu.ErrorCodeUnsupportedTarget {
 		t.Fatalf("unknown app receipt=%+v err=%v", receipt, err)
 	}
 	if data, readErr := os.ReadFile(marker); readErr == nil && strings.Contains(string(data), "launch") {

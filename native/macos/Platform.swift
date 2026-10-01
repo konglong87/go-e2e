@@ -123,7 +123,6 @@ struct MacDesktop: DesktopPlatform {
     }
 
     func launchApplication(bundleID: String, permitted: () -> Bool) throws -> NativeWindow {
-        guard bundleID == workBuddyBundleID else { throw SafetyError.unsupportedApplication }
         guard permitted() else { throw SafetyError.inactive }
 
         do {
@@ -158,7 +157,7 @@ struct MacDesktop: DesktopPlatform {
             guard permitted() else { throw SafetyError.inactive }
             do {
                 let candidates = try windows().filter {
-                    $0.bundleID == workBuddyBundleID && $0.isVisible && $0.frame.width > 0 && $0.frame.height > 0
+                    $0.bundleID == bundleID && $0.isVisible && $0.frame.width > 0 && $0.frame.height > 0
                 }
                 let frontmost = candidates.filter(\.isFrontmost)
                 if frontmost.count == 1 {

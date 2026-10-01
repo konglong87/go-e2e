@@ -51,7 +51,9 @@ func validRequest(r Request) bool {
 	case OpCapabilities, OpPause, OpResume, OpStop:
 		return r.StartupAttemptID == "" && r.ObserveRequest == nil && r.Action == nil && r.ObservationID == ""
 	case OpLaunchApp:
-		return r.StartupAttemptID == "" && r.Application == string(cu.ApplicationWorkBuddy) && r.ObserveRequest == nil && r.Action == nil && r.ObservationID == ""
+		validTargetLaunch := validID(r.TargetID) && r.Application == ""
+		validLegacyLaunch := r.TargetID == "" && validID(r.Application)
+		return r.StartupAttemptID == "" && (validTargetLaunch || validLegacyLaunch) && r.ObserveRequest == nil && r.Action == nil && r.ObservationID == ""
 	case OpObserve:
 		return r.StartupAttemptID == "" && r.ObserveRequest != nil && r.ObserveRequest.SessionID == r.SessionID &&
 			optionalID(r.ObserveRequest.DisplayID) && optionalID(r.ObserveRequest.WindowID) && r.Action == nil && r.ObservationID == ""
@@ -127,13 +129,19 @@ func validReceipt(r cu.ActionReceipt, a cu.Action) bool {
 	return r.Outcome == cu.OutcomeExecuted || r.Verification != cu.VerificationPassed
 }
 
-func validLaunchReceipt(r cu.LaunchReceipt, sessionID, application string) bool {
-	if !validID(sessionID) || application != string(cu.ApplicationWorkBuddy) ||
-		r.Application != cu.ApplicationWorkBuddy || !r.IsTerminal() || r.Duration < 0 || r.CompletedAt.IsZero() {
+func validLaunchReceipt(r cu.LaunchReceipt, sessionID, targetID, application string) bool {
+	if !validID(sessionID) || !r.IsTerminal() || r.Duration < 0 || r.CompletedAt.IsZero() {
+		return false
+	}
+	if targetID != "" {
+		if r.TargetID != cu.TargetID(targetID) || r.DisplayName == "" {
+			return false
+		}
+	} else if application == "" || string(r.Application) != application {
 		return false
 	}
 	if r.Outcome != cu.OutcomeExecuted {
 		return r.ErrorCode != ""
 	}
-	return r.BundleID == cu.WorkBuddyBundleID && r.Window.ID != "" && r.Window.OwnerPID > 0 && r.Window.BundleID == cu.WorkBuddyBundleID
+	return r.Window.ID != "" && r.Window.OwnerPID > 0 && r.BundleID != "" && r.Window.BundleID == r.BundleID
 }

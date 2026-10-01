@@ -861,15 +861,16 @@ type launchingService struct {
 	launchCalls   int
 }
 
-func (s *launchingService) LaunchApp(_ context.Context, _ cu.SessionOwner, sessionID, application string) (cu.LaunchReceipt, error) {
+func (s *launchingService) LaunchTarget(_ context.Context, _ cu.SessionOwner, sessionID string, targetID cu.TargetID) (cu.LaunchReceipt, error) {
 	s.launchCalls++
-	if sessionID != s.sessionID || application != string(cu.ApplicationWorkBuddy) {
-		return cu.LaunchReceipt{Application: cu.ComputerApplication(application), Outcome: cu.OutcomeRejected, ErrorCode: cu.ErrorCodeUnsupportedApplication}, errors.New("invalid launch binding")
+	if sessionID != s.sessionID || targetID == "" {
+		return cu.LaunchReceipt{TargetID: targetID, Outcome: cu.OutcomeRejected, ErrorCode: cu.ErrorCodeUnsupportedTarget}, errors.New("invalid launch binding")
 	}
 	if s.launchErr == nil && s.launchReceipt.Outcome == cu.OutcomeExecuted {
 		s.observation.ActiveWindow = s.launchReceipt.Window
 		s.observation.WindowID = s.launchReceipt.Window.ID
 	}
+	s.launchReceipt.TargetID = targetID
 	return s.launchReceipt, s.launchErr
 }
 
@@ -885,7 +886,7 @@ func TestFastPathObservationAutoLaunchesHostWindow(t *testing.T) {
 	service.observation.ActiveWindow.BundleID = cu.GoE2EHostBundleID
 	tc := testContext(service)
 	tc.ComputerUseFastPath = true
-	result := New().Run(context.Background(), json.RawMessage(`{"action":"observe"}`), tc)
+	result := New().Run(context.Background(), json.RawMessage(`{"action":"observe","target_id":"workbuddy"}`), tc)
 	if result.IsError {
 		t.Fatalf("result=%s", result.Content)
 	}
@@ -906,7 +907,7 @@ func TestLaunchAppUsesCoordinatorAndReturnsBoundWindowReceipt(t *testing.T) {
 			CompletedAt: time.Now(),
 		},
 	}
-	result := New().Run(context.Background(), json.RawMessage(`{"action":"launch_app","application":"WorkBuddy"}`), testContext(service))
+	result := New().Run(context.Background(), json.RawMessage(`{"action":"launch_app","target_id":"workbuddy"}`), testContext(service))
 	if result.IsError {
 		t.Fatalf("launch result=%s", result.Content)
 	}
@@ -923,9 +924,12 @@ func TestLaunchAppUsesCoordinatorAndReturnsBoundWindowReceipt(t *testing.T) {
 }
 
 func TestLaunchAppRejectsUnknownApplicationBeforeService(t *testing.T) {
-	service := &launchingService{coordinatingService: &coordinatingService{serviceStub: screenshotService(t), sessionID: testComputerSession}}
-	result := New().Run(context.Background(), json.RawMessage(`{"action":"launch_app","application":"Safari"}`), testContext(service))
-	if !result.IsError || !strings.Contains(result.Content, "unsupported_application") || service.starts != 0 || service.launchCalls != 0 {
+	service := &launchingService{
+		coordinatingService: &coordinatingService{serviceStub: screenshotService(t), sessionID: testComputerSession},
+		launchReceipt:       cu.LaunchReceipt{Outcome: cu.OutcomeRejected, ErrorCode: cu.ErrorCodeUnsupportedTarget, CompletedAt: time.Now()},
+	}
+	result := New().Run(context.Background(), json.RawMessage(`{"action":"launch_app","target_id":"safari"}`), testContext(service))
+	if !result.IsError || !strings.Contains(result.Content, "unsupported_target") || service.starts != 0 || service.launchCalls != 1 {
 		t.Fatalf("result=%+v starts=%d launchCalls=%d", result, service.starts, service.launchCalls)
 	}
 }

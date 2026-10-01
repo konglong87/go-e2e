@@ -52,6 +52,24 @@ type ComputerSessionDTO struct {
 
 type computerBackendFactory func(context.Context) (cu.Backend, error)
 
+const computerTargetWorkBuddy cu.TargetID = "workbuddy"
+
+// desktopComputerTargets is the fixture registry for the local desktop app.
+// The Computer Use core remains target-agnostic; production integrations can
+// replace this registry without changing the controller, tool, or native host.
+func desktopComputerTargets() *cu.StaticTargetRegistry {
+	registry, err := cu.NewStaticTargetRegistry(cu.ApplicationTarget{
+		ID:          computerTargetWorkBuddy,
+		DisplayName: "WorkBuddy",
+		Launch:      cu.LaunchPolicy{ProviderKey: "com.workbuddy.workbuddy"},
+		Window:      cu.WindowPolicy{BundleID: "com.workbuddy.workbuddy", RequireVisible: true},
+	})
+	if err != nil {
+		panic(err)
+	}
+	return registry
+}
+
 // Platform construction is injected; control/snapshot logic depends only on
 // the domain controller. Windows will supply a factory, not a second manager.
 type computerManager struct {
@@ -105,6 +123,7 @@ func newComputerBackend(ctx context.Context) (cu.Backend, error) {
 		RequestTimeout:         computerRequestTimeout,
 		RequestHostPermissions: macbackend.RequestHostPermissions,
 		CheckHostPermissions:   macbackend.CheckHostPermissions,
+		AllowedProviderKeys:    []string{"com.workbuddy.workbuddy"},
 	})
 }
 func locateComputerHelper() (string, error) {
@@ -221,7 +240,7 @@ func (m *computerManager) startOwnedWithLifetime(ctx, lifetime context.Context, 
 	if err != nil {
 		return ComputerSessionDTO{}, err
 	}
-	c, err := cu.NewController(s, b)
+	c, err := cu.NewControllerWithRegistry(s, b, desktopComputerTargets())
 	if err != nil {
 		return ComputerSessionDTO{}, err
 	}
@@ -278,7 +297,7 @@ func (m *computerManager) replaceBackendLocked(ctx context.Context) error {
 		// Revoke the old observation before exposing the new controller; the
 		// caller must observe again and no input is replayed.
 		_ = m.controller.Session().Pause()
-		c, err := cu.NewController(m.controller.Session(), b)
+		c, err := cu.NewControllerWithRegistry(m.controller.Session(), b, desktopComputerTargets())
 		if err != nil {
 			return err
 		}

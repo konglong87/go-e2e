@@ -50,10 +50,13 @@ type Config struct {
 	// CheckHostPermissions is the signed host's TCC source of truth. Production
 	// must not trust the nested helper's own TCC identity.
 	CheckHostPermissions func() (captureAllowed, inputAllowed bool)
-	MaxFrameBytes        int
-	Now                  func() time.Time
-	batchDriver          inputBatchDriver // private test seam
-	mouseDriver          mouseDriver      // package-private test seam; production always uses host CG
+	// AllowedProviderKeys are resolved by the host target registry. The backend
+	// refuses direct launches when a key was not explicitly provisioned.
+	AllowedProviderKeys []string
+	MaxFrameBytes       int
+	Now                 func() time.Time
+	batchDriver         inputBatchDriver // private test seam
+	mouseDriver         mouseDriver      // package-private test seam; production always uses host CG
 }
 
 func (b *Backend) selfTargetRejected(obs cu.Observation, action cu.Action) bool {
@@ -99,6 +102,7 @@ type Backend struct {
 	actions                 map[string]struct{}
 	capabilities            cu.Capabilities
 	targetWindowID          string
+	targetBinding           *cu.TargetBinding
 }
 type imageData struct {
 	data      []byte
@@ -413,12 +417,12 @@ func (b *Backend) Capabilities(ctx context.Context) (cu.Capabilities, error) {
 	return caps.Clone(), nil
 }
 
-// LaunchApp is a trusted session-management capability. The application name
-// is allowlisted before IPC; the native helper independently enforces the
-// bundle ID and waits for a matching Window Server window.
-func (b *Backend) LaunchApp(ctx context.Context, application string) (receipt cu.LaunchReceipt, resultErr error) {
+// LaunchApp launches the trusted provider key resolved by the host target
+// registry. The model never supplies this value directly; the controller
+// passes only a registry-owned opaque key.
+func (b *Backend) LaunchApp(ctx context.Context, providerKey string) (receipt cu.LaunchReceipt, resultErr error) {
 	started := b.config.Now()
-	receipt = cu.LaunchReceipt{Application: cu.ComputerApplication(application), Outcome: cu.OutcomeRejected}
+	receipt = cu.LaunchReceipt{BundleID: providerKey, Outcome: cu.OutcomeRejected}
 	finish := func(err error) (cu.LaunchReceipt, error) {
 		receipt.CompletedAt = b.config.Now()
 		receipt.Duration = receipt.CompletedAt.Sub(started)
@@ -430,14 +434,10 @@ func (b *Backend) LaunchApp(ctx context.Context, application string) (receipt cu
 		}
 		return receipt, err
 	}
-	if application != string(cu.ApplicationWorkBuddy) {
-		receipt.ErrorCode = cu.ErrorCodeUnsupportedApplication
-		return finish(&rejection{cu.ErrorCodeUnsupportedApplication})
+	if strings.TrimSpace(providerKey) == "" || len(providerKey) > 256 || !b.allowedProviderKey(providerKey) {
+		receipt.ErrorCode = cu.ErrorCodeUnsupportedTarget
+		return finish(&rejection{cu.ErrorCodeUnsupportedTarget})
 	}
-	// Launching an allowlisted app uses the trusted AppKit launcher and Window
-	// Server discovery; it does not post input. Accessibility/PostEvent TCC is
-	// checked again by the first observe/input boundary, so a missing input grant
-	// must not prevent the app from being started and bound.
 	if !b.hostCaptureAllowed() {
 		receipt.ErrorCode = cu.ErrorCodePermissionRequired
 		return finish(&rejection{cu.ErrorCodePermissionRequired})
@@ -453,10 +453,12 @@ func (b *Backend) LaunchApp(ctx context.Context, application string) (receipt cu
 	if sessionID == "" {
 		sessionID = "host"
 	}
-	// The helper binds its control state to the same session identity as the
-	// preceding trusted observation. Sending the synthetic "host" ID after an
-	// observe would fail the helper's session gate before AppKit launch.
-	response, err := b.request(ctx, commandLaunchApp, sessionID, "", map[string]any{"app": application, "generation": epoch})
+	response, err := b.request(ctx, commandLaunchApp, sessionID, "", map[string]any{
+		"target_id":    providerKey,
+		"display_name": providerKey,
+		"bundle_id":    providerKey,
+		"generation":   epoch,
+	})
 	if err != nil {
 		var rejected *rejection
 		if errors.As(err, &rejected) {
@@ -467,10 +469,11 @@ func (b *Backend) LaunchApp(ctx context.Context, application string) (receipt cu
 		}
 		return finish(err)
 	}
-	receipt.Application = cu.ApplicationWorkBuddy
-	receipt.BundleID, _ = response.Result["bundle_id"].(string)
+	if bundleID, ok := response.Result["bundle_id"].(string); ok {
+		receipt.BundleID = bundleID
+	}
 	window, ok := decodeWindowRef(response.Result["window"])
-	if !ok || receipt.BundleID != cu.WorkBuddyBundleID || window.BundleID != cu.WorkBuddyBundleID || window.OwnerPID <= 0 {
+	if !ok || receipt.BundleID == "" || window.BundleID != receipt.BundleID || window.OwnerPID <= 0 {
 		receipt.ErrorCode = cu.ErrorCodeLaunchFailed
 		return finish(errors.New("invalid launch metadata"))
 	}
@@ -480,10 +483,25 @@ func (b *Backend) LaunchApp(ctx context.Context, application string) (receipt cu
 		receipt.ErrorCode = cu.ErrorCodeInactive
 		return finish(&rejection{cu.ErrorCodeInactive})
 	}
+	binding, bindingErr := cu.NewTargetBinding(window, epoch, receipt.CompletedAt)
+	if bindingErr != nil {
+		receipt.ErrorCode = cu.ErrorCodeTargetWindowMismatch
+		return finish(bindingErr)
+	}
 	b.targetWindowID = window.ID
+	b.targetBinding = &binding
 	receipt.Window = window
 	receipt.Outcome = cu.OutcomeExecuted
 	return finish(nil)
+}
+
+func (b *Backend) allowedProviderKey(key string) bool {
+	for _, allowed := range b.config.AllowedProviderKeys {
+		if key == allowed {
+			return true
+		}
+	}
+	return false
 }
 
 func (b *Backend) acquire(ctx context.Context) (uint64, error) {
@@ -549,6 +567,12 @@ func (b *Backend) Observe(ctx context.Context, req cu.ObserveRequest) (cu.Observ
 	}
 	if targetWindow.ID != "" && *targetWindow.Frame != *coordinateSpace.Bounds {
 		return cu.Observation{}, errors.New("screenshot target frame does not match capture bounds")
+	}
+	b.mu.Lock()
+	bound := b.targetBinding
+	b.mu.Unlock()
+	if bound != nil && !bound.Matches(targetWindow) {
+		return cu.Observation{}, &rejection{cu.ErrorCodeTargetWindowMismatch}
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -798,6 +822,7 @@ func (b *Backend) control(ctx context.Context, command string) error {
 	if command == commandStop {
 		b.stopped = true
 		b.targetWindowID = ""
+		b.targetBinding = nil
 		b.images = map[string]imageData{}
 	}
 	b.mu.Unlock()
@@ -824,6 +849,7 @@ func (b *Backend) Close(ctx context.Context) error {
 	b.epoch++
 	b.images = map[string]imageData{}
 	b.targetWindowID = ""
+	b.targetBinding = nil
 	b.observation = cu.Observation{}
 	b.mu.Unlock()
 	var cleanupErr error
