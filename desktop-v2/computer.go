@@ -58,12 +58,26 @@ const computerTargetWorkBuddy cu.TargetID = "workbuddy"
 // The Computer Use core remains target-agnostic; production integrations can
 // replace this registry without changing the controller, tool, or native host.
 func desktopComputerTargets() *cu.StaticTargetRegistry {
-	registry, err := cu.NewStaticTargetRegistry(cu.ApplicationTarget{
-		ID:          computerTargetWorkBuddy,
-		DisplayName: "WorkBuddy",
-		Launch:      cu.LaunchPolicy{ProviderKey: "com.workbuddy.workbuddy"},
-		Window:      cu.WindowPolicy{BundleID: "com.workbuddy.workbuddy", RequireVisible: true},
-	})
+	registry, err := cu.NewStaticTargetRegistry(
+		cu.ApplicationTarget{
+			ID:          computerTargetWorkBuddy,
+			DisplayName: "WorkBuddy",
+			Launch:      cu.LaunchPolicy{ProviderKey: "com.workbuddy.workbuddy"},
+			Window:      cu.WindowPolicy{BundleID: "com.workbuddy.workbuddy", RequireVisible: true},
+		},
+		cu.ApplicationTarget{
+			ID:          "calculator",
+			DisplayName: "Calculator",
+			Launch:      cu.LaunchPolicy{ProviderKey: "com.apple.calculator"},
+			Window:      cu.WindowPolicy{BundleID: "com.apple.calculator", RequireVisible: true},
+		},
+		cu.ApplicationTarget{
+			ID:          "textedit",
+			DisplayName: "TextEdit",
+			Launch:      cu.LaunchPolicy{ProviderKey: "com.apple.TextEdit"},
+			Window:      cu.WindowPolicy{BundleID: "com.apple.TextEdit", RequireVisible: true},
+		},
+	)
 	if err != nil {
 		panic(err)
 	}
@@ -123,7 +137,7 @@ func newComputerBackend(ctx context.Context) (cu.Backend, error) {
 		RequestTimeout:         computerRequestTimeout,
 		RequestHostPermissions: macbackend.RequestHostPermissions,
 		CheckHostPermissions:   macbackend.CheckHostPermissions,
-		AllowedProviderKeys:    []string{"com.workbuddy.workbuddy"},
+		AllowedProviderKeys:    []string{"com.workbuddy.workbuddy", "com.apple.calculator", "com.apple.TextEdit"},
 	})
 }
 func locateComputerHelper() (string, error) {
