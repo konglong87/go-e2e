@@ -37,7 +37,7 @@ export const SETTINGS_NAV_GROUPS: readonly SettingsNavGroup[] = [
     zh: "运行配置",
     en: "Operations",
     items: [
-      item("models", Cpu, "大模型设置", "Models", ["配置供应商、默认模型与备用路由。", "Configure providers, default models and fallback routes."]),
+      item("models", Cpu, "大模型设置", "Models", ["配置供应商、普通 Fallback 与 Computer Use 视觉路由。", "Configure providers, standard fallback and Computer Use visual routes."]),
       item("observability", Activity, "可观测性", "Observability", ["读取服务健康、遥测和实际用量记录。", "Read service health, telemetry and recorded usage."]),
       item("profiles", Layers, "智能体定义", "Agent definitions", ["定义智能体的身份、能力、权限和发布版本。", "Define an agent's identity, capabilities, permissions and published versions."]),
       item("feishu", WandSparkles, "飞书连接", "Feishu connections", ["连接飞书账号并准备机器人绑定，不负责 Worker 启停。", "Connect Feishu accounts and prepare bot bindings; Worker controls live elsewhere."]),

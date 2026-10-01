@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import { Activity, ArrowUpRight, Braces, Check, Cpu, Eye, EyeOff, Plus, RotateCcw, Save, ShieldCheck, Trash2 } from "lucide-react";
+import { Activity, ArrowUpRight, Braces, Check, Cpu, Eye, EyeOff, Monitor, Plus, RotateCcw, Save, ShieldCheck, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { SETTINGS_SECRET_SENTINEL, settingsValue, type GlobalSettingsDraft, type SettingsPath } from "./globalSettingsDraft";
 import { useGlobalSettingsText } from "./globalSettingsCopy";
@@ -15,6 +15,7 @@ const PROTOCOLS = [["", "自动选择"], ["anthropic-messages", "Messages"], ["o
 const BOOL_OPTIONS = [["", "继承默认"], ["true", "启用"], ["false", "关闭"]] as const;
 const IMAGE_ROOT = ["imageGeneration"] as const;
 const FALLBACK_PROVIDERS = ["fallback", "providers"] as const;
+const COMPUTER_USE_ROUTES = ["computerUse", "imageInputRoutes"] as const;
 
 function stringValue(value: unknown): string { return typeof value === "string" || typeof value === "number" ? String(value) : ""; }
 function Field({ draft, path, label, type = "text", options, placeholder, full }: FieldProps) {
@@ -50,9 +51,54 @@ function StringListField({ draft, path, label }: Pick<FieldProps, "draft" | "pat
     onBlur={() => { if (Array.isArray(value)) draft.setField(path, value.map(stringValue).map((item) => item.trim()).filter(Boolean)); }} /></label>;
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
   const t = useGlobalSettingsText();
-  return <section className="global-settings-section"><h3>{t(title)}</h3>{children}</section>;
+  return <section className="global-settings-section"><h3>{t(title)}</h3>{description && <p className="global-settings-section-description">{t(description)}</p>}{children}</section>;
+}
+
+type ComputerUseRouteOption = { provider: string; model: string; label: string; inheritedModel: boolean };
+
+function routeMatches(route: unknown, provider: string, model: string): boolean {
+  if (!route || typeof route !== "object") return false;
+  const entry = route as Record<string, unknown>;
+  return stringValue(entry.provider) === provider && stringValue(entry.model) === model;
+}
+
+function ComputerUseRouting({ draft, providers }: { draft: GlobalSettingsDraft; providers: unknown[] }) {
+  const t = useGlobalSettingsText();
+  const primaryModel = stringValue(settingsValue(draft.doc, ["model"]));
+  const routeValue = settingsValue(draft.doc, COMPUTER_USE_ROUTES);
+  const routes = Array.isArray(routeValue) ? routeValue : [];
+  const options: ComputerUseRouteOption[] = [];
+  if (primaryModel) options.push({ provider: "primary", model: primaryModel, label: t("主模型"), inheritedModel: false });
+  const seen = new Set<string>();
+  providers.forEach((provider) => {
+    const name = stringValue(settingsValue(provider, ["name"])).trim();
+    if (!name || seen.has(name)) return;
+    seen.add(name);
+    const configuredModel = stringValue(settingsValue(provider, ["model"])).trim();
+    const model = configuredModel || primaryModel;
+    options.push({ provider: name, model, label: name, inheritedModel: !configuredModel && Boolean(model) });
+  });
+  const toggle = (option: ComputerUseRouteOption, enabled: boolean) => {
+    const next = routes.filter((route) => !routeMatches(route, option.provider, option.model));
+    if (enabled) next.push({ provider: option.provider, model: option.model });
+    draft.setField(COMPUTER_USE_ROUTES, next);
+  };
+  const configuredCount = options.filter((option) => routes.some((route) => routeMatches(route, option.provider, option.model))).length;
+  return <Section title="Computer Use 桌面操作" description="Computer Use 会读取桌面截图并返回点击、输入、滚动等操作。只有支持图片输入和 ComputerUse 动作调用的模型，才应加入这条视觉路由。普通 Fallback 不会自动接收桌面截图。">
+    <div className="global-settings-callout global-settings-callout-computer"><Monitor size={17} /><div><strong>{t("这是独立的桌面视觉路由")}</strong><p>{t("普通模型 Fallback 用于文本和常规工具调用；Computer Use 只会把截图发送给下面明确选择的 Provider/model。")}</p></div></div>
+    {options.length === 0 ? <div className="global-settings-route-empty">{t("请先在上方配置主模型或备用模型。")}</div> : <div className="global-settings-computer-routes">{options.map((option) => {
+      const checked = routes.some((route) => routeMatches(route, option.provider, option.model));
+      const disabled = !option.model;
+      return <label className={`global-settings-computer-route${checked ? " checked" : ""}${disabled ? " disabled" : ""}`} key={`${option.provider}:${option.model}`}>
+        <input type="checkbox" checked={checked} disabled={disabled} aria-label={`${option.label} ${option.model || t("未配置模型")}`} onChange={(event) => toggle(option, event.target.checked)} />
+        <span className="global-settings-computer-route-copy"><strong>{option.label}</strong><small>{option.model || t("未配置模型")}{option.inheritedModel ? ` · ${t("继承主模型")}` : ""}</small></span>
+        <span className="global-settings-computer-route-status">{checked ? t("已启用截图") : disabled ? t("需要模型") : t("未启用截图")}</span>
+      </label>;
+    })}</div>}
+    <p className="global-settings-section-footnote">{t("已启用")} {configuredCount}/{options.length} {t("个 Computer Use 视觉路由。保存后，运行中的服务可能需要重启。")}</p>
+  </Section>;
 }
 
 function providerMatchesPrimary(doc: Record<string, unknown> | null, provider: Record<string, unknown>): boolean {
@@ -130,7 +176,11 @@ function ModelsView({ draft }: { draft: GlobalSettingsDraft }) {
       </nav>
       <ProviderForm key={selection} draft={draft} selected={selection} onRemove={removeProvider} onPromote={() => void draft.promoteProvider(selection)} />
     </div>
-    <Section title="备用路由"><div className="global-settings-grid"><BooleanField draft={draft} path={["fallback", "enabled"]} label="启用 Fallback" /></div></Section>
+    <Section title="普通模型 Fallback 链" description="用于文本对话、代码任务和常规工具调用。这里的备用 Provider 不代表一定支持桌面截图。">
+      <div className="global-settings-callout"><Cpu size={17} /><div><strong>{t("普通请求和 Computer Use 分开配置")}</strong><p>{t("先在上方添加备用 Provider，再在下面的 Computer Use 视觉路由中选择可接收桌面截图的模型。API 地址和密钥只需填写一次。")}</p></div></div>
+      <div className="global-settings-grid"><BooleanField draft={draft} path={["fallback", "enabled"]} label="启用普通 Fallback" /></div>
+    </Section>
+    <ComputerUseRouting draft={draft} providers={providers} />
     <Section title="图片生成"><div className="global-settings-grid">
       <BooleanField draft={draft} path={[...IMAGE_ROOT, "enabled"]} label="启用图片生成" />
       <BooleanField draft={draft} path={[...IMAGE_ROOT, "previewInContext"]} label="模型上下文包含图片预览" />

@@ -281,6 +281,39 @@ describe("shared global settings draft", () => {
     expect(errors.mock.calls.flat().join(" ")).not.toContain("same key");
   });
 
+  it("keeps standard fallback separate and lets users opt providers into Computer Use screenshots", async () => {
+    const doc = {
+      ...fixture,
+      model: "primary-vision",
+      fallback: {
+        enabled: true,
+        providers: [
+          { name: "backup-vision", type: "custom", model: "backup-vision" },
+          { name: "backup-text", type: "custom", model: "backup-text" },
+        ],
+      },
+      computerUse: { imageInputRoutes: [{ provider: "primary", model: "primary-vision" }] },
+    };
+    fetchMock.mockResolvedValueOnce(jsonResponse(snapshot(doc)));
+    await render("models");
+    expect(host.textContent).toContain("普通模型 Fallback 链");
+    expect(host.textContent).toContain("Computer Use 桌面操作");
+    expect(host.textContent).toContain("普通请求和 Computer Use 分开配置");
+    const routes = host.querySelectorAll<HTMLInputElement>(".global-settings-computer-route input");
+    expect(routes).toHaveLength(3);
+    expect(routes[0].checked).toBe(true);
+    expect(routes[1].checked).toBe(false);
+    expect(routes[2].checked).toBe(false);
+    act(() => routes[1].click());
+    expect(draft.doc?.computerUse).toEqual({ imageInputRoutes: [
+      { provider: "primary", model: "primary-vision" },
+      { provider: "backup-vision", model: "backup-vision" },
+    ] });
+    act(() => routes[0].click());
+    expect(draft.doc?.computerUse).toEqual({ imageInputRoutes: [{ provider: "backup-vision", model: "backup-vision" }] });
+    expect(draft.doc?.fallback).toEqual(doc.fallback);
+  });
+
   it("renders English model fields, JSON errors and confirmation dialogs", async () => {
     window.localStorage.setItem("golang-cc-webui.language.v1", "en");
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);

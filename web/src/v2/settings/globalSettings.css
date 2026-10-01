@@ -32,6 +32,26 @@
 .global-settings-panel .global-settings-icon { flex: 0 0 34px; height: 34px; min-width: 34px; padding: 0; }
 .global-settings-section { border-top: 1px solid var(--webui2-border); margin-top: 26px; padding-top: 23px; }
 .global-settings-section h3 { font-size: 15px; margin: 0 0 17px; }
+.global-settings-section-description { color: var(--webui2-text-muted); font-size: 12px; line-height: 1.65; margin: -7px 0 17px; max-width: 760px; }
+.global-settings-callout { align-items: flex-start; background: color-mix(in srgb, var(--webui2-accent) 8%, var(--webui2-surface)); border: 1px solid color-mix(in srgb, var(--webui2-accent) 28%, var(--webui2-border)); border-radius: 8px; color: var(--webui2-text); display: flex; gap: 10px; margin-bottom: 18px; padding: 12px 13px; }
+.global-settings-callout > svg { color: var(--webui2-accent); margin-top: 2px; }
+.global-settings-callout strong { display: block; font-size: 12px; font-weight: 650; }
+.global-settings-callout p { color: var(--webui2-text-muted); font-size: 11px; line-height: 1.6; margin: 4px 0 0; }
+.global-settings-callout-computer { background: color-mix(in srgb, var(--webui2-text) 4%, var(--webui2-surface)); border-color: var(--webui2-border); }
+.global-settings-callout-computer > svg { color: var(--webui2-text); }
+.global-settings-computer-routes { display: grid; gap: 8px; }
+.global-settings-computer-route { align-items: center; border: 1px solid var(--webui2-border); border-radius: 8px; cursor: pointer; display: flex; gap: 11px; min-width: 0; padding: 11px 12px; transition: border-color .15s ease, background .15s ease; }
+.global-settings-computer-route:hover { background: var(--webui2-surface-muted); }
+.global-settings-computer-route.checked { background: color-mix(in srgb, var(--webui2-accent) 7%, var(--webui2-surface)); border-color: color-mix(in srgb, var(--webui2-accent) 45%, var(--webui2-border)); }
+.global-settings-computer-route.disabled { cursor: not-allowed; opacity: .55; }
+.global-settings-computer-route input { accent-color: var(--webui2-accent); flex: 0 0 auto; height: 16px; width: 16px; }
+.global-settings-computer-route-copy { display: grid; gap: 3px; min-width: 0; }
+.global-settings-computer-route-copy strong, .global-settings-computer-route-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.global-settings-computer-route-copy strong { font-size: 12px; font-weight: 600; }
+.global-settings-computer-route-copy small { color: var(--webui2-text-muted); font-size: 11px; }
+.global-settings-computer-route-status { color: var(--webui2-text-muted); font-size: 11px; margin-left: auto; text-align: right; white-space: nowrap; }
+.global-settings-route-empty, .global-settings-section-footnote { color: var(--webui2-text-muted); font-size: 11px; line-height: 1.6; }
+.global-settings-section-footnote { margin: 12px 0 0; }
 .global-settings-advanced { margin-top: 20px; }
 .global-settings-advanced summary { color: var(--webui2-text-muted); cursor: pointer; font-size: 12px; padding: 4px 0; }
 .global-settings-advanced[open] summary { margin-bottom: 14px; }
@@ -58,4 +78,5 @@
   .global-settings-grid { gap: 15px; grid-template-columns: minmax(0, 1fr); }
   .global-settings-heading h1 { font-size: 21px; }
   .global-settings-json textarea { min-height: 330px; }
+  .global-settings-computer-route-status { font-size: 10px; }
 }
