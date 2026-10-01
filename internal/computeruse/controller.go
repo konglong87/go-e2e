@@ -28,6 +28,7 @@ type Controller struct {
 	mu             sync.Mutex
 	cancel         context.CancelFunc
 	targetRegistry TargetRegistry
+	runner         *Runner
 	pausing        int
 	pauseVersion   uint64
 }
@@ -40,12 +41,52 @@ func NewControllerWithRegistry(s *ComputerSession, b Backend, registry TargetReg
 	if s == nil || b == nil {
 		return nil, errors.New("computer session and backend are required")
 	}
-	return &Controller{session: s, backend: b, targetRegistry: registry, serial: make(chan struct{}, 1), control: make(chan struct{}, 1), stopping: make(chan struct{}, 1)}, nil
+	runner, err := NewRunner(DefaultRunBudget())
+	if err != nil {
+		return nil, err
+	}
+	return &Controller{session: s, backend: b, targetRegistry: registry, runner: runner, serial: make(chan struct{}, 1), control: make(chan struct{}, 1), stopping: make(chan struct{}, 1)}, nil
 }
 func (c *Controller) Session() *ComputerSession { return c.session }
 func (c *Controller) authorize(owner SessionOwner, id string) error {
 	if c.session.ID() != id || !c.session.Owns(owner) {
 		return errors.New("computer session ownership mismatch")
+	}
+	return nil
+}
+
+func (c *Controller) RunSnapshot() RunSnapshot {
+	if c.runner == nil {
+		return RunSnapshot{}
+	}
+	return c.runner.Snapshot()
+}
+
+func (c *Controller) failRun() {
+	if c.runner != nil {
+		_ = c.runner.Transition(Transition{To: RunStateFailed})
+	}
+}
+
+func (c *Controller) stopRun() {
+	if c.runner != nil {
+		_ = c.runner.Transition(Transition{To: RunStateStopped})
+	}
+}
+
+func (c *Controller) ensureBoundRun() error {
+	if c.runner == nil || c.runner.State() != RunStateCreated {
+		return nil
+	}
+	return c.runner.Transition(Transition{From: RunStateCreated, To: RunStateBound})
+}
+
+func (c *Controller) syncObservedRun() error {
+	if err := c.ensureBoundRun(); err != nil {
+		return err
+	}
+	if c.runner != nil && c.runner.State() == RunStateBound {
+		return c.runner.Transition(Transition{From: RunStateBound, To: RunStateObserved})
 	}
 	return nil
 }
@@ -112,14 +153,33 @@ func (c *Controller) Observe(ctx context.Context, owner SessionOwner, r ObserveR
 	if err = c.session.CanObserve(); err != nil {
 		return Observation{}, err
 	}
+	if err = c.ensureBoundRun(); err != nil {
+		return Observation{}, err
+	}
+	started := time.Now()
 	o, err := c.backend.Observe(op, r)
 	if err != nil {
 		_ = c.session.Pause()
+		c.failRun()
 		return Observation{}, observeFailure(err)
 	}
 	if err = c.session.SetObservation(o); err != nil {
 		_ = c.session.Pause()
+		c.failRun()
 		return Observation{}, err
+	}
+	if c.runner != nil {
+		if err = c.runner.Consume(Consumption{Kind: BudgetObserve, Duration: time.Since(started)}); err != nil {
+			c.failRun()
+			return Observation{}, err
+		}
+		if c.runner.State() == RunStateBound || c.runner.State() == RunStateVerifying {
+			from := c.runner.State()
+			if err = c.runner.Transition(Transition{From: from, To: RunStateObserved}); err != nil {
+				c.failRun()
+				return Observation{}, err
+			}
+		}
 	}
 	return o, nil
 }
@@ -136,6 +196,7 @@ func (c *Controller) LaunchTarget(ctx context.Context, owner SessionOwner, id st
 		return LaunchReceipt{TargetID: targetID, Outcome: OutcomeRejected, ErrorCode: ErrorCodeTimeout, CompletedAt: time.Now()}, err
 	}
 	defer release()
+	started := time.Now()
 	receipt := LaunchReceipt{TargetID: targetID, Outcome: OutcomeRejected, CompletedAt: time.Now()}
 	if c.targetRegistry == nil {
 		receipt.ErrorCode = ErrorCodeUnsupportedTarget
@@ -163,6 +224,14 @@ func (c *Controller) LaunchTarget(ctx context.Context, owner SessionOwner, id st
 		receipt.ErrorCode = PublicErrorCode(receipt.ErrorCode)
 	}
 	if receipt.Outcome == OutcomeExecuted {
+		if c.runner != nil {
+			if budgetErr := c.runner.Consume(Consumption{Kind: BudgetLaunch, Duration: time.Since(started)}); budgetErr != nil {
+				c.failRun()
+				receipt.Outcome = OutcomeRejected
+				receipt.ErrorCode = ErrorCodeTimeout
+				return receipt, budgetErr
+			}
+		}
 		if target.Window.BundleID != "" && receipt.Window.BundleID != target.Window.BundleID {
 			receipt.Outcome = OutcomeRejected
 			receipt.ErrorCode = ErrorCodeTargetWindowMismatch
@@ -177,6 +246,13 @@ func (c *Controller) LaunchTarget(ctx context.Context, owner SessionOwner, id st
 			receipt.Outcome = OutcomeRejected
 			receipt.ErrorCode = ErrorCodeTargetWindowMismatch
 			err = errors.New("computer target window is not frontmost")
+		}
+		if err == nil && c.runner != nil && c.runner.State() == RunStateCreated {
+			if err = c.runner.Transition(Transition{From: RunStateCreated, To: RunStateBound}); err != nil {
+				c.failRun()
+				receipt.Outcome = OutcomeRejected
+				receipt.ErrorCode = ErrorCodeTargetWindowMismatch
+			}
 		}
 	}
 	return receipt, err
@@ -240,6 +316,25 @@ func (c *Controller) Execute(ctx context.Context, owner SessionOwner, a Action) 
 	if err = c.session.BeginAction(a); err != nil {
 		return ActionReceipt{ActionID: a.ID, SessionID: a.SessionID, Outcome: OutcomeRejected, Verification: VerificationNotChecked, RedactedActionSummary: a.RedactedSummary(), ErrorCode: "action_rejected", CompletedAt: time.Now()}, err
 	}
+	if err = c.syncObservedRun(); err != nil {
+		return ActionReceipt{ActionID: a.ID, SessionID: a.SessionID, Outcome: OutcomeRejected, Verification: VerificationNotChecked, RedactedActionSummary: a.RedactedSummary(), ErrorCode: ErrorCodeInactive, CompletedAt: time.Now()}, err
+	}
+	if c.runner != nil {
+		kind := BudgetInput
+		if a.Kind == ActionWait {
+			kind = BudgetWait
+		}
+		// Reserve the count before dispatch. An over-budget action must never
+		// reach the native host; an unknown dispatch is still never replayed.
+		if err = c.runner.Consume(Consumption{Kind: kind}); err != nil {
+			c.failRun()
+			return ActionReceipt{ActionID: a.ID, SessionID: a.SessionID, Outcome: OutcomeRejected, Verification: VerificationNotChecked, RedactedActionSummary: a.RedactedSummary(), ErrorCode: ErrorCodeTimeout, CompletedAt: time.Now()}, err
+		}
+		if err = c.runner.Transition(Transition{From: RunStateObserved, To: RunStateExecuting}); err != nil {
+			c.failRun()
+			return ActionReceipt{ActionID: a.ID, SessionID: a.SessionID, Outcome: OutcomeRejected, Verification: VerificationNotChecked, RedactedActionSummary: a.RedactedSummary(), ErrorCode: ErrorCodeInactive, CompletedAt: time.Now()}, err
+		}
+	}
 	started := time.Now()
 	receipt, backendErr := c.backend.Execute(op, a)
 	// No response or an invalid response after dispatch is never evidence of no
@@ -259,7 +354,23 @@ func (c *Controller) Execute(ctx context.Context, owner SessionOwner, a Action) 
 	receipt.CompletedAt = time.Now()
 	receipt.Duration = time.Since(started)
 	if err = c.session.RecordReceipt(receipt); err != nil {
+		c.failRun()
 		return receipt, err
+	}
+	if c.runner != nil {
+		cooperativePause := c.session.State() == SessionPaused
+		if cooperativePause {
+			// Pause owns the recovery boundary and resets the runner after the
+			// interrupted receipt has drained.
+		} else if receipt.Outcome == OutcomeUnknown || backendErr != nil {
+			c.failRun()
+		} else if err = c.runner.Transition(Transition{From: RunStateExecuting, To: RunStateVerifying}); err != nil {
+			c.failRun()
+		} else if receipt.AfterObservationID != "" && receipt.After != nil {
+			_ = c.runner.Transition(Transition{From: RunStateVerifying, To: RunStateObserved})
+		} else {
+			c.failRun()
+		}
 	}
 	if backendErr != nil {
 		return receipt, errors.New("computer backend failed; inspect receipt before continuing")
@@ -334,6 +445,12 @@ func (c *Controller) Pause(ctx context.Context, owner SessionOwner, id string) (
 		return err
 	}
 	defer drain()
+	if c.runner != nil {
+		if resetErr := c.runner.ResetToObserved(); resetErr != nil {
+			c.failRun()
+			return resetErr
+		}
+	}
 	return nil
 }
 func (c *Controller) Resume(ctx context.Context, owner SessionOwner, id string) error {
@@ -379,6 +496,7 @@ func (c *Controller) Stop(ctx context.Context, owner SessionOwner, id string) er
 	if err := c.session.Stop(owner); err != nil {
 		return err
 	}
+	c.stopRun()
 	// Stop bypasses action and Pause/Resume gates. Serialize only other Stops:
 	// a backend's idempotent no-op ack must not abort an earlier Stop RPC.
 	ctx, cancel := context.WithTimeout(ctx, controllerControlGrace)

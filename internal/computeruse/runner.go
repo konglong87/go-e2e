@@ -68,6 +68,18 @@ func (k BudgetKind) durationBudget() bool {
 // A zero duration or zero count means that the corresponding budget is not
 // limited, except MaxUnknownReplays: unknown outcomes are never replayable and
 // this field must remain zero.
+// DefaultRunBudget bounds a normal desktop Computer Use run while leaving
+// application semantics to the model/verifier. Hosts can replace it with a
+// stricter budget for a particular workflow.
+func DefaultRunBudget() RunBudget {
+	return RunBudget{
+		TotalDuration: 120 * time.Second, LaunchDuration: 10 * time.Second,
+		BindDuration: 10 * time.Second, ObserveDuration: 10 * time.Second,
+		MaxInputActions: 64, MaxWaitActions: 16, MaxModelTurns: 16,
+		MaxUnknownReplays: 0,
+	}
+}
+
 type RunBudget struct {
 	TotalDuration   time.Duration
 	LaunchDuration  time.Duration
@@ -242,6 +254,23 @@ func (r *Runner) Transition(transition Transition) error {
 	return nil
 }
 
+// ResetToObserved reopens the observation phase after a cooperative host
+// pause. It does not clear usage or permit replay; the session still requires a
+// fresh observation before input.
+func (r *Runner) ResetToObserved() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.state.terminal() {
+		return fmt.Errorf("%w: %s", ErrRunTerminal, r.state)
+	}
+	if err := r.checkDeadlineLocked(); err != nil {
+		return err
+	}
+	r.state = RunStateObserved
+	r.updatedAt = r.now()
+	return nil
+}
+
 // Consume records one launch/bind/observe duration or one input/wait/model
 // turn. Unknown replay is deliberately rejected before mutating any usage.
 func (r *Runner) Consume(consumption Consumption) error {
@@ -319,11 +348,11 @@ func (r *Runner) checkPhaseStateLocked(kind BudgetKind) error {
 	case BudgetLaunch, BudgetBind:
 		allowed = r.state == RunStateCreated
 	case BudgetObserve:
-		allowed = r.state == RunStateBound || r.state == RunStateVerifying
+		allowed = r.state == RunStateBound || r.state == RunStateVerifying || r.state == RunStateObserved
 	case BudgetInput:
 		allowed = r.state == RunStateObserved
 	case BudgetWait:
-		allowed = r.state == RunStateVerifying
+		allowed = r.state == RunStateObserved || r.state == RunStateVerifying
 	case BudgetModelTurn:
 		allowed = !r.state.terminal()
 	case BudgetUnknownReplay:
