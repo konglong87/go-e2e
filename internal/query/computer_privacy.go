@@ -160,6 +160,16 @@ func (s *Session) computerAuditHistory(messages []anthropic.MessageParam) []anth
 
 const maxLiveComputerImages = 2
 
+func (s *Session) liveComputerImageLimit() int {
+	if s.options.ComputerUseFastPath {
+		// The fast path always receives a fresh authoritative observation after
+		// every successful input. Retaining an older frame only adds image tokens
+		// and latency, while the receipt still records the prior action.
+		return 1
+	}
+	return maxLiveComputerImages
+}
+
 // Keep current and previous desktop frames for visual comparison. Receipt and
 // observation metadata stay in history; user attachments/other media stay intact.
 // Do not let repeated observations grow provider input and latency unboundedly.
@@ -174,7 +184,7 @@ func (s *Session) limitComputerImageHistory(messages []anthropic.MessageParam) [
 				continue
 			}
 			retained++
-			if retained > maxLiveComputerImages {
+			if retained > s.liveComputerImageLimit() {
 				out[i].Content[j] = anthropic.ContentBlock{Type: blockTypeText, Text: "Older desktop screenshot omitted; only a fresh observation may authorize new input."}
 			}
 		}

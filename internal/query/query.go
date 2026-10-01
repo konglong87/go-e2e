@@ -1339,6 +1339,10 @@ func reconcileStreamedText(cb runCallbacks, streamed string, accepted *anthropic
 func (s *Session) run(ctx context.Context, prompt string, cb runCallbacks) (result Result, runErr error) {
 	if !s.options.ComputerUseFastPath && s.options.ComputerUse != nil && s.options.ComputerUseImageSupported && isSimpleComputerUsePrompt(prompt) {
 		s.options.ComputerUseFastPath = true
+		// A simple desktop task does not need repository, skills, memory, or hook
+		// context. Keeping the normal code profile here made every subsequent
+		// screenshot/model turn slower as the visual transcript grew.
+		s.options.RuntimeProfile = runtimeprofile.ProfileBare
 		if s.options.MaxTurns > computerUseFastPathMaxTurns {
 			s.options.MaxTurns = computerUseFastPathMaxTurns
 		}

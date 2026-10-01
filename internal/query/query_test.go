@@ -27,6 +27,7 @@ import (
 	"github.com/konglong87/go-e2e/internal/memory"
 	"github.com/konglong87/go-e2e/internal/permissions"
 	"github.com/konglong87/go-e2e/internal/repair"
+	"github.com/konglong87/go-e2e/internal/runtimeprofile"
 	"github.com/konglong87/go-e2e/internal/session"
 	"github.com/konglong87/go-e2e/internal/skills"
 	mysqlstore "github.com/konglong87/go-e2e/internal/storage/mysql"
@@ -177,6 +178,9 @@ func TestSimpleComputerUsePromptActivatesBoundedRunWithoutChangingCodeQueries(t 
 	}
 	if !fast.options.ComputerUseFastPath || fast.options.MaxTurns != 8 || !fastProbe.hasDeadline {
 		t.Fatalf("WorkBuddy fast path state: enabled=%v max_turns=%d deadline=%v", fast.options.ComputerUseFastPath, fast.options.MaxTurns, fastProbe.hasDeadline)
+	}
+	if fast.options.RuntimeProfile != runtimeprofile.ProfileBare {
+		t.Fatalf("WorkBuddy fast path runtime profile=%q, want bare", fast.options.RuntimeProfile)
 	}
 
 	codeProbe := &deadlineProbeStreamer{}
