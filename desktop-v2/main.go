@@ -98,7 +98,7 @@ func desktopWailsOptions(application *app, config desktopConfig, target *url.URL
 
 func (a *app) startup(ctx context.Context) {
 	a.setWindowContext(ctx)
-	a.startComputerPanel(ctx)
+	a.startComputerPanelIfEnabled(ctx)
 	closeAcceptance, acceptanceErr := startComputerAcceptance(ctx, a.computer(), os.Args[1:])
 	if acceptanceErr != nil {
 		startupLog("computer acceptance: " + acceptanceErr.Error())

@@ -11,7 +11,19 @@ const (
 	computerPanelPollInterval    = 60 * time.Millisecond
 	computerPanelRefreshInterval = 500 * time.Millisecond
 	computerPanelPreviewTimeout  = 2 * time.Second
+
+	// nativeComputerPanelStartupEnabled keeps the native NSPanel opt-in while
+	// the WebView DOM overlay remains the default desktop presentation.
+	// Keep the native implementation compiled for a future explicit opt-in.
+	nativeComputerPanelStartupEnabled = false
 )
+
+func (a *app) startComputerPanelIfEnabled(ctx context.Context) {
+	if !nativeComputerPanelStartupEnabled {
+		return
+	}
+	a.startComputerPanel(ctx)
+}
 
 func (a *app) startComputerPanel(ctx context.Context) {
 	panel := newNativeComputerPanel()

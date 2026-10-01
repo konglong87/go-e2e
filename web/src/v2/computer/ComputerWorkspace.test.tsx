@@ -68,6 +68,23 @@ describe("ComputerWorkspace", () => {
     expect(container.innerHTML).toBe("");
   });
 
+  it("renders the DOM workspace by default without calling native overlay methods", async () => {
+    const bridge = nativeBridge();
+    const client = createTestClient();
+
+    await act(async () => root.render(<I18nProvider><ComputerWorkspace client={client} /></I18nProvider>));
+
+    expect(document.body.querySelector('[aria-label="Computer workspace"]')).not.toBeNull();
+    expect(bridge.IsComputerOverlayAvailable).not.toHaveBeenCalled();
+    expect(bridge.UpdateComputerOverlay).not.toHaveBeenCalled();
+    expect(bridge.ShowComputerOverlay).not.toHaveBeenCalled();
+
+    await clickAria("Collapse Computer Use workspace");
+    expect(document.body.querySelector('[aria-label="Computer workspace"]')).toBeNull();
+    await clickAria("Open Computer Use workspace");
+    expect(document.body.querySelector('[aria-label="Computer workspace"]')).not.toBeNull();
+  });
+
   it("opens from the explicit workspace event and expands into a draggable workspace", async () => {
     storage = { "go-e2e.computer-workspace.v1": JSON.stringify({ displayMode: "auto", collapsed: true, position: null }), "golang-cc-webui.language.v1": "en" };
     const client = createTestClient();
@@ -274,7 +291,7 @@ describe("ComputerWorkspace", () => {
     expect(button("Start session").disabled).toBe(false);
   });
 
-  it("handles the actual start → observe DTO under StrictMode without resetting on rerender", async () => {
+  it("uses the visible DOM workspace as the single progress surface under StrictMode", async () => {
     const client = createTestClient();
     const render = () => <I18nProvider><StrictMode><ComputerWorkspace client={client} /></StrictMode></I18nProvider>;
     await act(async () => root.render(render()));
@@ -285,11 +302,28 @@ describe("ComputerWorkspace", () => {
     expect(client.start).toHaveBeenCalledWith({ approved: true });
     expect(client.observe).toHaveBeenCalledWith("s1");
     expect(document.body.querySelector("img")?.getAttribute("src")).toBe(`data:image/png;base64,${observationResponse.image_data}`);
-    expect(document.body.querySelector('[aria-label="Computer Use progress"]')).not.toBeNull();
-    await act(async () => root.render(render()));
+    expect(document.body.querySelector('[aria-label="Computer workspace"]')).not.toBeNull();
+    expect(document.body.querySelector('[aria-label="Computer Use progress"]')).toBeNull();
     expect(button("Stop").disabled).toBe(false);
+    await click("Pause");
+    expect(client.pause).toHaveBeenCalledWith("s1");
+    expect(button("Resume").disabled).toBe(false);
+    await act(async () => root.render(render()));
     expect(client.start).toHaveBeenCalledTimes(1);
     expect(document.body.querySelector("img")).not.toBeNull();
+  });
+
+  it("keeps separate progress available when the DOM workspace is collapsed", async () => {
+    const client = createTestClient();
+    await act(async () => root.render(<I18nProvider><ComputerWorkspace client={client} /></I18nProvider>));
+    await click("Start session");
+    await click("Approve session");
+    expect(document.body.querySelector('[aria-label="Computer Use progress"]')).toBeNull();
+
+    await clickAria("Collapse Computer Use workspace");
+
+    expect(document.body.querySelector('[aria-label="Computer workspace"]')).toBeNull();
+    expect(document.body.querySelector('[aria-label="Computer Use progress"]')).not.toBeNull();
   });
 
   it("captures the displayed managed conversation even if selection changes before approval", async () => {

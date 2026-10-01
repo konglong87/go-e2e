@@ -12,6 +12,7 @@ import type { SessionDetail } from "./types";
 import { WebUIV2App } from "./WebUIV2App";
 import { GLOBAL_SETTINGS_SAVED_EVENT } from "./settings/globalSettingsDraft";
 import { DESKTOP_READINESS } from "./useDesktopReadiness";
+import { capabilities, observationResponse, snapshot } from "./computer/testFixtures";
 
 const identity: IdentityConfig = {
   apiBase: "/api",
@@ -390,6 +391,48 @@ describe("WebUIV2App", () => {
       }
     }));
   }
+
+  it.each(["wails://wails", "http://wails.localhost"])("renders the desktop Computer Use workspace in the WebView without native overlay calls on %s", async (origin) => {
+    vi.stubEnv("VITE_DESKTOP_UI_VERSION", "2");
+    setDesktopOrigin(origin, "/webui/v2");
+    storage.set("go-e2e.computer-workspace.v1", JSON.stringify({ displayMode: "expanded", collapsed: false, position: null }));
+    storage.set("golang-cc-webui.language.v1", "en");
+    const overlayProbe = vi.fn().mockResolvedValue(true);
+    const showOverlay = vi.fn().mockResolvedValue(undefined);
+    const updateOverlay = vi.fn().mockResolvedValue(undefined);
+    const bridge = {
+      RestartLocalService: vi.fn().mockResolvedValue(undefined),
+      GetComputerCapabilities: vi.fn().mockResolvedValue({ available: true, capabilities }),
+      StartComputerSession: vi.fn().mockResolvedValue(snapshot()),
+      GetComputerSession: vi.fn().mockResolvedValue(snapshot()),
+      ObserveComputerSession: vi.fn().mockResolvedValue(observationResponse),
+      PauseComputerSession: vi.fn().mockResolvedValue(snapshot("paused")),
+      ResumeComputerSession: vi.fn().mockResolvedValue(snapshot()),
+      StopComputerSession: vi.fn().mockResolvedValue(snapshot("stopped")),
+      GetComputerActionReceipt: vi.fn(),
+      IsComputerOverlayAvailable: overlayProbe,
+      ShowComputerOverlay: showOverlay,
+      UpdateComputerOverlay: updateOverlay,
+    };
+    Object.defineProperty(window, "go", { configurable: true, value: { main: { app: bridge } } });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { headers: { "Content-Type": "application/json" } })));
+    const client = createMockSessionControlClient();
+    client.list = vi.fn(async () => []);
+
+    await act(async () => root.render(
+      <I18nProvider><QueryClientProvider client={new QueryClient()}><WebUIV2App client={client} identity={{ ...identity, apiBase: "", apiToken: "desktop-process" }} /></QueryClientProvider></I18nProvider>
+    ));
+    await vi.waitFor(() => expect(document.body.querySelector('[aria-label="Computer workspace"]')).not.toBeNull());
+
+    expect(overlayProbe).not.toHaveBeenCalled();
+    expect(showOverlay).not.toHaveBeenCalled();
+    expect(updateOverlay).not.toHaveBeenCalled();
+
+    act(() => document.body.querySelector<HTMLButtonElement>('button[aria-label="Collapse Computer Use workspace"]')?.click());
+    expect(document.body.querySelector('[aria-label="Computer workspace"]')).toBeNull();
+    act(() => document.body.querySelector<HTMLButtonElement>('button[aria-label="Open Computer Use workspace"]')?.click());
+    expect(document.body.querySelector('[aria-label="Computer workspace"]')).not.toBeNull();
+  });
 
   it.each(["wails://wails", "http://wails.localhost"])("waits for the current token's readiness in desktop-v2 on %s", async (origin) => {
     vi.stubEnv("VITE_DESKTOP_UI_VERSION", "2");

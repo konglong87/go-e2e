@@ -282,7 +282,8 @@ export function ComputerWorkspace({ client, selectedConversationRef = null, nati
     </aside>;
 
   const activeSession = computer.session;
-  const showExecutionProgress = !nativeOverlaySession && displayMode !== COMPUTER_WORKSPACE_DISPLAY_MODES.AUTO
+  const domWorkspaceVisible = !nativeOverlaySession && projection.visible && projection.expanded;
+  const showExecutionProgress = !nativeOverlaySession && !domWorkspaceVisible && displayMode !== COMPUTER_WORKSPACE_DISPLAY_MODES.AUTO
     && activeSession !== null && activeSession.state !== "stopped";
   const executionProgress = showExecutionProgress && activeSession ? <ComputerExecutionProgress
     controlIntent={computer.controlIntent}
