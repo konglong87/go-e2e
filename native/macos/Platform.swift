@@ -10,6 +10,7 @@ protocol DesktopPlatform {
     func geometries() throws -> [DisplayGeometry]
     func windows() throws -> [NativeWindow]
     func windowGeometry(_ id: String) throws -> DisplayGeometry
+    func launchApplication(bundleID: String, permitted: () -> Bool) throws -> NativeWindow
     func activateWindow(_ id: String, permitted: () -> Bool) -> Bool
     func activeWindowID() -> String?
     func captureAllowed() -> Bool
@@ -31,6 +32,7 @@ extension DesktopPlatform {
     func geometries() throws -> [DisplayGeometry] { [try geometry()] }
     func windows() throws -> [NativeWindow] { [] }
     func windowGeometry(_ id: String) throws -> DisplayGeometry { throw SafetyError.unsupportedDisplay }
+    func launchApplication(bundleID: String, permitted: () -> Bool) throws -> NativeWindow { throw SafetyError.launchFailed }
     func activateWindow(_ id: String, permitted: () -> Bool) -> Bool { false }
     func activeWindowID() -> String? { nil }
 }
@@ -118,6 +120,53 @@ struct MacDesktop: DesktopPlatform {
         let geometry = DisplayGeometry(id: window.displayID, bounds: window.frame, width: image.width, height: image.height, windowID: window.id)
         guard geometry.valid else { throw SafetyError.unsupportedDisplay }
         return geometry
+    }
+
+    func launchApplication(bundleID: String, permitted: () -> Bool) throws -> NativeWindow {
+        guard bundleID == workBuddyBundleID else { throw SafetyError.unsupportedApplication }
+        guard permitted() else { throw SafetyError.inactive }
+
+        do {
+            if let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first {
+                _ = running.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+            } else {
+                guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
+                    throw SafetyError.launchFailed
+                }
+                let running = try NSWorkspace.shared.launchApplication(at: url, options: [.default], configuration: [:])
+                _ = running.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+            }
+        } catch let error as SafetyError {
+            throw error
+        } catch {
+            throw SafetyError.launchFailed
+        }
+
+        let deadline = ProcessInfo.processInfo.systemUptime + appLaunchTimeoutSeconds
+        while ProcessInfo.processInfo.systemUptime < deadline {
+            guard permitted() else { throw SafetyError.inactive }
+            do {
+                let candidates = try windows().filter {
+                    $0.bundleID == workBuddyBundleID && $0.isVisible && $0.frame.width > 0 && $0.frame.height > 0
+                }
+                let frontmost = candidates.filter(\.isFrontmost)
+                if frontmost.count == 1 {
+                    return frontmost[0]
+                }
+                if candidates.count == 1 {
+                    return candidates[0]
+                }
+                if candidates.count > 1 {
+                    throw SafetyError.targetWindowMismatch
+                }
+            } catch let error as SafetyError {
+                if error == .targetWindowMismatch { throw error }
+            } catch {
+                // Window Server inventory can be briefly unavailable during launch.
+            }
+            Thread.sleep(forTimeInterval: Double(appLaunchPollMS) / 1000)
+        }
+        throw SafetyError.launchTimeout
     }
 
     func activateWindow(_ id: String, permitted: () -> Bool) -> Bool {

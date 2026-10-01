@@ -8,6 +8,9 @@ final class FakeDesktop: DesktopPlatform {
     var extraDisplays: [DisplayGeometry] = []
     var targetWindow: NativeWindow?
     var selectedWindowID: String?
+    var launchResult: NativeWindow?
+    var launchError: SafetyError?
+    var launchCalls = 0
     var activationCalls = 0
     var activationHook: (() -> Void)?
     var activeWindowHook: (() -> Void)?
@@ -31,6 +34,17 @@ final class FakeDesktop: DesktopPlatform {
         windowGeometryHook?()
         guard let window = targetWindow, window.id == id else { throw SafetyError.unsupportedDisplay }
         return DisplayGeometry(id: window.displayID, bounds: window.frame, width: display.width, height: display.height, windowID: window.id)
+    }
+    func launchApplication(bundleID: String, permitted: () -> Bool) throws -> NativeWindow {
+        launchCalls += 1
+        guard permitted() else { throw SafetyError.inactive }
+        guard bundleID == workBuddyBundleID else { throw SafetyError.unsupportedApplication }
+        if let launchError { throw launchError }
+        guard let launchResult else { throw SafetyError.launchTimeout }
+        targetWindow = launchResult
+        selectedWindowID = launchResult.id
+        focused = launchResult.ownerPID
+        return launchResult
     }
     func activateWindow(_ id: String, permitted: () -> Bool) -> Bool { activationCalls += 1; guard permitted(), targetWindow?.id == id else { return false }; selectedWindowID = id; focused = targetWindow?.ownerPID; activationHook?(); return true }
     func activeWindowID() -> String? { activeWindowHook?(); return selectedWindowID }
@@ -75,6 +89,79 @@ func setup() -> (Engine,FakeDesktop) {
 func action(_ kind: String, _ extra: [String:JSONValue] = [:], seconds: Double = 5) -> Envelope {
     var p = extra; p["kind"] = .string(kind); p["observation_id"] = .string("obs")
     return request("execute", payload: p, seconds: seconds)
+}
+
+func launchWindow() -> NativeWindow {
+    NativeWindow(id: "workbuddy-window", title: "WorkBuddy", ownerPID: 84,
+                 bundleID: workBuddyBundleID, frame: CGRect(x: 100, y: -50, width: 100, height: 50),
+                 displayID: "1", isVisible: true, isFrontmost: true)
+}
+
+// launch_app is a trusted allowlisted operation. The model cannot select an
+// arbitrary bundle identifier or filesystem path, and rejected requests never
+// reach the platform launcher.
+do {
+    let desktop = FakeDesktop()
+    let engine = Engine(platform: desktop)
+    let unknown = engine.launchApp(request("launch_app", payload: ["app": .string("Safari"), "generation": .number(0)]))
+    expect(unknown.outcome == .rejected && unknown.error == .unsupportedApplication, "launch allowlist rejects unknown app")
+    expect(desktop.launchCalls == 0, "unknown app never reaches platform launcher")
+
+    let forged = engine.launchApp(request("launch_app", payload: [
+        "app": .string(workBuddyAppName), "bundle_id": .string("com.example.anything"), "generation": .number(0)
+    ]))
+    expect(forged.outcome == .rejected && forged.error == .unsupportedApplication, "launch rejects model bundle override")
+    expect(desktop.launchCalls == 0, "model bundle override never reaches platform launcher")
+}
+
+// A successful launch returns an independent receipt payload and stores the
+// exact WorkBuddy window identity for subsequent window-bound observations.
+do {
+    let desktop = FakeDesktop()
+    desktop.launchResult = launchWindow()
+    let engine = Engine(platform: desktop)
+    let launched = engine.launchApp(request("launch_app", payload: ["app": .string(workBuddyAppName), "generation": .number(0)]))
+    expect(launched.outcome == .executed && launched.error == nil, "launch returns executed receipt")
+    guard case .object(let payload) = launched.payload,
+          payload["app"]?.string == workBuddyAppName,
+          payload["bundle_id"]?.string == workBuddyBundleID,
+          case .object(let window)? = payload["window"],
+          window["id"]?.string == "workbuddy-window",
+          window["bundle_id"]?.string == workBuddyBundleID,
+          window["owner_pid"]?.integer(in: 1...Int(Int32.max)) == 84,
+          window["title"]?.string == "WorkBuddy",
+          window["display_id"]?.string == "1",
+          window["is_frontmost"]?.bool == true else {
+        expect(false, "launch receipt contains WorkBuddy window metadata")
+        fatalError("unreachable")
+    }
+    let observed = engine.observe(request("observe", payload: [
+        "observation_id": .string("workbuddy-observation"),
+        "window_id": .string("workbuddy-window"),
+        "generation": .number(0)
+    ]))
+    expect(observed.outcome == .executed, "bound WorkBuddy observation succeeds")
+
+    desktop.targetWindow = NativeWindow(id: "workbuddy-window", title: "WorkBuddy", ownerPID: 84,
+                                         bundleID: "com.example.other", frame: CGRect(x: 100, y: -50, width: 100, height: 50),
+                                         displayID: "1", isVisible: true, isFrontmost: true)
+    let mismatch = engine.observe(request("observe", payload: [
+        "observation_id": .string("mismatch-observation"),
+        "window_id": .string("workbuddy-window"),
+        "generation": .number(0)
+    ]))
+    expect(mismatch.outcome == .rejected && mismatch.error == .targetWindowMismatch,
+           "bound window bundle change is rejected")
+}
+
+// A launch that never produces a visible Window Server target is a controlled
+// timeout, not an opaque helper error.
+do {
+    let desktop = FakeDesktop()
+    desktop.launchError = .launchTimeout
+    let engine = Engine(platform: desktop)
+    let timedOut = engine.launchApp(request("launch_app", payload: ["app": .string(workBuddyAppName), "generation": .number(0)]))
+    expect(timedOut.outcome == .rejected && timedOut.error == .launchTimeout, "launch timeout is controlled")
 }
 
 do {

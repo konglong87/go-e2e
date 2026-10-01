@@ -26,11 +26,17 @@ while let data = readFrame() {
                 if command == .shutdown { exit(0) }
             }
         case .readiness: responder.send(request, outcome: .executed, result: engine.readiness())
-        case .observe, .execute:
+        case .launchApp, .observe, .execute:
             guard slots.wait(timeout: .now()) == .success else { throw SafetyError.capacity }
             executor.async {
                 defer { slots.signal() }
-                let result = command == .observe ? engine.observe(request) : engine.execute(request)
+                let result: ActionResult
+                switch command {
+                case .launchApp: result = engine.launchApp(request)
+                case .observe: result = engine.observe(request)
+                case .execute: result = engine.execute(request)
+                default: result = ActionResult(outcome: .rejected, payload: .object([:]), error: .invalidEnvelope)
+                }
                 responder.send(request, outcome: result.outcome, result: result.payload, error: result.error)
             }
         }

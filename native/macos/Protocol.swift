@@ -13,8 +13,12 @@ let maxPNGBytes = 5 * 1024 * 1024
 let maxTextUnits = 4096
 let maxWaitMS = 10000
 let maxScrollDelta = 10000
+let workBuddyAppName = "WorkBuddy"
+let workBuddyBundleID = "com.workbuddy.workbuddy"
+let appLaunchTimeoutSeconds: TimeInterval = 8
+let appLaunchPollMS = 50
 
-enum Command: String { case requestPermissions = "request_permissions", readiness, observe, execute, pause, resume, stop, shutdown }
+enum Command: String { case requestPermissions = "request_permissions", readiness, launchApp = "launch_app", observe, execute, pause, resume, stop, shutdown }
 enum Outcome: String { case executed, rejected, unknown, failed }
 enum ActionKind: String, CaseIterable {
     case click, doubleClick = "double_click", rightClick = "right_click", move, drag, type, key, hotkey, scroll, wait
@@ -72,6 +76,7 @@ enum JSONValue: Codable {
     }
     subscript(_ key: String) -> JSONValue? { if case .object(let o) = self { return o[key] }; return nil }
     var string: String? { if case .string(let v) = self { return v }; return nil }
+    var bool: Bool? { if case .bool(let v) = self { return v }; return nil }
     var array: [JSONValue]? { if case .array(let v) = self { return v }; return nil }
     func integer(in range: ClosedRange<Int>) -> Int? {
         guard case .number(let n) = self, n.isFinite, n.rounded(.towardZero) == n,
@@ -82,7 +87,8 @@ enum JSONValue: Codable {
 
 enum SafetyError: String, Error {
     case invalidAction = "invalid_action", invalidEnvelope = "invalid_envelope", inactive, expired, staleObservation = "stale_observation"
-    case permissionRequired = "permission_required", focusChanged = "focus_changed", unsupportedDisplay = "unsupported_display"
+    case permissionRequired = "permission_required", focusChanged = "focus_changed", unsupportedDisplay = "unsupported_display", targetWindowMismatch = "target_window_mismatch"
+    case unsupportedApplication = "unsupported_application", launchFailed = "launch_failed", launchTimeout = "launch_timeout"
     case screenshotFailed = "screenshot_failed", inputUnavailable = "input_unavailable", inputUncertain = "input_uncertain", duplicate, capacity
 }
 

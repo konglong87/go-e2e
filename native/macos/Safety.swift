@@ -78,6 +78,7 @@ final class SafetyState {
     private var generation = 0
     private var session: String?
     private var observation: Snapshot?
+    private var boundTarget: NativeWindow?
     private var requests = Set<String>()
     private var actions = Set<String>()
 
@@ -90,13 +91,20 @@ final class SafetyState {
     }
     func control(_ command: Command, generation next: Int) throws {
         lock.lock(); defer { lock.unlock() }
-        if command == .shutdown || command == .stop { stopped = true; paused = true; observation = nil; return }
+        if command == .shutdown || command == .stop {
+            stopped = true; paused = true; observation = nil; boundTarget = nil; return
+        }
         guard !stopped, next > generation else { throw SafetyError.inactive }
         generation = next; paused = command == .pause; observation = nil
     }
-    func end() { lock.lock(); stopped = true; paused = true; observation = nil; lock.unlock() }
-    private func check(_ request: Envelope) throws {
-        guard !stopped, !paused, request.payload["generation"]?.integer(in: 0...Int(Int32.max)) == generation else { throw SafetyError.inactive }
+    func end() { lock.lock(); stopped = true; paused = true; observation = nil; boundTarget = nil; lock.unlock() }
+    private func check(_ request: Envelope, requireGeneration: Bool = true) throws {
+        guard !stopped, !paused else { throw SafetyError.inactive }
+        if requireGeneration {
+            guard request.payload["generation"]?.integer(in: 0...Int(Int32.max)) == generation else { throw SafetyError.inactive }
+        } else if let next = request.payload["generation"]?.integer(in: 0...Int(Int32.max)), next != generation {
+            throw SafetyError.inactive
+        }
         guard let deadline = request.expires, deadline > now() else { throw SafetyError.expired }
         if let session, session != request.sessionID { throw SafetyError.staleObservation }
     }
@@ -107,13 +115,46 @@ final class SafetyState {
         lock.lock(); defer { lock.unlock() }; try check(request)
         session = request.sessionID; observation = snapshot
     }
+    private func consumeActionLocked(_ request: Envelope) throws {
+        guard !actions.contains(request.actionID) else { throw SafetyError.duplicate }
+        guard actions.count < maxRememberedIDs else { stopped = true; throw SafetyError.capacity }
+        actions.insert(request.actionID)
+    }
+    func beginControl(_ request: Envelope) throws {
+        lock.lock(); defer { lock.unlock() }
+        try check(request, requireGeneration: false)
+        try consumeActionLocked(request)
+    }
+    func bindTarget(_ target: NativeWindow, for request: Envelope) throws {
+        lock.lock(); defer { lock.unlock() }
+        try check(request, requireGeneration: false)
+        guard target.id != "", target.ownerPID > 0, target.bundleID == workBuddyBundleID,
+              target.isVisible, target.frame.width > 0, target.frame.height > 0 else { throw SafetyError.targetWindowMismatch }
+        if let boundTarget, !boundTarget.matchesIdentity(target) { throw SafetyError.targetWindowMismatch }
+        boundTarget = target
+        observation = nil
+        session = request.sessionID
+    }
+    func target(for request: Envelope) throws -> NativeWindow? {
+        lock.lock(); defer { lock.unlock() }
+        try check(request, requireGeneration: false)
+        return boundTarget
+    }
+    func permitted(_ request: Envelope) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        do {
+            try check(request, requireGeneration: false)
+            return true
+        } catch {
+            return false
+        }
+    }
     func begin(_ request: Envelope) throws -> Snapshot {
         lock.lock(); defer { lock.unlock() }; try check(request)
         guard let snap = observation, snap.id == request.payload["observation_id"]?.string,
               snap.session == request.sessionID, snap.expires > now() else { throw SafetyError.staleObservation }
-        guard !actions.contains(request.actionID) else { throw SafetyError.duplicate }
-        guard actions.count < maxRememberedIDs else { stopped = true; throw SafetyError.capacity }
-        actions.insert(request.actionID); observation = nil // consume even if later rejected
+        try consumeActionLocked(request)
+        observation = nil // consume before dispatch, including rejection
         return snap
     }
 }

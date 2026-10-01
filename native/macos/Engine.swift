@@ -38,6 +38,31 @@ final class Engine {
             "actions": .array(ActionKind.allCases.filter { $0 != .drag || platform.supportsDrag() }.map { .string($0.rawValue) })
         ])
     }
+    private func requestedApplication(_ payload: JSONValue) throws {
+        guard case .object(let fields) = payload,
+              let app = fields["app"]?.string,
+              app == workBuddyAppName,
+              fields.keys.allSatisfy({ $0 == "app" || $0 == "generation" }) else {
+            throw SafetyError.unsupportedApplication
+        }
+    }
+    func launchApp(_ request: Envelope) -> ActionResult {
+        do {
+            try requestedApplication(request.payload)
+            try state.beginControl(request)
+            let window = try platform.launchApplication(bundleID: workBuddyBundleID) { self.state.permitted(request) }
+            guard window.bundleID == workBuddyBundleID else { throw SafetyError.targetWindowMismatch }
+            try state.bindTarget(window, for: request)
+            return ActionResult(outcome: .executed, payload: .object([
+                "operation": .string(Command.launchApp.rawValue),
+                "app": .string(workBuddyAppName),
+                "bundle_id": .string(workBuddyBundleID),
+                "window": window.json
+            ]), error: nil)
+        } catch {
+            return ActionResult(outcome: .rejected, payload: .object([:]), error: error as? SafetyError ?? .launchFailed)
+        }
+    }
     private func resolveGeometry(for request: Envelope) throws -> DisplayGeometry {
         if let windowID = request.payload["window_id"]?.string, !windowID.isEmpty {
             return try platform.windowGeometry(windowID)
@@ -54,9 +79,29 @@ final class Engine {
         guard let window = try platform.windows().first(where: { $0.id == id }) else { throw SafetyError.unsupportedDisplay }
         return window
     }
+    private func authorizedWindow(_ request: Envelope) throws -> NativeWindow? {
+        guard let bound = try state.target(for: request) else { return try requestedWindow(request) }
+        guard request.payload["window_id"]?.string == bound.id else { throw SafetyError.targetWindowMismatch }
+        do {
+            guard let current = try requestedWindow(request), current.matchesIdentity(bound) else {
+                throw SafetyError.targetWindowMismatch
+            }
+            return bound
+        } catch let error as SafetyError {
+            throw error == .unsupportedDisplay ? SafetyError.targetWindowMismatch : error
+        } catch {
+            throw SafetyError.targetWindowMismatch
+        }
+    }
 
     private func target(_ request: Envelope, geometry: DisplayGeometry) throws {
-        if let window = request.payload["window_id"]?.string, !window.isEmpty && geometry.windowID != window { throw SafetyError.unsupportedDisplay }
+        if let bound = try state.target(for: request) {
+            guard geometry.windowID == bound.id, try authorizedWindow(request) != nil else {
+                throw SafetyError.targetWindowMismatch
+            }
+        } else if let window = request.payload["window_id"]?.string, !window.isEmpty && geometry.windowID != window {
+            throw SafetyError.unsupportedDisplay
+        }
         if let display = request.payload["display_id"]?.string, !display.isEmpty && display != geometry.id { throw SafetyError.unsupportedDisplay }
     }
     private func displayIDs() throws -> [String] {
@@ -66,7 +111,7 @@ final class Engine {
     // capturing evidence. A focus change must remain visible to the caller.
     private func checkWindow(_ request: Envelope, geometry: DisplayGeometry, expectedWindow: NativeWindow?) throws {
         if let expectedWindow {
-            guard let current = try requestedWindow(request), current.matchesIdentity(expectedWindow) else { throw SafetyError.unsupportedDisplay }
+            guard let current = try requestedWindow(request), current.matchesIdentity(expectedWindow) else { throw SafetyError.targetWindowMismatch }
         }
         if let windowID = geometry.windowID, platform.activeWindowID() != windowID { throw SafetyError.focusChanged }
     }
@@ -118,11 +163,9 @@ final class Engine {
     func observe(_ request: Envelope) -> ActionResult {
         do {
             try state.gate(request)
-            if let window = try requestedWindow(request) {
-                try activateTarget(window, request: request)
-            }
+            let window = try authorizedWindow(request)
+            if let window { try activateTarget(window, request: request) }
             let geometry = try resolveGeometry(for: request); try target(request, geometry: geometry)
-            let window = try requestedWindow(request)
             guard let id = request.payload["observation_id"]?.string, !id.isEmpty, id.utf8.count <= 256,
                   let focus = platform.focus() else { throw SafetyError.invalidAction }
             guard case .object(var payload) = try capture(request, geometry: geometry, expectedWindow: window) else { throw SafetyError.screenshotFailed }
