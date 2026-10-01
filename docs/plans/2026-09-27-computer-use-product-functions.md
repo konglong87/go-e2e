@@ -41,6 +41,14 @@ be read as evidence that the native overlay or the whole product fully passed.
   bridge now preserves controlled host error codes such as `self_target` instead
   of collapsing rejected receipts to `action_failed`, so the model receives a
   safe corrective instruction instead of losing the target diagnosis.
+- A real cold-start run on the `1711455` build then produced a WorkBuddy
+  launch receipt and bound window (`bundle_id=com.workbuddy.workbuddy`,
+  `window_id=18925`, `owner_pid=23430`, frame `(76,35,1200,792)`) from the
+  ComputerUse path in 42.770 seconds. The target screenshot/observation was
+  real and WorkBuddy was not manually opened. The model stopped immediately
+  because the success receipt was incorrectly labeled `error_code=action_failed`;
+  commit `3879b67` fixes that labeling, but a fresh cold-start full send/reply
+  run after that fix is still required.
 - A later fresh run on the `ae5a9c3` build still spent its first model turn
   attempting a host-window click and timed out at 120.093 seconds; no WorkBuddy
   action or reply evidence was produced. The bridge error-code preservation fix
