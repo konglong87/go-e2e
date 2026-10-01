@@ -57,11 +57,11 @@ func New() Tool { return Tool{} }
 func (Tool) Name() string { return ToolName }
 
 func (Tool) Description() string {
-	return "Observe and operate an explicitly approved computer session using structured actions. Each input action consumes a fresh observation. A successful input returns its receipt plus a new observation and screenshot for the next decision. Use observation.id, never receipt.after_observation_id. Observe again if the UI has not settled. Stop on errors or unknown outcomes; never replay input."
+	return "Observe and operate an explicitly approved computer session using structured actions. Use launch_app with application WorkBuddy to start the allowlisted target and bind its window before observing. Each input action consumes a fresh observation. A successful input returns its receipt plus a new observation and screenshot for the next decision. Use observation.id, never receipt.after_observation_id. Observe again if the UI has not settled. Stop on errors or unknown outcomes; never replay input."
 }
 
 func (Tool) InputSchema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"session_id":{"type":"string"},"action":{"type":"string","enum":["observe","click","double_click","right_click","move","drag","type","key","hotkey","scroll","wait","pause","stop"]},"display_id":{"type":"string"},"window_id":{"type":"string"},"observation_id":{"type":"string"},"x":{"type":"integer"},"y":{"type":"integer"},"start_x":{"type":"integer"},"start_y":{"type":"integer"},"button":{"type":"string","enum":["left","right"]},"text":{"type":"string"},"key":{"type":"string"},"keys":{"type":"array","items":{"type":"string"}},"delta_x":{"type":"integer"},"delta_y":{"type":"integer"},"duration_ms":{"type":"integer"}},"required":["action"],"additionalProperties":false}`)
+	return json.RawMessage(`{"type":"object","properties":{"session_id":{"type":"string"},"action":{"type":"string","enum":["observe","launch_app","click","double_click","right_click","move","drag","type","key","hotkey","scroll","wait","pause","stop"]},"application":{"type":"string","enum":["WorkBuddy"]},"display_id":{"type":"string"},"window_id":{"type":"string"},"observation_id":{"type":"string"},"x":{"type":"integer"},"y":{"type":"integer"},"start_x":{"type":"integer"},"start_y":{"type":"integer"},"button":{"type":"string","enum":["left","right"]},"text":{"type":"string"},"key":{"type":"string"},"keys":{"type":"array","items":{"type":"string"}},"delta_x":{"type":"integer"},"delta_y":{"type":"integer"},"duration_ms":{"type":"integer"}},"required":["action"],"additionalProperties":false}`)
 }
 
 func (Tool) ExecutionPolicy() tools.ExecutionPolicy {
@@ -87,9 +87,12 @@ func (t Tool) Run(ctx context.Context, input json.RawMessage, tc tools.Context) 
 		return errorResult("invalid_input", "invalid computer use request")
 	}
 	owner := cu.SessionOwner{TenantID: tc.TenantID, UserID: tc.UserID, SessionID: tc.SessionID}
+	if cu.ActionKind(params.Action) == cu.ActionLaunchApp && params.Application != string(cu.ApplicationWorkBuddy) {
+		return errorResult("unsupported_application", "only WorkBuddy may be launched by ComputerUse")
+	}
 	if strings.TrimSpace(params.SessionID) == "" {
 		var sessionID string
-		if cu.ActionKind(params.Action) == cu.ActionObserve {
+		if cu.ActionKind(params.Action) == cu.ActionObserve || cu.ActionKind(params.Action) == cu.ActionLaunchApp {
 			coordinator, ok := service.(SessionCoordinator)
 			if !ok {
 				return errorResult("session_start_unavailable", "computer session must be started explicitly")
@@ -129,6 +132,8 @@ func (t Tool) Run(ctx context.Context, input json.RawMessage, tc tools.Context) 
 	switch cu.ActionKind(params.Action) {
 	case cu.ActionObserve:
 		return t.observe(ctx, service, owner, params)
+	case cu.ActionLaunchApp:
+		return t.launchApp(ctx, service, owner, params)
 	case cu.ActionPause:
 		return t.control(ctx, owner, params, func() error { return service.Pause(ctx, owner, params.SessionID) })
 	case cu.ActionStop:
@@ -143,6 +148,7 @@ func (t Tool) Run(ctx context.Context, input json.RawMessage, tc tools.Context) 
 type request struct {
 	SessionID     string   `json:"session_id"`
 	Action        string   `json:"action"`
+	Application   string   `json:"application"`
 	DisplayID     string   `json:"display_id"`
 	WindowID      string   `json:"window_id"`
 	ObservationID string   `json:"observation_id"`
@@ -157,6 +163,31 @@ type request struct {
 	DeltaX        int      `json:"delta_x"`
 	DeltaY        int      `json:"delta_y"`
 	DurationMS    int      `json:"duration_ms"`
+}
+
+func (t Tool) launchApp(ctx context.Context, service cu.Service, owner cu.SessionOwner, params request) tools.Result {
+	launcher, ok := service.(cu.ApplicationLauncher)
+	if !ok {
+		return errorResult("launch_unavailable", "computer application launcher is unavailable")
+	}
+	if params.Application != string(cu.ApplicationWorkBuddy) {
+		return errorResult("unsupported_application", "only WorkBuddy may be launched by ComputerUse")
+	}
+	receipt, err := launcher.LaunchApp(ctx, owner, params.SessionID, params.Application)
+	receipt.ErrorCode = cu.PublicErrorCode(receipt.ErrorCode)
+	payload := map[string]any{"launch_receipt": receipt}
+	if err != nil || receipt.Outcome != cu.OutcomeExecuted {
+		errorCode := receipt.ErrorCode
+		if errorCode == "" {
+			errorCode = cu.ErrorCodeLaunchFailed
+		}
+		payload["error_code"] = errorCode
+		payload["message"] = "computer application launch failed; inspect the launch receipt and stop"
+		return tools.Result{Content: marshal(payload), IsError: true}
+	}
+	payload["window_id"] = receipt.Window.ID
+	payload["bundle_id"] = receipt.BundleID
+	return tools.Result{Content: marshal(payload)}
 }
 
 func (t Tool) observe(ctx context.Context, service cu.Service, owner cu.SessionOwner, params request) tools.Result {

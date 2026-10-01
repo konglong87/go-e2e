@@ -62,6 +62,34 @@ func TestHelperProcess(t *testing.T) {
 			fallthrough
 		case commandReadiness:
 			result = map[string]any{"capture_readiness": "ready", "input_readiness": "ready", "permission_state": "approved", "focus_state": "focused", "image_supported": true, "supports_pause": true, "supports_stop": true, "coordinate_space": map[string]any{"display_id": "1", "width": 2, "height": 2, "scale_factor": 2}}
+		case commandLaunchApp:
+			var launchRequest struct {
+				App string `json:"app"`
+			}
+			if err := json.Unmarshal(req.Payload, &launchRequest); err != nil {
+				t.Fatal(err)
+			}
+			if launchRequest.App != string(cu.ApplicationWorkBuddy) {
+				outcome = cu.OutcomeRejected
+				result = map[string]any{}
+				brokerErrorCode = cu.ErrorCodeUnsupportedApplication
+				break
+			}
+			if mode == "launch-timeout" {
+				outcome = cu.OutcomeRejected
+				result = map[string]any{}
+				brokerErrorCode = cu.ErrorCodeLaunchTimeout
+				break
+			}
+			result = map[string]any{
+				"app":       string(cu.ApplicationWorkBuddy),
+				"bundle_id": cu.WorkBuddyBundleID,
+				"window": map[string]any{
+					"id": "workbuddy-window", "title": "WorkBuddy", "owner_pid": 84,
+					"bundle_id": cu.WorkBuddyBundleID, "frame": map[string]any{"x": 10, "y": 20, "width": 1, "height": 1},
+					"is_visible": true, "is_frontmost": true,
+				},
+			}
 		case commandObserve:
 			result = imagePayload()
 			if mode == "self-target" {
@@ -78,10 +106,15 @@ func TestHelperProcess(t *testing.T) {
 			if err := json.Unmarshal(req.Payload, &observeRequest); err != nil {
 				t.Fatal(err)
 			}
-			if mode == "target-window" && observeRequest.WindowID != "" {
+			if (mode == "target-window" || mode == "launch") && observeRequest.WindowID != "" {
 				result["coordinate_space"].(map[string]any)["bounds"] = map[string]any{"x": 10, "y": 20, "width": 1, "height": 1}
-				result["window_id"] = "window-1"
-				result["target_window"] = map[string]any{"id": "window-1", "title": "Fixture", "owner_pid": 42, "bundle_id": "fixture.app", "frame": map[string]any{"x": 10, "y": 20, "width": 1, "height": 1}, "is_visible": true}
+				result["window_id"] = observeRequest.WindowID
+				result["target_window"] = map[string]any{"id": observeRequest.WindowID, "title": "WorkBuddy", "owner_pid": 84, "bundle_id": cu.WorkBuddyBundleID, "frame": map[string]any{"x": 10, "y": 20, "width": 1, "height": 1}, "is_visible": true}
+				if mode == "target-window" {
+					result["target_window"].(map[string]any)["title"] = "Fixture"
+					result["target_window"].(map[string]any)["owner_pid"] = 42
+					result["target_window"].(map[string]any)["bundle_id"] = "fixture.app"
+				}
 			}
 			mutateCaptureFixture(mode, result)
 			result["observation_expires_at"] = time.Now().Add(cu.DefaultObservationTTL).Format(time.RFC3339Nano)
@@ -613,5 +646,43 @@ func TestAcknowledgedFocusFailureRetainsOnlyStopTransport(t *testing.T) {
 	}
 	if err := b.Stop(context.Background()); err != nil {
 		t.Fatalf("lost cleanup-only transport: %v", err)
+	}
+}
+
+func TestBackendLaunchAppBindsWindowAndObserveUsesIt(t *testing.T) {
+	b := newTestBackend(t, "launch", time.Second, "")
+	receipt, err := b.LaunchApp(context.Background(), string(cu.ApplicationWorkBuddy))
+	if err != nil || receipt.Outcome != cu.OutcomeExecuted {
+		t.Fatalf("launch receipt=%+v err=%v", receipt, err)
+	}
+	if receipt.BundleID != cu.WorkBuddyBundleID || receipt.Window.ID != "workbuddy-window" || receipt.Window.OwnerPID != 84 {
+		t.Fatalf("launch metadata=%+v", receipt)
+	}
+	obs, err := b.Observe(context.Background(), cu.ObserveRequest{SessionID: "session-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if obs.WindowID != receipt.Window.ID || obs.Capabilities.TargetWindow.BundleID != cu.WorkBuddyBundleID {
+		t.Fatalf("launch target was not bound to observe: %+v", obs)
+	}
+}
+
+func TestBackendLaunchAppTimeoutIsControlled(t *testing.T) {
+	b := newTestBackend(t, "launch-timeout", time.Second, "")
+	receipt, err := b.LaunchApp(context.Background(), string(cu.ApplicationWorkBuddy))
+	if err == nil || receipt.Outcome != cu.OutcomeRejected || receipt.ErrorCode != cu.ErrorCodeLaunchTimeout {
+		t.Fatalf("timeout receipt=%+v err=%v", receipt, err)
+	}
+}
+
+func TestBackendLaunchAppRejectsUnknownApplicationBeforeHelper(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "launch")
+	b := newTestBackend(t, "launch", time.Second, marker)
+	receipt, err := b.LaunchApp(context.Background(), "Safari")
+	if err == nil || receipt.Outcome != cu.OutcomeRejected || receipt.ErrorCode != cu.ErrorCodeUnsupportedApplication {
+		t.Fatalf("unknown app receipt=%+v err=%v", receipt, err)
+	}
+	if data, readErr := os.ReadFile(marker); readErr == nil && strings.Contains(string(data), "launch") {
+		t.Fatalf("unknown app reached helper: %q", data)
 	}
 }

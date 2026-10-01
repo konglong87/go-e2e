@@ -14,6 +14,37 @@ be read as evidence that the native overlay or the whole product fully passed.
 | Deferred | Second physical display | Requires hardware; not passed. |
 | Deferred LAST | Formal signing and distribution | Developer ID/notarization/clean installation and upgrade; local ad-hoc builds do not substitute. |
 
+### Phase update — trusted WorkBuddy launch and window binding — 2026-10-01
+
+- Native helper slice delivered in `9ade442`: `launch_app` is an allowlisted
+  Computer Use session operation for `WorkBuddy` only
+  (`com.workbuddy.workbuddy`). It uses AppKit/Window Server discovery, waits
+  up to 8 seconds for a visible target window, returns a separate launch receipt,
+  and binds window ID, owner PID, bundle ID, and frame for subsequent capture/input.
+- Go integration is now wired through the domain controller, desktop agent
+  service, authenticated bridge, CLI query service, and `ComputerUse` tool.
+  After launch, the backend automatically pins the next observation to the
+  discovered WorkBuddy window; window-scoped actions inherit that trusted window
+  ID and never fall back to display-level input.
+- Controlled error codes and tests cover unsupported application, launch timeout,
+  target-window mismatch, stale binding, and launch receipt validation. Focused
+  Go tests and native fake-platform tests pass.
+- This closes the implementation dependency for reliable launch/bind, but does
+  **not** close the real acceptance gate: WorkBuddy must still be cold-started
+  from the latest desktop build and prove real screenshots, receipts, input,
+  one reply, Stop, and total elapsed time <= 120 seconds. No real WorkBuddy
+  evidence was generated in this slice.
+
+Priority after this phase:
+
+1. Build and cold-start the latest ordinary macOS Wails app, then run the real
+   authenticated `gpt-6-sol` WorkBuddy send/reply path with a fresh validation
+   directory and inspect every screenshot/receipt.
+2. If the real run exposes capture/error-code or focus regressions, preserve the
+   originating controlled code and fix only the failing boundary; do not replay
+   unknown input.
+3. Keep second physical display and formal signing/distribution deferred.
+
 ### Compact chat screenshots — user-prioritized follow-up (2026-10-01)
 
 - Initial tree clean at `c71ecaf`; pulled origin/main before editing. No pre-existing

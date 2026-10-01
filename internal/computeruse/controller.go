@@ -118,6 +118,31 @@ func (c *Controller) Observe(ctx context.Context, owner SessionOwner, r ObserveR
 	}
 	return o, nil
 }
+
+// LaunchApp starts one allowlisted application through the trusted backend. It
+// does not consume an observation because it is not a coordinate input action.
+func (c *Controller) LaunchApp(ctx context.Context, owner SessionOwner, id, app string) (LaunchReceipt, error) {
+	if err := c.authorize(owner, id); err != nil {
+		return LaunchReceipt{}, err
+	}
+	release, err := lockControllerGate(ctx, c.serial)
+	if err != nil {
+		return LaunchReceipt{}, err
+	}
+	defer release()
+	if !c.session.Approved() || c.session.State() == SessionStopped || c.session.State() == SessionFailed {
+		return LaunchReceipt{Application: ComputerApplication(app), Outcome: OutcomeRejected, ErrorCode: ErrorCodeInactive, CompletedAt: time.Now()}, errors.New("computer session is not ready")
+	}
+	launcher, ok := c.backend.(BackendApplicationLauncher)
+	if !ok {
+		return LaunchReceipt{Application: ComputerApplication(app), Outcome: OutcomeRejected, ErrorCode: ErrorCodeLaunchFailed, CompletedAt: time.Now()}, errors.New("computer application launcher is unavailable")
+	}
+	receipt, err := launcher.LaunchApp(ctx, app)
+	if receipt.ErrorCode != "" {
+		receipt.ErrorCode = PublicErrorCode(receipt.ErrorCode)
+	}
+	return receipt, err
+}
 func observeFailure(err error) error {
 	var coded interface{ Code() string }
 	if errors.As(err, &coded) {
@@ -143,6 +168,13 @@ func (c *Controller) Execute(ctx context.Context, owner SessionOwner, a Action) 
 	}
 	defer release()
 	before, _ := c.session.CurrentObservation()
+	// Once a window-scoped observation exists, omission of window_id is filled
+	// from trusted observation state. The backend still validates the exact
+	// Window Server identity before dispatch; model input cannot silently fall
+	// back to display-level injection.
+	if before.WindowID != "" && a.WindowID == "" {
+		a.WindowID = before.WindowID
+	}
 	if err = c.session.BeginAction(a); err != nil {
 		return ActionReceipt{ActionID: a.ID, SessionID: a.SessionID, Outcome: OutcomeRejected, Verification: VerificationNotChecked, RedactedActionSummary: a.RedactedSummary(), ErrorCode: "action_rejected", CompletedAt: time.Now()}, err
 	}

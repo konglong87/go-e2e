@@ -224,6 +224,7 @@ type ActionKind string
 
 const (
 	ActionObserve     ActionKind = "observe"
+	ActionLaunchApp   ActionKind = "launch_app"
 	ActionClick       ActionKind = "click"
 	ActionDoubleClick ActionKind = "double_click"
 	ActionRightClick  ActionKind = "right_click"
@@ -403,18 +404,22 @@ const (
 )
 
 const (
-	ErrorCodeActionFailed       = "action_failed"
-	ErrorCodeSelfTarget         = "self_target"
-	ErrorCodePermissionRequired = "permission_required"
-	ErrorCodeFocusChanged       = "focus_changed"
-	ErrorCodeUnsupportedDisplay = "unsupported_display"
-	ErrorCodeInvalidAction      = "invalid_action"
-	ErrorCodeInvalidBinding     = "invalid_action_binding"
-	ErrorCodeInactive           = "inactive"
-	ErrorCodeClosed             = "closed"
-	ErrorCodeInputUnavailable   = "input_unavailable"
-	ErrorCodeTimeout            = "timeout"
-	ErrorCodeCanceled           = "canceled"
+	ErrorCodeActionFailed           = "action_failed"
+	ErrorCodeSelfTarget             = "self_target"
+	ErrorCodeTargetWindowMismatch   = "target_window_mismatch"
+	ErrorCodeUnsupportedApplication = "unsupported_application"
+	ErrorCodeLaunchFailed           = "launch_failed"
+	ErrorCodeLaunchTimeout          = "launch_timeout"
+	ErrorCodePermissionRequired     = "permission_required"
+	ErrorCodeFocusChanged           = "focus_changed"
+	ErrorCodeUnsupportedDisplay     = "unsupported_display"
+	ErrorCodeInvalidAction          = "invalid_action"
+	ErrorCodeInvalidBinding         = "invalid_action_binding"
+	ErrorCodeInactive               = "inactive"
+	ErrorCodeClosed                 = "closed"
+	ErrorCodeInputUnavailable       = "input_unavailable"
+	ErrorCodeTimeout                = "timeout"
+	ErrorCodeCanceled               = "canceled"
 )
 
 // PublicErrorCode preserves only stable, non-sensitive diagnostics across the
@@ -422,9 +427,10 @@ const (
 // collapsed so private host details never reach a model or UI.
 func PublicErrorCode(code string) string {
 	switch strings.TrimSpace(code) {
-	case ErrorCodeSelfTarget, ErrorCodePermissionRequired, ErrorCodeFocusChanged,
+	case ErrorCodeSelfTarget, ErrorCodeTargetWindowMismatch, ErrorCodePermissionRequired, ErrorCodeFocusChanged,
 		ErrorCodeUnsupportedDisplay, ErrorCodeInvalidAction, ErrorCodeInvalidBinding,
 		ErrorCodeInactive, ErrorCodeClosed, ErrorCodeInputUnavailable,
+		ErrorCodeUnsupportedApplication, ErrorCodeLaunchFailed, ErrorCodeLaunchTimeout,
 		ErrorCodeTimeout, ErrorCodeCanceled:
 		return strings.TrimSpace(code)
 	default:
@@ -441,6 +447,32 @@ const (
 	OutcomeFailed     Outcome = "failed"
 	OutcomeUnknown    Outcome = "unknown"
 )
+
+// ComputerApplication is an allowlisted host application that Computer Use may
+// launch. The model never supplies a bundle ID or filesystem path.
+type ComputerApplication string
+
+const (
+	ApplicationWorkBuddy ComputerApplication = "WorkBuddy"
+	WorkBuddyBundleID                        = "com.workbuddy.workbuddy"
+)
+
+// LaunchReceipt is independent evidence that a trusted host launch request was
+// accepted and that the target window was discovered and bound. It contains no
+// untrusted helper error text.
+type LaunchReceipt struct {
+	Application ComputerApplication `json:"application"`
+	BundleID    string              `json:"bundle_id"`
+	Window      WindowRef           `json:"window"`
+	Outcome     Outcome             `json:"outcome"`
+	ErrorCode   string              `json:"error_code,omitempty"`
+	Duration    time.Duration       `json:"duration"`
+	CompletedAt time.Time           `json:"completed_at"`
+}
+
+func (r LaunchReceipt) IsTerminal() bool {
+	return r.Outcome == OutcomeExecuted || r.Outcome == OutcomeRejected || r.Outcome == OutcomeFailed || r.Outcome == OutcomeUnknown
+}
 
 type ActionReceipt struct {
 	ActionID               string             `json:"action_id"`

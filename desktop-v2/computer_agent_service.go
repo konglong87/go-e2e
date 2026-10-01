@@ -108,6 +108,13 @@ func (s computerAgentService) Capabilities(ctx context.Context, owner cu.Session
 	}
 	return c.Capabilities(ctx, owner, id)
 }
+func (s computerAgentService) LaunchApp(ctx context.Context, owner cu.SessionOwner, id, application string) (cu.LaunchReceipt, error) {
+	c, err := s.controller(ctx, owner, id, false)
+	if err != nil {
+		return cu.LaunchReceipt{Application: cu.ComputerApplication(application), Outcome: cu.OutcomeRejected, ErrorCode: cu.ErrorCodeInactive}, err
+	}
+	return c.LaunchApp(ctx, owner, id, application)
+}
 func (s computerAgentService) Observe(ctx context.Context, owner cu.SessionOwner, r cu.ObserveRequest) (cu.Observation, error) {
 	c, err := s.controller(ctx, owner, r.SessionID, false)
 	if err != nil {

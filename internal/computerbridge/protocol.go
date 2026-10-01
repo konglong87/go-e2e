@@ -31,6 +31,7 @@ const (
 	OpResume        = "resume"
 	OpStop          = "stop"
 	OpImage         = "image"
+	OpLaunchApp     = "launch_app"
 )
 
 // Errors never contain host error text, response bodies, tokens, or image data.
@@ -89,6 +90,7 @@ type Request struct {
 	ObserveRequest   *cu.ObserveRequest `json:"observe_request,omitempty"`
 	Action           *cu.Action         `json:"action,omitempty"`
 	ObservationID    string             `json:"observation_id,omitempty"`
+	Application      string             `json:"application,omitempty"`
 }
 
 // Response wraps one operation's data, or a nonempty error. Only Execute may

@@ -77,6 +77,30 @@ func (c *Client) Capabilities(ctx context.Context, owner cu.SessionOwner, sessio
 	return out, nil
 }
 
+func (c *Client) LaunchApp(ctx context.Context, owner cu.SessionOwner, sessionID, application string) (cu.LaunchReceipt, error) {
+	if application != string(cu.ApplicationWorkBuddy) {
+		return cu.LaunchReceipt{Application: cu.ComputerApplication(application), Outcome: cu.OutcomeRejected, ErrorCode: cu.ErrorCodeUnsupportedApplication}, ErrInvalidRequest
+	}
+	response, attempted, err := c.call(ctx, Request{Op: OpLaunchApp, Owner: owner, SessionID: sessionID, Application: application})
+	if !attempted {
+		return cu.LaunchReceipt{}, err
+	}
+	var out cu.LaunchReceipt
+	if decodeStrict(response.Data, &out) != nil || !validLaunchReceipt(out, sessionID, application) {
+		return cu.LaunchReceipt{}, ErrInvalidResponse
+	}
+	if out.ErrorCode != "" {
+		out.ErrorCode = cu.PublicErrorCode(out.ErrorCode)
+	}
+	if err != nil {
+		return out, err
+	}
+	if out.Outcome != cu.OutcomeExecuted {
+		return out, ErrRemote
+	}
+	return out, nil
+}
+
 func (c *Client) Observe(ctx context.Context, owner cu.SessionOwner, in cu.ObserveRequest) (cu.Observation, error) {
 	var out cu.Observation
 	if err := c.data(ctx, Request{Op: OpObserve, Owner: owner, SessionID: in.SessionID, ObserveRequest: &in}, &out); err != nil {

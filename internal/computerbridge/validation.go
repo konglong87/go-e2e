@@ -50,6 +50,8 @@ func validRequest(r Request) bool {
 	switch r.Op {
 	case OpCapabilities, OpPause, OpResume, OpStop:
 		return r.StartupAttemptID == "" && r.ObserveRequest == nil && r.Action == nil && r.ObservationID == ""
+	case OpLaunchApp:
+		return r.StartupAttemptID == "" && r.Application == string(cu.ApplicationWorkBuddy) && r.ObserveRequest == nil && r.Action == nil && r.ObservationID == ""
 	case OpObserve:
 		return r.StartupAttemptID == "" && r.ObserveRequest != nil && r.ObserveRequest.SessionID == r.SessionID &&
 			optionalID(r.ObserveRequest.DisplayID) && optionalID(r.ObserveRequest.WindowID) && r.Action == nil && r.ObservationID == ""
@@ -123,4 +125,15 @@ func validReceipt(r cu.ActionReceipt, a cu.Action) bool {
 		return false
 	}
 	return r.Outcome == cu.OutcomeExecuted || r.Verification != cu.VerificationPassed
+}
+
+func validLaunchReceipt(r cu.LaunchReceipt, sessionID, application string) bool {
+	if !validID(sessionID) || application != string(cu.ApplicationWorkBuddy) ||
+		r.Application != cu.ApplicationWorkBuddy || !r.IsTerminal() || r.Duration < 0 || r.CompletedAt.IsZero() {
+		return false
+	}
+	if r.Outcome != cu.OutcomeExecuted {
+		return r.ErrorCode != ""
+	}
+	return r.BundleID == cu.WorkBuddyBundleID && r.Window.ID != "" && r.Window.OwnerPID > 0 && r.Window.BundleID == cu.WorkBuddyBundleID
 }

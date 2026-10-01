@@ -73,7 +73,7 @@ func nonnegativeComputerCount(value int) int {
 }
 func computerActionSummary(action string) string {
 	switch cu.ActionKind(action) {
-	case cu.ActionObserve, cu.ActionClick, cu.ActionDoubleClick, cu.ActionRightClick, cu.ActionMove, cu.ActionDrag, cu.ActionType, cu.ActionKey, cu.ActionHotkey, cu.ActionScroll, cu.ActionWait, cu.ActionPause, cu.ActionStop:
+	case cu.ActionObserve, cu.ActionLaunchApp, cu.ActionClick, cu.ActionDoubleClick, cu.ActionRightClick, cu.ActionMove, cu.ActionDrag, cu.ActionType, cu.ActionKey, cu.ActionHotkey, cu.ActionScroll, cu.ActionWait, cu.ActionPause, cu.ActionStop:
 		return action
 	default:
 		return computerInputUnknownAction

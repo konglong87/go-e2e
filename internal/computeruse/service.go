@@ -13,3 +13,10 @@ type Service interface {
 	Resume(context.Context, SessionOwner, string) error
 	Stop(context.Context, SessionOwner, string) error
 }
+
+// ApplicationLauncher is the optional service boundary for allowlisted host
+// application startup. It is intentionally separate from Service so existing
+// platform/test implementations cannot gain launch authority accidentally.
+type ApplicationLauncher interface {
+	LaunchApp(context.Context, SessionOwner, string, string) (LaunchReceipt, error)
+}

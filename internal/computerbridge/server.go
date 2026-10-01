@@ -61,7 +61,7 @@ func NewHandler(token string, host Host) (http.Handler, error) {
 		}
 		// Only a bound Execute receipt survives errors. Never return arbitrary
 		// backend strings, images from a failing reader, or partial capabilities.
-		if err == nil || req.Op == OpExecute {
+		if err == nil || req.Op == OpExecute || req.Op == OpLaunchApp {
 			if data != nil {
 				out.Data, _ = json.Marshal(data)
 			}
@@ -120,6 +120,17 @@ func dispatchHost(r *http.Request, host Host, q Request) (any, error) {
 		return SessionResponse{SessionID: id, StartupAttemptID: q.StartupAttemptID}, err
 	case OpCapabilities:
 		return host.Capabilities(ctx, q.Owner, q.SessionID)
+	case OpLaunchApp:
+		launcher, ok := host.(cu.ApplicationLauncher)
+		if !ok {
+			return nil, ErrRemote
+		}
+		receipt, err := launcher.LaunchApp(ctx, q.Owner, q.SessionID, q.Application)
+		if !validLaunchReceipt(receipt, q.SessionID, q.Application) {
+			return nil, ErrInvalidResponse
+		}
+		receipt.ErrorCode = cu.PublicErrorCode(receipt.ErrorCode)
+		return receipt, err
 	case OpObserve:
 		return host.Observe(ctx, q.Owner, *q.ObserveRequest)
 	case OpExecute:

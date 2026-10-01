@@ -21,6 +21,7 @@ const (
 	commandRequestPermissions = "request_permissions"
 	commandReadiness          = "readiness"
 	commandObserve            = "observe"
+	commandLaunchApp          = "launch_app"
 	commandExecute            = "execute"
 	commandPause              = "pause"
 	commandResume             = "resume"
@@ -97,6 +98,7 @@ type Backend struct {
 	observation             cu.Observation
 	actions                 map[string]struct{}
 	capabilities            cu.Capabilities
+	targetWindowID          string
 }
 type imageData struct {
 	data      []byte
@@ -411,6 +413,66 @@ func (b *Backend) Capabilities(ctx context.Context) (cu.Capabilities, error) {
 	return caps.Clone(), nil
 }
 
+// LaunchApp is a trusted session-management capability. The application name
+// is allowlisted before IPC; the native helper independently enforces the
+// bundle ID and waits for a matching Window Server window.
+func (b *Backend) LaunchApp(ctx context.Context, application string) (receipt cu.LaunchReceipt, resultErr error) {
+	started := b.config.Now()
+	receipt = cu.LaunchReceipt{Application: cu.ComputerApplication(application), Outcome: cu.OutcomeRejected}
+	finish := func(err error) (cu.LaunchReceipt, error) {
+		receipt.CompletedAt = b.config.Now()
+		receipt.Duration = receipt.CompletedAt.Sub(started)
+		if err != nil {
+			if receipt.ErrorCode == "" {
+				receipt.ErrorCode = cu.ErrorCodeLaunchFailed
+			}
+			receipt.ErrorCode = cu.PublicErrorCode(receipt.ErrorCode)
+		}
+		return receipt, err
+	}
+	if application != string(cu.ApplicationWorkBuddy) {
+		receipt.ErrorCode = cu.ErrorCodeUnsupportedApplication
+		return finish(&rejection{cu.ErrorCodeUnsupportedApplication})
+	}
+	if !b.hostCaptureAllowed() || !b.hostInputAllowed() {
+		receipt.ErrorCode = cu.ErrorCodePermissionRequired
+		return finish(&rejection{cu.ErrorCodePermissionRequired})
+	}
+	epoch, err := b.acquire(ctx)
+	if err != nil {
+		return finish(err)
+	}
+	defer func() { <-b.operation }()
+	response, err := b.request(ctx, commandLaunchApp, "", "", map[string]any{"app": application, "generation": epoch})
+	if err != nil {
+		var rejected *rejection
+		if errors.As(err, &rejected) {
+			receipt.ErrorCode = cu.PublicErrorCode(rejected.Code())
+		}
+		if receipt.ErrorCode == "" && (errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded)) {
+			receipt.ErrorCode = cu.ErrorCodeLaunchTimeout
+		}
+		return finish(err)
+	}
+	receipt.Application = cu.ApplicationWorkBuddy
+	receipt.BundleID, _ = response.Result["bundle_id"].(string)
+	window, ok := decodeWindowRef(response.Result["window"])
+	if !ok || receipt.BundleID != cu.WorkBuddyBundleID || window.BundleID != cu.WorkBuddyBundleID || window.OwnerPID <= 0 {
+		receipt.ErrorCode = cu.ErrorCodeLaunchFailed
+		return finish(errors.New("invalid launch metadata"))
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if !b.validEpoch(epoch) {
+		receipt.ErrorCode = cu.ErrorCodeInactive
+		return finish(&rejection{cu.ErrorCodeInactive})
+	}
+	b.targetWindowID = window.ID
+	receipt.Window = window
+	receipt.Outcome = cu.OutcomeExecuted
+	return finish(nil)
+}
+
 func (b *Backend) acquire(ctx context.Context) (uint64, error) {
 	select {
 	case b.operation <- struct{}{}:
@@ -445,6 +507,11 @@ func (b *Backend) Observe(ctx context.Context, req cu.ObserveRequest) (cu.Observ
 	if req.SessionID == "" {
 		return cu.Observation{}, &rejection{"unsupported_target"}
 	}
+	b.mu.Lock()
+	if req.WindowID == "" && b.targetWindowID != "" {
+		req.WindowID = b.targetWindowID
+	}
+	b.mu.Unlock()
 	id := fmt.Sprintf("observation-%d", b.requestCounter.Add(1))
 	response, err := b.request(ctx, commandObserve, req.SessionID, "", map[string]any{"display_id": req.DisplayID, "window_id": req.WindowID, "observation_id": id, "generation": epoch})
 	if err != nil {
@@ -717,6 +784,7 @@ func (b *Backend) control(ctx context.Context, command string) error {
 	b.observation = cu.Observation{}
 	if command == commandStop {
 		b.stopped = true
+		b.targetWindowID = ""
 		b.images = map[string]imageData{}
 	}
 	b.mu.Unlock()
@@ -742,6 +810,7 @@ func (b *Backend) Close(ctx context.Context) error {
 	b.paused = true
 	b.epoch++
 	b.images = map[string]imageData{}
+	b.targetWindowID = ""
 	b.observation = cu.Observation{}
 	b.mu.Unlock()
 	var cleanupErr error

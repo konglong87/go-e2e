@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	cu "github.com/konglong87/go-e2e/internal/computeruse"
 	"github.com/konglong87/go-e2e/internal/tools"
@@ -850,5 +851,56 @@ func TestFastPathFreshObservationFailureFailsClosedWithoutReplay(t *testing.T) {
 	}
 	if _, exists := resultPayload(t, result)["observation"]; exists {
 		t.Fatal("failed refresh published actionable metadata")
+	}
+}
+
+type launchingService struct {
+	*coordinatingService
+	launchReceipt cu.LaunchReceipt
+	launchErr     error
+	launchCalls   int
+}
+
+func (s *launchingService) LaunchApp(_ context.Context, _ cu.SessionOwner, sessionID, application string) (cu.LaunchReceipt, error) {
+	s.launchCalls++
+	if sessionID != s.sessionID || application != string(cu.ApplicationWorkBuddy) {
+		return cu.LaunchReceipt{Application: cu.ComputerApplication(application), Outcome: cu.OutcomeRejected, ErrorCode: cu.ErrorCodeUnsupportedApplication}, errors.New("invalid launch binding")
+	}
+	return s.launchReceipt, s.launchErr
+}
+
+func TestLaunchAppUsesCoordinatorAndReturnsBoundWindowReceipt(t *testing.T) {
+	service := &launchingService{
+		coordinatingService: &coordinatingService{serviceStub: screenshotService(t), sessionID: testComputerSession},
+		launchReceipt: cu.LaunchReceipt{
+			Application: cu.ApplicationWorkBuddy,
+			BundleID:    cu.WorkBuddyBundleID,
+			Window:      cu.WindowRef{ID: "workbuddy-window", OwnerPID: 84, BundleID: cu.WorkBuddyBundleID},
+			Outcome:     cu.OutcomeExecuted,
+			Duration:    time.Millisecond,
+			CompletedAt: time.Now(),
+		},
+	}
+	result := New().Run(context.Background(), json.RawMessage(`{"action":"launch_app","application":"WorkBuddy"}`), testContext(service))
+	if result.IsError {
+		t.Fatalf("launch result=%s", result.Content)
+	}
+	var payload struct {
+		Receipt cu.LaunchReceipt `json:"launch_receipt"`
+		Window  string           `json:"window_id"`
+	}
+	if err := json.Unmarshal([]byte(result.Content), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if service.starts != 1 || service.launchCalls != 1 || payload.Receipt.Window.ID != "workbuddy-window" || payload.Window != "workbuddy-window" {
+		t.Fatalf("starts=%d launchCalls=%d payload=%+v", service.starts, service.launchCalls, payload)
+	}
+}
+
+func TestLaunchAppRejectsUnknownApplicationBeforeService(t *testing.T) {
+	service := &launchingService{coordinatingService: &coordinatingService{serviceStub: screenshotService(t), sessionID: testComputerSession}}
+	result := New().Run(context.Background(), json.RawMessage(`{"action":"launch_app","application":"Safari"}`), testContext(service))
+	if !result.IsError || !strings.Contains(result.Content, "unsupported_application") || service.starts != 0 || service.launchCalls != 0 {
+		t.Fatalf("result=%+v starts=%d launchCalls=%d", result, service.starts, service.launchCalls)
 	}
 }

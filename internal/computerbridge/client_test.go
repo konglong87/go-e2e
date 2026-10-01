@@ -562,3 +562,41 @@ func TestStopIndependentOfInFlightExecute(t *testing.T) {
 	default:
 	}
 }
+
+func TestClientLaunchAppBindsAllowlistedWorkBuddyWindow(t *testing.T) {
+	owner := testOwner()
+	client := newUnixClient(t, 0, func(w http.ResponseWriter, r *http.Request) {
+		req := readRequest(t, r)
+		if req.Op != OpLaunchApp || req.Application != string(cu.ApplicationWorkBuddy) || req.SessionID != "host-session" {
+			t.Fatalf("launch request=%+v", req)
+		}
+		writeData(t, w, cu.LaunchReceipt{
+			Application: cu.ApplicationWorkBuddy,
+			BundleID:    cu.WorkBuddyBundleID,
+			Window:      cu.WindowRef{ID: "window-7", OwnerPID: 84, BundleID: cu.WorkBuddyBundleID},
+			Outcome:     cu.OutcomeExecuted,
+			Duration:    time.Millisecond,
+			CompletedAt: time.Now(),
+		})
+	})
+	receipt, err := client.LaunchApp(context.Background(), owner, "host-session", string(cu.ApplicationWorkBuddy))
+	if err != nil || receipt.Outcome != cu.OutcomeExecuted || receipt.Window.ID != "window-7" {
+		t.Fatalf("receipt=%+v err=%v", receipt, err)
+	}
+}
+
+func TestClientLaunchAppPreservesControlledRemoteFailureReceipt(t *testing.T) {
+	client := newUnixClient(t, 0, func(w http.ResponseWriter, r *http.Request) {
+		req := readRequest(t, r)
+		if req.Op != OpLaunchApp {
+			t.Fatalf("op=%q", req.Op)
+		}
+		receipt := cu.LaunchReceipt{Application: cu.ApplicationWorkBuddy, Outcome: cu.OutcomeRejected, ErrorCode: cu.ErrorCodeLaunchTimeout, Duration: time.Millisecond, CompletedAt: time.Now()}
+		data, _ := json.Marshal(receipt)
+		_ = json.NewEncoder(w).Encode(Response{Data: data, Error: "host operation failed"})
+	})
+	receipt, err := client.LaunchApp(context.Background(), testOwner(), "host-session", string(cu.ApplicationWorkBuddy))
+	if err == nil || receipt.Outcome != cu.OutcomeRejected || receipt.ErrorCode != cu.ErrorCodeLaunchTimeout {
+		t.Fatalf("receipt=%+v err=%v", receipt, err)
+	}
+}
