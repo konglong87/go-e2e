@@ -892,7 +892,7 @@ func TestLaunchAppUsesCoordinatorAndReturnsBoundWindowReceipt(t *testing.T) {
 	if err := json.Unmarshal([]byte(result.Content), &payload); err != nil {
 		t.Fatal(err)
 	}
-	if service.starts != 1 || service.launchCalls != 1 || payload.Receipt.Window.ID != "workbuddy-window" || payload.Window != "workbuddy-window" {
+	if service.starts != 0 || service.launchCalls != 1 || payload.Receipt.Window.ID != "workbuddy-window" || payload.Window != "workbuddy-window" {
 		t.Fatalf("starts=%d launchCalls=%d payload=%+v", service.starts, service.launchCalls, payload)
 	}
 }

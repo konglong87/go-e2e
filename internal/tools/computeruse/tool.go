@@ -90,6 +90,17 @@ func (t Tool) Run(ctx context.Context, input json.RawMessage, tc tools.Context) 
 	if cu.ActionKind(params.Action) == cu.ActionLaunchApp && params.Application != string(cu.ApplicationWorkBuddy) {
 		return errorResult("unsupported_application", "only WorkBuddy may be launched by ComputerUse")
 	}
+	// Session IDs are host-owned bindings, not model authority. For the launch
+	// boundary, always replace a model-supplied/stale ID with the exact session
+	// currently bound to this query before crossing the authenticated bridge.
+	if cu.ActionKind(params.Action) == cu.ActionLaunchApp {
+		if binding, ok := service.(SessionBinding); ok {
+			boundID, bindErr := binding.CurrentComputerSession(ctx, owner)
+			if bindErr == nil && strings.TrimSpace(boundID) != "" {
+				params.SessionID = boundID
+			}
+		}
+	}
 	if strings.TrimSpace(params.SessionID) == "" {
 		var sessionID string
 		if cu.ActionKind(params.Action) == cu.ActionObserve || cu.ActionKind(params.Action) == cu.ActionLaunchApp {
@@ -174,7 +185,9 @@ func (t Tool) launchApp(ctx context.Context, service cu.Service, owner cu.Sessio
 		return errorResult("unsupported_application", "only WorkBuddy may be launched by ComputerUse")
 	}
 	receipt, err := launcher.LaunchApp(ctx, owner, params.SessionID, params.Application)
-	receipt.ErrorCode = cu.PublicErrorCode(receipt.ErrorCode)
+	if receipt.ErrorCode != "" {
+		receipt.ErrorCode = cu.PublicErrorCode(receipt.ErrorCode)
+	}
 	payload := map[string]any{"launch_receipt": receipt}
 	if err != nil || receipt.Outcome != cu.OutcomeExecuted {
 		errorCode := receipt.ErrorCode
