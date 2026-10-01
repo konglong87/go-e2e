@@ -42,6 +42,14 @@ describe("conversation event projection", () => {
     expect(result.messages.map((m) => m.content)).toEqual(["hi", "hello world"]);
     expect(result.cursor).toBe("4");
   });
+  it("falls back to the measured run span when a terminal duration is unbounded", () => {
+    const result = applyConversationEvents(session, [
+      { ...event(1, "started", {}), created_at: "2026-09-06T00:00:01Z" },
+      { ...event(2, "text_delta", { content: "done" }), created_at: "2026-09-06T00:00:02Z" },
+      { ...event(3, "completed", { duration_ms: 63_926_413_815_000 }), created_at: "2026-09-06T00:00:03Z" }
+    ]);
+    expect(result.messages[0]?.durationMs).toBe(2000);
+  });
   it("keeps thinking, tools and different runs separate", () => {
     const result = applyConversationEvents(session, [event(1, "thinking_delta", { content: "thinking" }), event(2, "tool_use", { tool_id: "a", tool_name: "Read" }), event(3, "tool_result", { tool_id: "a", tool_name: "Read", output: "done" }), event(4, "text_delta", { content: "one" }), event(5, "text_delta", { content: "two" }, 15)]);
     expect(result.messages.map((m) => m.kind)).toEqual(["thinking", "tool", "message", "message"]);

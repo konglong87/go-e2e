@@ -1,5 +1,6 @@
 import { buildPermissionRequests, buildSubAgentProgress, collectNextStepSuggestions, summarizeActivity, summarizeUsage } from "../../components/WebAgentPage";
 import { mergeEvents } from "../../lib/agentEvents";
+import { isReasonableReportedDurationMs } from "../../lib/messages";
 import type { AgentTaskRecord, IdentityConfig, WebAgentConversationDetail } from "../../lib/types";
 import type { ConversationEvent, SessionDetail, SessionMessage, SessionRef, SessionStatus } from "../types";
 
@@ -65,7 +66,9 @@ function buildRun(id: string, task: AgentTaskRecord | undefined, projection: Ses
   const startedAt = task?.started_at || startedEvent?.created_at || projection?.startedAt || events[0]?.created_at || "";
   const endedAt = terminal?.created_at || task?.finished_at || projection?.endedAt;
   const status = terminal ? statusValue(terminal.event_type) : projection?.status ?? statusValue(task?.status);
-  const durationMs = numeric(terminalPayload.duration_ms) ?? numeric(result.duration_ms) ?? (isTerminalStatus(status) ? elapsedMilliseconds(startedAt, endedAt) : undefined);
+  const measuredDurationMs = isTerminalStatus(status) ? elapsedMilliseconds(startedAt, endedAt) : undefined;
+  const reportedDurationMs = [numeric(terminalPayload.duration_ms), numeric(result.duration_ms)].find((value): value is number => isReasonableReportedDurationMs(value));
+  const durationMs = reportedDurationMs ?? measuredDurationMs;
   return {
     id, status, startedAt, endedAt, durationMs, usage, hasUsage, hasContext, usageFields: Object.keys(measured),
     provider: stringValue(terminalPayload.provider) || stringValue(started.provider) || stringValue(metadata.provider) || undefined,

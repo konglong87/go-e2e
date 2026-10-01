@@ -19,6 +19,14 @@ describe("conversation view model", () => {
     expect(runs[1]?.usage.totalTokens).toBe(100);
   });
 
+  it("falls back to run timestamps when the reported duration is malformed", () => {
+    const details = runtime([
+      { id: 1, model: "model", status: "completed", started_at: "2026-09-06T00:00:00Z", finished_at: "2026-09-06T00:00:02Z" }
+    ]);
+    const runs = buildConversationRuns({ ...session, events: [event(1, "started", {}, 1), event(2, "completed", { duration_ms: 63_926_413_815_000 }, 1)] }, details);
+    expect(runs[0]?.durationMs).toBe(2000);
+  });
+
   it("keeps unknown context and cache metrics absent instead of inventing a context limit", () => {
     expect(conversationRuntimeMetrics({ ...session, events: [event(1, "completed", {})] })).toEqual({ contextPercent: undefined, cacheHitPercent: undefined, totalTokens: undefined });
     const metrics = conversationRuntimeMetrics({ ...session, events: [event(1, "usage", { input_tokens: 100, output_tokens: 200, cache_read_input_tokens: 100, context_length: 1000 })] });

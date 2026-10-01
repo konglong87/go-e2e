@@ -66,12 +66,29 @@ export function formatTokens(total: number): string {
   return String(total);
 }
 
-export function formatDuration(ms: number) {
-  const seconds = Math.round(ms / 1000);
-  if (seconds < 60) {
-    return `${seconds}s`;
-  }
-  const minutes = Math.floor(seconds / 60);
-  const rest = seconds % 60;
-  return `${minutes}m ${rest}s`;
+const MILLISECONDS_PER_SECOND = 1000;
+const SECONDS_PER_MINUTE = 60;
+const MINUTES_PER_HOUR = 60;
+const HOURS_PER_DAY = 24;
+export const MAX_REASONABLE_REPORTED_DURATION_MS = 7 * HOURS_PER_DAY * MINUTES_PER_HOUR * SECONDS_PER_MINUTE * MILLISECONDS_PER_SECOND;
+const MAX_COMPACT_DURATION_MS = MAX_REASONABLE_REPORTED_DURATION_MS;
+
+export function isReasonableReportedDurationMs(value: number | undefined): value is number {
+  return value !== undefined && Number.isFinite(value) && value >= 0 && value <= MAX_REASONABLE_REPORTED_DURATION_MS;
+}
+
+export function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return "—";
+  if (ms > MAX_COMPACT_DURATION_MS) return ">7d";
+  const seconds = Math.round(ms / MILLISECONDS_PER_SECOND);
+  if (seconds < SECONDS_PER_MINUTE) return `${seconds}s`;
+  const minutes = Math.floor(seconds / SECONDS_PER_MINUTE);
+  const rest = seconds % SECONDS_PER_MINUTE;
+  if (minutes < MINUTES_PER_HOUR) return `${minutes}m ${rest}s`;
+  const hours = Math.floor(minutes / MINUTES_PER_HOUR);
+  const hourRest = minutes % MINUTES_PER_HOUR;
+  if (hours < HOURS_PER_DAY) return `${hours}h ${String(hourRest).padStart(2, "0")}m`;
+  const days = Math.floor(hours / HOURS_PER_DAY);
+  const dayRest = hours % HOURS_PER_DAY;
+  return `${days}d ${String(dayRest).padStart(2, "0")}h`;
 }

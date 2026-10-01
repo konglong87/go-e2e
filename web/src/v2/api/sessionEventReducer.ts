@@ -1,4 +1,5 @@
 import { mergeEvents } from "../../lib/agentEvents";
+import { isReasonableReportedDurationMs } from "../../lib/messages";
 import { claimUserQuestionToolID, parseUserQuestionInput, questionChoices, type UserQuestionToolCandidate } from "../../lib/userQuestion";
 import type { ConversationEvent, PreparedAttachment, SessionDetail, SessionMessage, SessionStatus } from "../types";
 
@@ -55,7 +56,7 @@ export function applyConversationEvents(detail: SessionDetail, incoming: Convers
     }
     metadata.set(event.task_id, meta);
     const terminal = type === CONVERSATION_EVENT.completed || type === CONVERSATION_EVENT.failed || type === CONVERSATION_EVENT.cancelled || type === CONVERSATION_EVENT.timeout;
-    if (terminal && typeof payload.duration_ms === "number") meta.durationMs = number(payload.duration_ms);
+    if (terminal && typeof payload.duration_ms === "number" && isReasonableReportedDurationMs(payload.duration_ms)) meta.durationMs = payload.duration_ms;
     if (type === CONVERSATION_EVENT.turnStart) turns.set(event.task_id, number(payload.turn));
     if (buffer?.kind === "thinking" && (bufferTask !== event.task_id || (type !== CONVERSATION_EVENT.thinking && type !== CONVERSATION_EVENT.usage && type !== "nested_agent_progress"))) {
       buffer.stageEndedAt = time;
@@ -198,7 +199,8 @@ export function applyConversationEvents(detail: SessionDetail, incoming: Convers
     const meta = metadata.get(message.taskID ?? 0);
     Object.assign(message, meta);
     if (run && (run.status === "completed" || run.status === "failed" || run.status === "stopped")) {
-      message.durationMs ||= elapsed(run.startedAt, run.endedAt) || undefined;
+      const measuredDurationMs = elapsed(run.startedAt, run.endedAt);
+      if (message.durationMs === undefined || !isReasonableReportedDurationMs(message.durationMs)) message.durationMs = measuredDurationMs;
       if (message.thinkingStatus === "streaming") message.thinkingStatus = run.status === "completed" ? "completed" : run.status === "stopped" ? "stopped" : "failed";
       if (message.tool?.status === "running") message.tool.status = run.status === "completed" ? "completed" : run.status === "stopped" ? "stopped" : "failed";
     }
