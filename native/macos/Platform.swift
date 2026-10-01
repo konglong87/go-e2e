@@ -135,7 +135,17 @@ struct MacDesktop: DesktopPlatform {
                 }
                 // Use Launch Services through AppKit. This stays inside the trusted
                 // native helper and avoids shell/open/osascript launch paths.
-                guard NSWorkspace.shared.open(url) else { throw SafetyError.launchFailed }
+                let configuration = NSWorkspace.OpenConfiguration()
+                configuration.activates = true
+                configuration.hides = false
+                let completion = DispatchSemaphore(value: 0)
+                var launchError: Error?
+                NSWorkspace.shared.openApplication(at: url, configuration: configuration) { _, error in
+                    launchError = error
+                    completion.signal()
+                }
+                guard completion.wait(timeout: .now() + 5) == .success else { throw SafetyError.launchTimeout }
+                if launchError != nil { throw SafetyError.launchFailed }
             }
         } catch let error as SafetyError {
             throw error
