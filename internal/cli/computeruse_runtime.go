@@ -253,7 +253,7 @@ func (s *trackedDesktopComputerService) LaunchApp(ctx context.Context, owner com
 	s.mu.Unlock()
 	launcher, ok := s.desktopComputerBridge.(computeruse.ApplicationLauncher)
 	if !ok {
-		return computeruse.LaunchReceipt{}, computerbridge.ErrRemote
+		return computeruse.LaunchReceipt{Application: computeruse.ApplicationWorkBuddy, Outcome: computeruse.OutcomeRejected, ErrorCode: computeruse.ErrorCodeLaunchFailed, CompletedAt: time.Now()}, computerbridge.ErrRemote
 	}
 	return launcher.LaunchApp(ctx, owner, id, application)
 }

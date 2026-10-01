@@ -3,6 +3,7 @@ package computerbridge
 import (
 	"context"
 	"errors"
+	"time"
 
 	cu "github.com/konglong87/go-e2e/internal/computeruse"
 )
@@ -87,7 +88,7 @@ func (c *Client) LaunchApp(ctx context.Context, owner cu.SessionOwner, sessionID
 	}
 	var out cu.LaunchReceipt
 	if decodeStrict(response.Data, &out) != nil || !validLaunchReceipt(out, sessionID, application) {
-		return cu.LaunchReceipt{}, ErrInvalidResponse
+		return cu.LaunchReceipt{Application: cu.ApplicationWorkBuddy, Outcome: cu.OutcomeRejected, ErrorCode: cu.ErrorCodeLaunchFailed, CompletedAt: time.Now()}, ErrInvalidResponse
 	}
 	if out.ErrorCode != "" {
 		out.ErrorCode = cu.PublicErrorCode(out.ErrorCode)

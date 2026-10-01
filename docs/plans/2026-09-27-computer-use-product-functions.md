@@ -29,6 +29,12 @@ be read as evidence that the native overlay or the whole product fully passed.
 - Controlled error codes and tests cover unsupported application, launch timeout,
   target-window mismatch, stale binding, and launch receipt validation. Focused
   Go tests and native fake-platform tests pass.
+- First fresh production-model run on the 3cd7cc3 build stopped safely at the
+  launch boundary: the model called `launch_app`, received a rejected receipt,
+  and then called Stop. It completed in 107.959 seconds, but produced no
+  WorkBuddy window binding or reply evidence and is not an acceptance pass.
+  The follow-up fix keeps launch independent from input TCC and preserves a
+  controlled launch failure receipt instead of collapsing it to an empty result.
 - This closes the implementation dependency for reliable launch/bind, but does
   **not** close the real acceptance gate: WorkBuddy must still be cold-started
   from the latest desktop build and prove real screenshots, receipts, input,

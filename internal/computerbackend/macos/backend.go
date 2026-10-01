@@ -434,7 +434,11 @@ func (b *Backend) LaunchApp(ctx context.Context, application string) (receipt cu
 		receipt.ErrorCode = cu.ErrorCodeUnsupportedApplication
 		return finish(&rejection{cu.ErrorCodeUnsupportedApplication})
 	}
-	if !b.hostCaptureAllowed() || !b.hostInputAllowed() {
+	// Launching an allowlisted app uses the trusted AppKit launcher and Window
+	// Server discovery; it does not post input. Accessibility/PostEvent TCC is
+	// checked again by the first observe/input boundary, so a missing input grant
+	// must not prevent the app from being started and bound.
+	if !b.hostCaptureAllowed() {
 		receipt.ErrorCode = cu.ErrorCodePermissionRequired
 		return finish(&rejection{cu.ErrorCodePermissionRequired})
 	}
