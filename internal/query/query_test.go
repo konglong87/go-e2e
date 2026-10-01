@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/konglong87/go-e2e/internal/agenttasks"
 	"github.com/konglong87/go-e2e/internal/anthropic"
@@ -164,6 +165,16 @@ func TestSimpleComputerUsePromptAutoEnablesOnlyForWorkBuddyGUIIntent(t *testing.
 				t.Fatalf("isSimpleComputerUsePrompt(%q)=%v, want %v", test.prompt, got, test.want)
 			}
 		})
+	}
+}
+
+func TestSimpleComputerUsePromptCountsUnicodeCharactersForFastPath(t *testing.T) {
+	prompt := strings.Repeat("请只使用 ComputerUse 在 WorkBuddy 中完成操作。", 10) + " 输入 1+1=2，然后点击发送。"
+	if len(prompt) <= 600 || utf8.RuneCountInString(prompt) > 600 {
+		t.Fatalf("test prompt does not exercise UTF-8 byte boundary: bytes=%d runes=%d", len(prompt), utf8.RuneCountInString(prompt))
+	}
+	if !isSimpleComputerUsePrompt(prompt) {
+		t.Fatal("Chinese WorkBuddy prompt should use the fast path")
 	}
 }
 

@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/konglong87/go-e2e/internal/agentbudget"
 	"github.com/konglong87/go-e2e/internal/agenttasks"
@@ -6914,7 +6915,10 @@ const defaultQuerySource = "repl_main_thread"
 
 func isSimpleComputerUsePrompt(prompt string) bool {
 	prompt = strings.ToLower(strings.TrimSpace(prompt))
-	if prompt == "" || len(prompt) > 600 || strings.Contains(prompt, "don't") {
+	// The classifier budget is expressed in user-visible characters, not UTF-8
+	// bytes. A Chinese WorkBuddy request otherwise exceeds the limit three times
+	// faster and silently misses the Computer Use fast path.
+	if prompt == "" || utf8.RuneCountInString(prompt) > 600 || strings.Contains(prompt, "don't") {
 		return false
 	}
 	normalized := strings.NewReplacer(
