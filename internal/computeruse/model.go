@@ -455,6 +455,7 @@ type ComputerApplication string
 const (
 	ApplicationWorkBuddy ComputerApplication = "WorkBuddy"
 	WorkBuddyBundleID                        = "com.workbuddy.workbuddy"
+	GoE2EHostBundleID                        = "com.wails.go-e2e"
 )
 
 // LaunchReceipt is independent evidence that a trusted host launch request was

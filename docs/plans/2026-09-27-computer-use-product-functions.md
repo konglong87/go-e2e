@@ -41,6 +41,11 @@ be read as evidence that the native overlay or the whole product fully passed.
   bridge now preserves controlled host error codes such as `self_target` instead
   of collapsing rejected receipts to `action_failed`, so the model receives a
   safe corrective instruction instead of losing the target diagnosis.
+- A later fresh run on the `ae5a9c3` build still spent its first model turn
+  attempting a host-window click and timed out at 120.093 seconds; no WorkBuddy
+  action or reply evidence was produced. The bridge error-code preservation fix
+  and the new fast-path host-window guard are therefore required before the next
+  final run; acceptance remains open.
 - This closes the implementation dependency for reliable launch/bind, but does
   **not** close the real acceptance gate: WorkBuddy must still be cold-started
   from the latest desktop build and prove real screenshots, receipts, input,

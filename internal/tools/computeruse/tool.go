@@ -142,7 +142,7 @@ func (t Tool) Run(ctx context.Context, input json.RawMessage, tc tools.Context) 
 	}
 	switch cu.ActionKind(params.Action) {
 	case cu.ActionObserve:
-		return t.observe(ctx, service, owner, params)
+		return t.observe(ctx, service, owner, params, tc)
 	case cu.ActionLaunchApp:
 		return t.launchApp(ctx, service, owner, params)
 	case cu.ActionPause:
@@ -203,9 +203,41 @@ func (t Tool) launchApp(ctx context.Context, service cu.Service, owner cu.Sessio
 	return tools.Result{Content: marshal(payload)}
 }
 
-func (t Tool) observe(ctx context.Context, service cu.Service, owner cu.SessionOwner, params request) tools.Result {
-	_, result := t.captureObservation(ctx, service, owner, params)
-	return result
+func (t Tool) observe(ctx context.Context, service cu.Service, owner cu.SessionOwner, params request, tc tools.Context) tools.Result {
+	observation, result := t.captureObservation(ctx, service, owner, params)
+	if result.IsError || !tc.ComputerUseFastPath || observation.ActiveWindow.BundleID != cu.GoE2EHostBundleID {
+		return result
+	}
+	// A simple WorkBuddy task must never make the model spend a turn clicking
+	// the go-e2e control surface. When the first trusted observation is still
+	// the host window, launch and bind the allowlisted target in the same
+	// ComputerUse observation turn, then return only the fresh WorkBuddy image.
+	launcher, ok := service.(cu.ApplicationLauncher)
+	if !ok {
+		return result
+	}
+	receipt, err := launcher.LaunchApp(ctx, owner, params.SessionID, string(cu.ApplicationWorkBuddy))
+	if receipt.ErrorCode != "" {
+		receipt.ErrorCode = cu.PublicErrorCode(receipt.ErrorCode)
+	}
+	if err != nil || receipt.Outcome != cu.OutcomeExecuted || receipt.Window.ID == "" {
+		payload := map[string]any{"launch_receipt": receipt, "error_code": receipt.ErrorCode, "message": "ComputerUse launched WorkBuddy unsuccessfully; stop without input replay"}
+		if payload["error_code"] == "" {
+			payload["error_code"] = cu.ErrorCodeLaunchFailed
+		}
+		return tools.Result{Content: marshal(payload), IsError: true}
+	}
+	params.WindowID = receipt.Window.ID
+	_, boundResult := t.captureObservation(ctx, service, owner, params)
+	if boundResult.IsError {
+		return boundResult
+	}
+	var boundPayload map[string]any
+	_ = json.Unmarshal([]byte(boundResult.Content), &boundPayload)
+	boundPayload["launch_receipt"] = receipt
+	boundPayload["window_id"] = receipt.Window.ID
+	boundResult.Content = marshal(boundPayload)
+	return boundResult
 }
 
 func (t Tool) captureObservation(ctx context.Context, service cu.Service, owner cu.SessionOwner, params request) (cu.Observation, tools.Result) {

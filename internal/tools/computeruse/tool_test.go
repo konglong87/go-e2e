@@ -866,7 +866,32 @@ func (s *launchingService) LaunchApp(_ context.Context, _ cu.SessionOwner, sessi
 	if sessionID != s.sessionID || application != string(cu.ApplicationWorkBuddy) {
 		return cu.LaunchReceipt{Application: cu.ComputerApplication(application), Outcome: cu.OutcomeRejected, ErrorCode: cu.ErrorCodeUnsupportedApplication}, errors.New("invalid launch binding")
 	}
+	if s.launchErr == nil && s.launchReceipt.Outcome == cu.OutcomeExecuted {
+		s.observation.ActiveWindow = s.launchReceipt.Window
+		s.observation.WindowID = s.launchReceipt.Window.ID
+	}
 	return s.launchReceipt, s.launchErr
+}
+
+func TestFastPathObservationAutoLaunchesHostWindow(t *testing.T) {
+	service := &launchingService{
+		coordinatingService: &coordinatingService{serviceStub: screenshotService(t), sessionID: testComputerSession},
+		launchReceipt: cu.LaunchReceipt{
+			Application: cu.ApplicationWorkBuddy, BundleID: cu.WorkBuddyBundleID,
+			Window:  cu.WindowRef{ID: "workbuddy-window", OwnerPID: 84, BundleID: cu.WorkBuddyBundleID},
+			Outcome: cu.OutcomeExecuted, Duration: time.Millisecond, CompletedAt: time.Now(),
+		},
+	}
+	service.observation.ActiveWindow.BundleID = cu.GoE2EHostBundleID
+	tc := testContext(service)
+	tc.ComputerUseFastPath = true
+	result := New().Run(context.Background(), json.RawMessage(`{"action":"observe"}`), tc)
+	if result.IsError {
+		t.Fatalf("result=%s", result.Content)
+	}
+	if service.launchCalls != 1 || !strings.Contains(result.Content, "workbuddy-window") || service.lastObserve.WindowID != "workbuddy-window" {
+		t.Fatalf("launchCalls=%d observe=%+v result=%s", service.launchCalls, service.lastObserve, result.Content)
+	}
 }
 
 func TestLaunchAppUsesCoordinatorAndReturnsBoundWindowReceipt(t *testing.T) {
