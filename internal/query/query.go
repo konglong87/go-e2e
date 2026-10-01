@@ -3707,6 +3707,16 @@ func (s *Session) effectiveRegistry() *tools.Registry {
 	if s.options.DisableTools || s.registry == nil {
 		return tools.NewRegistry()
 	}
+	if s.options.ComputerUseFastPath {
+		// A bounded GUI run must not spend model context on unrelated coding,
+		// shell, file, or agent tools. ComputerUse remains the same authority-
+		// checked tool; this only narrows the advertised surface for the run.
+		// Keep injected test-only registries intact when they do not contain the
+		// production ComputerUse tool.
+		if _, ok := s.registry.Get("ComputerUse"); ok {
+			return s.registry.Filter([]string{"ComputerUse"})
+		}
+	}
 	if !s.coordinatorMode() {
 		return s.registry
 	}
