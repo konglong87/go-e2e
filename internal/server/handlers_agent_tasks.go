@@ -958,6 +958,9 @@ func appendAgentTaskToolEventsWithOptions(ctx context.Context, opts Options, tas
 			"preview":   truncateAgentTaskEventText(call.Output, 160),
 			"output":    truncateAgentTaskEventText(call.Output, 2000),
 		}
+		if call.ComputerObservation != nil {
+			resultPayload["computer_observation"] = call.ComputerObservation
+		}
 		if _, err := appendAgentTaskEvent(ctx, opts, task, agenttasks.EventInput{
 			TaskID:      task.ID,
 			EventType:   agenttasks.EventToolResult,
@@ -1519,7 +1522,7 @@ func (s *agentTaskTextSink) OnToolResult(ctx context.Context, trace query.ToolTr
 	}
 	s.markTool(trace.ID)
 	s.endLongRunningTool(trace.ID, trace.Name)
-	if err := s.appendEvent(ctx, agenttasks.EventToolResult, map[string]any{
+	resultPayload := map[string]any{
 		"source":    "runner",
 		"tool_id":   trace.ID,
 		"tool_name": trace.Name,
@@ -1527,7 +1530,11 @@ func (s *agentTaskTextSink) OnToolResult(ctx context.Context, trace query.ToolTr
 		"input":     truncateAgentTaskEventText(trace.Input, 600),
 		"preview":   truncateAgentTaskEventText(trace.Output, 160),
 		"output":    truncateAgentTaskEventText(trace.Output, 2000),
-	}); err != nil {
+	}
+	if trace.ComputerObservation != nil {
+		resultPayload["computer_observation"] = trace.ComputerObservation
+	}
+	if err := s.appendEvent(ctx, agenttasks.EventToolResult, resultPayload); err != nil {
 		return err
 	}
 	// trace.FileChanges is already populated by the tools that touched files, so

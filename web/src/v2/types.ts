@@ -32,7 +32,8 @@ export type ContextChip = { sourceRef: SessionRef; title: string; status: "ready
 export type OperationCard = { id: string; kind: OperationKind; status: "pending" | "completed" | "failed"; title: string; detail: string; createdAt: string; replayed?: boolean };
 export type ConversationEvent = { id: number; task_id: number; event_type?: string; payload_json?: string; created_at?: string };
 export type ThinkingMode = "full" | "summary" | "hidden";
-export type MessageTool = { id: string; name: string; input: string; command: string; output: string; status: "running" | "completed" | "failed" | "stopped"; durationMs?: number };
+export type ComputerObservationImage = { observationID: string; assetID: string; mediaType: string; name: string; sizeBytes: number; sha256: string };
+export type MessageTool = { id: string; name: string; input: string; command: string; output: string; status: "running" | "completed" | "failed" | "stopped"; durationMs?: number; computerObservation?: ComputerObservationImage };
 export type SessionMessage = {
   id: string; role: "user" | "assistant"; kind: SessionMessageKind; content: string; createdAt: string;
   taskID?: number; provider?: string; model?: string; durationMs?: number; tokens?: number;

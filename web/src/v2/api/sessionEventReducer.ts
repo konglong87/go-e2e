@@ -1,7 +1,7 @@
 import { mergeEvents } from "../../lib/agentEvents";
 import { isReasonableReportedDurationMs } from "../../lib/messages";
 import { claimUserQuestionToolID, parseUserQuestionInput, questionChoices, type UserQuestionToolCandidate } from "../../lib/userQuestion";
-import type { ConversationEvent, PreparedAttachment, SessionDetail, SessionMessage, SessionStatus } from "../types";
+import type { ComputerObservationImage, ConversationEvent, PreparedAttachment, SessionDetail, SessionMessage, SessionStatus } from "../types";
 
 export const CONVERSATION_EVENT = {
   user: "message", text: "text_delta", thinking: "thinking_delta", tool: "tool_use", toolCall: "tool_call", toolResult: "tool_result",
@@ -87,7 +87,7 @@ export function applyConversationEvents(detail: SessionDetail, incoming: Convers
       const toolID = toolMessageID(event.task_id, text(payload.tool_id) || text(payload.id) || String(event.id));
       const existing = tools.get(toolID);
       const input = printable(payload.input) || existing?.tool?.input || "";
-      const tool = { id: toolID, name: text(payload.tool_name) || text(payload.name) || existing?.tool?.name || "Tool", input, command: toolCommand(input), output: printable(payload.output) || text(payload.preview) || text(payload.error) || existing?.tool?.output || "", status: type === CONVERSATION_EVENT.toolResult ? (payload.is_error === true || payload.error ? "failed" : "completed") as "failed" | "completed" : "running" as const, durationMs: number(payload.duration_ms) || number(payload.elapsed_ms) || elapsed(existing?.createdAt, time) || undefined };
+      const tool = { id: toolID, name: text(payload.tool_name) || text(payload.name) || existing?.tool?.name || "Tool", input, command: toolCommand(input), output: printable(payload.output) || text(payload.preview) || text(payload.error) || existing?.tool?.output || "", status: type === CONVERSATION_EVENT.toolResult ? (payload.is_error === true || payload.error ? "failed" : "completed") as "failed" | "completed" : "running" as const, durationMs: number(payload.duration_ms) || number(payload.elapsed_ms) || elapsed(existing?.createdAt, time) || undefined, computerObservation: computerObservation(payload.computer_observation) ?? existing?.tool?.computerObservation };
       const content = [tool.name, tool.input, tool.output].filter(Boolean).join("\n\n");
       if (existing) { existing.content = content; existing.tool = tool; }
       else {
@@ -233,6 +233,14 @@ function imageAssetID(payload: Record<string, unknown>): string { return text(ob
 function questionResolutionStatus(value: unknown): "answered" | "cancelled" | "expired" | undefined {
   return value === "answered" || value === "cancelled" || value === "expired" ? value : undefined;
 }
+function computerObservation(value: unknown): ComputerObservationImage | undefined {
+  const raw = object(value);
+  const observationID = text(raw.observation_id);
+  const assetID = text(raw.asset_id);
+  if (!observationID || !assetID || !text(raw.media_type)) return undefined;
+  return { observationID, assetID, mediaType: text(raw.media_type), name: text(raw.name), sizeBytes: number(raw.size_bytes), sha256: text(raw.sha256) };
+}
+
 function attachments(value: unknown): PreparedAttachment[] | undefined {
   if (!Array.isArray(value)) return undefined;
   return value.flatMap((item) => {

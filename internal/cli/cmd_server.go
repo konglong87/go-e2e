@@ -469,6 +469,8 @@ func serverCommand(ctx context.Context, args []string, opts options, stdout io.W
 		// The server owns provider resolution and persistence construction; the
 		// CLI runtime only forwards the already-authorized capability to tools.
 		queryOpts.imageGenerator = serverOpts.ImageGenerator
+		queryOpts.imageBlobStore = serverOpts.ImageBlobStore
+		queryOpts.mediaAssetStore = serverOpts.MediaAssetStore
 		queryOpts.inlineTenantSkills = append([]string(nil), req.InlineTenantSkills...)
 		queryOpts.inlineTenantSkillSource = req.InlineTenantSkillSource
 		queryOpts.responseFormat = serverResponseFormatToAnthropic(req.ResponseFormat)

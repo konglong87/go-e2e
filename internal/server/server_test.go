@@ -6660,10 +6660,11 @@ func TestAppendAgentTaskToolEventsIncludesOutput(t *testing.T) {
 	// 否则前端只能拿到 160 字符的 preview,无法向用户展示命令输出。
 	svc := &fakeTenantService{}
 	calls := []query.ToolTrace{{
-		ID:     "t1",
-		Name:   "Bash",
-		Input:  `{"command":"git diff"}`,
-		Output: "diff --git a/x b/x\n+added line",
+		ID:                  "t1",
+		Name:                "Bash",
+		Input:               `{"command":"git diff"}`,
+		Output:              "diff --git a/x b/x\n+added line",
+		ComputerObservation: &query.ComputerObservationReference{ObservationID: "observation-1", AssetID: "cu-image-1", MediaType: "image/png", Name: "computer.png", SizeBytes: 42, SHA256: "hash"},
 	}}
 	if err := appendAgentTaskToolEvents(context.Background(), svc, 7, "trace-1", calls, nil); err != nil {
 		t.Fatalf("appendAgentTaskToolEvents: %v", err)
@@ -6686,5 +6687,9 @@ func TestAppendAgentTaskToolEventsIncludesOutput(t *testing.T) {
 	input, _ := resultPayload["input"].(string)
 	if !strings.Contains(input, "git diff") {
 		t.Fatalf("tool_result payload input missing tool input; payload=%v", resultPayload)
+	}
+	observation, ok := resultPayload["computer_observation"].(map[string]any)
+	if !ok || observation["asset_id"] != "cu-image-1" || observation["observation_id"] != "observation-1" {
+		t.Fatalf("tool_result payload computer observation missing: payload=%v", resultPayload)
 	}
 }

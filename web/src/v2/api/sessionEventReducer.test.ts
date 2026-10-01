@@ -57,9 +57,9 @@ describe("conversation event projection", () => {
     expect(result.messages.at(-1)?.content).toBe("two");
   });
   it("preserves structured tool input and closes the same tool across image events", () => {
-    const result = applyConversationEvents(session, [event(1, "tool_call", { tool_id: "a", tool_name: "Bash", input: { command: "go test ./..." } }), event(2, "image_artifact", { asset_id: "asset-a" }), event(3, "tool_result", { tool_id: "a", output: "failure output", is_error: true, duration_ms: 420 })]);
+    const result = applyConversationEvents(session, [event(1, "tool_call", { tool_id: "a", tool_name: "Bash", input: { command: "go test ./..." } }), event(2, "image_artifact", { asset_id: "asset-a" }), event(3, "tool_result", { tool_id: "a", output: "failure output", is_error: true, duration_ms: 420, computer_observation: { observation_id: "obs-1", asset_id: "asset-screen", media_type: "image/png", name: "screen.png", size_bytes: 42, sha256: "hash" } })]);
     expect(result.messages).toHaveLength(2);
-    expect(result.messages[0]?.tool).toMatchObject({ name: "Bash", command: "go test ./...", output: "failure output", status: "failed", durationMs: 420 });
+    expect(result.messages[0]?.tool).toMatchObject({ name: "Bash", command: "go test ./...", output: "failure output", status: "failed", durationMs: 420, computerObservation: { observationID: "obs-1", assetID: "asset-screen", mediaType: "image/png" } });
     expect(result.messages[0]?.tool?.input).toContain("go test ./...");
     expect(result.messages[1]?.artifacts).toEqual([{ asset_id: "asset-a" }]);
   });

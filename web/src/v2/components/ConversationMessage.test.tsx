@@ -54,6 +54,17 @@ describe("ConversationMessage", () => {
     expect(host.querySelector(".webui2-user-surface .agent-markdown")?.textContent).toContain("Please check the rollout.");
   });
 
+  it("shows a Computer Use observation thumbnail below the collapsed tool card", async () => {
+    vi.stubGlobal("URL", class extends URL { static createObjectURL = vi.fn(() => "blob:computer-observation"); static revokeObjectURL = vi.fn(); });
+    Object.defineProperty(HTMLDialogElement.prototype, "showModal", { configurable: true, value: vi.fn(function (this: HTMLDialogElement) { this.setAttribute("open", ""); }) });
+    Object.defineProperty(HTMLDialogElement.prototype, "close", { configurable: true, value: vi.fn(function (this: HTMLDialogElement) { this.removeAttribute("open"); }) });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(new Blob(["png"], { type: "image/png" }), { status: 200 })));
+    render(message({ kind: "tool", tool: { id: "tool-1", name: "ComputerUse", input: "{}", command: "observe", output: "done", status: "completed", computerObservation: { observationID: "obs-1", assetID: "asset-screen", mediaType: "image/png", name: "screen.png", sizeBytes: 42, sha256: "hash" } } }));
+    await vi.waitFor(() => expect(host.querySelector('button[aria-label="Open generated asset"]')).not.toBeNull());
+    expect(host.querySelector(".webui2-tool-message")?.getAttribute("open")).toBeNull();
+    expect(host.textContent).toContain("Computer Use observation");
+  });
+
   it("keeps thinking, tool, and handoff content folded until their own summary is opened", () => {
     render(message({ kind: "thinking", content: "private reasoning" }));
     expect(host.querySelector("details")?.open).toBe(false);

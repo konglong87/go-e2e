@@ -36,6 +36,7 @@ import (
 	"github.com/konglong87/go-e2e/internal/identity"
 	imagegensvc "github.com/konglong87/go-e2e/internal/imagegen"
 	"github.com/konglong87/go-e2e/internal/mcp"
+	"github.com/konglong87/go-e2e/internal/media"
 	"github.com/konglong87/go-e2e/internal/memory"
 	"github.com/konglong87/go-e2e/internal/nextsteps"
 	"github.com/konglong87/go-e2e/internal/observability"
@@ -142,6 +143,8 @@ type options struct {
 	tenantSessionID               uint64
 	traceID                       string
 	imageGenerator                imagegensvc.Generator
+	imageBlobStore                imagegensvc.BlobStore
+	mediaAssetStore               media.Store
 	imageScheduler                imagegensvc.Scheduler
 	asyncChannelImages            bool
 	imageOriginFactory            func(tools.Context) (imagegensvc.OriginMetadata, error)
@@ -875,6 +878,8 @@ func newQuerySession(ctx context.Context, opts options, initial []anthropic.Mess
 		TraceID:                       opts.traceID,
 		RunID:                         opts.runID,
 		ImageGenerator:                opts.imageGenerator,
+		ImageBlobStore:                opts.imageBlobStore,
+		MediaAssetStore:               opts.mediaAssetStore,
 		ComputerUse:                   opts.computerUseService,
 		ComputerUseImageSupported:     opts.computerUseImageSupported,
 		IncludeHookEvents:             opts.includeHookEvents,

@@ -50,7 +50,7 @@ export function ConversationMessage({ identity, message, thinkingMode = "summary
     return <ThinkingMessage content={message.content} meta={meta} full={thinkingMode === "full"} live={message.thinkingStatus === "streaming"} />;
   }
   if (message.kind === "compact") return <FoldedMessage content={message.content} label={copy.compact} summary={<><FileText size={14} /><span className="webui2-stage-label">{copy.compact}</span><MessageTimestamp value={message.createdAt} /></>} className="webui2-compact-message" />;
-  if (message.kind === "tool" && message.tool) return <ToolMessage message={message} now={now} />;
+  if (message.kind === "tool" && message.tool) return <ToolMessage identity={identity} message={message} now={now} />;
   if (message.kind === "tool") {
     return <FoldedMessage content={message.content} label={t(foldedMessageLabels[message.kind])} />;
   }
@@ -116,16 +116,19 @@ function MessageAttachment({ attachment, identity }: { attachment: PreparedAttac
   </figure>;
 }
 
-function ToolMessage({ message, now }: { message: SessionMessage; now?: number }): JSX.Element {
+function ToolMessage({ identity, message, now }: { identity?: IdentityConfig; message: SessionMessage; now?: number }): JSX.Element {
   const { language } = useI18n();
   const copy = messageExperienceCopy[language];
   const tool = message.tool!;
   const duration = tool.status === "running" ? elapsedMilliseconds(message.createdAt, now) : tool.durationMs;
-  return <details className="webui2-folded-record webui2-tool-message">
-    <summary><ChevronRight className="webui2-disclosure-chevron" size={13} /><Terminal size={14} /><strong>{tool.name}</strong><code title={tool.command}>{tool.command}</code><span className={`webui2-tool-status webui2-tool-status--${tool.status}`}>{copy[tool.status]}</span>{duration !== undefined ? <small>{formatDuration(duration)}</small> : null}<MessageTimestamp value={message.createdAt} /></summary>
-    {tool.input ? <div><small>{copy.input}</small><pre>{tool.input}</pre></div> : null}
-    {tool.output ? <div><small>{copy.output}</small><pre>{tool.output}</pre></div> : null}
-  </details>;
+  return <div className="webui2-tool-message-container">
+    <details className="webui2-folded-record webui2-tool-message">
+      <summary><ChevronRight className="webui2-disclosure-chevron" size={13} /><Terminal size={14} /><strong>{tool.name}</strong><code title={tool.command}>{tool.command}</code><span className={`webui2-tool-status webui2-tool-status--${tool.status}`}>{copy[tool.status]}</span>{duration !== undefined ? <small>{formatDuration(duration)}</small> : null}<MessageTimestamp value={message.createdAt} /></summary>
+      {tool.input ? <div><small>{copy.input}</small><pre>{tool.input}</pre></div> : null}
+      {tool.output ? <div><small>{copy.output}</small><pre>{tool.output}</pre></div> : null}
+    </details>
+    {tool.computerObservation ? <div className="webui2-tool-observation"><small>{copy.computerObservation}</small><GeneratedArtifactImage identity={identity} assetId={tool.computerObservation.assetID} /></div> : null}
+  </div>;
 }
 
 export function PermissionMessage({ identity, message }: { identity: IdentityConfig; message: SessionMessage }): JSX.Element {

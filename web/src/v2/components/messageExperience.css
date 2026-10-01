@@ -56,3 +56,7 @@ details[open] > summary > .webui2-disclosure-chevron { transform: rotate(90deg);
   .webui2-page .webui2-tool-message > summary > code { flex-basis: 100%; order: 2; padding-left: 20px; }
   .webui2-message-footer { gap: 6px 9px; }
 }
+
+.webui2-tool-message-container { min-width: 0; }
+.webui2-tool-observation { margin-top: 10px; max-width: min(100%, 640px); }
+.webui2-tool-observation > small { display: block; margin: 0 0 6px; color: var(--webui2-text-muted); }

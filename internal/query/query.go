@@ -1,6 +1,7 @@
 package query
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -33,6 +34,7 @@ import (
 	"github.com/konglong87/go-e2e/internal/hooks"
 	imagegensvc "github.com/konglong87/go-e2e/internal/imagegen"
 	"github.com/konglong87/go-e2e/internal/loopguard"
+	"github.com/konglong87/go-e2e/internal/media"
 	"github.com/konglong87/go-e2e/internal/memory"
 	"github.com/konglong87/go-e2e/internal/observability"
 	"github.com/konglong87/go-e2e/internal/outputstyle"
@@ -98,6 +100,8 @@ type Options struct {
 	// ImageGenerator is the optional tenant-scoped image service. Keeping it
 	// injectable preserves the disabled/bare runtime behavior by default.
 	ImageGenerator               imagegensvc.Generator
+	ImageBlobStore               imagegensvc.BlobStore
+	MediaAssetStore              media.Store
 	ComputerUse                  computeruse.Service
 	ComputerUseImageSupported    bool
 	QuerySource                  string
@@ -355,14 +359,24 @@ type contextAssembly struct {
 	codePromptReport memory.PromptDocumentsReport
 }
 
+type ComputerObservationReference struct {
+	ObservationID string `json:"observation_id"`
+	AssetID       string `json:"asset_id"`
+	MediaType     string `json:"media_type"`
+	Name          string `json:"name"`
+	SizeBytes     int64  `json:"size_bytes"`
+	SHA256        string `json:"sha256"`
+}
+
 type ToolTrace struct {
-	ID          string                    `json:"id"`
-	Name        string                    `json:"name"`
-	Input       string                    `json:"input,omitempty"`
-	Output      string                    `json:"output"`
-	IsError     bool                      `json:"is_error,omitempty"`
-	Interaction *tools.InteractionRequest `json:"-"`
-	FileChanges []tools.FileChange        `json:"file_changes,omitempty"`
+	ID                  string                        `json:"id"`
+	Name                string                        `json:"name"`
+	Input               string                        `json:"input,omitempty"`
+	Output              string                        `json:"output"`
+	IsError             bool                          `json:"is_error,omitempty"`
+	Interaction         *tools.InteractionRequest     `json:"-"`
+	FileChanges         []tools.FileChange            `json:"file_changes,omitempty"`
+	ComputerObservation *ComputerObservationReference `json:"computer_observation,omitempty"`
 	// Verification stays internal; transcript evidence uses dedicated closure
 	// events so existing ToolTrace API responses remain unchanged.
 	verification    *repair.VerificationResult
@@ -3447,6 +3461,9 @@ func (s *Session) runToolWithInvocation(ctx context.Context, registry *tools.Reg
 		Limit:     tools.EffectiveResultLimit(tool, s.options.ToolResultLimit),
 		Session:   s.toolResultSessionRef(),
 	})
+	if !res.IsError && tools.IsComputerUseTool(block.Name) {
+		trace.ComputerObservation = s.persistComputerObservation(ctx, res.Content, res.ContextMessages)
+	}
 	if res.IsError && (res.Verification == nil || !res.Verification.MatchedExpectation) {
 		res.Content = appendVerificationFailureRecoveryReminder(block.Name, input, res.Content)
 	} else {
@@ -3485,6 +3502,68 @@ func (s *Session) runToolWithInvocation(ctx context.Context, registry *tools.Reg
 		"output_bytes", len(trace.Output),
 	)
 	return trace
+}
+
+func (s *Session) persistComputerObservation(ctx context.Context, content string, messages []anthropic.MessageParam) *ComputerObservationReference {
+	if s.options.ImageBlobStore == nil || s.options.MediaAssetStore == nil || s.options.TenantID == 0 || s.options.UserID == 0 || s.options.TenantSessionID == 0 {
+		return nil
+	}
+	var payload struct {
+		Observation struct {
+			ID string `json:"id"`
+		} `json:"observation"`
+	}
+	if err := json.Unmarshal([]byte(content), &payload); err != nil || strings.TrimSpace(payload.Observation.ID) == "" {
+		return nil
+	}
+	var source *anthropic.ContentSource
+	for _, message := range messages {
+		for _, block := range message.Content {
+			if block.Type == blockTypeImage && block.Source != nil && strings.TrimSpace(block.Source.Data) != "" {
+				source = block.Source
+				break
+			}
+		}
+		if source != nil {
+			break
+		}
+	}
+	if source == nil || !strings.EqualFold(source.Type, "base64") || !strings.EqualFold(source.MediaType, "image/png") {
+		return nil
+	}
+	data, err := base64.StdEncoding.DecodeString(source.Data)
+	if err != nil || len(data) == 0 {
+		return nil
+	}
+	contentHash := sha256.Sum256(data)
+	contentDigest := hex.EncodeToString(contentHash[:])
+	scopeHash := sha256.Sum256([]byte(fmt.Sprintf("%d:%d:%d:%s", s.options.TenantID, s.options.UserID, s.options.TenantSessionID, contentDigest)))
+	assetID := "cu-image-" + hex.EncodeToString(scopeHash[:])
+	name := assetID + ".png"
+	policy := media.AccessPolicy{TenantID: s.options.TenantID, UserID: s.options.UserID, SessionID: s.options.TenantSessionID}
+	if existing, err := s.options.MediaAssetStore.Get(ctx, policy, assetID); err == nil {
+		return &ComputerObservationReference{ObservationID: payload.Observation.ID, AssetID: existing.AssetID, MediaType: existing.MediaType, Name: existing.Name, SizeBytes: existing.SizeBytes, SHA256: existing.SHA256}
+	}
+	key := fmt.Sprintf("tenant-%d/user-%d/session-%d/%s.png", policy.TenantID, policy.UserID, policy.SessionID, assetID)
+	blob, err := s.options.ImageBlobStore.Put(ctx, imagegensvc.PutBlobRequest{Policy: policy, Key: key, MediaType: "image/png", Name: name, Data: bytes.NewReader(data)})
+	if err != nil {
+		return nil
+	}
+	asset := media.Asset{
+		AssetID: assetID, Kind: media.KindImage, MediaType: "image/png", Name: name,
+		SizeBytes: int64(len(data)), SHA256: contentDigest, State: media.StateReady,
+		TenantID: policy.TenantID, UserID: policy.UserID, SessionID: policy.SessionID,
+		Original: media.Variant{Path: blob.Key, MediaType: "image/png", SizeBytes: blob.SizeBytes, SHA256: blob.SHA256},
+		Access:   policy,
+	}
+	if err := s.options.MediaAssetStore.Put(ctx, asset); err != nil {
+		_ = s.options.ImageBlobStore.Delete(ctx, policy, blob.Key)
+		return nil
+	}
+	return &ComputerObservationReference{
+		ObservationID: payload.Observation.ID, AssetID: assetID, MediaType: "image/png",
+		Name: name, SizeBytes: int64(len(data)), SHA256: contentDigest,
+	}
 }
 
 func bindToolResult(trace *ToolTrace, result tools.Result, fileChanges []tools.FileChange) {
