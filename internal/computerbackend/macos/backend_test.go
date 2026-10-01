@@ -63,6 +63,9 @@ func TestHelperProcess(t *testing.T) {
 		case commandReadiness:
 			result = map[string]any{"capture_readiness": "ready", "input_readiness": "ready", "permission_state": "approved", "focus_state": "focused", "image_supported": true, "supports_pause": true, "supports_stop": true, "coordinate_space": map[string]any{"display_id": "1", "width": 2, "height": 2, "scale_factor": 2}}
 		case commandLaunchApp:
+			if req.SessionID != "session-1" {
+				t.Fatalf("launch session=%q, want session-1", req.SessionID)
+			}
 			var launchRequest struct {
 				App string `json:"app"`
 			}
@@ -651,6 +654,7 @@ func TestAcknowledgedFocusFailureRetainsOnlyStopTransport(t *testing.T) {
 
 func TestBackendLaunchAppBindsWindowAndObserveUsesIt(t *testing.T) {
 	b := newTestBackend(t, "launch", time.Second, "")
+	_ = observeTest(t, b)
 	receipt, err := b.LaunchApp(context.Background(), string(cu.ApplicationWorkBuddy))
 	if err != nil || receipt.Outcome != cu.OutcomeExecuted {
 		t.Fatalf("launch receipt=%+v err=%v", receipt, err)
@@ -669,6 +673,7 @@ func TestBackendLaunchAppBindsWindowAndObserveUsesIt(t *testing.T) {
 
 func TestBackendLaunchAppTimeoutIsControlled(t *testing.T) {
 	b := newTestBackend(t, "launch-timeout", time.Second, "")
+	_ = observeTest(t, b)
 	receipt, err := b.LaunchApp(context.Background(), string(cu.ApplicationWorkBuddy))
 	if err == nil || receipt.Outcome != cu.OutcomeRejected || receipt.ErrorCode != cu.ErrorCodeLaunchTimeout {
 		t.Fatalf("timeout receipt=%+v err=%v", receipt, err)

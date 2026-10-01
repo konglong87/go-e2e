@@ -447,7 +447,16 @@ func (b *Backend) LaunchApp(ctx context.Context, application string) (receipt cu
 		return finish(err)
 	}
 	defer func() { <-b.operation }()
-	response, err := b.request(ctx, commandLaunchApp, "", "", map[string]any{"app": application, "generation": epoch})
+	b.mu.Lock()
+	sessionID := b.observation.SessionID
+	b.mu.Unlock()
+	if sessionID == "" {
+		sessionID = "host"
+	}
+	// The helper binds its control state to the same session identity as the
+	// preceding trusted observation. Sending the synthetic "host" ID after an
+	// observe would fail the helper's session gate before AppKit launch.
+	response, err := b.request(ctx, commandLaunchApp, sessionID, "", map[string]any{"app": application, "generation": epoch})
 	if err != nil {
 		var rejected *rejection
 		if errors.As(err, &rejected) {
