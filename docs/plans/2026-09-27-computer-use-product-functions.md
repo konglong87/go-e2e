@@ -35,6 +35,9 @@ be read as evidence that the native overlay or the whole product fully passed.
   WorkBuddy window binding or reply evidence and is not an acceptance pass.
   The follow-up fix keeps launch independent from input TCC and preserves a
   controlled launch failure receipt instead of collapsing it to an empty result.
+  It also prevents successful launch receipts from being mislabeled as
+  `action_failed` when their optional error code is empty, and rebinds launch
+  requests to the query-owned session ID rather than trusting model text.
 - This closes the implementation dependency for reliable launch/bind, but does
   **not** close the real acceptance gate: WorkBuddy must still be cold-started
   from the latest desktop build and prove real screenshots, receipts, input,
