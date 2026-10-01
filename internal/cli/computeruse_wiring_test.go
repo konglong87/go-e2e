@@ -56,3 +56,22 @@ func TestComputerUseRegistrationIsOptInAndImageGated(t *testing.T) {
 		})
 	}
 }
+
+func TestComputerUseFastPathRequiresExplicitTrustedOptIn(t *testing.T) {
+	cases := []struct {
+		name string
+		opts options
+		want bool
+	}{
+		{name: "ordinary query", opts: options{computerUseProfile: true}, want: false},
+		{name: "explicit desktop request", opts: options{computerUseProfile: true, computerUseFastPath: true}, want: true},
+		{name: "opt in without capability", opts: options{computerUseFastPath: true}, want: false},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			if got := computerUseFastPathEnabled(test.opts); got != test.want {
+				t.Fatalf("fast path enabled=%v, want %v", got, test.want)
+			}
+		})
+	}
+}

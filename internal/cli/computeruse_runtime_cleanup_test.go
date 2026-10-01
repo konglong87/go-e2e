@@ -308,13 +308,14 @@ func TestDesktopComputerUseCleanupCanceledDuringLookup(t *testing.T) {
 
 func TestDesktopComputerUseCleanupDoesNotAcquireAuthority(t *testing.T) {
 	for _, tc := range []struct {
-		name   string
-		mutate func(*options, *config.Config, *cleanupComputerBridge)
+		name         string
+		mutate       func(*options, *config.Config, *cleanupComputerBridge)
+		wantGuidance bool
 	}{
 		{name: "no bridge", mutate: func(o *options, _ *config.Config, _ *cleanupComputerBridge) { o.desktopComputerBridge = nil }},
 		{name: "missing owner", mutate: func(o *options, _ *config.Config, _ *cleanupComputerBridge) { o.tenantUserID = 0 }},
 		{name: "tools disabled", mutate: func(o *options, _ *config.Config, _ *cleanupComputerBridge) { o.disableTools = true }},
-		{name: "image route denied", mutate: func(_ *options, c *config.Config, _ *cleanupComputerBridge) { c.Settings.ComputerUse = nil }},
+		{name: "image route denied", wantGuidance: true, mutate: func(_ *options, c *config.Config, _ *cleanupComputerBridge) { c.Settings.ComputerUse = nil }},
 		{name: "lookup denied", mutate: func(_ *options, _ *config.Config, b *cleanupComputerBridge) {
 			b.lookupErr = errors.New("approval required")
 		}},
@@ -326,7 +327,7 @@ func TestDesktopComputerUseCleanupDoesNotAcquireAuthority(t *testing.T) {
 			tc.mutate(&opts, &cfg, bridge)
 			guidance, cleanup := configureDesktopComputerUse(context.Background(), cfg, computerRuntimeModel, &opts)
 			cleanup()
-			if guidance != "" || opts.computerUseService != nil || bridge.stopCalls != 0 {
+			if (guidance != "") != tc.wantGuidance || opts.computerUseService != nil || bridge.stopCalls != 0 {
 				t.Fatalf("denied lookup acquired cleanup authority: guidance=%q stops=%d", guidance, bridge.stopCalls)
 			}
 		})

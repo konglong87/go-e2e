@@ -63,6 +63,9 @@ type Context struct {
 	ImageGenerator            imagegen.Generator
 	ComputerUse               computeruse.Service
 	ComputerUseImageSupported bool
+	// ComputerUseFastPath skips redundant receipt image reads after successful
+	// input; a fresh authoritative observation and screenshot are still required.
+	ComputerUseFastPath bool
 }
 
 type Invocation struct {

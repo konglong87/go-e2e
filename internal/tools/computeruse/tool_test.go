@@ -792,3 +792,63 @@ func TestExecuteWithoutImageProviderDoesNotAutomaticallyObserve(t *testing.T) {
 		t.Fatalf("missing image provider triggered observation: %s", result.Content)
 	}
 }
+
+func TestFastPathSkipsReceiptEvidenceAndUsesFreshObservation(t *testing.T) {
+	service := executedScreenshotService(t)
+	tc := testContext(service)
+	tc.ComputerUseFastPath = true
+
+	result := New().Run(context.Background(), json.RawMessage(`{"session_id":"computer-1","action":"click","observation_id":"before-1"}`), tc)
+	if result.IsError {
+		t.Fatal(result.Content)
+	}
+	assertServiceOrder(t, service, callExecute, callObserve, callImagePrefix+testFreshImageID)
+	assertOriginalReceipt(t, result, service)
+	assertImage(t, result, service.images[testFreshImageID].data)
+	if service.imageID == testAfterImageID {
+		t.Fatalf("fast path fetched discarded receipt image %q", service.imageID)
+	}
+	if _, exists := resultPayload(t, result)["observation"]; !exists {
+		t.Fatal("fast path omitted fresh observation metadata")
+	}
+}
+
+func TestFastPathRetainsEvidenceForUnknownOutcome(t *testing.T) {
+	service := screenshotService(t)
+	service.receipt = cu.ActionReceipt{Outcome: cu.OutcomeUnknown, AfterObservationID: testAfterImageID}
+	service.serviceErr = errors.New(testPrivateError)
+	tc := testContext(service)
+	tc.ComputerUseFastPath = true
+
+	result := New().Run(context.Background(), json.RawMessage(`{"session_id":"computer-1","action":"click","observation_id":"before-1"}`), tc)
+	if !result.IsError {
+		t.Fatal("unknown outcome was accepted")
+	}
+	assertServiceOrder(t, service, callExecute, callImagePrefix+testAfterImageID)
+	assertOriginalReceipt(t, result, service)
+	assertImage(t, result, service.image)
+	if _, exists := resultPayload(t, result)["observation"]; exists {
+		t.Fatal("unknown outcome published a fresh observation")
+	}
+}
+
+func TestFastPathFreshObservationFailureFailsClosedWithoutReplay(t *testing.T) {
+	service := executedScreenshotService(t)
+	service.observeErr = errors.New(testPrivateError)
+	tc := testContext(service)
+	tc.ComputerUseFastPath = true
+
+	result := New().Run(context.Background(), json.RawMessage(`{"session_id":"computer-1","action":"click","observation_id":"before-1"}`), tc)
+	if !result.IsError {
+		t.Fatal("fresh observation failure was accepted")
+	}
+	assertPayloadCode(t, result, "error_code", "post_action_observation_failed")
+	assertServiceOrder(t, service, callExecute, callObserve)
+	assertOriginalReceipt(t, result, service)
+	if len(result.ContextMessages) != 0 {
+		t.Fatalf("failed fast-path refresh returned discarded evidence: %+v", result.ContextMessages)
+	}
+	if _, exists := resultPayload(t, result)["observation"]; exists {
+		t.Fatal("failed refresh published actionable metadata")
+	}
+}

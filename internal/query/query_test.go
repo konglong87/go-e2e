@@ -20,6 +20,7 @@ import (
 	"github.com/konglong87/go-e2e/internal/anthropic"
 	"github.com/konglong87/go-e2e/internal/capabilityloop"
 	"github.com/konglong87/go-e2e/internal/compact"
+	cu "github.com/konglong87/go-e2e/internal/computeruse"
 	"github.com/konglong87/go-e2e/internal/config"
 	"github.com/konglong87/go-e2e/internal/defaults"
 	"github.com/konglong87/go-e2e/internal/hooks"
@@ -87,6 +88,166 @@ func (s *invocationCaptureStreamer) StreamMessages(_ context.Context, _ anthropi
 			}
 		}
 		return &anthropic.StreamResult{Message: anthropic.MessageParam{Role: "assistant", Content: []anthropic.ContentBlock{{Type: blockTypeText, Text: "done"}}}, StopReason: "end_turn"}, nil
+	}
+}
+
+type deadlineProbeStreamer struct {
+	deadline    time.Time
+	hasDeadline bool
+}
+
+func (s *deadlineProbeStreamer) StreamMessages(ctx context.Context, _ anthropic.MessagesRequest, _ anthropic.StreamCallbacks) (*anthropic.StreamResult, error) {
+	s.deadline, s.hasDeadline = ctx.Deadline()
+	return nil, errors.New("deadline probe")
+}
+
+type fastPathContextTool struct {
+	got *bool
+}
+
+func (t fastPathContextTool) Name() string      { return "CaptureFastPath" }
+func (fastPathContextTool) Description() string { return "capture ComputerUse fast-path wiring" }
+func (fastPathContextTool) InputSchema() json.RawMessage {
+	return json.RawMessage(`{"type":"object"}`)
+}
+func (t fastPathContextTool) Run(_ context.Context, _ json.RawMessage, tc tools.Context) tools.Result {
+	*t.got = tc.ComputerUseFastPath
+	return tools.Result{Content: "captured"}
+}
+
+type fastPathContextStreamer struct{ calls int }
+
+func (s *fastPathContextStreamer) StreamMessages(_ context.Context, _ anthropic.MessagesRequest, cb anthropic.StreamCallbacks) (*anthropic.StreamResult, error) {
+	s.calls++
+	if s.calls == 1 {
+		return &anthropic.StreamResult{Message: anthropic.MessageParam{Role: "assistant", Content: []anthropic.ContentBlock{{
+			Type: blockTypeToolUse, ID: "fast-path-tool", Name: "CaptureFastPath", Input: json.RawMessage(`{}`),
+		}}}, StopReason: "tool_use"}, nil
+	}
+	if cb.OnText != nil {
+		if err := cb.OnText("done"); err != nil {
+			return nil, err
+		}
+	}
+	return &anthropic.StreamResult{Message: anthropic.MessageParam{Role: "assistant", Content: []anthropic.ContentBlock{{Type: blockTypeText, Text: "done"}}}, StopReason: "end_turn"}, nil
+}
+
+type fastPathComputerService struct{}
+
+func (fastPathComputerService) Capabilities(context.Context, cu.SessionOwner, string) (cu.Capabilities, error) {
+	return cu.Capabilities{}, nil
+}
+func (fastPathComputerService) Observe(context.Context, cu.SessionOwner, cu.ObserveRequest) (cu.Observation, error) {
+	return cu.Observation{}, nil
+}
+func (fastPathComputerService) Execute(context.Context, cu.SessionOwner, cu.Action) (cu.ActionReceipt, error) {
+	return cu.ActionReceipt{}, nil
+}
+func (fastPathComputerService) Pause(context.Context, cu.SessionOwner, string) error  { return nil }
+func (fastPathComputerService) Resume(context.Context, cu.SessionOwner, string) error { return nil }
+func (fastPathComputerService) Stop(context.Context, cu.SessionOwner, string) error   { return nil }
+
+func TestSimpleComputerUsePromptAutoEnablesOnlyForWorkBuddyGUIIntent(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		prompt string
+		want   bool
+	}{
+		{name: "simple WorkBuddy GUI flow", prompt: "In WorkBuddy, type hello and click Send.", want: true},
+		{name: "simple Chinese WorkBuddy GUI flow", prompt: "帮我在WorkBuddy中新建会话，输入1+1=2并点击发送。", want: true},
+		{name: "normal code query", prompt: "Fix the WorkBuddy integration code in the repository and add a test.", want: false},
+		{name: "unrelated GUI prompt", prompt: "Click Send in another desktop app.", want: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := isSimpleComputerUsePrompt(test.prompt); got != test.want {
+				t.Fatalf("isSimpleComputerUsePrompt(%q)=%v, want %v", test.prompt, got, test.want)
+			}
+		})
+	}
+}
+
+func TestSimpleComputerUsePromptActivatesBoundedRunWithoutChangingCodeQueries(t *testing.T) {
+	fastProbe := &deadlineProbeStreamer{}
+	fast := New(fastProbe, tools.NewRegistry(), Options{
+		Model: "test", MaxTurns: 20, CWD: t.TempDir(),
+		ComputerUse: cu.Service(fastPathComputerService{}), ComputerUseImageSupported: true,
+	})
+	if _, err := fast.Run(context.Background(), "In WorkBuddy, type hello and click Send.", io.Discard); err == nil || err.Error() != "deadline probe" {
+		t.Fatalf("WorkBuddy Run error=%v, want deadline probe", err)
+	}
+	if !fast.options.ComputerUseFastPath || fast.options.MaxTurns != 8 || !fastProbe.hasDeadline {
+		t.Fatalf("WorkBuddy fast path state: enabled=%v max_turns=%d deadline=%v", fast.options.ComputerUseFastPath, fast.options.MaxTurns, fastProbe.hasDeadline)
+	}
+
+	codeProbe := &deadlineProbeStreamer{}
+	code := New(codeProbe, tools.NewRegistry(), Options{
+		Model: "test", MaxTurns: 20, CWD: t.TempDir(),
+		ComputerUse: cu.Service(fastPathComputerService{}), ComputerUseImageSupported: true,
+	})
+	if _, err := code.Run(context.Background(), "Fix the WorkBuddy integration code in the repository and add a test.", io.Discard); err == nil || err.Error() != "deadline probe" {
+		t.Fatalf("code Run error=%v, want deadline probe", err)
+	}
+	if code.options.ComputerUseFastPath || code.options.MaxTurns != 20 || codeProbe.hasDeadline {
+		t.Fatalf("code query changed by classifier: enabled=%v max_turns=%d deadline=%v", code.options.ComputerUseFastPath, code.options.MaxTurns, codeProbe.hasDeadline)
+	}
+}
+
+func TestComputerUseFastPathPropagatesToToolContext(t *testing.T) {
+	var fastPath bool
+	session := New(&fastPathContextStreamer{}, tools.NewRegistry(fastPathContextTool{got: &fastPath}), Options{
+		Model: "test", MaxTurns: 2, CWD: t.TempDir(), ComputerUseFastPath: true,
+	})
+	if _, err := session.Run(context.Background(), "capture", io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if !fastPath {
+		t.Fatal("ComputerUseFastPath was not propagated to tools.Context")
+	}
+}
+
+func TestComputerUseFastPathBoundsTurnsAndRunDeadline(t *testing.T) {
+	fast := New(&deadlineProbeStreamer{}, tools.NewRegistry(), Options{
+		Model: "test", MaxTurns: 20, CWD: t.TempDir(), ComputerUseFastPath: true,
+	})
+	if fast.options.MaxTurns != 8 {
+		t.Fatalf("fast path max turns=%d, want 8", fast.options.MaxTurns)
+	}
+	limited := New(&deadlineProbeStreamer{}, tools.NewRegistry(), Options{
+		Model: "test", MaxTurns: 3, CWD: t.TempDir(), ComputerUseFastPath: true,
+	})
+	if limited.options.MaxTurns != 3 {
+		t.Fatalf("fast path raised configured max turns to %d", limited.options.MaxTurns)
+	}
+
+	probe := &deadlineProbeStreamer{}
+	session := New(probe, tools.NewRegistry(), Options{
+		Model: "test", MaxTurns: 1, CWD: t.TempDir(), ComputerUseFastPath: true,
+	})
+	if _, err := session.Run(context.Background(), "probe", io.Discard); err == nil || err.Error() != "deadline probe" {
+		t.Fatalf("Run error=%v, want deadline probe", err)
+	}
+	if !probe.hasDeadline {
+		t.Fatal("fast path did not wrap the run context with a deadline")
+	}
+	remaining := time.Until(probe.deadline)
+	if remaining < 109*time.Second || remaining > 110*time.Second {
+		t.Fatalf("fast path deadline remaining=%s, want about 110s", remaining)
+	}
+}
+
+func TestNormalQueryKeepsConfiguredTurnsAndNoFastPathDeadline(t *testing.T) {
+	probe := &deadlineProbeStreamer{}
+	session := New(probe, tools.NewRegistry(), Options{
+		Model: "test", MaxTurns: 20, CWD: t.TempDir(), ComputerUseFastPath: false,
+	})
+	if session.options.MaxTurns != 20 {
+		t.Fatalf("normal max turns=%d, want 20", session.options.MaxTurns)
+	}
+	if _, err := session.Run(context.Background(), "probe", io.Discard); err == nil || err.Error() != "deadline probe" {
+		t.Fatalf("Run error=%v, want deadline probe", err)
+	}
+	if probe.hasDeadline {
+		t.Fatal("normal query unexpectedly received a fast-path deadline")
 	}
 }
 

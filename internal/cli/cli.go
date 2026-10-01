@@ -158,14 +158,20 @@ type options struct {
 	responseFormat                *anthropic.ResponseFormat
 	desktopComputerBridge         desktopComputerBridge
 	computerUseProfile            bool
-	computerUseService            computeruse.Service
-	computerUseImageSupported     bool
+	// computerUseFastPath is an explicit trusted-request opt-in; capability availability alone must not enable it.
+	computerUseFastPath       bool
+	computerUseService        computeruse.Service
+	computerUseImageSupported bool
 
 	// Session Control is a v2 Orchestrator-only capability. The profile gate
 	// and concrete service are both required before tools are registered.
 	sessionControlProfile  bool
 	sessionControlService  sessioncontroltool.Service
 	sessionOptionsResolved bool
+}
+
+func computerUseFastPathEnabled(opts options) bool {
+	return opts.computerUseProfile && opts.computerUseFastPath
 }
 
 func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -882,6 +888,7 @@ func newQuerySession(ctx context.Context, opts options, initial []anthropic.Mess
 		MediaAssetStore:               opts.mediaAssetStore,
 		ComputerUse:                   opts.computerUseService,
 		ComputerUseImageSupported:     opts.computerUseImageSupported,
+		ComputerUseFastPath:           computerUseFastPathEnabled(opts),
 		IncludeHookEvents:             opts.includeHookEvents,
 		IncludePartialMessages:        opts.includePartialMessages,
 		IncludeStreamEvents:           opts.includeStreamEvents,

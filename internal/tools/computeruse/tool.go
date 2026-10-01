@@ -247,17 +247,23 @@ func (t Tool) execute(ctx context.Context, service cu.Service, owner cu.SessionO
 		payload["error_code"] = "action_failed"
 		payload["message"] = "computer action failed; inspect receipt before any further action"
 	}
-	if receipt.AfterObservationID != "" {
-		messages, imageErr := observationImage(ctx, service, owner, params.SessionID, receipt.AfterObservationID, actionEvidenceGuidance)
-		if imageErr != nil {
+	// In fast-path mode, a successful input immediately performs an authoritative
+	// fresh Observe below. The receipt evidence image would be discarded, so do
+	// not fetch it. Failed and unknown outcomes retain evidence-only handling.
+	needsEvidenceImage := !tc.ComputerUseFastPath || executeErr != nil || receipt.Outcome != cu.OutcomeExecuted
+	if needsEvidenceImage {
+		if receipt.AfterObservationID != "" {
+			messages, imageErr := observationImage(ctx, service, owner, params.SessionID, receipt.AfterObservationID, actionEvidenceGuidance)
+			if imageErr != nil {
+				out.IsError = true
+				payload["image_error_code"] = "observation_image_failed"
+			} else {
+				out.ContextMessages = messages
+			}
+		} else {
 			out.IsError = true
 			payload["image_error_code"] = "observation_image_failed"
-		} else {
-			out.ContextMessages = messages
 		}
-	} else {
-		out.IsError = true
-		payload["image_error_code"] = "observation_image_failed"
 	}
 	// A receipt's image is never authority for the next input. Compose a genuine
 	// owner-bound Observe only after unambiguous success and valid visual evidence.

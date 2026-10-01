@@ -73,10 +73,11 @@ func computerRuntimeOptions(bridge desktopComputerBridge) options {
 
 func TestDesktopComputerUseRuntimeGates(t *testing.T) {
 	for _, test := range []struct {
-		name    string
-		mutate  func(*options, *config.Config, *runtimeComputerBridge)
-		want    bool
-		lookups int
+		name         string
+		mutate       func(*options, *config.Config, *runtimeComputerBridge)
+		want         bool
+		wantGuidance bool
+		lookups      int
 	}{
 		{name: "approved", want: true, lookups: 1},
 		{name: "no bridge", mutate: func(o *options, _ *config.Config, _ *runtimeComputerBridge) { o.desktopComputerBridge = nil }},
@@ -90,7 +91,7 @@ func TestDesktopComputerUseRuntimeGates(t *testing.T) {
 		{name: "negative tenant cast", mutate: func(o *options, _ *config.Config, _ *runtimeComputerBridge) { o.tenantID = math.MaxUint64 }},
 		{name: "negative user cast", mutate: func(o *options, _ *config.Config, _ *runtimeComputerBridge) { o.tenantUserID = math.MaxUint64 }},
 		{name: "negative conversation cast", mutate: func(o *options, _ *config.Config, _ *runtimeComputerBridge) { o.tenantSessionID = math.MaxUint64 }},
-		{name: "undeclared images", mutate: func(_ *options, c *config.Config, _ *runtimeComputerBridge) { c.Settings.ComputerUse = nil }},
+		{name: "undeclared images", wantGuidance: true, mutate: func(_ *options, c *config.Config, _ *runtimeComputerBridge) { c.Settings.ComputerUse = nil }},
 		{name: "lookup denied", lookups: 1, mutate: func(_ *options, _ *config.Config, b *runtimeComputerBridge) {
 			b.lookupErr = errors.New("sensitive host error")
 		}},
@@ -107,7 +108,7 @@ func TestDesktopComputerUseRuntimeGates(t *testing.T) {
 			}
 			guidance, cleanup := configureDesktopComputerUse(context.Background(), cfg, computerRuntimeModel, &opts)
 			defer cleanup()
-			if opts.computerUseProfile != test.want || opts.computerUseImageSupported != test.want || (opts.computerUseService != nil) != test.want || (guidance != "") != test.want {
+			if opts.computerUseProfile != test.want || opts.computerUseImageSupported != test.want || (opts.computerUseService != nil) != test.want || (guidance != "") != (test.want || test.wantGuidance) {
 				t.Fatalf("gate mismatch: profile=%v image=%v service=%T guidance=%q", opts.computerUseProfile, opts.computerUseImageSupported, opts.computerUseService, guidance)
 			}
 			if len(bridge.owners) != test.lookups {
@@ -128,6 +129,39 @@ func TestDesktopComputerUseRuntimeGates(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestComputerUseGuidanceIsBoundedAndForbidsAlternateGUIRoutes(t *testing.T) {
+	for _, want := range []string{
+		"use ComputerUse immediately",
+		"Bash",
+		"osascript",
+		"System Events",
+		"screencapture",
+		"open",
+		"AgentGet",
+		"AgentCreate",
+		"deep accessibility or UI-tree inspection",
+		"observe → launch if needed → observe → click/type → click send → one wait/observe → stop",
+		"at most 8 turns and 6 input actions",
+	} {
+		if !strings.Contains(computerUseSystemGuidance, want) {
+			t.Errorf("ComputerUse guidance missing %q", want)
+		}
+	}
+}
+
+func TestDesktopComputerUseUnavailableRouteReportsCapabilityWithoutEnablingIt(t *testing.T) {
+	bridge := &runtimeComputerBridge{sessionID: computerRuntimeHostSession}
+	opts := computerRuntimeOptions(bridge)
+	guidance, cleanup := configureDesktopComputerUse(context.Background(), config.Config{}, computerRuntimeModel, &opts)
+	defer cleanup()
+	if !strings.Contains(guidance, "ComputerUse is unavailable") || !strings.Contains(guidance, "Do not improvise GUI automation") {
+		t.Fatalf("unavailable guidance=%q", guidance)
+	}
+	if opts.computerUseProfile || opts.computerUseService != nil || opts.computerUseImageSupported {
+		t.Fatalf("unavailable route enabled ComputerUse: profile=%v service=%T image=%v", opts.computerUseProfile, opts.computerUseService, opts.computerUseImageSupported)
 	}
 }
 

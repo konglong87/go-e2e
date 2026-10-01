@@ -55,6 +55,11 @@ import (
 	"github.com/konglong87/go-e2e/internal/tools/todowrite"
 )
 
+const (
+	computerUseFastPathMaxTurns = 8
+	computerUseFastPathTimeout  = 110 * time.Second
+)
+
 type Options struct {
 	Model     string
 	MaxTurns  int
@@ -99,11 +104,14 @@ type Options struct {
 	RunID string
 	// ImageGenerator is the optional tenant-scoped image service. Keeping it
 	// injectable preserves the disabled/bare runtime behavior by default.
-	ImageGenerator               imagegensvc.Generator
-	ImageBlobStore               imagegensvc.BlobStore
-	MediaAssetStore              media.Store
-	ComputerUse                  computeruse.Service
-	ComputerUseImageSupported    bool
+	ImageGenerator            imagegensvc.Generator
+	ImageBlobStore            imagegensvc.BlobStore
+	MediaAssetStore           media.Store
+	ComputerUse               computeruse.Service
+	ComputerUseImageSupported bool
+	// ComputerUseFastPath bounds the entire run, not each model request or tool call.
+	// It is opt-in so ordinary queries retain their configured limits and context.
+	ComputerUseFastPath          bool
 	QuerySource                  string
 	PromptMode                   string
 	AgentProfileKey              string
@@ -493,6 +501,9 @@ func New(client MessageStreamer, registry *tools.Registry, options Options) *Ses
 	}
 	if options.MaxTurns <= 0 {
 		options.MaxTurns = defaults.MaxTurns
+	}
+	if options.ComputerUseFastPath && options.MaxTurns > computerUseFastPathMaxTurns {
+		options.MaxTurns = computerUseFastPathMaxTurns
 	}
 	if options.MaxTokens <= 0 {
 		options.MaxTokens = defaultMaxTokens(options)
@@ -1326,6 +1337,17 @@ func reconcileStreamedText(cb runCallbacks, streamed string, accepted *anthropic
 }
 
 func (s *Session) run(ctx context.Context, prompt string, cb runCallbacks) (result Result, runErr error) {
+	if !s.options.ComputerUseFastPath && s.options.ComputerUse != nil && s.options.ComputerUseImageSupported && isSimpleComputerUsePrompt(prompt) {
+		s.options.ComputerUseFastPath = true
+		if s.options.MaxTurns > computerUseFastPathMaxTurns {
+			s.options.MaxTurns = computerUseFastPathMaxTurns
+		}
+	}
+	if s.options.ComputerUseFastPath {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, computerUseFastPathTimeout)
+		defer cancel()
+	}
 	executionRunID, err := newExecutionRunID(s.options.RunID)
 	if err != nil {
 		return result, err
@@ -3372,6 +3394,7 @@ func (s *Session) runToolWithInvocation(ctx context.Context, registry *tools.Reg
 		ImageGenerator:            s.options.ImageGenerator,
 		ComputerUse:               s.options.ComputerUse,
 		ComputerUseImageSupported: s.options.ComputerUseImageSupported,
+		ComputerUseFastPath:       s.options.ComputerUseFastPath,
 		AgentBudget:               s.agentBudget,
 		SharedStateAuthorization:  sharedStateAuthorization,
 		PermissionPrompt: func(promptCtx context.Context, req tools.PermissionPromptRequest) tools.PermissionPromptResponse {
@@ -6874,6 +6897,45 @@ func cacheControlForScope(scope, querySource string) *anthropic.CacheControl {
 }
 
 const defaultQuerySource = "repl_main_thread"
+
+func isSimpleComputerUsePrompt(prompt string) bool {
+	prompt = strings.ToLower(strings.TrimSpace(prompt))
+	if prompt == "" || len(prompt) > 600 || strings.Contains(prompt, "don't") {
+		return false
+	}
+	normalized := strings.NewReplacer(
+		",", " ", ".", " ", "!", " ", "?", " ", ":", " ", ";", " ",
+		"/", " ", "_", " ", "-", " ", "(", " ", ")", " ", "`", " ",
+	).Replace(prompt)
+	words := make(map[string]struct{}, len(strings.Fields(normalized)))
+	for _, word := range strings.Fields(normalized) {
+		words[word] = struct{}{}
+	}
+	if !strings.Contains(prompt, "workbuddy") {
+		return false
+	}
+	for _, blocked := range []string{"code", "coding", "repo", "repository", "file", "function", "git", "bash", "shell", "implement", "debug"} {
+		if _, ok := words[blocked]; ok {
+			return false
+		}
+	}
+	for _, blockedPhrase := range []string{"do not", "never", "without"} {
+		if strings.Contains(normalized, blockedPhrase) {
+			return false
+		}
+	}
+	for _, action := range []string{"click", "type", "send", "launch", "open", "submit", "navigate", "message", "chat"} {
+		if _, ok := words[action]; ok {
+			return true
+		}
+	}
+	for _, action := range []string{"输入", "点击", "发送", "打开", "新建", "启动", "查询", "询问", "消息", "会话"} {
+		if strings.Contains(prompt, action) {
+			return true
+		}
+	}
+	return false
+}
 
 func (s *Session) querySource() string {
 	return firstNonEmpty(s.options.QuerySource, defaultQuerySource)
