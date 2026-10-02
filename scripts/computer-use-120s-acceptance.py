@@ -804,39 +804,63 @@ def run_acceptance(
                 "workbuddy_bundle_seen": first_observation.get("bundle_id") == TARGET_BUNDLE_ID,
                 "screenshot_path": output_paths.get(first_observation["computer_observation"].get("observation_id", ""), ""),
             })
-        binding = validate_actions(actions, output_paths, final_status)
-        launch_item = next(item for item in actions if item.get("action") == "launch_app")
-        timing.launch_started = parse_iso(str(launch_item.get("call_at", "")))
-        timing.launch_finished = parse_iso(str(launch_item.get("result_at", "")))
-        first_target_observe = next(
-            (item for item in actions if item.get("action") == "observe" and item.get("call_at", "") > launch_item.get("result_at", "")),
-            None,
-        )
-        if first_target_observe:
-            timing.binding_started = timing.launch_finished
-            timing.binding_finished = parse_iso(str(first_target_observe.get("result_at", "")))
-            timing.readiness_finished = timing.binding_finished
+        launch_item = next((item for item in actions if item.get("action") == "launch_app"), None)
+        if launch_item:
+            timing.launch_started = parse_iso(str(launch_item.get("call_at", "")))
+            timing.launch_finished = parse_iso(str(launch_item.get("result_at", "")))
+            first_target_observe = next(
+                (item for item in actions if item.get("action") == "observe" and item.get("call_at", "") > launch_item.get("result_at", "")),
+                None,
+            )
+            if first_target_observe:
+                timing.binding_started = timing.launch_finished
+                timing.binding_finished = parse_iso(str(first_target_observe.get("result_at", "")))
+                timing.readiness_finished = timing.binding_finished
         timing.click_duration = sum(float(item.get("duration_seconds", 0.0)) for item in actions if item.get("action") == "click")
         timing.type_duration = sum(float(item.get("duration_seconds", 0.0)) for item in actions if item.get("action") == "type")
         click_durations = [float(item.get("duration_seconds", 0.0)) for item in actions if item.get("action") == "click"]
         timing.send_duration = click_durations[-1] if click_durations else 0.0
         timing.reply_wait_duration = sum(float(item.get("duration_seconds", 0.0)) for item in actions if item.get("action") == "wait")
         timing.stop_duration = sum(float(item.get("duration_seconds", 0.0)) for item in actions if item.get("action") == "stop")
-        reply_id = binding.get("reply_observation_id", "")
-        reply_path = output_paths.get(reply_id, "")
-        if reply_path:
-            shutil.copyfile(reply_path, evidence.root / "reply-screenshot.png")
 
+        # Persist evidence before semantic validation. A failed run must still
+        # leave the exact redacted action trail and screenshots that explain its
+        # launch/window/content/reply stage.
         image_route = any(item.get("computer_observation", {}).get("media_type") == "image/png" for item in actions)
         effective["computer_use_image_route"] = "image/png" if image_route else "missing"
         evidence.json("effective-config.json", effective)
         evidence.json("action-receipts.json", {"schema_version": "computer-use-action-receipts.v1", "actions": actions})
         evidence.json("conversation-trace.json", safe_event_trace(events, actions))
+
+        reply_candidates = [
+            item for item in actions
+            if item.get("action") == "wait"
+            and isinstance(item.get("computer_observation"), dict)
+            and item["computer_observation"].get("observation_id") in output_paths
+        ]
+        if reply_candidates:
+            reply_id = reply_candidates[-1]["computer_observation"]["observation_id"]
+            shutil.copyfile(output_paths[reply_id], evidence.root / "reply-screenshot.png")
+
+        validation_error: Optional[AcceptanceError] = None
+        try:
+            binding = validate_actions(actions, output_paths, final_status)
+        except AcceptanceError as exc:
+            validation_error = exc
+            binding = {
+                "target_id": TARGET_ID,
+                "action_count": len(actions),
+                "actions": [item.get("action", "") for item in actions],
+                "screenshot_count": len(output_paths),
+                "validation_error": {"stage": exc.stage, "message": str(exc)},
+            }
         evidence.json("sanitized-timeline.json", {
             "schema_version": "computer-use-sanitized-timeline.v1", "provider": provider, "model": model,
             "effort": effort, "session_ref": ref, "session_status": final_status, "binding": binding,
             "actions": actions,
         })
+        if validation_error is not None:
+            raise validation_error
         if not image_route:
             raise AcceptanceError("content readiness", "ComputerUse did not produce an image-capable observation result")
         end = clock()
