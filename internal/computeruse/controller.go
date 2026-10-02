@@ -247,11 +247,14 @@ func (c *Controller) LaunchTarget(ctx context.Context, owner SessionOwner, id st
 			receipt.ErrorCode = ErrorCodeTargetWindowMismatch
 			err = errors.New("computer target window is not frontmost")
 		}
-		if err == nil && c.runner != nil && c.runner.State() == RunStateCreated {
-			if err = c.runner.Transition(Transition{From: RunStateCreated, To: RunStateBound}); err != nil {
-				c.failRun()
-				receipt.Outcome = OutcomeRejected
-				receipt.ErrorCode = ErrorCodeTargetWindowMismatch
+		if err == nil && c.runner != nil {
+			from := c.runner.State()
+			if from == RunStateCreated || from == RunStateObserved {
+				if err = c.runner.Transition(Transition{From: from, To: RunStateBound}); err != nil {
+					c.failRun()
+					receipt.Outcome = OutcomeRejected
+					receipt.ErrorCode = ErrorCodeTargetWindowMismatch
+				}
 			}
 		}
 	}

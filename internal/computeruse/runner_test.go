@@ -116,6 +116,18 @@ func TestRunnerHappyPathAndUsage(t *testing.T) {
 	}
 }
 
+func TestRunnerAllowsLaunchAfterInitialObservation(t *testing.T) {
+	clock := newRunnerTestClock()
+	runner := newTestRunner(t, RunBudget{LaunchDuration: time.Second}, clock)
+	transition(t, runner, RunStateCreated, RunStateBound)
+	transition(t, runner, RunStateBound, RunStateObserved)
+	consume(t, runner, BudgetLaunch, 100*time.Millisecond)
+	transition(t, runner, RunStateObserved, RunStateBound)
+	if runner.State() != RunStateBound {
+		t.Fatalf("state=%s, want bound", runner.State())
+	}
+}
+
 func TestRunnerRejectsInvalidTransitionsAndPhaseOrdering(t *testing.T) {
 	clock := newRunnerTestClock()
 	runner := newTestRunner(t, RunBudget{}, clock)
