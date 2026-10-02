@@ -55,6 +55,19 @@ workflow:
 | **WebUI** | Browser workspace, server deployments, and team usage | `scripts/webui-dev.sh` |
 | **Feishu** | Feishu bots, channel sessions, and long-running workers | See the [Feishu channel documentation](docs/README.md) |
 
+## Download the desktop app
+
+Visit the GitHub [Releases page](https://github.com/konglong87/go-e2e/releases/latest) to download the latest desktop installer.
+
+| Platform | Package | Notes |
+| --- | --- | --- |
+| macOS Apple Silicon | `go-e2e-<version>-macos-arm64.dmg` | For Apple Silicon (M1/M2/M3/M4) |
+| macOS Intel | `go-e2e-<version>-macos-amd64.dmg` | For Intel Mac |
+| Windows | `go-e2e-setup.exe` | Windows installer |
+| Linux x86_64 | `go-e2e-desktop_<version>_linux_amd64.tar.gz` | Linux desktop archive |
+
+Use the `SHA256SUMS` file on the same page to verify downloaded assets.
+
 ## Core Highlights
 
 | Highlight | Capabilities | User value |

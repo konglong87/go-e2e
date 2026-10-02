@@ -54,6 +54,19 @@ go-e2e 是一套可以执行任务、连接外部工具、保留上下文并持�
 | **WebUI** | 浏览器工作台、服务端运行和团队部署 | `scripts/webui-dev.sh` |
 | **Feishu** | 飞书机器人、渠道会话和持续在线 Worker | 见[飞书渠道文档](docs/README.md) |
 
+## 下载桌面端
+
+前往 GitHub [Releases 页面](https://github.com/konglong87/go-e2e/releases/latest) 下载最新桌面端安装包。
+
+| 平台 | 安装包 | 说明 |
+| --- | --- | --- |
+| macOS Apple Silicon | `go-e2e-<版本>-macos-arm64.dmg` | 适用于 Apple Silicon（M1/M2/M3/M4）|
+| macOS Intel | `go-e2e-<版本>-macos-amd64.dmg` | 适用于 Intel Mac |
+| Windows | `go-e2e-setup.exe` | Windows 安装程序 |
+| Linux x86_64 | `go-e2e-desktop_<版本>_linux_amd64.tar.gz` | Linux 桌面端压缩包 |
+
+下载后可使用同一页面中的 `SHA256SUMS` 校验文件完整性。
+
 ## 六大核心
 
 | 核心亮点 | 主要能力 | 用户收益 |
