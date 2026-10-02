@@ -61,7 +61,7 @@ func (Tool) Description() string {
 }
 
 func (Tool) InputSchema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"session_id":{"type":"string"},"action":{"type":"string","enum":["observe","launch_app","click","double_click","right_click","move","drag","type","key","hotkey","scroll","wait","pause","stop"]},"target_id":{"type":"string"},"application":{"type":"string","description":"Deprecated alias for target_id"},"display_id":{"type":"string"},"window_id":{"type":"string"},"observation_id":{"type":"string"},"x":{"type":"integer"},"y":{"type":"integer"},"start_x":{"type":"integer"},"start_y":{"type":"integer"},"button":{"type":"string","enum":["left","right"]},"text":{"type":"string"},"key":{"type":"string"},"keys":{"type":"array","items":{"type":"string"}},"delta_x":{"type":"integer"},"delta_y":{"type":"integer"},"duration_ms":{"type":"integer"}},"required":["action"],"additionalProperties":false}`)
+	return json.RawMessage(`{"type":"object","properties":{"session_id":{"type":"string"},"action":{"type":"string","enum":["observe","launch_app","click","double_click","right_click","move","drag","type","key","hotkey","scroll","wait","pause","stop"]},"target_id":{"type":"string","description":"Registered target identifier. On the first fast-path observe, include this to atomically launch and bind the requested app even when another app is frontmost."},"application":{"type":"string","description":"Deprecated alias for target_id"},"display_id":{"type":"string"},"window_id":{"type":"string"},"observation_id":{"type":"string"},"x":{"type":"integer"},"y":{"type":"integer"},"start_x":{"type":"integer"},"start_y":{"type":"integer"},"button":{"type":"string","enum":["left","right"]},"text":{"type":"string"},"key":{"type":"string"},"keys":{"type":"array","items":{"type":"string"}},"delta_x":{"type":"integer"},"delta_y":{"type":"integer"},"duration_ms":{"type":"integer"}},"required":["action"],"additionalProperties":false}`)
 }
 
 func (Tool) ExecutionPolicy() tools.ExecutionPolicy {
@@ -214,14 +214,26 @@ func (t Tool) launchApp(ctx context.Context, service cu.Service, owner cu.Sessio
 }
 
 func (t Tool) observe(ctx context.Context, service cu.Service, owner cu.SessionOwner, params request, tc tools.Context) tools.Result {
-	observation, result := t.captureObservation(ctx, service, owner, params)
-	if result.IsError || !tc.ComputerUseFastPath || observation.ActiveWindow.BundleID != cu.GoE2EHostBundleID {
+	// The first fast-path observe is a target-selection boundary, not merely a
+	// screenshot of whichever app happens to be frontmost. If this session
+	// already has an observation, preserve normal observe semantics and never
+	// relaunch the target on a later refresh.
+	if tc.ComputerUseFastPath && strings.TrimSpace(params.TargetID) != "" {
+		if binding, ok := service.(SessionBinding); ok {
+			if current, err := binding.CurrentComputerObservation(ctx, owner); err == nil && strings.TrimSpace(current) != "" {
+				_, result := t.captureObservation(ctx, service, owner, params)
+				return result
+			}
+		}
+	}
+	_, result := t.captureObservation(ctx, service, owner, params)
+	if result.IsError || !tc.ComputerUseFastPath {
 		return result
 	}
 	// A simple target task must never make the model spend a turn clicking
-	// the go-e2e control surface. When the first trusted observation is still
-	// the host window, launch and bind the registered target in the same
-	// ComputerUse observation turn, then return only the fresh target image.
+	// the go-e2e control surface or merely observing another frontmost app.
+	// On the first target observe, launch and bind the registered target in the
+	// same ComputerUse turn, then return only the fresh target image.
 	if strings.TrimSpace(params.TargetID) == "" {
 		return result
 	}

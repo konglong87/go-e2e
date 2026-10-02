@@ -110,8 +110,9 @@ func (s *serviceStub) ObservationImage(ctx context.Context, owner cu.SessionOwne
 
 type coordinatingService struct {
 	*serviceStub
-	sessionID string
-	starts    int
+	sessionID             string
+	starts                int
+	forceEmptyObservation bool
 }
 
 func (s *coordinatingService) EnsureComputerSession(context.Context, cu.SessionOwner) (string, error) {
@@ -124,6 +125,9 @@ func (s *coordinatingService) CurrentComputerSession(context.Context, cu.Session
 }
 
 func (s *coordinatingService) CurrentComputerObservation(context.Context, cu.SessionOwner) (string, error) {
+	if s.forceEmptyObservation {
+		return "", nil
+	}
 	return s.observation.ID, nil
 }
 
@@ -886,6 +890,25 @@ func TestDescriptionPrioritizesAtomicFirstObserve(t *testing.T) {
 	}
 }
 
+func TestFastPathObservationAutoLaunchesWhenAnotherAppIsFrontmost(t *testing.T) {
+	service := &launchingService{
+		coordinatingService: &coordinatingService{serviceStub: screenshotService(t), sessionID: testComputerSession},
+		launchReceipt: cu.LaunchReceipt{
+			Application: cu.ApplicationWorkBuddy, BundleID: cu.WorkBuddyBundleID,
+			Window:  cu.WindowRef{ID: "workbuddy-window", OwnerPID: 84, BundleID: cu.WorkBuddyBundleID},
+			Outcome: cu.OutcomeExecuted, Duration: time.Millisecond, CompletedAt: time.Now(),
+		},
+	}
+	service.forceEmptyObservation = true
+	service.observation.ActiveWindow.BundleID = "com.microsoft.edgemac"
+	tc := testContext(service)
+	tc.ComputerUseFastPath = true
+	result := New().Run(context.Background(), json.RawMessage(`{"action":"observe","target_id":"workbuddy"}`), tc)
+	if result.IsError || service.launchCalls != 1 || service.lastObserve.WindowID != "workbuddy-window" {
+		t.Fatalf("launchCalls=%d observe=%+v result=%s", service.launchCalls, service.lastObserve, result.Content)
+	}
+}
+
 func TestFastPathObservationAutoLaunchesHostWindow(t *testing.T) {
 	service := &launchingService{
 		coordinatingService: &coordinatingService{serviceStub: screenshotService(t), sessionID: testComputerSession},
@@ -895,6 +918,7 @@ func TestFastPathObservationAutoLaunchesHostWindow(t *testing.T) {
 			Outcome: cu.OutcomeExecuted, Duration: time.Millisecond, CompletedAt: time.Now(),
 		},
 	}
+	service.forceEmptyObservation = true
 	service.observation.ActiveWindow.BundleID = cu.GoE2EHostBundleID
 	tc := testContext(service)
 	tc.ComputerUseFastPath = true
