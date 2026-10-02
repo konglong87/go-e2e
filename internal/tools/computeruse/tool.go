@@ -272,7 +272,18 @@ func (t Tool) observe(ctx context.Context, service cu.Service, owner cu.SessionO
 func (t Tool) captureObservation(ctx context.Context, service cu.Service, owner cu.SessionOwner, params request) (cu.Observation, tools.Result) {
 	observation, err := service.Observe(ctx, owner, cu.ObserveRequest{SessionID: params.SessionID, DisplayID: params.DisplayID, WindowID: params.WindowID})
 	if err != nil {
-		return cu.Observation{}, errorResult("observe_failed", "computer observation failed")
+		errorCode := cu.ErrorCodeActionFailed
+		var coded interface{ Code() string }
+		if errors.As(err, &coded) {
+			errorCode = cu.PublicErrorCode(coded.Code())
+		}
+		return cu.Observation{}, tools.Result{
+			Content: marshal(map[string]any{
+				"error_code": errorCode,
+				"message":    "computer observation failed; stop without input replay",
+			}),
+			IsError: true,
+		}
 	}
 	messages, err := observationImage(ctx, service, owner, params.SessionID, observation.ID, observationScreenshotGuidance)
 	if err != nil {

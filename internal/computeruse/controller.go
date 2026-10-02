@@ -284,19 +284,28 @@ func (c *Controller) LaunchApp(ctx context.Context, owner SessionOwner, id, app 
 	}
 	return receipt, err
 }
+
+type observeFailureError struct {
+	code string
+}
+
+func (e observeFailureError) Error() string {
+	return "computer observation failed: " + e.code
+}
+
+func (e observeFailureError) Code() string {
+	return e.code
+}
+
 func observeFailure(err error) error {
 	var coded interface{ Code() string }
 	if errors.As(err, &coded) {
 		switch coded.Code() {
-		case "unsupported_display":
-			return errors.New("computer target is stale; refresh capabilities and observe again")
-		case "permission_required":
-			return errors.New("computer permissions are required; restore Screen Recording and Accessibility, then refresh capabilities")
-		case "focus_changed":
-			return errors.New("computer focus changed; observe again before continuing")
+		case "unsupported_display", "permission_required", "focus_changed":
+			return observeFailureError{code: coded.Code()}
 		}
 	}
-	return errors.New("computer capture failed; session paused")
+	return observeFailureError{code: ErrorCodeActionFailed}
 }
 
 func (c *Controller) Execute(ctx context.Context, owner SessionOwner, a Action) (ActionReceipt, error) {
