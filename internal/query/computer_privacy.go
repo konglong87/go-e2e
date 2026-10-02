@@ -160,6 +160,19 @@ func (s *Session) computerAuditHistory(messages []anthropic.MessageParam) []anth
 
 const maxLiveComputerImages = 2
 
+func (s *Session) transientComputerImageStats(messages []anthropic.MessageParam) (count, bytes int) {
+	for _, message := range messages {
+		for _, block := range message.Content {
+			if block.Type != blockTypeImage || !s.isTransientComputerImage(block) || block.Source == nil {
+				continue
+			}
+			count++
+			bytes += len(block.Source.Data)
+		}
+	}
+	return count, bytes
+}
+
 func (s *Session) liveComputerImageLimit() int {
 	if s.options.ComputerUseFastPath {
 		// The fast path always receives a fresh authoritative observation after
@@ -185,9 +198,25 @@ func (s *Session) limitComputerImageHistory(messages []anthropic.MessageParam) [
 			}
 			retained++
 			if retained > s.liveComputerImageLimit() {
+				if s.options.ComputerUseFastPath {
+					// Fast-path model requests need only the latest authoritative
+					// screenshot. Drop the entire old observation message below
+					// instead of replacing its image with another text block.
+					out[i].Content = nil
+					break
+				}
 				out[i].Content[j] = anthropic.ContentBlock{Type: blockTypeText, Text: "Older desktop screenshot omitted; only a fresh observation may authorize new input."}
 			}
 		}
+	}
+	if s.options.ComputerUseFastPath {
+		filtered := out[:0]
+		for _, message := range out {
+			if len(message.Content) > 0 {
+				filtered = append(filtered, message)
+			}
+		}
+		return filtered
 	}
 	return out
 }

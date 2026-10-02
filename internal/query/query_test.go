@@ -197,7 +197,7 @@ func TestSimpleComputerUsePromptActivatesBoundedRunWithoutChangingCodeQueries(t 
 	if _, err := fast.Run(context.Background(), "In WorkBuddy, type hello and click Send.", io.Discard); err == nil || err.Error() != "deadline probe" {
 		t.Fatalf("WorkBuddy Run error=%v, want deadline probe", err)
 	}
-	if !fast.options.ComputerUseFastPath || fast.options.MaxTurns != 8 || !fastProbe.hasDeadline {
+	if !fast.options.ComputerUseFastPath || fast.options.MaxTurns != 8 || fastProbe.hasDeadline {
 		t.Fatalf("WorkBuddy fast path state: enabled=%v max_turns=%d deadline=%v", fast.options.ComputerUseFastPath, fast.options.MaxTurns, fastProbe.hasDeadline)
 	}
 	if fast.options.RuntimeProfile != runtimeprofile.ProfileBare {
@@ -230,7 +230,7 @@ func TestComputerUseFastPathPropagatesToToolContext(t *testing.T) {
 	}
 }
 
-func TestComputerUseFastPathBoundsTurnsAndRunDeadline(t *testing.T) {
+func TestComputerUseFastPathBoundsTurnsWithoutProductDeadline(t *testing.T) {
 	fast := New(&deadlineProbeStreamer{}, tools.NewRegistry(), Options{
 		Model: "test", MaxTurns: 20, CWD: t.TempDir(), ComputerUseFastPath: true,
 	})
@@ -251,12 +251,8 @@ func TestComputerUseFastPathBoundsTurnsAndRunDeadline(t *testing.T) {
 	if _, err := session.Run(context.Background(), "probe", io.Discard); err == nil || err.Error() != "deadline probe" {
 		t.Fatalf("Run error=%v, want deadline probe", err)
 	}
-	if !probe.hasDeadline {
-		t.Fatal("fast path did not wrap the run context with a deadline")
-	}
-	remaining := time.Until(probe.deadline)
-	if remaining < 109*time.Second || remaining > 110*time.Second {
-		t.Fatalf("fast path deadline remaining=%s, want about 110s", remaining)
+	if probe.hasDeadline {
+		t.Fatalf("fast path imposed a product deadline: %s", time.Until(probe.deadline))
 	}
 }
 

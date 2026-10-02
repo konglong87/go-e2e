@@ -374,6 +374,10 @@ def tool_events(events: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
             value = regex_value(output, key)
             if value:
                 item[key] = value
+        if action == "observe" and '"launch_receipt"' in output:
+            # The generic first-observe fast path may return launch, binding,
+            # and the target observation as one host-authorized result.
+            item["implicit_launch"] = True
         owner_pid = regex_number(output, "owner_pid")
         if owner_pid is not None:
             item["owner_pid"] = owner_pid
@@ -553,13 +557,17 @@ def validate_actions(actions: list[dict[str, Any]], output_paths: Mapping[str, s
     action_names = [str(item.get("action", "")) for item in actions]
     if action_names[0] != "observe":
         raise AcceptanceError("conversation_trace", "the first ComputerUse action was not observe")
-    try:
-        launch_index = action_names.index("launch_app")
-    except ValueError as exc:
-        raise AcceptanceError("launch", "no launch_app action was persisted") from exc
+    launch_indices = [
+        index for index, item in enumerate(actions)
+        if item.get("action") == "launch_app" or item.get("implicit_launch")
+    ]
+    if not launch_indices:
+        raise AcceptanceError("launch", "no target launch receipt was persisted")
+    launch_index = launch_indices[0]
     launch = actions[launch_index]
+    implicit_launch = bool(launch.get("implicit_launch"))
     if launch.get("is_error") or launch.get("outcome") not in {"executed", ""}:
-        raise AcceptanceError("launch", "launch_app receipt was not successful")
+        raise AcceptanceError("launch", "launch receipt was not successful")
     launch_bundle = str(launch.get("bundle_id", ""))
     launch_window = str(launch.get("window_id", ""))
     if launch.get("target_id") not in {None, "", launch_target}:
@@ -567,12 +575,13 @@ def validate_actions(actions: list[dict[str, Any]], output_paths: Mapping[str, s
     if launch_bundle and launch_bundle != TARGET_BUNDLE_ID:
         raise AcceptanceError("window binding", f"launch bound unexpected bundle {launch_bundle!r}")
     if not launch_window:
-        # launch output is not redacted and should always contain this field.
         raise AcceptanceError("window binding", "launch receipt did not include a window_id")
 
     post_launch = actions[launch_index + 1 :]
-    if not any(item.get("action") == "observe" for item in post_launch):
+    if not implicit_launch and not any(item.get("action") == "observe" for item in post_launch):
         raise AcceptanceError("content readiness", "no target-window observation followed launch_app")
+    if implicit_launch and not launch.get("computer_observation"):
+        raise AcceptanceError("content readiness", "atomic launch/bind result had no target observation")
     type_items = [item for item in post_launch if item.get("action") == "type"]
     if len(type_items) != 1:
         raise AcceptanceError("type", f"expected exactly one type action, got {len(type_items)}")
@@ -610,6 +619,7 @@ def validate_actions(actions: list[dict[str, Any]], output_paths: Mapping[str, s
         raise AcceptanceError("reply wait", "wait did not produce a saved reply observation screenshot")
     return {
         "target_id": launch_target,
+        "launch_mode": "atomic_observe" if implicit_launch else "launch_app",
         "bundle_id": launch_bundle or TARGET_BUNDLE_ID,
         "window_id": launch_window,
         "action_count": len(actions),
@@ -684,11 +694,12 @@ def run_acceptance(
 
     prompt = (
         "请只使用 ComputerUse 完成这个真实桌面闭环，并在 120 秒内结束：目标应用使用通用 target_id=workbuddy，"
-        "WorkBuddy 当前未启动。先使用 action=observe 建立 Computer Use 会话；如果目标应用未启动，使用 "
-        "action=launch_app、target_id=workbuddy 启动并绑定目标窗口，然后 observe 绑定的目标窗口。必须等待内容 ready，"
-        "不能只因为窗口出现就操作；如果白屏，最多等待 12 秒并重新 observe，仍白屏就 stop。内容 ready 后点击目标应用的"
-        "新建会话或新建任务（如果已经在新建页面则跳过），重新 observe，定位输入框，输入 1+1=2，重新 observe，"
-        "真实点击发送/提交按钮，等待一次回复，重新 observe 并确认页面出现真实回复，最后使用 ComputerUse stop。"
+        "WorkBuddy 当前未启动。第一步使用 action=observe 并携带 target_id=workbuddy；如果返回 launch_receipt 和绑定的目标窗口，"
+        "不要再重复 launch_app 或 observe，直接检查这一次返回的最新目标截图。只有首次 observe 没有完成启动绑定时，才使用 "
+        "action=launch_app、target_id=workbuddy，然后 observe 绑定的目标窗口。必须等待内容 ready，不能只因为窗口出现就操作；"
+        "如果白屏，最多等待 12 秒并重新 observe，仍白屏就 stop。内容 ready 后点击目标应用的新建会话或新建任务（如果已经在新建页面则跳过），"
+        "使用每个成功输入动作返回的最新 observation，不要无理由重复 observe；定位输入框，输入 1+1=2，直接检查 type 返回的最新截图，"
+        "真实点击发送/提交按钮，等待一次回复；使用 wait 返回的最新截图确认真实回复，最后使用 ComputerUse stop。"
         "所有后续 click/type/key/send 必须使用绑定的 window_id；如果目标窗口变成 go-e2e、Chrome、Edge 或其他应用，"
         "立即 stop。只使用 ComputerUse，不要使用 Bash、脚本、osascript、System Events、screencapture、open 或其他工具；"
         "不要操作 go-e2e 自己；每个输入前必须使用最新 observe；任何失败或不确定立即 stop，不要重放或重复点击发送。"

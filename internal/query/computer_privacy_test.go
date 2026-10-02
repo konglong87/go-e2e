@@ -444,3 +444,24 @@ func TestComputerImagesAreBoundedAndAuditDumpRemainsPrivate(t *testing.T) {
 		t.Fatal("desktop image exposed to summary model")
 	}
 }
+
+func TestFastPathKeepsOnlyLatestTransientComputerImageInLiveRequest(t *testing.T) {
+	s := New(nil, nil, Options{Model: "test", CWD: t.TempDir(), ComputerUseFastPath: true})
+	var messages []anthropic.MessageParam
+	for i := 0; i < 3; i++ {
+		m := anthropic.MessageParam{Role: "user", Content: []anthropic.ContentBlock{
+			{Type: blockTypeText, Text: "observation guidance"},
+			{Type: blockTypeImage, Source: &anthropic.ContentSource{Type: "base64", MediaType: "image/png", Data: fmt.Sprintf("fast-frame-%d", i)}},
+		}}
+		s.rememberTransientComputerImages([]anthropic.MessageParam{m})
+		messages = append(messages, m)
+	}
+	limited := s.limitComputerImageHistory(messages)
+	if len(limited) != 1 || limited[0].Content[1].Source.Data != "fast-frame-2" {
+		t.Fatalf("fast-path messages=%+v, want only latest observation", limited)
+	}
+	count, bytes := s.transientComputerImageStats(limited)
+	if count != 1 || bytes != len("fast-frame-2") {
+		t.Fatalf("latest image stats=(%d,%d), want (1,%d)", count, bytes, len("fast-frame-2"))
+	}
+}

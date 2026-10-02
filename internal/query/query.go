@@ -56,10 +56,7 @@ import (
 	"github.com/konglong87/go-e2e/internal/tools/todowrite"
 )
 
-const (
-	computerUseFastPathMaxTurns = 8
-	computerUseFastPathTimeout  = 110 * time.Second
-)
+const computerUseFastPathMaxTurns = 8
 
 type Options struct {
 	Model     string
@@ -1348,11 +1345,10 @@ func (s *Session) run(ctx context.Context, prompt string, cb runCallbacks) (resu
 			s.options.MaxTurns = computerUseFastPathMaxTurns
 		}
 	}
-	if s.options.ComputerUseFastPath {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, computerUseFastPathTimeout)
-		defer cancel()
-	}
+	// Fast path narrows the tool/context surface for simple GUI work, but it
+	// does not impose a product wall-clock deadline. Callers own cancellation
+	// (the acceptance wrapper is one such caller); ordinary Computer Use stays
+	// alive until the user or parent request stops it.
 	executionRunID, err := newExecutionRunID(s.options.RunID)
 	if err != nil {
 		return result, err
@@ -1707,6 +1703,7 @@ func (s *Session) run(ctx context.Context, prompt string, cb runCallbacks) (resu
 			return result, err
 		}
 		s.observeRequestCache(ctx, request, thinkingConfig)
+		computerImageCount, computerImageBytes := s.transientComputerImageStats(requestMessages)
 		modelCtx, modelSpan := telemetry.StartSpan(turnCtx, telemetry.Event{
 			Name:      telemetry.EventModelRequest,
 			Category:  telemetry.CategoryModel,
@@ -1714,9 +1711,12 @@ func (s *Session) run(ctx context.Context, prompt string, cb runCallbacks) (resu
 			Model:     currentModel,
 			SessionID: s.options.TenantSessionID,
 			Properties: map[string]any{
-				"turn":     turn,
-				"messages": len(requestMessages),
-				"tools":    len(toolDefinitions),
+				"turn":                   turn,
+				"messages":               len(requestMessages),
+				"tools":                  len(toolDefinitions),
+				"computer_image_count":   computerImageCount,
+				"computer_image_bytes":   computerImageBytes,
+				"computer_use_fast_path": s.options.ComputerUseFastPath,
 			},
 		})
 		var recoveredStreamError string
@@ -1824,7 +1824,10 @@ func (s *Session) run(ctx context.Context, prompt string, cb runCallbacks) (resu
 					SessionID: s.options.TenantSessionID,
 					Error:     err.Error(),
 					Properties: map[string]any{
-						"turn": turn,
+						"turn":                   turn,
+						"computer_image_count":   computerImageCount,
+						"computer_image_bytes":   computerImageBytes,
+						"computer_use_fast_path": s.options.ComputerUseFastPath,
 					},
 				})
 				if turnTextGuard != nil {
@@ -1872,6 +1875,9 @@ func (s *Session) run(ctx context.Context, prompt string, cb runCallbacks) (resu
 			Properties: map[string]any{
 				"turn":                   turn,
 				"stop_reason":            stream.StopReason,
+				"computer_image_count":   computerImageCount,
+				"computer_image_bytes":   computerImageBytes,
+				"computer_use_fast_path": s.options.ComputerUseFastPath,
 				"service_tier":           stream.Usage.ServiceTier,
 				"inference_geo":          stream.Usage.InferenceGeo,
 				"speed":                  stream.Usage.Speed,
