@@ -91,6 +91,18 @@ class WrapperUnitTests(unittest.TestCase):
         self.assertEqual(args.model, "gpt-6-sol")
         self.assertEqual(args.effort, "low")
 
+    def test_execution_log_metrics_separates_native_and_model_gaps(self):
+        actions = [
+            {"action": "observe", "call_at": "2026-10-02T00:00:00Z", "result_at": "2026-10-02T00:00:02Z"},
+            {"action": "click", "call_at": "2026-10-02T00:00:07Z", "result_at": "2026-10-02T00:00:08Z"},
+        ]
+        events = [{"event_type": "usage", "payload_json": json.dumps({"turn": 1, "input_tokens": 10, "output_tokens": 4})}]
+        result = MODULE.execution_log_metrics(events, actions)
+        self.assertEqual(result["native_action_seconds"], 3.0)
+        self.assertEqual(result["between_action_seconds"], 5.0)
+        self.assertEqual(result["action_rows"][1]["gap_after_previous_result_seconds"], 5.0)
+        self.assertEqual(result["usage_rows"][0]["input_tokens"], 10)
+
 class FakeAcceptanceClient:
     def __init__(self):
         self.stop_calls = 0

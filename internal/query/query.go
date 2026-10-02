@@ -1591,6 +1591,7 @@ func (s *Session) run(ctx context.Context, prompt string, cb runCallbacks) (resu
 
 	for turn := 1; turn <= s.options.MaxTurns; turn++ {
 		result.Turns = turn
+		turnStartedAt := time.Now()
 		turnCtx := telemetry.WithTurnIndex(ctx, turn)
 		if cb.onTurnStart != nil {
 			if err := cb.onTurnStart(turn); err != nil {
@@ -1607,6 +1608,7 @@ func (s *Session) run(ctx context.Context, prompt string, cb runCallbacks) (resu
 				messages = append(messages, *msg)
 			}
 		}
+		requestBuildStartedAt := time.Now()
 		// Tool-result externalization runs BEFORE the compaction check, not after.
 		// Both shrink the context, but externalization is free (large tool results
 		// move to disk, leaving a path plus a preview) while compaction costs a
@@ -1703,6 +1705,7 @@ func (s *Session) run(ctx context.Context, prompt string, cb runCallbacks) (resu
 			return result, err
 		}
 		s.observeRequestCache(ctx, request, thinkingConfig)
+		requestBuildDuration := time.Since(requestBuildStartedAt)
 		computerImageCount, computerImageBytes := s.transientComputerImageStats(requestMessages)
 		modelCtx, modelSpan := telemetry.StartSpan(turnCtx, telemetry.Event{
 			Name:      telemetry.EventModelRequest,
@@ -1711,14 +1714,16 @@ func (s *Session) run(ctx context.Context, prompt string, cb runCallbacks) (resu
 			Model:     currentModel,
 			SessionID: s.options.TenantSessionID,
 			Properties: map[string]any{
-				"turn":                   turn,
-				"messages":               len(requestMessages),
-				"tools":                  len(toolDefinitions),
-				"computer_image_count":   computerImageCount,
-				"computer_image_bytes":   computerImageBytes,
-				"computer_use_fast_path": s.options.ComputerUseFastPath,
+				"turn":                      turn,
+				"messages":                  len(requestMessages),
+				"tools":                     len(toolDefinitions),
+				"computer_image_count":      computerImageCount,
+				"computer_image_bytes":      computerImageBytes,
+				"computer_use_fast_path":    s.options.ComputerUseFastPath,
+				"request_build_duration_ms": requestBuildDuration.Milliseconds(),
 			},
 		})
+		modelRequestStartedAt := time.Now()
 		var recoveredStreamError string
 		// Text deltas pass through to the callbacks LIVE during generation —
 		// this is what makes the interactive typewriter real instead of a replay
@@ -1808,6 +1813,7 @@ func (s *Session) run(ctx context.Context, prompt string, cb runCallbacks) (resu
 				return nil
 			},
 		})
+		modelRequestDuration := time.Since(modelRequestStartedAt)
 		if err != nil {
 			if partial, ok := recoverPartialTextStreamResult(err); ok {
 				recoveredStreamError = err.Error()
@@ -1824,10 +1830,12 @@ func (s *Session) run(ctx context.Context, prompt string, cb runCallbacks) (resu
 					SessionID: s.options.TenantSessionID,
 					Error:     err.Error(),
 					Properties: map[string]any{
-						"turn":                   turn,
-						"computer_image_count":   computerImageCount,
-						"computer_image_bytes":   computerImageBytes,
-						"computer_use_fast_path": s.options.ComputerUseFastPath,
+						"turn":                      turn,
+						"computer_image_count":      computerImageCount,
+						"computer_image_bytes":      computerImageBytes,
+						"computer_use_fast_path":    s.options.ComputerUseFastPath,
+						"request_build_duration_ms": requestBuildDuration.Milliseconds(),
+						"model_request_duration_ms": modelRequestDuration.Milliseconds(),
 					},
 				})
 				if turnTextGuard != nil {
@@ -1873,15 +1881,17 @@ func (s *Session) run(ctx context.Context, prompt string, cb runCallbacks) (resu
 			CacheCreationEphemeral1hInputTokens: modelUsage.CacheCreationEphemeral1hInputTokens,
 			CacheCreationEphemeral5mInputTokens: modelUsage.CacheCreationEphemeral5mInputTokens,
 			Properties: map[string]any{
-				"turn":                   turn,
-				"stop_reason":            stream.StopReason,
-				"computer_image_count":   computerImageCount,
-				"computer_image_bytes":   computerImageBytes,
-				"computer_use_fast_path": s.options.ComputerUseFastPath,
-				"service_tier":           stream.Usage.ServiceTier,
-				"inference_geo":          stream.Usage.InferenceGeo,
-				"speed":                  stream.Usage.Speed,
-				"partial_stream_recover": recoveredStreamError != "",
+				"turn":                      turn,
+				"stop_reason":               stream.StopReason,
+				"computer_image_count":      computerImageCount,
+				"computer_image_bytes":      computerImageBytes,
+				"computer_use_fast_path":    s.options.ComputerUseFastPath,
+				"request_build_duration_ms": requestBuildDuration.Milliseconds(),
+				"model_request_duration_ms": modelRequestDuration.Milliseconds(),
+				"service_tier":              stream.Usage.ServiceTier,
+				"inference_geo":             stream.Usage.InferenceGeo,
+				"speed":                     stream.Usage.Speed,
+				"partial_stream_recover":    recoveredStreamError != "",
 			},
 		})
 		if turnTextGuard != nil {
@@ -1938,6 +1948,11 @@ func (s *Session) run(ctx context.Context, prompt string, cb runCallbacks) (resu
 			"input_tokens", turnUsage.InputTokens,
 			"output_tokens", stream.Usage.OutputTokens,
 			"tool_uses", len(toolUses),
+			"turn_duration_ms", time.Since(turnStartedAt).Milliseconds(),
+			"request_build_duration_ms", requestBuildDuration.Milliseconds(),
+			"model_request_duration_ms", modelRequestDuration.Milliseconds(),
+			"computer_image_count", computerImageCount,
+			"computer_image_bytes", computerImageBytes,
 		)
 		if len(toolUses) == 0 {
 			if turn < s.options.MaxTurns {

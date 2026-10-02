@@ -442,7 +442,7 @@ func TestScreenshotContextDistinguishesObservationFromActionEvidence(t *testing.
 					t.Errorf("wrong observation caption: %s", caption)
 				}
 			} else {
-				for _, want := range []string{`"after-1"`, "evidence only", "call observe before the next input", "not an actionable observation"} {
+				for _, want := range []string{`"after-1"`, "evidence only", "fresh authoritative observation", "not an actionable observation"} {
 					if !strings.Contains(caption, want) {
 						t.Errorf("caption missing %q: %s", want, caption)
 					}
@@ -872,6 +872,18 @@ func (s *launchingService) LaunchTarget(_ context.Context, _ cu.SessionOwner, se
 	}
 	s.launchReceipt.TargetID = targetID
 	return s.launchReceipt, s.launchErr
+}
+
+func TestDescriptionPrioritizesAtomicFirstObserve(t *testing.T) {
+	description := New().Description()
+	for _, want := range []string{"first call", "observe with the registered target_id", "atomically launches, binds", "new authoritative observation"} {
+		if !strings.Contains(description, want) {
+			t.Errorf("description missing %q", want)
+		}
+	}
+	if strings.Contains(description, "Use launch_app with a registered target_id to start and bind its window before observing") {
+		t.Fatal("description still instructs the model to spend a separate launch turn")
+	}
 }
 
 func TestFastPathObservationAutoLaunchesHostWindow(t *testing.T) {

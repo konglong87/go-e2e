@@ -526,6 +526,59 @@ def safe_event_trace(events: Iterable[Mapping[str, Any]], actions: list[dict[str
     return {"schema_version": "computer-use-conversation-trace.v1", "events": output}
 
 
+def execution_log_metrics(events: Iterable[Mapping[str, Any]], actions: list[dict[str, Any]]) -> dict[str, Any]:
+    """Compute elapsed gaps from persisted session events, not wrapper guesses."""
+    previous_result: Optional[float] = None
+    action_rows: list[dict[str, Any]] = []
+    native_seconds = 0.0
+    between_action_seconds = 0.0
+    for item in actions:
+        call_at = parse_iso(str(item.get("call_at", "")))
+        result_at = parse_iso(str(item.get("result_at", "")))
+        if call_at is None or result_at is None:
+            continue
+        native = max(0.0, result_at - call_at)
+        gap = None if previous_result is None else max(0.0, call_at - previous_result)
+        native_seconds += native
+        if gap is not None:
+            between_action_seconds += gap
+        action_rows.append({
+            "action": item.get("action", ""),
+            "call_at": item.get("call_at", ""),
+            "result_at": item.get("result_at", ""),
+            "gap_after_previous_result_seconds": round(gap, 3) if gap is not None else None,
+            "native_action_duration_seconds": round(native, 3),
+        })
+        previous_result = result_at
+    usage_rows: list[dict[str, Any]] = []
+    message_stops: list[dict[str, Any]] = []
+    for event in events:
+        payload = event_payload(event)
+        if event.get("event_type") == "usage":
+            usage_rows.append({
+                "turn": payload.get("turn"),
+                "input_tokens": payload.get("input_tokens"),
+                "output_tokens": payload.get("output_tokens"),
+                "cache_read_input_tokens": payload.get("cache_read_input_tokens"),
+                "total_tokens": payload.get("total_tokens"),
+                "created_at": event.get("created_at", ""),
+            })
+        elif event.get("event_type") == "message_stop":
+            message_stops.append({
+                "turn": payload.get("turn"),
+                "stop_reason": payload.get("stop_reason", ""),
+                "created_at": event.get("created_at", ""),
+            })
+    return {
+        "action_rows": action_rows,
+        "action_count": len(action_rows),
+        "native_action_seconds": round(native_seconds, 3),
+        "between_action_seconds": round(between_action_seconds, 3),
+        "usage_rows": usage_rows,
+        "message_stops": message_stops,
+    }
+
+
 def latest_conversation_events(client: APIClient, path: str, timeout: float = 8.0) -> list[dict[str, Any]]:
     page = unwrap(client.request(path + "/conversation", timeout=timeout))
     if not isinstance(page, dict):
@@ -675,6 +728,7 @@ def run_acceptance(
     status_history: list[dict[str, Any]] = []
     final_status = "failed"
     error_stage = ""
+    log_metrics: dict[str, Any] = {}
     message_future: Optional[concurrent.futures.Future[Any]] = None
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="computer-use-message")
 
@@ -802,6 +856,8 @@ def run_acceptance(
             raise AcceptanceError("stop", "the evidence deadline expired before conversation trace could be fetched")
         events = latest_conversation_events(client, session_path, timeout=min(8.0, remaining - 0.1))
         actions = tool_events(events)
+        log_metrics = execution_log_metrics(events, actions)
+        evidence.json("execution-log-metrics.json", log_metrics)
         output_paths = save_observation_assets(client, evidence, actions, deadline)
         # Update preflight evidence from the first actual observation without
         # reading or OCRing pixels; the screenshot itself is the authority.
@@ -869,6 +925,7 @@ def run_acceptance(
             "schema_version": "computer-use-sanitized-timeline.v1", "provider": provider, "model": model,
             "effort": effort, "session_ref": ref, "session_status": final_status, "binding": binding,
             "actions": actions,
+            "execution_log_metrics": log_metrics,
         })
         if validation_error is not None:
             raise validation_error
@@ -876,6 +933,7 @@ def run_acceptance(
             raise AcceptanceError("content readiness", "ComputerUse did not produce an image-capable observation result")
         end = clock()
         timing_data = build_timing(timing, final_status, end, provider, model, effort)
+        timing_data["execution_log_metrics"] = log_metrics
         evidence.json("timing.json", timing_data)
         return {"status": "passed", "final_status": final_status, "timing": timing_data, "binding": binding}
     except AcceptanceError as exc:
@@ -884,6 +942,7 @@ def run_acceptance(
         evidence.json("failure.json", {"status": "failed", "stage": exc.stage, "message": str(exc), "at": iso_now()})
         evidence.json("status-history.json", {"captured_at": iso_now(), "history": status_history})
         timing_data = build_timing(timing, final_status, clock(), provider, model, effort, error_stage)
+        timing_data["execution_log_metrics"] = log_metrics
         evidence.json("timing.json", timing_data)
         return {"status": "failed", "final_status": final_status, "failure_stage": exc.stage, "message": str(exc), "timing": timing_data}
     except Exception as exc:
@@ -891,6 +950,7 @@ def run_acceptance(
         evidence.json("failure.json", {"status": "failed", "stage": error_stage, "message": str(exc)[:500], "at": iso_now()})
         evidence.json("status-history.json", {"captured_at": iso_now(), "history": status_history})
         timing_data = build_timing(timing, final_status, clock(), provider, model, effort, error_stage)
+        timing_data["execution_log_metrics"] = log_metrics
         evidence.json("timing.json", timing_data)
         return {"status": "failed", "final_status": final_status, "failure_stage": error_stage, "message": str(exc)[:500], "timing": timing_data}
     finally:

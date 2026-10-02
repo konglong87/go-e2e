@@ -25,8 +25,8 @@ const (
 	maxPNGBytes  = 16 << 20
 	maxPNGPixels = 32 << 20
 
-	observationScreenshotGuidance = "Fresh Computer Use observation screenshot. Reference this observation ID for one input action. Each successful input returns another fresh observation; inspect it before deciding the next action."
-	actionEvidenceGuidance        = "Computer Use post-action evidence only; not an actionable observation. On a successful action, call observe before the next input; never use this evidence image ID as observation_id. On an error or unknown outcome, stop without replaying input."
+	observationScreenshotGuidance = "Fresh Computer Use observation screenshot. Reference this observation ID for one input action. Each successful input returns another fresh observation; inspect it before deciding the next action and do not issue a redundant observe unless the transition is unsettled or the result is insufficient."
+	actionEvidenceGuidance        = "Computer Use post-action evidence only; not an actionable observation. A successful action also returns a fresh authoritative observation for the next input; never use this evidence image ID as observation_id. On an error or unknown outcome, stop without replaying input."
 	screenshotCoordinateGuidance  = "Use full-image pixel coordinates with top-left origin, not window-relative or scaled-preview coordinates. Do not divide by scale_factor; the native backend performs that conversion."
 )
 
@@ -57,7 +57,7 @@ func New() Tool { return Tool{} }
 func (Tool) Name() string { return ToolName }
 
 func (Tool) Description() string {
-	return "Observe and operate an explicitly approved computer session using structured actions. Use launch_app with a registered target_id to start and bind its window before observing. Each input action consumes a fresh observation. A successful input returns its receipt plus a new observation and screenshot for the next decision. Use observation.id, never receipt.after_observation_id. Observe again if the UI has not settled. Stop on errors or unknown outcomes; never replay input."
+	return "Observe and operate an explicitly approved computer session using structured actions. On the first call, prefer observe with the registered target_id; when the control window is active, the host atomically launches, binds, and returns the target-window observation. Use launch_app only when that first-observe fast path is unavailable. Each input action consumes one fresh observation. A successful input returns its receipt plus a new authoritative observation and screenshot for the next decision; inspect it instead of issuing a redundant observe unless the transition is unsettled or the result is insufficient. Use observation.id, never receipt.after_observation_id. Stop on errors or unknown outcomes; never replay input."
 }
 
 func (Tool) InputSchema() json.RawMessage {
