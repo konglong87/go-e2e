@@ -80,6 +80,17 @@ class WrapperUnitTests(unittest.TestCase):
             self.assertEqual((Path(directory) / "evidence").stat().st_mode & 0o777, 0o700)
             self.assertEqual((Path(directory) / "evidence/safe.json").stat().st_mode & 0o777, 0o600)
 
+    def test_timing_preserves_requested_effort(self):
+        timing = MODULE.Timing(started_at="2026-10-02T00:00:00Z", start_monotonic=10.0)
+        result = MODULE.build_timing(timing, "stopped", 11.25, MODULE.DEFAULT_PROVIDER, MODULE.DEFAULT_MODEL, "low")
+        self.assertEqual(result["effort"], "low")
+
+    def test_cli_exposes_low_effort_override(self):
+        args = MODULE.parse_args(["--provider", "jiuan-responses-gpt-5.6sol", "--model", "gpt-6-sol", "--effort", "low"])
+        self.assertEqual(args.provider, "jiuan-responses-gpt-5.6sol")
+        self.assertEqual(args.model, "gpt-6-sol")
+        self.assertEqual(args.effort, "low")
+
 class FakeAcceptanceClient:
     def __init__(self):
         self.stop_calls = 0

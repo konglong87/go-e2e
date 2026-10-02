@@ -619,12 +619,12 @@ def validate_actions(actions: list[dict[str, Any]], output_paths: Mapping[str, s
     }
 
 
-def build_timing(timing: Timing, final_status: str, end_monotonic: float, provider: str, model: str, error_stage: str = "") -> dict[str, Any]:
+def build_timing(timing: Timing, final_status: str, end_monotonic: float, provider: str, model: str, effort: str, error_stage: str = "") -> dict[str, Any]:
     total = max(0.0, end_monotonic - timing.start_monotonic)
     return {
         "provider": provider,
         "model": model,
-        "effort": DEFAULT_EFFORT,
+        "effort": effort,
         "start_time": timing.started_at,
         "end_time": iso_now(),
         "total_elapsed_seconds": round(total, 3),
@@ -864,7 +864,7 @@ def run_acceptance(
         if not image_route:
             raise AcceptanceError("content readiness", "ComputerUse did not produce an image-capable observation result")
         end = clock()
-        timing_data = build_timing(timing, final_status, end, provider, model)
+        timing_data = build_timing(timing, final_status, end, provider, model, effort)
         evidence.json("timing.json", timing_data)
         return {"status": "passed", "final_status": final_status, "timing": timing_data, "binding": binding}
     except AcceptanceError as exc:
@@ -872,14 +872,14 @@ def run_acceptance(
         final_status = final_status if final_status in TERMINAL_STATUSES else "failed"
         evidence.json("failure.json", {"status": "failed", "stage": exc.stage, "message": str(exc), "at": iso_now()})
         evidence.json("status-history.json", {"captured_at": iso_now(), "history": status_history})
-        timing_data = build_timing(timing, final_status, clock(), provider, model, error_stage)
+        timing_data = build_timing(timing, final_status, clock(), provider, model, effort, error_stage)
         evidence.json("timing.json", timing_data)
         return {"status": "failed", "final_status": final_status, "failure_stage": exc.stage, "message": str(exc), "timing": timing_data}
     except Exception as exc:
         error_stage = "launch" if not session_path else "conversation_trace"
         evidence.json("failure.json", {"status": "failed", "stage": error_stage, "message": str(exc)[:500], "at": iso_now()})
         evidence.json("status-history.json", {"captured_at": iso_now(), "history": status_history})
-        timing_data = build_timing(timing, final_status, clock(), provider, model, error_stage)
+        timing_data = build_timing(timing, final_status, clock(), provider, model, effort, error_stage)
         evidence.json("timing.json", timing_data)
         return {"status": "failed", "final_status": final_status, "failure_stage": error_stage, "message": str(exc)[:500], "timing": timing_data}
     finally:
@@ -893,6 +893,9 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser.add_argument("--app", type=Path, default=DEFAULT_APP_PATH)
     parser.add_argument("--port", type=int, default=0, help="use an explicit local server port instead of process discovery")
     parser.add_argument("--auth-token", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--provider", default=DEFAULT_PROVIDER)
+    parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument("--effort", default=DEFAULT_EFFORT, choices=("low", "medium", "high", "off"))
     parser.add_argument("--total-budget", type=float, default=DEFAULT_TOTAL_BUDGET_SECONDS)
     parser.add_argument("--operational-deadline", type=float, default=DEFAULT_OPERATIONAL_DEADLINE_SECONDS)
     parser.add_argument("--poll-interval", type=float, default=DEFAULT_POLL_INTERVAL_SECONDS)
@@ -911,6 +914,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             evidence=Evidence(args.output),
             workspace=args.workspace,
             app_path=args.app,
+            provider=args.provider,
+            model=args.model,
+            effort=args.effort,
             total_budget=args.total_budget,
             operational_deadline=min(args.operational_deadline, args.total_budget),
             poll_interval=args.poll_interval,
