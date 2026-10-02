@@ -464,8 +464,18 @@ def validate_png(data: bytes, media_type: str) -> None:
         raise ValueError("observation screenshot is blank/white")
 
 
-def save_observation_assets(client: APIClient, evidence: Evidence, actions: list[dict[str, Any]], deadline: float) -> dict[str, str]:
+def save_observation_assets(
+    client: APIClient, evidence: Evidence, actions: list[dict[str, Any]], deadline: float
+) -> tuple[dict[str, str], list[dict[str, Any]]]:
+    """Download screenshots without allowing one bad asset to hide the trace.
+
+    Conversation events and redacted action receipts are persisted before this
+    function runs. Each observation is therefore independently classified as
+    saved or invalid; callers can still validate the action sequence and report
+    the exact screenshot failure that prevented closure.
+    """
     paths: dict[str, str] = {}
+    asset_rows: list[dict[str, Any]] = []
     seen: set[str] = set()
     number = 0
     for action in actions:
@@ -477,16 +487,36 @@ def save_observation_assets(client: APIClient, evidence: Evidence, actions: list
         if not asset_id or not observation_id or observation_id in seen:
             continue
         seen.add(observation_id)
+        row: dict[str, Any] = {
+            "observation_id": observation_id,
+            "asset_id": asset_id,
+            "media_type": str(observation.get("media_type", "")),
+        }
         remaining = deadline - time.monotonic()
         if remaining <= 0.25:
-            raise AcceptanceError("stop", "the evidence deadline expired before screenshots could be saved")
-        data, media_type = client.download(f"/tenant/media/assets/{asset_id}", timeout=min(8.0, remaining - 0.1))
-        validate_png(data, media_type or str(observation.get("media_type", "")))
-        number += 1
-        name = f"observation-{number:02d}-{observation_id}.png"
-        path = evidence.bytes(name, data)
-        paths[observation_id] = str(path)
-    return paths
+            row.update({"status": "invalid", "error": "evidence_deadline_expired"})
+            asset_rows.append(row)
+            continue
+        try:
+            data, media_type = client.download(
+                f"/tenant/media/assets/{asset_id}", timeout=min(8.0, remaining - 0.1)
+            )
+            validate_png(data, media_type or str(observation.get("media_type", "")))
+            number += 1
+            name = f"observation-{number:02d}-{observation_id}.png"
+            path = evidence.bytes(name, data)
+            paths[observation_id] = str(path)
+            row.update({"status": "saved", "path": str(path), "bytes": len(data)})
+        except Exception as exc:
+            row.update({"status": "invalid", "error": str(exc)[:240]})
+        asset_rows.append(row)
+    evidence.json("observation-assets.json", {
+        "schema_version": "computer-use-observation-assets.v1",
+        "saved_count": sum(1 for row in asset_rows if row.get("status") == "saved"),
+        "invalid_count": sum(1 for row in asset_rows if row.get("status") == "invalid"),
+        "assets": asset_rows,
+    })
+    return paths, [row for row in asset_rows if row.get("status") == "invalid"]
 
 
 def safe_event_trace(events: Iterable[Mapping[str, Any]], actions: list[dict[str, Any]]) -> dict[str, Any]:
@@ -604,7 +634,13 @@ def validate_effective_config(session: Mapping[str, Any], provider: str, model: 
     return effective
 
 
-def validate_actions(actions: list[dict[str, Any]], output_paths: Mapping[str, str], final_status: str, launch_target: str = TARGET_ID) -> dict[str, Any]:
+def validate_actions(
+    actions: list[dict[str, Any]],
+    output_paths: Mapping[str, str],
+    final_status: str,
+    launch_target: str = TARGET_ID,
+    invalid_assets: Optional[list[Mapping[str, Any]]] = None,
+) -> dict[str, Any]:
     if not actions:
         raise AcceptanceError("conversation_trace", "no ComputerUse actions were persisted")
     action_names = [str(item.get("action", "")) for item in actions]
@@ -665,11 +701,13 @@ def validate_actions(actions: list[dict[str, Any]], output_paths: Mapping[str, s
                 raise AcceptanceError("window binding", f"{action} targeted bundle {bundle_id!r}")
             if bundle_id in SELF_BUNDLE_IDS:
                 raise AcceptanceError("window binding", f"{action} targeted the control application")
+    invalid_ids = [str(item.get("observation_id", "")) for item in (invalid_assets or []) if item.get("observation_id")]
+    invalid_detail = f"; invalid observations: {', '.join(invalid_ids)}" if invalid_ids else ""
     if not output_paths:
-        raise AcceptanceError("content readiness", "no screenshot evidence was downloaded")
+        raise AcceptanceError("content readiness", f"no screenshot evidence was downloaded{invalid_detail}")
     reply_candidates = [item for item in wait_items if item.get("computer_observation", {}).get("observation_id") in output_paths]
     if not reply_candidates:
-        raise AcceptanceError("reply wait", "wait did not produce a saved reply observation screenshot")
+        raise AcceptanceError("reply wait", f"wait did not produce a saved reply observation screenshot{invalid_detail}")
     return {
         "target_id": launch_target,
         "launch_mode": "atomic_observe" if implicit_launch else "launch_app",
@@ -857,8 +895,12 @@ def run_acceptance(
         events = latest_conversation_events(client, session_path, timeout=min(8.0, remaining - 0.1))
         actions = tool_events(events)
         log_metrics = execution_log_metrics(events, actions)
+        # Persist the complete redacted execution trace before downloading any
+        # screenshot. A bad/expired image must never erase the action history.
+        evidence.json("action-receipts.json", {"schema_version": "computer-use-action-receipts.v1", "actions": actions})
+        evidence.json("conversation-trace.json", safe_event_trace(events, actions))
         evidence.json("execution-log-metrics.json", log_metrics)
-        output_paths = save_observation_assets(client, evidence, actions, deadline)
+        output_paths, invalid_assets = save_observation_assets(client, evidence, actions, deadline)
         # Update preflight evidence from the first actual observation without
         # reading or OCRing pixels; the screenshot itself is the authority.
         first_observation = next((item for item in actions if item.get("action") == "observe" and item.get("computer_observation")), None)
@@ -896,9 +938,6 @@ def run_acceptance(
         image_route = any(item.get("computer_observation", {}).get("media_type") == "image/png" for item in actions)
         effective["computer_use_image_route"] = "image/png" if image_route else "missing"
         evidence.json("effective-config.json", effective)
-        evidence.json("action-receipts.json", {"schema_version": "computer-use-action-receipts.v1", "actions": actions})
-        evidence.json("conversation-trace.json", safe_event_trace(events, actions))
-
         reply_candidates = [
             item for item in actions
             if item.get("action") == "wait"
@@ -911,7 +950,7 @@ def run_acceptance(
 
         validation_error: Optional[AcceptanceError] = None
         try:
-            binding = validate_actions(actions, output_paths, final_status)
+            binding = validate_actions(actions, output_paths, final_status, invalid_assets=invalid_assets)
         except AcceptanceError as exc:
             validation_error = exc
             binding = {
@@ -925,6 +964,7 @@ def run_acceptance(
             "schema_version": "computer-use-sanitized-timeline.v1", "provider": provider, "model": model,
             "effort": effort, "session_ref": ref, "session_status": final_status, "binding": binding,
             "actions": actions,
+            "invalid_observation_assets": invalid_assets,
             "execution_log_metrics": log_metrics,
         })
         if validation_error is not None:

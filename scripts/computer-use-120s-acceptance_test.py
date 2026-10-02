@@ -73,6 +73,28 @@ class WrapperUnitTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             MODULE.validate_png(b"not-a-png", "image/png")
 
+    def test_blank_asset_is_marked_without_aborting_other_screenshots(self):
+        class SelectiveClient:
+            def download(self, path, timeout=None):
+                if path.endswith("asset-blank"):
+                    return FakeAcceptanceClient._png((255, 255, 255, 255)), "image/png"
+                return FakeAcceptanceClient._png((24, 24, 24, 255)), "image/png"
+
+        actions = [
+            {"action": "observe", "computer_observation": {"observation_id": "o-blank", "asset_id": "asset-blank", "media_type": "image/png"}},
+            {"action": "wait", "computer_observation": {"observation_id": "o-good", "asset_id": "asset-good", "media_type": "image/png"}},
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            paths, invalid = MODULE.save_observation_assets(
+                SelectiveClient(), MODULE.Evidence(Path(directory)), actions, time.monotonic() + 5
+            )
+            self.assertEqual(list(paths), ["o-good"])
+            self.assertEqual([item["observation_id"] for item in invalid], ["o-blank"])
+            report = json.loads((Path(directory) / "observation-assets.json").read_text())
+            self.assertEqual(report["saved_count"], 1)
+            self.assertEqual(report["invalid_count"], 1)
+            self.assertTrue((Path(directory) / "observation-01-o-good.png").exists())
+
     def test_evidence_directory_is_private(self):
         with tempfile.TemporaryDirectory() as directory:
             evidence = MODULE.Evidence(Path(directory) / "evidence")
@@ -161,6 +183,32 @@ class FakeAcceptanceClient:
 
     def download(self, path, timeout=None):
         return self.image, "image/png"
+
+
+class EvidencePipelineTests(unittest.TestCase):
+    def test_trace_is_persisted_before_invalid_screenshot_is_reported(self):
+        class BlankFirstAssetClient(FakeAcceptanceClient):
+            def download(self, path, timeout=None):
+                if path.endswith("asset-2"):
+                    return FakeAcceptanceClient._png((255, 255, 255, 255)), "image/png"
+                return super().download(path, timeout)
+
+        with tempfile.TemporaryDirectory() as directory:
+            result = MODULE.run_acceptance(
+                client=BlankFirstAssetClient(),
+                evidence=MODULE.Evidence(Path(directory)),
+                workspace=ROOT,
+                app_path=ROOT / "desktop-v2/build/bin/go-e2e.app",
+                total_budget=2.0,
+                operational_deadline=0.05,
+                poll_interval=0.01,
+                sleep=lambda seconds: time.sleep(min(seconds, 0.01)),
+            )
+            self.assertTrue((Path(directory) / "action-receipts.json").exists())
+            self.assertTrue((Path(directory) / "conversation-trace.json").exists())
+            report = json.loads((Path(directory) / "observation-assets.json").read_text())
+            self.assertGreaterEqual(report["invalid_count"], 1)
+            self.assertEqual(result["status"], "passed")
 
 
 class AsyncDeadlineTests(unittest.TestCase):
