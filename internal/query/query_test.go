@@ -169,12 +169,22 @@ func TestSimpleComputerUsePromptAutoEnablesOnlyForWorkBuddyGUIIntent(t *testing.
 }
 
 func TestSimpleComputerUsePromptCountsUnicodeCharactersForFastPath(t *testing.T) {
-	prompt := strings.Repeat("请只使用 ComputerUse 在 WorkBuddy 中完成操作。", 10) + " 输入 1+1=2，然后点击发送。"
-	if len(prompt) <= 600 || utf8.RuneCountInString(prompt) > 600 {
+	prompt := strings.Repeat("请只使用 ComputerUse 在 WorkBuddy 中完成操作。", 21) + " 输入 1+1=2，然后点击发送。"
+	if len(prompt) <= computerUseSimplePromptRuneLimit || utf8.RuneCountInString(prompt) > computerUseSimplePromptRuneLimit {
 		t.Fatalf("test prompt does not exercise UTF-8 byte boundary: bytes=%d runes=%d", len(prompt), utf8.RuneCountInString(prompt))
 	}
 	if !isSimpleComputerUsePrompt(prompt) {
 		t.Fatal("Chinese WorkBuddy prompt should use the fast path")
+	}
+}
+
+func TestSimpleComputerUsePromptAllowsTrustedAcceptancePreamble(t *testing.T) {
+	prompt := "请只使用 ComputerUse 完成这个真实桌面闭环，并在 120 秒内结束：目标应用使用通用 target_id=workbuddy，WorkBuddy 当前未启动。先使用 action=observe 建立 Computer Use 会话；如果目标应用未启动，使用 action=launch_app、target_id=workbuddy 启动并绑定目标窗口，然后 observe 绑定的目标窗口。必须等待内容 ready，不能只因为窗口出现就操作；如果白屏，最多等待 12 秒并重新 observe，仍白屏就 stop。内容 ready 后点击目标应用的新建会话或新建任务，重新 observe，定位输入框，输入 1+1=2，重新 observe，真实点击发送/提交按钮，等待一次回复，重新 observe 并确认页面出现真实回复，最后使用 ComputerUse stop。"
+	if got := utf8.RuneCountInString(prompt); got > computerUseSimplePromptRuneLimit {
+		t.Fatalf("preamble fixture rune count=%d", got)
+	}
+	if !isSimpleComputerUsePrompt(prompt) {
+		t.Fatal("trusted desktop acceptance preamble should use the fast path")
 	}
 }
 

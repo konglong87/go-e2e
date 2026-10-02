@@ -6913,11 +6913,16 @@ func cacheControlForScope(scope, querySource string) *anthropic.CacheControl {
 
 const defaultQuerySource = "repl_main_thread"
 
+// ComputerUse prompts include a trusted safety/targeting preamble before the
+// user's short GUI request. Keep the classifier limit in user-visible Unicode
+// characters and leave room for that bounded preamble.
+const computerUseSimplePromptRuneLimit = 1200
+
 func isSimpleComputerUsePrompt(prompt string) bool {
 	prompt = strings.ToLower(strings.TrimSpace(prompt))
 	// The classifier budget is expressed in user-visible characters, not UTF-8
 	// bytes, so multilingual GUI requests receive the same fast-path budget.
-	if prompt == "" || utf8.RuneCountInString(prompt) > 600 || strings.Contains(prompt, "don't") {
+	if prompt == "" || utf8.RuneCountInString(prompt) > computerUseSimplePromptRuneLimit || strings.Contains(prompt, "don't") {
 		return false
 	}
 	normalized := strings.NewReplacer(
