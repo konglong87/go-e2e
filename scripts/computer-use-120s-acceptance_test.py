@@ -53,6 +53,44 @@ class WrapperUnitTests(unittest.TestCase):
         self.assertEqual(actions[0]["window_id"], "19988")
         self.assertNotIn("secret", json.dumps(actions))
 
+    def test_atomic_observe_extracts_nested_launch_window_identity(self):
+        events = [
+            {"event_type": "tool_call", "created_at": "2026-10-02T00:00:00Z", "payload_json": json.dumps({
+                "tool_id": "tool-atomic", "tool_name": "ComputerUse",
+                "input": json.dumps({"redacted": True, "action": "observe", "input_bytes": 44}),
+            })},
+            {"event_type": "tool_result", "created_at": "2026-10-02T00:00:01Z", "payload_json": json.dumps({
+                "tool_id": "tool-atomic", "tool_name": "ComputerUse", "is_error": False,
+                "output": json.dumps({
+                    "launch_receipt": {
+                        "target_id": "workbuddy",
+                        "bundle_id": "com.workbuddy.workbuddy",
+                        "window": {
+                            "id": "21680",
+                            "owner_pid": 9120,
+                            "bundle_id": "com.workbuddy.workbuddy",
+                            "frame": {"x": 0, "y": 34, "width": 1352, "height": 844},
+                        },
+                        "outcome": "executed",
+                    },
+                    "observation": {
+                        "active_window": {
+                            "id": "21680",
+                            "owner_pid": 9120,
+                            "bundle_id": "com.workbuddy.workbuddy",
+                            "frame": {"x": 0, "y": 34, "width": 1352, "height": 844},
+                        },
+                    },
+                }),
+                "computer_observation": {"observation_id": "observation-atomic", "asset_id": "asset-atomic", "media_type": "image/png"},
+            })},
+        ]
+        action = MODULE.tool_events(events)[0]
+        self.assertEqual(action["window_id"], "21680")
+        self.assertEqual(action["bundle_id"], "com.workbuddy.workbuddy")
+        self.assertEqual(action["owner_pid"], 9120)
+        self.assertEqual(action["window_frame"], {"x": 0, "y": 34, "width": 1352, "height": 844})
+
     def test_action_validation_rejects_control_window(self):
         actions = [
             {"tool_id": "1", "action": "observe", "is_error": False, "computer_observation": {"observation_id": "o1"}},

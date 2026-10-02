@@ -297,6 +297,57 @@ def regex_number(value: str, key: str) -> Optional[int]:
     return int(match.group(1)) if match else None
 
 
+def compact_frame(value: Any) -> Optional[dict[str, float]]:
+    """Keep only the non-sensitive window geometry from a tool result."""
+    if not isinstance(value, dict):
+        return None
+    frame: dict[str, float] = {}
+    for key in ("x", "y", "width", "height"):
+        number = value.get(key)
+        if isinstance(number, (int, float)) and not isinstance(number, bool):
+            frame[key] = float(number) if isinstance(number, float) else number
+    return frame if len(frame) == 4 else None
+
+
+def merge_window_identity(item: dict[str, Any], value: Any) -> None:
+    """Extract stable target-window identity from a known response object."""
+    if not isinstance(value, dict):
+        return
+    if not item.get("window_id") and value.get("id") not in (None, ""):
+        item["window_id"] = str(value["id"])
+    if not item.get("bundle_id") and value.get("bundle_id") not in (None, ""):
+        item["bundle_id"] = str(value["bundle_id"])
+    owner_pid = value.get("owner_pid")
+    if item.get("owner_pid") is None and isinstance(owner_pid, int) and not isinstance(owner_pid, bool):
+        item["owner_pid"] = max(0, owner_pid)
+    frame = compact_frame(value.get("frame"))
+    if frame and "window_frame" not in item:
+        item["window_frame"] = frame
+
+
+def merge_tool_identity(item: dict[str, Any], output: Any) -> None:
+    """Decode the stable fields in both legacy and atomic-observe responses."""
+    if not isinstance(output, dict):
+        return
+    for key in ("window_id", "bundle_id", "target_id", "outcome", "error_code"):
+        value = output.get(key)
+        if value not in (None, "") and key not in item:
+            item[key] = str(value)
+    launch = output.get("launch_receipt")
+    if isinstance(launch, dict):
+        for key in ("target_id", "bundle_id", "outcome", "error_code"):
+            value = launch.get(key)
+            if value not in (None, "") and key not in item:
+                item[key] = str(value)
+        merge_window_identity(item, launch.get("window"))
+    observation = output.get("observation")
+    if isinstance(observation, dict):
+        merge_window_identity(item, observation.get("active_window"))
+        capabilities = observation.get("capabilities")
+        if isinstance(capabilities, dict):
+            merge_window_identity(item, capabilities.get("target_window"))
+
+
 def event_payload(event: Mapping[str, Any]) -> dict[str, Any]:
     raw = event.get("payload_json", "")
     if isinstance(raw, dict):
@@ -369,11 +420,18 @@ def tool_events(events: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
         if observation:
             item["computer_observation"] = observation
         # Output is deliberately bounded by the server. Extract only safe
-        # identity fields from it; never persist the output itself.
-        for key in ("window_id", "bundle_id", "target_id", "outcome", "error_code"):
-            value = regex_value(output, key)
-            if value:
-                item[key] = value
+        # identity fields from it; never persist the output itself. The atomic
+        # first-observe response nests the launch window under
+        # launch_receipt.window, so parse that known schema instead of relying
+        # on a flat regex match.
+        decoded_output = json_from_text(output)
+        if decoded_output is not None:
+            merge_tool_identity(item, decoded_output)
+        else:
+            for key in ("window_id", "bundle_id", "target_id", "outcome", "error_code"):
+                value = regex_value(output, key)
+                if value:
+                    item[key] = value
         if action == "observe" and '"launch_receipt"' in output:
             # The generic first-observe fast path may return launch, binding,
             # and the target observation as one host-authorized result.
