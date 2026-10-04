@@ -42,17 +42,50 @@
   <img src="docs/web_agent/images/go-e2e-desktop-v2.png" alt="go-e2e desktop-v2 最新桌面端界面" width="900">
 </p>
 
-## 先从这里开始
+## 六大核心
 
-go-e2e 是一套可以执行任务、连接外部工具、保留上下文并持续交付结果的开源 Agent 工作台。
-你可以按使用场景选择入口：
+- **四端覆盖**：Desktop / TUI / CLI / WebUI / 飞书，个人、开发与团队部署都能覆盖
+- **本地优先，部署自由**：SQLite 默认、本地运行，也支持私有化部署和 MySQL
+- **开放源码，便于二开**：Provider、工具链、工作流、权限、界面和业务逻辑均可扩展
+- **从一句话到结果交付**：理解需求、拆解任务、调用工具、持续执行、结果验证
+- **Provider 自由接入**：自定义 Provider、兼容 API、多模态扩展，不绑定单一模型厂商
+- **Go 内核，轻量高效**：启动快、依赖少，适合长期运行
 
-| 入口 | 适合场景 | 快速入口 |
-| --- | --- | --- |
-| **Desktop** | 日常使用、模型配置、会话和设置管理 | `scripts/build-desktop-v2.sh` |
-| **TUI / CLI** | 终端交互、脚本调用、一次性任务 | `go run ./cmd/go-e2e` |
-| **WebUI** | 浏览器工作台、服务端运行和团队部署 | `scripts/webui-dev.sh` |
-| **Feishu** | 飞书机器人、渠道会话和持续在线 Worker | 见[飞书渠道文档](docs/README.md) |
+## 快速开始
+
+源码最低要求 Go 1.25+（CI/release 默认使用 Go 1.26.6，`.tool-versions` 是可复现构建 pin，不是源码最低版本）。
+
+```bash
+git clone https://github.com/konglong87/go-e2e.git
+cd go-e2e
+go run ./cmd/go-e2e --version
+```
+
+在设置页面填写 provider、API 协议、模型、地址和凭据，或直接编辑 `~/.golang-cc/settings.json`：
+
+```json
+{
+  "provider": "custom",
+  "providerProtocol": "openai-chat-completions",
+  "baseURL": "https://model.example.com/v1",
+  "apiKey": "replace-me",
+  "model": "model-id"
+}
+```
+
+开始一次任务：
+
+```bash
+go run ./cmd/go-e2e -p "检查当前项目结构"
+```
+
+继续同一会话：
+
+```bash
+go run ./cmd/go-e2e --session-id 11111111-1111-4111-8111-111111111111 -p "记住刚才的结论，并继续检查测试"
+```
+
+> 其他运行入口见[运行入口](#运行入口)；飞书 Worker 见[飞书渠道文档](docs/README.md)。
 
 ## 下载桌面端
 
@@ -65,23 +98,13 @@ go-e2e 是一套可以执行任务、连接外部工具、保留上下文并持�
 | Windows | `go-e2e-setup.exe` | Windows 安装程序 |
 | Linux x86_64 | `go-e2e-desktop_<版本>_linux_amd64.tar.gz` | Linux 桌面端压缩包 |
 
-下载后可使用同一页面中的 `SHA256SUMS` 校验文件完整性。
+下载后可使用同一页面中的 `SHA256SUMS` 校验文件完整性。macOS 首次打开如果提示无法验证开发者，表示当前版本未使用 Apple Developer ID 签名和 notarization。请先将 `go-e2e.app` 拖入“应用程序”，然后打开：
 
-## 六大核心
+```text
+系统设置 → 隐私与安全性 → 安全性 → 仍要打开
+```
 
-| 核心亮点 | 主要能力 | 用户收益 |
-| --- | --- | --- |
-| **开源桌面级 Agent，四端覆盖** | Desktop / TUI / CLI / WebUI | 个人使用、开发调试和团队部署都能覆盖 |
-| **本地优先，部署方式自由** | SQLite、本地运行、私有化部署、MySQL | 数据边界和部署环境由用户掌控 |
-| **开放源码，方便二次开发** | Provider、工具链、工作流、权限、界面和业务逻辑可扩展 | 可以按项目需求定制 Agent |
-| **从一句话到结果交付** | 理解需求、拆解任务、调用工具、持续执行、结果验证 | 复杂任务可以持续推进并交付结果 |
-| **Provider 自由接入，多模型扩展** | 自定义 Provider、兼容 API、多模态和图片能力扩展 | 不绑定单一模型厂商 |
-| **Go 内核，轻量高效** | Go runtime、本地 sidecar、低部署依赖 | 启动快、易部署，适合长期运行 |
-
-## 简单说
-
-开源桌面级 AI Agent，覆盖 Desktop、TUI、CLI 和 WebUI；本地优先、支持私有化部署，
-能够从一句话需求出发完成任务执行与结果交付，并通过自定义 Provider 接入不同模型。
+确认后重新打开应用即可。配置了 Apple Developer Secrets 的版本会自动签名并完成 notarization，通常不需要这一步。
 
 ## 产品闭环
 
@@ -120,68 +143,6 @@ flowchart TB
 它们不是重复设置。完整图例、分层说明和设置项边界见
 [产品架构总览](docs/architecture/agent_platform_architecture.md)。
 
-## 快速开始
-
-### 工具链要求
-
-- 源码最低要求 Go 1.25+。当前依赖图中 `x/crypto`、`x/net` 和 `x/sys` 等版本的最低要求是 Go 1.25。
-- CI 与 release 默认使用 Go 1.26.6，作为包含最新安全修复的推荐构建工具链，不代表源码必须使用 Go 1.26。
-- `.tool-versions` 中的 Go 版本是可复现构建 pin，不是源码最低版本。
-
-```bash
-git clone https://github.com/konglong87/go-e2e.git
-cd go-e2e
-go run ./cmd/go-e2e --version
-```
-
-在设置页面填写 provider、API 协议、模型、地址和凭据，或直接编辑：
-
-```text
-~/.golang-cc/settings.json
-```
-
-最小 provider-neutral 示例：
-
-```json
-{
-  "provider": "custom",
-  "providerProtocol": "openai-chat-completions",
-  "baseURL": "https://model.example.com/v1",
-  "apiKey": "replace-me",
-  "model": "model-id"
-}
-```
-
-开始一次任务：
-
-```bash
-go run ./cmd/go-e2e -p "检查当前项目结构"
-```
-
-继续同一会话：
-
-```bash
-go run ./cmd/go-e2e --session-id 11111111-1111-4111-8111-111111111111 -p "记住刚才的结论，并继续检查测试"
-go run ./cmd/go-e2e --sessionId 11111111-1111-4111-8111-111111111111 -p "基于上一轮结果给出修复建议"
-```
-
-## 下载桌面版
-
-正式桌面安装包发布在 GitHub Releases 中。macOS 提供 Apple Silicon
-(`arm64`) 和 Intel (`amd64`) 两种 DMG，Windows 提供 amd64 安装程序；
-Linux 桌面包和 CLI 归档也会随版本一同发布。下载后可先按 Release 页面中的
-`SHA256SUMS` 校验文件完整性。
-
-macOS 首次打开如果提示无法验证开发者，表示当前版本未使用 Apple Developer
-ID 签名和 notarization。请先将 `go-e2e.app` 拖入“应用程序”，然后打开：
-
-```text
-系统设置 → 隐私与安全性 → 安全性 → 仍要打开
-```
-
-确认后重新打开应用即可。配置了 Apple Developer Secrets 的版本会自动签名并
-完成 notarization，通常不需要这一步。
-
 ## 运行入口
 
 | 场景 | 命令 |
@@ -192,6 +153,7 @@ ID 签名和 notarization。请先将 `go-e2e.app` 拖入“应用程序”，�
 | 会话恢复 | `go run ./cmd/go-e2e --session-id <uuid> -p "..."` |
 | WebUI 2.0 | `scripts/webui-dev.sh` |
 | 桌面端 | `scripts/build-desktop-v2.sh` |
+| 飞书 Worker | 见[飞书渠道文档](docs/README.md) |
 
 ## 部署与模型
 
