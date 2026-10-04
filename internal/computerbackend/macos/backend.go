@@ -734,16 +734,23 @@ func (b *Backend) Execute(ctx context.Context, action cu.Action) (receipt cu.Act
 		if !errors.As(err, &rejected) && !(errors.As(err, &call) && !call.MayHaveRun) {
 			receipt.Outcome = cu.OutcomeUnknown
 			receipt.Verification = cu.VerificationUnknown
+			// Surface the native error code so callers can distinguish a transient
+			// focus change (recoverable via fresh Observe) from a fatal helper
+			// failure. finish() only overwrites an empty code.
+			if response.ErrorCode != "" {
+				receipt.ErrorCode = cu.PublicErrorCode(response.ErrorCode)
+			}
 			// A locally requested Pause/Stop invalidated this generation and the
 			// native executor acknowledged interruption after releasing input.
 			// Do not kill it before the queued control acknowledgement arrives.
 			// This exception never turns partial input into success or replay.
 			if !b.cooperativeInterruption(epoch, response) {
 				if response.OK != nil && !*response.OK && response.Outcome == cu.OutcomeUnknown && response.ErrorCode == helperFocusChangedCode {
-					// The native executor returned after cleanup and permanently
-					// stopped itself. Retain only Stop/Close transport, not Resume
-					// or input authority, so cleanup can still be acknowledged.
-					b.quarantine()
+					// Focus change is transient: the helper cleaned up and paused
+					// itself, but the process is still alive. Revoke this
+					// generation's observation/input authority without aborting,
+					// so a fresh Observe can re-activate the target and resume.
+					b.quarantineTransient()
 				} else {
 					b.invalidate()
 				}
@@ -755,7 +762,15 @@ func (b *Backend) Execute(ctx context.Context, action cu.Action) (receipt cu.Act
 	if err != nil || width != obs.Width || height != obs.Height || response.Result["display_id"] != obs.DisplayID || response.Result["scale_factor"] != obs.ScaleFactor {
 		receipt.Outcome = cu.OutcomeUnknown
 		receipt.Verification = cu.VerificationUnknown
-		b.invalidate()
+		// The helper returned a response, so the process is alive. A mismatched
+		// after screenshot is typically a mid-animation or window-transition
+		// capture, not helper corruption: revoke this generation without
+		// aborting so a fresh Observe can recover.
+		if response.OK != nil {
+			b.quarantineTransient()
+		} else {
+			b.invalidate()
+		}
 		return finish(errors.New("invalid after screenshot"))
 	}
 	if activeWindow, ok := decodeWindowRef(response.Result["active_window"]); ok {
@@ -793,6 +808,21 @@ func (b *Backend) quarantine() {
 	b.mouseBroker.revoke()
 	b.paused = true
 	b.failed = true
+	b.epoch++
+	b.observation = cu.Observation{}
+	b.mu.Unlock()
+}
+// quarantineTransient revokes the current generation's observation and input
+// authority without marking the backend failed or aborting the helper. A
+// focus change or a mid-animation screenshot miss is transient: the helper
+// process is still alive and responsive, and a fresh Observe can re-activate
+// the target window and resume. This never turns partial input into success
+// or replay; the next input still requires a new observation-bound action.
+func (b *Backend) quarantineTransient() {
+	b.mu.Lock()
+	b.mouseBroker.revoke()
+	b.paused = true
+	b.failed = false
 	b.epoch++
 	b.observation = cu.Observation{}
 	b.mu.Unlock()
