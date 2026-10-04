@@ -572,6 +572,10 @@ func (b *Backend) Observe(ctx context.Context, req cu.ObserveRequest) (cu.Observ
 	bound := b.targetBinding
 	b.mu.Unlock()
 	if bound != nil && !bound.Matches(targetWindow) {
+		_ = os.WriteFile("/tmp/computer-use-mismatch.log", []byte(fmt.Sprintf(
+			"bound={ID:%s PID:%d Bundle:%s Frame:%+v Visible:%v} got={ID:%s PID:%d Bundle:%s Frame:%+v Visible:%v}\n",
+			bound.Window.ID, bound.Window.OwnerPID, bound.Window.BundleID, bound.Window.Frame, bound.Window.IsVisible,
+			targetWindow.ID, targetWindow.OwnerPID, targetWindow.BundleID, targetWindow.Frame, targetWindow.IsVisible)), 0600)
 		return cu.Observation{}, &rejection{cu.ErrorCodeTargetWindowMismatch}
 	}
 	b.mu.Lock()

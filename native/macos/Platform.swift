@@ -122,6 +122,35 @@ struct MacDesktop: DesktopPlatform {
         return geometry
     }
 
+    /// Sample a captured window image to confirm its content has rendered. A
+    /// window can be visible and frontmost before its content is painted
+    /// (white frame during launch); returning it then produces a blank
+    /// observation and an unstable window_id. Sampling a few pixels is cheaper
+    /// than encoding/decoding PNG.
+    private func windowHasVisibleContent(_ window: NativeWindow, permitted: () -> Bool) -> Bool {
+        guard permitted(),
+              let number = UInt32(window.id),
+              let image = CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(number), [.bestResolution, .boundsIgnoreFraming]),
+              image.width > 0, image.height > 0 else { return false }
+        let width = image.width, height = image.height
+        let bytesPerRow = image.bytesPerRow
+        guard let base = image.dataProvider?.data else { return false }
+        guard let ptr = CFDataGetBytePtr(base) else { return false }
+        let bytesPerPixel = image.bitsPerPixel / 8
+        guard bytesPerPixel >= 3 else { return false }
+        let length = CFDataGetLength(base)
+        let stepX = max(1, width / 32), stepY = max(1, height / 32)
+        for y in stride(from: 0, to: height, by: stepY) {
+            for x in stride(from: 0, to: width, by: stepX) {
+                let offset = y * bytesPerRow + x * bytesPerPixel
+                guard offset + 2 < length else { continue }
+                let r = ptr[offset], g = ptr[offset + 1], b = ptr[offset + 2]
+                if r < 250 || g < 250 || b < 250 { return true }
+            }
+        }
+        return false
+    }
+
     func launchApplication(bundleID: String, permitted: () -> Bool) throws -> NativeWindow {
         guard permitted() else { throw SafetyError.inactive }
 
@@ -160,10 +189,10 @@ struct MacDesktop: DesktopPlatform {
                     $0.bundleID == bundleID && $0.isVisible && $0.frame.width > 0 && $0.frame.height > 0
                 }
                 let frontmost = candidates.filter(\.isFrontmost)
-                if frontmost.count == 1 {
+                if frontmost.count == 1, windowHasVisibleContent(frontmost[0], permitted: permitted) {
                     return frontmost[0]
                 }
-                if candidates.count == 1 {
+                if candidates.count == 1, windowHasVisibleContent(candidates[0], permitted: permitted) {
                     return candidates[0]
                 }
                 if candidates.count > 1 {
