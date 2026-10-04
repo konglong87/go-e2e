@@ -704,3 +704,108 @@ func TestControllerRepeatedStopDoesNotCancelPendingStopAcknowledgement(t *testin
 	}
 	awaitControl(t, done)
 }
+
+// transientFocusBackend returns a focus_changed failure on the first Execute,
+// then succeeds on Resume + a fresh Observe + Execute cycle.
+type transientFocusBackend struct {
+	*FakeBackend
+	failures int
+}
+
+func (b *transientFocusBackend) Execute(ctx context.Context, a Action) (ActionReceipt, error) {
+	b.mu.Lock()
+	b.failures++
+	if b.failures == 1 {
+		b.mu.Unlock()
+		return ActionReceipt{ActionID: a.ID, SessionID: a.SessionID, Outcome: OutcomeUnknown, ErrorCode: ErrorCodeFocusChanged},
+			errors.New("focus changed during input")
+	}
+	b.mu.Unlock()
+	return b.FakeBackend.Execute(ctx, a)
+}
+
+// TestFocusChangedExecuteDoesNotFailRun verifies that a transient focus change
+// during input pauses the session and reopens the observation phase instead of
+// permanently failing the run. The run must stay non-terminal so a fresh
+// Observe can resume.
+func TestFocusChangedExecuteDoesNotFailRun(t *testing.T) {
+	s, owner, now := newTestSession(t, false)
+	obs := readyObservation(s.ID(), now)
+	b := &transientFocusBackend{FakeBackend: &FakeBackend{ObservationValue: obs, ReceiptValue: ActionReceipt{Outcome: OutcomeExecuted, AfterObservationID: "after-1"}}}
+	c, err := NewController(s, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = c.Observe(context.Background(), owner, ObserveRequest{SessionID: s.ID()})
+	a := Action{ID: "a1", SessionID: s.ID(), ObservationID: obs.ID, Kind: ActionWait}
+	receipt, err := c.Execute(context.Background(), owner, a)
+	if err == nil {
+		t.Fatal("expected execute error on focus failure")
+	}
+	if receipt.Outcome != OutcomeUnknown || receipt.ErrorCode != ErrorCodeFocusChanged {
+		t.Fatalf("receipt = %+v, want unknown/focus_changed", receipt)
+	}
+	if c.RunSnapshot().State == RunStateFailed {
+		t.Fatal("transient focus failure permanently failed the run")
+	}
+	if c.RunSnapshot().State != RunStateObserved {
+		t.Fatalf("run state = %s, want %s (observation phase reopened)", c.RunSnapshot().State, RunStateObserved)
+	}
+	if s.State() != SessionPaused {
+		t.Fatalf("session state = %s, want paused", s.State())
+	}
+}
+
+// TestFatalUnknownExecuteFailsRun verifies that a non-transient unknown outcome
+// (no focus_changed code) still permanently fails the run. The recovery path is
+// only for transient failures; genuine helper corruption must stay terminal.
+func TestFatalUnknownExecuteFailsRun(t *testing.T) {
+	s, owner, now := newTestSession(t, false)
+	obs := readyObservation(s.ID(), now)
+	b := &FakeBackend{ObservationValue: obs, ReceiptValue: ActionReceipt{Outcome: OutcomeUnknown}, ExecuteError: errors.New("helper crashed")}
+	c, err := NewController(s, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = c.Observe(context.Background(), owner, ObserveRequest{SessionID: s.ID()})
+	a := Action{ID: "a1", SessionID: s.ID(), ObservationID: obs.ID, Kind: ActionWait}
+	_, err = c.Execute(context.Background(), owner, a)
+	if err == nil {
+		t.Fatal("expected execute error on fatal failure")
+	}
+	if c.RunSnapshot().State != RunStateFailed {
+		t.Fatalf("run state = %s, want %s for fatal unknown", c.RunSnapshot().State, RunStateFailed)
+	}
+}
+
+// codedError lets tests inject a backend error carrying a Code() string without
+// depending on the macos package's unexported rejection type.
+type codedError struct{ code string }
+
+func (e *codedError) Error() string { return "computer failure: " + e.code }
+func (e *codedError) Code() string   { return e.code }
+
+// TestFocusChangedObserveDoesNotFailRun verifies that a transient focus change
+// during Observe (not Execute) pauses and reopens the observation phase instead
+// of permanently failing the run.
+func TestFocusChangedObserveDoesNotFailRun(t *testing.T) {
+	s, owner, now := newTestSession(t, false)
+	obs := readyObservation(s.ID(), now)
+	b := &FakeBackend{ObservationValue: obs, ObserveError: &codedError{code: ErrorCodeFocusChanged}}
+	c, err := NewController(s, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Observe(context.Background(), owner, ObserveRequest{SessionID: s.ID()}); err == nil {
+		t.Fatal("expected observe error on focus failure")
+	}
+	if c.RunSnapshot().State == RunStateFailed {
+		t.Fatal("transient focus observe failure permanently failed the run")
+	}
+	if c.RunSnapshot().State != RunStateObserved {
+		t.Fatalf("run state = %s, want %s (observation phase reopened)", c.RunSnapshot().State, RunStateObserved)
+	}
+	if s.State() != SessionPaused {
+		t.Fatalf("session state = %s, want paused", s.State())
+	}
+}

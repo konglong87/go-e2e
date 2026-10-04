@@ -159,8 +159,16 @@ func (c *Controller) Observe(ctx context.Context, owner SessionOwner, r ObserveR
 	started := time.Now()
 	o, err := c.backend.Observe(op, r)
 	if err != nil {
-		_ = c.session.Pause()
-		c.failRun()
+		var coded interface{ Code() string }
+		if errors.As(err, &coded) && transientFailureCode(coded.Code()) {
+			// Focus change or permission state is transient: pause and reopen
+			// the observation phase so a fresh Observe can re-activate the
+			// target and resume. Do not permanently fail the run.
+			c.pauseForRecovery()
+		} else {
+			_ = c.session.Pause()
+			c.failRun()
+		}
 		return Observation{}, observeFailure(err)
 	}
 	if err = c.session.SetObservation(o); err != nil {
@@ -308,6 +316,29 @@ func observeFailure(err error) error {
 	return observeFailureError{code: ErrorCodeActionFailed}
 }
 
+// transientFailureCode reports whether a backend error code represents a
+// recoverable condition (focus change or permission state) rather than helper
+// corruption. A transient failure pauses the run and reopens the observation
+// phase via ResetToObserved, instead of permanently failing the run. The
+// recovery path is always "re-observe the real state and let the model
+// decide"; it never replays the interrupted input.
+func transientFailureCode(code string) bool {
+	switch code {
+	case ErrorCodeFocusChanged, ErrorCodePermissionRequired:
+		return true
+	}
+	return false
+}
+
+// pauseForRecovery pauses the session and reopens the observation phase for a
+// transient failure. The run stays non-terminal so a fresh Observe can resume.
+func (c *Controller) pauseForRecovery() {
+	_ = c.session.Pause()
+	if c.runner != nil {
+		_ = c.runner.ResetToObserved()
+	}
+}
+
 func (c *Controller) Execute(ctx context.Context, owner SessionOwner, a Action) (ActionReceipt, error) {
 	if err := c.authorize(owner, a.SessionID); err != nil {
 		return ActionReceipt{}, err
@@ -375,7 +406,14 @@ func (c *Controller) Execute(ctx context.Context, owner SessionOwner, a Action) 
 			// Pause owns the recovery boundary and resets the runner after the
 			// interrupted receipt has drained.
 		} else if receipt.Outcome == OutcomeUnknown || backendErr != nil {
-			c.failRun()
+			if transientFailureCode(receipt.ErrorCode) {
+				// Focus change or permission state is transient: pause and
+				// reopen the observation phase so a fresh Observe can resume.
+				// The interrupted input is never replayed.
+				c.pauseForRecovery()
+			} else {
+				c.failRun()
+			}
 		} else if err = c.runner.Transition(Transition{From: RunStateExecuting, To: RunStateVerifying}); err != nil {
 			c.failRun()
 		} else if receipt.AfterObservationID != "" && receipt.After != nil {
@@ -390,7 +428,11 @@ func (c *Controller) Execute(ctx context.Context, owner SessionOwner, a Action) 
 	if receipt.AfterObservationID == "" || receipt.After == nil {
 		// Losing visual evidence stops all following input, even if posting itself
 		// was acknowledged as executed. Do not turn dispatch into verification.
+		// Reopen the observation phase so a fresh Observe can resume.
 		_ = c.session.Pause()
+		if c.runner != nil {
+			_ = c.runner.ResetToObserved()
+		}
 	}
 	return receipt, nil
 }
