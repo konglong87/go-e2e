@@ -197,7 +197,7 @@ func TestSimpleComputerUsePromptActivatesBoundedRunWithoutChangingCodeQueries(t 
 	if _, err := fast.Run(context.Background(), "In WorkBuddy, type hello and click Send.", io.Discard); err == nil || err.Error() != "deadline probe" {
 		t.Fatalf("WorkBuddy Run error=%v, want deadline probe", err)
 	}
-	if !fast.options.ComputerUseFastPath || fast.options.MaxTurns != 8 || fastProbe.hasDeadline {
+	if !fast.options.ComputerUseFastPath || fast.options.MaxTurns != 16 || fastProbe.hasDeadline {
 		t.Fatalf("WorkBuddy fast path state: enabled=%v max_turns=%d deadline=%v", fast.options.ComputerUseFastPath, fast.options.MaxTurns, fastProbe.hasDeadline)
 	}
 	if fast.options.RuntimeProfile != runtimeprofile.ProfileBare {
@@ -234,8 +234,8 @@ func TestComputerUseFastPathBoundsTurnsWithoutProductDeadline(t *testing.T) {
 	fast := New(&deadlineProbeStreamer{}, tools.NewRegistry(), Options{
 		Model: "test", MaxTurns: 20, CWD: t.TempDir(), ComputerUseFastPath: true,
 	})
-	if fast.options.MaxTurns != 8 {
-		t.Fatalf("fast path max turns=%d, want 8", fast.options.MaxTurns)
+	if fast.options.MaxTurns != 16 {
+		t.Fatalf("fast path max turns=%d, want 16", fast.options.MaxTurns)
 	}
 	limited := New(&deadlineProbeStreamer{}, tools.NewRegistry(), Options{
 		Model: "test", MaxTurns: 3, CWD: t.TempDir(), ComputerUseFastPath: true,

@@ -73,9 +73,9 @@ func (k BudgetKind) durationBudget() bool {
 // stricter budget for a particular workflow.
 func DefaultRunBudget() RunBudget {
 	return RunBudget{
-		TotalDuration: 120 * time.Second, LaunchDuration: 10 * time.Second,
+		TotalDuration: 300 * time.Second, LaunchDuration: 10 * time.Second,
 		BindDuration: 10 * time.Second, ObserveDuration: 10 * time.Second,
-		MaxInputActions: 64, MaxWaitActions: 16, MaxModelTurns: 16,
+		MaxInputActions: 96, MaxWaitActions: 16, MaxModelTurns: 24,
 		MaxUnknownReplays: 0,
 	}
 }

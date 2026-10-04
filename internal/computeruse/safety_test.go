@@ -809,3 +809,28 @@ func TestFocusChangedObserveDoesNotFailRun(t *testing.T) {
 		t.Fatalf("session state = %s, want paused", s.State())
 	}
 }
+
+// TestNewControllerWithBudget verifies that an explicit budget is applied to the
+// runner, and that a zero-value budget falls back to DefaultRunBudget.
+func TestNewControllerWithBudget(t *testing.T) {
+	s, _, _ := newTestSession(t, false)
+	b := &FakeBackend{}
+	custom := RunBudget{TotalDuration: 42 * time.Second, MaxInputActions: 7, MaxModelTurns: 3}
+	c, err := NewControllerWithBudget(s, b, nil, custom)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap := c.RunSnapshot()
+	if snap.Budget.TotalDuration != 42*time.Second || snap.Budget.MaxInputActions != 7 || snap.Budget.MaxModelTurns != 3 {
+		t.Fatalf("custom budget not applied: %+v", snap.Budget)
+	}
+
+	defaultCtrl, err := NewControllerWithBudget(s, &FakeBackend{}, nil, RunBudget{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defSnap := defaultCtrl.RunSnapshot()
+	if defSnap.Budget != DefaultRunBudget() {
+		t.Fatalf("zero budget did not fall back to default: %+v", defSnap.Budget)
+	}
+}

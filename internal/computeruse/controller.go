@@ -38,10 +38,21 @@ func NewController(s *ComputerSession, b Backend) (*Controller, error) {
 }
 
 func NewControllerWithRegistry(s *ComputerSession, b Backend, registry TargetRegistry) (*Controller, error) {
+	return NewControllerWithBudget(s, b, registry, DefaultRunBudget())
+}
+
+// NewControllerWithBudget constructs a Controller with an explicit run budget.
+// A zero-value budget uses DefaultRunBudget. Hosts that need longer autonomous
+// runs (for example complex multi-step desktop tasks) can pass a looser budget;
+// MaxUnknownReplays must remain zero.
+func NewControllerWithBudget(s *ComputerSession, b Backend, registry TargetRegistry, budget RunBudget) (*Controller, error) {
 	if s == nil || b == nil {
 		return nil, errors.New("computer session and backend are required")
 	}
-	runner, err := NewRunner(DefaultRunBudget())
+	if budget == (RunBudget{}) {
+		budget = DefaultRunBudget()
+	}
+	runner, err := NewRunner(budget)
 	if err != nil {
 		return nil, err
 	}

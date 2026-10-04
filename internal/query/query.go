@@ -56,7 +56,7 @@ import (
 	"github.com/konglong87/go-e2e/internal/tools/todowrite"
 )
 
-const computerUseFastPathMaxTurns = 8
+const computerUseFastPathMaxTurns = 16
 
 type Options struct {
 	Model     string
