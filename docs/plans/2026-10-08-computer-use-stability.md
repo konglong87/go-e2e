@@ -122,3 +122,9 @@ also attests the embedded model-service bytes, not only desktop/helper.
 Tagged desktop tests and Python 20 tests pass. Next highest-priority gate:
 latest tagged .app, real cold target capture and a non-WorkBuddy fixture, then
 actual requested-provider/model 120-second closure. Deferred gates unchanged.
+
+Launch selection follow-up: readiness now filters the inventory before selection;
+a unique rendered main window may be raised during launch when a blank splash
+is frontmost. Exact frontmost identity must then stabilize before binding; no
+activation is added to input/evidence checks. Multiple ready ambiguous windows
+still fail closed within the existing budget. Native fake regression added.

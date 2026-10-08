@@ -187,12 +187,19 @@ struct MacDesktop: DesktopPlatform {
                                 "candidates": candidates.map(\.diagnosticFields)])
                     lastInventory = inventory
                 }
-                let candidate = LaunchWindowStability.candidate(from: candidates)
-                let contentReady = candidate.map { windowHasVisibleContent($0, permitted: permitted) } ?? false
-                if let stable = stability.update(candidate, contentReady: contentReady, uptime: ProcessInfo.processInfo.systemUptime) {
+                let readyCandidates = candidates.filter { windowHasVisibleContent($0, permitted: permitted) }
+                let candidate = LaunchWindowStability.candidate(from: readyCandidates)
+                // A temporary frontmost splash can cover a rendered main
+                // window. Select only an unambiguous ready window and raise it
+                // during launch, never while authorizing input/evidence.
+                if let candidate, !candidate.isFrontmost {
+                    _ = activateWindow(candidate.id, permitted: permitted)
+                }
+                let confirmed = candidate?.isFrontmost == true ? candidate : nil
+                if let stable = stability.update(confirmed, contentReady: confirmed != nil, uptime: ProcessInfo.processInfo.systemUptime) {
                     return stable
                 }
-                ambiguous = candidate == nil && candidates.count > 1
+                ambiguous = candidate == nil && readyCandidates.count > 1
             } catch let error as SafetyError {
                 if error == .targetWindowMismatch { throw error }
             } catch {

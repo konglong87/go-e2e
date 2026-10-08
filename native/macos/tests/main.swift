@@ -664,6 +664,9 @@ do {
     let other = NativeWindow(id: "other", title: "", ownerPID: window.ownerPID, bundleID: window.bundleID,
         frame: window.frame, displayID: window.displayID, isVisible: true, isFrontmost: true)
     expect(LaunchWindowStability.candidate(from: [window, other]) == nil, "ambiguous frontmost fails selection")
+    let rendered = NativeWindow(id: "rendered-main", title: "", ownerPID: window.ownerPID, bundleID: window.bundleID,
+        frame: window.frame, displayID: window.displayID, isVisible: true, isFrontmost: false)
+    expect(LaunchWindowStability.candidate(from: [rendered])?.id == rendered.id, "unique rendered main can be raised instead of binding blank splash")
 }
 
 // Snapshot geometry must be the geometry actually used to capture, not an
