@@ -315,12 +315,27 @@ func (b *Backend) request(ctx context.Context, command, sessionID, actionID stri
 		b.process.Abort(errors.New("invalid helper response"))
 		return result, errors.New("invalid helper response")
 	}
+	switch result.DispatchState {
+	case "", cu.DispatchNotStarted, cu.DispatchComplete, cu.DispatchPartial, cu.DispatchUnknown:
+	default:
+		result.DispatchState = cu.DispatchUnknown
+		b.process.Abort(errors.New("invalid helper dispatch state"))
+		return result, errors.New("invalid helper dispatch state")
+	}
+	if command == commandExecute && result.Outcome == cu.OutcomeExecuted && (result.DispatchState == cu.DispatchPartial || result.DispatchState == cu.DispatchUnknown) {
+		b.process.Abort(errors.New("contradictory helper dispatch state"))
+		return result, errors.New("contradictory helper dispatch state")
+	}
 	if command == commandObserve || command == commandLaunchApp || command == commandExecute {
+		diagnosticCode := ""
+		if result.ErrorCode != "" {
+			diagnosticCode = cu.PublicErrorCode(result.ErrorCode)
+		}
 		computerdiag.Append(computerdiag.GoMismatchPath, map[string]any{
 			"layer": "go_backend", "phase": "helper_result", "command": command,
 			"request_id": requestID, "action_id": actionID, "session_id": sessionID,
 			"window_id": payload["window_id"], "generation": payload["generation"],
-			"outcome": result.Outcome, "error_code": result.ErrorCode, "dispatch_state": result.DispatchState,
+			"outcome": result.Outcome, "error_code": diagnosticCode, "dispatch_state": result.DispatchState,
 		})
 	}
 	switch result.Outcome {

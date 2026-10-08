@@ -191,6 +191,9 @@ func TestHelperProcess(t *testing.T) {
 			errorCode = helperFocusChangedCode
 		}
 		var dispatchState cu.DispatchState
+		if mode == "invalid-dispatch" && req.Command == commandExecute {
+			dispatchState = "PRIVATE-INVALID-STATE"
+		}
 		if mode == "complete-capture-failed" && req.Command == commandExecute {
 			dispatchState = cu.DispatchComplete
 			errorCode = cu.ErrorCodeScreenshotFailed
@@ -715,5 +718,17 @@ func TestBackendLaunchAppRejectsUnknownApplicationBeforeHelper(t *testing.T) {
 	}
 	if data, readErr := os.ReadFile(marker); readErr == nil && strings.Contains(string(data), "launch") {
 		t.Fatalf("unknown app reached helper: %q", data)
+	}
+}
+
+func TestInvalidDispatchMetadataCannotLeakOrRestoreAuthority(t *testing.T) {
+	b := newTestBackend(t, "invalid-dispatch", time.Second, "")
+	obs := observeTest(t, b)
+	receipt, err := b.Execute(context.Background(), waitAction(obs))
+	if err == nil || receipt.Outcome != cu.OutcomeUnknown || receipt.DispatchState != cu.DispatchUnknown {
+		t.Fatalf("receipt=%+v err=%v", receipt, err)
+	}
+	if b.Resume(context.Background()) == nil {
+		t.Fatal("invalid helper restored authority")
 	}
 }

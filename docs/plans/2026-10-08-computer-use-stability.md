@@ -23,9 +23,9 @@ inspection. Existing /tmp/tool-observe.log and /tmp/go-mismatch.log retained.
 | Priority | Slice / intended files | Gate | Status |
 |---|---|---|---|
 | P0-1 | Append-only Go/native diagnostics; computerdiag, tool, backend, controller, native Diagnostics/Engine/Platform/Safety, helper build/tests | Focused Go + native regression; commit/push before real run | implemented; focused Go and 257 native assertions pass; committed/pushed d16fad7 |
-| P0-2 | Fresh-run evidence isolation; scripts/computer-use-120s-acceptance.py and tests | Reject mixed time/session/build evidence and existing output dir; preserve launch receipt on observation failure | implemented; tests below; commit/push pending |
-| P0-3 | Diagnose real launch/observe; bounded unique-window stabilization and capture snapshot consistency | Fresh build identity + repeated cold observe-only, screenshots and Stop | depends P0-1/2 |
-| P0-4 | Dispatch-stage recovery contract across Swift/Go/controller/session | Native partial/complete/before-input faults, Go contract tests, unknown replay prevention, Pause/Stop/permission races | pending |
+| P0-2 | Fresh-run evidence isolation; scripts/computer-use-120s-acceptance.py and tests | Reject mixed time/session/build evidence and existing output dir; preserve launch receipt on observation failure | committed/pushed 3dcec8d + 6cf1d91; follow-up evidence in ee92517 |
+| P0-3 | Diagnose real launch/observe; bounded unique-window stabilization and capture snapshot consistency | Fresh build identity + repeated cold observe-only, screenshots and Stop | implementation committed/pushed 222de75 + 950818d; real gate blocked by Mac lock |
+| P0-4 | Dispatch-stage recovery contract across Swift/Go/controller/session | Native partial/complete/before-input faults, Go contract tests, unknown replay prevention, Pause/Stop/permission races | committed/pushed c6c2d48; automated safety gates pass |
 | P0-5 | Actual autonomous model closure | Actual provider jiuan-responses-gpt-5.6sol, gpt-6-sol, high; launch→observe ready→new task→type 1+1=2→send once→reply screenshot→Stop, <=120 s | depends above |
 | P1 | Current queue native Resume/Stop + broader regression, non-WorkBuddy fixture | Native clicks/screenshots; focused then broader Go/race | pending |
 | Deferred | Second physical display; formal signing/distribution; blocked optional release artifacts | User explicitly deferred; not represented as passed | unchanged |
@@ -128,3 +128,36 @@ a unique rendered main window may be raised during launch when a blank splash
 is frontmost. Exact frontmost identity must then stabilize before binding; no
 activation is added to input/evidence checks. Multiple ready ambiguous windows
 still fail closed within the existing budget. Native fake regression added.
+
+## Current phase closure / remaining queue — 2026-10-08
+
+Code slices committed/pushed through 950818d; final malformed-dispatch/privacy
+and acceptance-gate follow-up tested below. Full `go test ./...` passes. Earlier
+full-suite runs exposed a stale CLI Stop test expecting the removed observe_failed
+label (updated to the stable public error contract), and one unrelated default
+agent-eval timing failure (focused repeated run passes; final all-package run
+passes). ComputerUse focused/race suites, tagged desktop tests, Python 22 tests,
+and native 267 assertions pass. Latest tagged desktop build and deep/strict
+local signature verification pass. No release-signing claim.
+
+Concrete external blocker: native Computer Use returned “The Mac is locked and
+automatic unlock could not unlock it” when exiting the old app for cold-start
+acceptance. User was asked to unlock manually. Do not bypass the lock, type an
+unlock credential, or claim actual target/control/model acceptance.
+
+Remaining in descending priority:
+1. **Native scripted acceptance (blocked on unlock):** cold-start the current
+   attested app; repeated target observe/launch/bind/content screenshots + Stop;
+   also Calculator fixture and actual native Pause/Resume/Stop clicks/screenshots.
+2. **Autonomous model acceptance (depends on #1):** actual requested provider,
+   gpt-6-sol/high, image/png; launch→ready→type 1+1=2→send exactly once→reply
+   screenshot→Stop within 120 seconds. New output directory each run. No pass yet.
+3. **Regression-driven implementation:** act only on fresh current-build evidence
+   if the native/model gates expose another failure; preserve failing images,
+   known/unknown dispatch semantics and receipt identities.
+4. **Deferred unchanged:** second physical display and formal signing/distribution;
+   optional release artifacts remain externally blocked.
+
+Existing real white screenshot in stability-observe-6cf1d91-01 remains failed
+historical evidence, not a passing screenshot. All requested /tmp diagnostic
+logs retained. Pre-existing scripts/__pycache__/ left untouched and uncommitted.

@@ -296,6 +296,24 @@ class FakeAcceptanceClient:
         return self.image, "image/png"
 
 
+class SendSafetyTests(unittest.TestCase):
+    def test_validation_rejects_two_send_clicks(self):
+        actions = MODULE.tool_events(FakeAcceptanceClient._events())
+        click = next(item for item in actions if item["action"] == "click")
+        actions.insert(actions.index(click) + 1, dict(click, tool_id="duplicate-send"))
+        with self.assertRaises(MODULE.AcceptanceError) as failure:
+            MODULE.validate_actions(actions, {"observation-5": "reply.png"}, "stopped")
+        self.assertEqual(failure.exception.stage, "send")
+
+    def test_validation_requires_explicit_bound_window_identity(self):
+        actions = MODULE.tool_events(FakeAcceptanceClient._events())
+        typed = next(item for item in actions if item["action"] == "type")
+        typed.pop("window_id")
+        with self.assertRaises(MODULE.AcceptanceError) as failure:
+            MODULE.validate_actions(actions, {"observation-5": "reply.png"}, "stopped")
+        self.assertEqual(failure.exception.stage, "window binding")
+
+
 class EvidencePipelineTests(unittest.TestCase):
     def test_trace_is_persisted_before_invalid_screenshot_is_reported(self):
         class BlankFirstAssetClient(FakeAcceptanceClient):

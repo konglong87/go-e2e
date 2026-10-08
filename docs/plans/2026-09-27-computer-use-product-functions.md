@@ -15,6 +15,12 @@ The current stability/closure work is tracked in
    within 120 seconds, with current-run screenshots and receipts.
 5. P1: outstanding native control/display regression from the historical queue.
 
+Implementation slices and automated regressions are now committed/pushed;
+real cold/native/control/model acceptance is **not passed**. On 2026-10-08 the
+native automation surface reported the Mac was locked. Manual unlock is the
+concrete prerequisite for the next current-build acceptance run; do not bypass
+it or substitute fake-platform tests for desktop closure.
+
 Second physical display and formal signing/distribution remain explicitly
 user-deferred. Optional GitHub binary release remains externally blocked.
 

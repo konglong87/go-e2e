@@ -194,7 +194,7 @@ func TestDesktopComputerUseQueryStopPreventsImplicitRestart(t *testing.T) {
 			} else if result := tool.Run(context.Background(), []byte(`{"action":"stop"}`), tc); result.IsError {
 				t.Fatalf("stop: %s", result.Content)
 			}
-			if result := tool.Run(context.Background(), observe, tc); !result.IsError || !strings.Contains(result.Content, "observe_failed") {
+			if result := tool.Run(context.Background(), observe, tc); !result.IsError || !strings.Contains(result.Content, cu.ErrorCodeActionFailed) {
 				t.Errorf("observe after Stop must reach the stopped grant and be denied: %+v", result)
 			}
 			if starts, _, _ := bridge.counts(); starts != 1 || tracked.session() != bound {

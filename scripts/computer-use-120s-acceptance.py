@@ -788,6 +788,10 @@ def validate_actions(
         raise AcceptanceError("type", f"expected exactly one type action, got {len(type_items)}")
     if type_items[0].get("text_length") != len(EXPECTED_TYPED_TEXT):
         raise AcceptanceError("type", "type action length did not match the acceptance input")
+    type_index = post_launch.index(type_items[0])
+    send_clicks = [item for item in post_launch[type_index + 1:] if item.get("action") == "click"]
+    if len(send_clicks) != 1:
+        raise AcceptanceError("send", f"expected exactly one send click after type, got {len(send_clicks)}")
     click_items = [item for item in post_launch if item.get("action") == "click"]
     if not click_items:
         raise AcceptanceError("click", "no click action was persisted")
@@ -807,9 +811,9 @@ def validate_actions(
         if action in {"observe", "click", "type", "key", "hotkey", "scroll", "drag", "double_click", "right_click", "move", "wait"}:
             window_id = str(item.get("window_id", ""))
             bundle_id = str(item.get("bundle_id", ""))
-            if window_id and window_id != launch_window:
+            if window_id != launch_window:
                 raise AcceptanceError("window binding", f"{action} used window_id {window_id!r}, expected {launch_window!r}")
-            if bundle_id and bundle_id != TARGET_BUNDLE_ID:
+            if bundle_id != TARGET_BUNDLE_ID:
                 raise AcceptanceError("window binding", f"{action} targeted bundle {bundle_id!r}")
             if bundle_id in SELF_BUNDLE_IDS:
                 raise AcceptanceError("window binding", f"{action} targeted the control application")
