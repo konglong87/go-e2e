@@ -18,6 +18,8 @@ private struct CapturedSnapshot {
 typealias NativeDiagnosticWriter = ([String: Any]) -> Void
 
 final class Engine {
+    private static let captureAttempts = 3
+    private static let captureRetryDelayMS = 50
     let state: SafetyState
     private let platform: DesktopPlatform
     private let now: () -> Date
@@ -45,7 +47,10 @@ final class Engine {
     private func recordWindowMismatch(_ request: Envelope, phase: String, reason: String,
                                       expected: NativeWindow? = nil, actual: NativeWindow? = nil) {
         var fields: [String: Any] = ["reason": reason]
-        if let expected { fields["expected_window"] = expected.diagnosticFields }
+        if let expected {
+            fields["expected_window"] = expected.diagnosticFields
+            fields["target_lifecycle"] = platform.windowDiagnostics(expected)
+        }
         if let actual { fields["actual_window"] = actual.diagnosticFields }
         if let expected, let actual { fields["identity_diffs"] = expected.identityDiffs(actual) }
         record(request, phase: phase, error: .targetWindowMismatch, fields: fields)
@@ -231,11 +236,21 @@ final class Engine {
         let postCheck = try resolveGeometry(for: request)
         guard postCheck.id == active.id, postCheck.windowID == active.windowID,
               postCheck.width == active.width, postCheck.height == active.height, postCheck.bounds == active.bounds else {
-            record(request, phase: "capture_postcheck", error: .unsupportedDisplay,
-                   fields: ["reason": "geometry_changed_after_capture", "window_id": active.windowID ?? "",
-                            "post_window_id": postCheck.windowID ?? "", "width": active.width,
-                            "height": active.height, "post_width": postCheck.width, "post_height": postCheck.height])
-            throw SafetyError.unsupportedDisplay
+            // Discard a frame captured while the same window moved. Only this
+            // position-only case can use the existing bounded read-only retry;
+            // dimensions, display and window changes remain terminal here.
+            let positionOnly = active.windowID != nil && postCheck.id == active.id && postCheck.windowID == active.windowID &&
+                postCheck.width == active.width && postCheck.height == active.height &&
+                postCheck.bounds.size == active.bounds.size
+            let failure: SafetyError = positionOnly ? .screenshotFailed : .unsupportedDisplay
+            record(request, phase: "capture_postcheck", error: failure,
+                   fields: ["reason": "geometry_changed_after_capture", "position_only": positionOnly,
+                            "window_id": active.windowID ?? "", "post_window_id": postCheck.windowID ?? "",
+                            "width": active.width, "height": active.height,
+                            "post_width": postCheck.width, "post_height": postCheck.height,
+                            "bounds": ["x": active.bounds.minX, "y": active.bounds.minY, "width": active.bounds.width, "height": active.bounds.height],
+                            "post_bounds": ["x": postCheck.bounds.minX, "y": postCheck.bounds.minY, "width": postCheck.bounds.width, "height": postCheck.bounds.height]])
+            throw failure
         }
         try checkWindow(request, geometry: active, expectedWindow: expectedWindow)
         guard platform.focus() == focus else { throw SafetyError.focusChanged }
@@ -277,13 +292,13 @@ final class Engine {
     }
 
     private func captureObservation(_ request: Envelope, expectedWindow: NativeWindow?) throws -> CapturedSnapshot {
-        for attempt in 0..<3 {
+        for attempt in 0..<Self.captureAttempts {
             do {
                 let geometry = try resolveGeometry(for: request)
                 try target(request, geometry: geometry)
                 return try capture(request, geometry: geometry, expectedWindow: expectedWindow)
-            } catch let error as SafetyError where error == .screenshotFailed && attempt < 2 {
-                try wait(50 * (attempt + 1), request: request)
+            } catch let error as SafetyError where error == .screenshotFailed && attempt + 1 < Self.captureAttempts {
+                try wait(Self.captureRetryDelayMS * (attempt + 1), request: request)
             }
         }
         throw SafetyError.screenshotFailed
@@ -306,6 +321,10 @@ final class Engine {
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
             payload["observation_expires_at"] = .string(formatter.string(from: expires))
+            if let window = captured.window {
+                record(request, phase: "observe_result", fields: ["result": "success", "window": window.diagnosticFields,
+                    "target_lifecycle": platform.windowDiagnostics(window)])
+            }
             return ActionResult(outcome: .executed, payload: .object(payload), error: nil)
         } catch {
             let safetyError = error as? SafetyError ?? .screenshotFailed
@@ -356,11 +375,11 @@ final class Engine {
 
     private func captureAfterInput(_ request: Envelope, geometry: DisplayGeometry, expectedWindow: NativeWindow?) throws -> JSONValue {
         try waitForAppActivation(request, geometry: geometry)
-        for attempt in 0..<3 {
+        for attempt in 0..<Self.captureAttempts {
             do {
                 return try capture(request, geometry: geometry, expectedWindow: expectedWindow).payload
-            } catch let error as SafetyError where error == .screenshotFailed && attempt < 2 {
-                Thread.sleep(forTimeInterval: 0.05 * Double(attempt + 1))
+            } catch let error as SafetyError where error == .screenshotFailed && attempt + 1 < Self.captureAttempts {
+                try wait(Self.captureRetryDelayMS * (attempt + 1), request: request)
             }
         }
         return try capture(request, geometry: geometry, expectedWindow: expectedWindow).payload

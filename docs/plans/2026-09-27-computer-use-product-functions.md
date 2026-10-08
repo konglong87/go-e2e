@@ -5,21 +5,21 @@
 The current stability/closure work is tracked in
 `docs/plans/2026-10-08-computer-use-stability.md`. Ordered remaining gates:
 
-1. P0: add sanitized append-only cross-layer diagnostics and locate the native
-   launch/observe mismatch on a fresh current-build run.
-2. P0: reject mixed acceptance batches and preserve complete launch/binding and
-   action evidence; repeated cold target observe-only must pass first.
-3. P0: align Swift/Go recovery by actual dispatch stage; no unknown input replay,
-   no automatic bypass of user Pause/Stop or permission revocation.
-4. P0: actual gpt-6-sol/high desktop ComputerUse launch/type/send/reply/Stop loop
-   within 120 seconds, with current-run screenshots and receipts.
+1. P0: isolate target lifecycle and focus with read-only native diagnostics;
+   current-build 30s passive run reproduced loss from on-screen inventory.
+2. P0: repair bounded observation recovery for position-only motion, retaining
+   exact identity/dimension/topology and Pause/Stop/permission checks.
+3. P0: fixed one-shot input probe (no model, no send, no replay), inspected
+   current-run screenshots; classify keyboard delivery vs render timing.
+4. P0: actual gpt-6-sol/high desktop launch/type/send once/reply/Stop <=120s.
 5. P1: outstanding native control/display regression from the historical queue.
 
-Implementation slices and automated regressions are now committed/pushed;
-real cold/native/control/model acceptance is **not passed**. On 2026-10-08 the
-native automation surface reported the Mac was locked. Manual unlock is the
-concrete prerequisite for the next current-build acceptance run; do not bypass
-it or substitute fake-platform tests for desktop closure.
+Earlier cold-launch and native Pause/Resume/Stop batches passed as recorded in
+that stability ledger. They do not prove current model closure. The evening
+continuation starts at 942ed52 with permissions ready; the earlier Mac-lock report
+is historical, not asserted as the current blocker. Current one-shot input probe
+was blocked before dispatch by an after-capture geometry change. No new model
+pass is claimed.
 
 Second physical display and formal signing/distribution remain explicitly
 user-deferred. Optional GitHub binary release remains externally blocked.

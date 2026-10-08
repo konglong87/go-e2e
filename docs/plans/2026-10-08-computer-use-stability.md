@@ -1,5 +1,32 @@
 # Computer Use stability and real desktop closure — 2026-10-08
 
+## Current continuation ledger — 2026-10-08 evening
+
+Baseline main/HEAD/origin 942ed52, pulled before work. Only pre-existing generated
+`scripts/__pycache__/` is untracked; never include it. No branch/worktree.
+Read-only Codex/Claude comparison completed before this continuation.
+
+| Priority | Item / intended files | Acceptance gate | Status |
+|---|---|---|---|
+| P0-1 | Native lifecycle diagnostics + origin-only capture recovery; Platform.swift, Engine.swift, native fake tests, the two current plan ledgers | Failing regression first; native fake + focused Go/race; commit/push; current clean build | implemented; automated gates passed, commit/push next |
+| P0-2 | Isolate passive lifecycle and one-shot input using the existing acceptance Driver | Same-run screenshots; no input during lifecycle; type exactly once, no send/replay during input probe | passive lifecycle reproduced; one-shot probe blocked before input |
+| P0-3 | Requested gpt-6-sol/high closure | Fresh attested build; cold launch/type/send once/reply/Stop <=120s | waits for P0-1/P0-2 |
+| P1 | Native control/display regression from authoritative product queue | Native clicks and current screenshots | unchanged |
+| Deferred | Second physical display and formal signing/distribution | Explicit user deferrals | unchanged |
+
+Current-build experiment `lifecycle-942ed52-01`: target PID 48385/window 31582
+observed at 0/5/15 seconds. At 15 seconds frame changed from 1200x792 to 472x312;
+at 30 seconds it was missing from on-screen inventory while the target process
+was still present. No input was dispatched. Stop returned. Initial/15s images
+were visually inspected. This does not establish hidden vs minimized vs destroyed.
+The host later exited; no attribution to the user or OS is made.
+
+`input-942ed52-02` stopped before its first input: after-capture check returned
+unsupported_display despite unchanged display/window/pixel dimensions. Existing
+metadata omits bounds, so record both bounds and distinguish position-only motion
+from identity/dimension/topology changes. Retrying only a discarded observation
+must preserve focus/permission/session checks and must never replay an input.
+
 ## Architecture and safety contract
 
 Reuse the host target registry, Controller/Runner, macOS Backend, native bridge,
@@ -382,3 +409,25 @@ logs retained. Pre-existing scripts/__pycache__/ left untouched and uncommitted.
   activating/rebinding a disappeared window or replaying type would violate the
   established safety contract. Resume only with a fresh unlocked desktop run
   where WorkBuddy remains visible/frontmost; otherwise leave this gate blocked.
+
+### Evening slice 1 — lifecycle evidence / position-only capture retry
+
+- Intended/completed source files: native Platform/Engine/fake tests and the two
+  current plan ledgers. Existing generated Python cache left untouched.
+- Native diagnostics add all-window presence/on-screen state, current target
+  application running/hidden/active/bundle-match flags, and separate NSWorkspace
+  versus Window Server focus PID samples. These are read-only metadata, not a
+  new capture/input authority or hidden-window fallback. No titles/text/keys.
+- Capture now records both bounds. Position-only motion of the same window with
+  identical display, dimensions and bounds size discards the image and enters
+  the existing three-attempt read-only retry. Other layout/identity changes and
+  Pause/Stop still fail closed. After-input retries do not re-dispatch input.
+- Both diagnostic and position-motion regressions fail against the baseline.
+  The origin regression was independently compiled against HEAD Engine in an
+  isolated temporary test directory; that directory was removed.
+- Verification: 285 native fake safety assertions; full go test ./...; focused
+  ComputerUse/macOS tests and race; tagged desktop tests; Python model wrapper
+  28 and safety 23 tests; diff check pass. No frontend change, so no new frontend
+  acceptance claim. Current-build native and model acceptance still pending.
+- Commit/push this coherent slice, rebuild from the clean commit, then repeat
+  lifecycle/one-type experiments before spending another production-model run.

@@ -9,6 +9,7 @@ protocol DesktopPlatform {
     func geometry() throws -> DisplayGeometry
     func geometries() throws -> [DisplayGeometry]
     func windows() throws -> [NativeWindow]
+    func windowDiagnostics(_ target: NativeWindow) -> [String: Any]
     func windowGeometry(_ id: String) throws -> DisplayGeometry
     func launchApplication(bundleID: String, permitted: () -> Bool) throws -> NativeWindow
     func activateWindow(_ id: String, permitted: () -> Bool) -> Bool
@@ -31,6 +32,7 @@ extension DesktopPlatform {
     func prepareInput(_ request: Envelope) throws {}
     func geometries() throws -> [DisplayGeometry] { [try geometry()] }
     func windows() throws -> [NativeWindow] { [] }
+    func windowDiagnostics(_ target: NativeWindow) -> [String: Any] { [:] }
     func windowGeometry(_ id: String) throws -> DisplayGeometry { throw SafetyError.unsupportedDisplay }
     func launchApplication(bundleID: String, permitted: () -> Bool) throws -> NativeWindow { throw SafetyError.launchFailed }
     func activateWindow(_ id: String, permitted: () -> Bool) -> Bool { false }
@@ -114,6 +116,39 @@ struct MacDesktop: DesktopPlatform {
                                 frame: bounds, displayID: displayID, isVisible: layer == 0 && alpha > 0,
                                 isFrontmost: activeID == String(number))
         }
+    }
+
+    // Metadata-only probe. The full inventory is diagnostic evidence, never an
+    // input/capture allowlist or an alternative target-binding source.
+    func windowDiagnostics(_ target: NativeWindow) -> [String: Any] {
+        let raw = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
+        let number = UInt32(target.id)
+        let entry = number.flatMap { number in
+            raw?.first { ($0[kCGWindowNumber as String] as? NSNumber)?.uint32Value == number }
+        }
+        let application = NSRunningApplication(processIdentifier: target.ownerPID)
+        var fields: [String: Any] = ["inventory_available": raw != nil, "window_present": entry != nil,
+            "application_running": application != nil && application?.isTerminated == false]
+        if let application {
+            fields["application_hidden"] = application.isHidden
+            fields["application_active"] = application.isActive
+            fields["application_bundle_matches"] = application.bundleIdentifier == target.bundleID
+        }
+        if let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier {
+            fields["workspace_frontmost_pid"] = Int(pid)
+        }
+        if let pid = focus() { fields["window_order_focus_pid"] = Int(pid) }
+        if let entry {
+            if let onScreen = entry[kCGWindowIsOnscreen as String] as? NSNumber {
+                fields["window_on_screen"] = onScreen.boolValue
+            }
+            fields["window_owner_matches"] = (entry[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == target.ownerPID
+            if let bounds = entry[kCGWindowBounds as String] as? NSDictionary,
+               let frame = CGRect(dictionaryRepresentation: bounds) {
+                fields["window_frame"] = ["x": frame.minX, "y": frame.minY, "width": frame.width, "height": frame.height]
+            }
+        }
+        return fields
     }
 
     func windowGeometry(_ id: String) throws -> DisplayGeometry {

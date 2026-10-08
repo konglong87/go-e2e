@@ -30,6 +30,9 @@ final class FakeDesktop: DesktopPlatform {
     var postHook: (() -> Void)?
     var captureHook: (() -> Void)?
     var focusHook: (() -> Void)?
+    var lifecycle: [String: Any] = [:]
+    var lifecycleReads = 0
+    func windowDiagnostics(_ target: NativeWindow) -> [String: Any] { lifecycleReads += 1; return lifecycle }
     func geometry() throws -> DisplayGeometry { if failGeometry { throw SafetyError.unsupportedDisplay }; return display }
     func geometries() throws -> [DisplayGeometry] { if failGeometry { throw SafetyError.unsupportedDisplay }; return [display] + extraDisplays }
     func windows() throws -> [NativeWindow] { targetWindow.map { [$0] } ?? [] }
@@ -691,6 +694,103 @@ do {
     let moved = engine.execute(request("execute", payload: ["kind": .string("move"), "x": .number(2), "y": .number(2),
         "window_id": .string(original.id), "observation_id": .string("fresh-geometry")]))
     expect(moved.outcome == .executed && desktop.posts.count == 1, "input uses actual capture geometry without stale-origin rejection")
+}
+
+// Read-only lifecycle evidence must distinguish an off-screen window from destruction.
+do {
+    let desktop = FakeDesktop()
+    var events: [[String: Any]] = []
+    let engine = Engine(platform: desktop, diagnostic: { events.append($0) })
+    let window = launchWindow()
+    desktop.launchResult = window
+    _ = engine.launchApp(request("launch_app", payload: ["target_id": .string("fixture"),
+        "display_name": .string("Fixture"), "bundle_id": .string(window.bundleID)]))
+    desktop.lifecycle = ["inventory_available": true, "window_present": true,
+        "window_on_screen": false, "application_running": true, "application_hidden": true,
+        "workspace_frontmost_pid": 84, "window_order_focus_pid": window.ownerPID]
+    desktop.targetWindow = nil
+    let result = engine.observe(request("observe", payload: ["window_id": .string(window.id),
+        "observation_id": .string("off-screen")]))
+    let mismatch = events.first { ($0["reason"] as? String) == "window_unavailable" }
+    let lifecycle = mismatch?["target_lifecycle"] as? [String: Any]
+    expect(lifecycle?["window_present"] as? Bool == true && lifecycle?["window_on_screen"] as? Bool == false,
+           "off-screen diagnostic retains all-window presence")
+    expect(lifecycle?["application_hidden"] as? Bool == true && lifecycle?["workspace_frontmost_pid"] as? Int == 84,
+           "diagnostic separates application state from window order")
+    expect(result.outcome == .rejected && result.error == .targetWindowMismatch && desktop.posts.isEmpty,
+           "diagnostics never authorize off-screen input")
+    expect(desktop.activationCalls == 0, "lifecycle probe cannot reactivate a missing window")
+}
+
+// Motion during a capture invalidates that image, not the stable target identity.
+do {
+    let desktop = FakeDesktop()
+    let original = NativeWindow(id: "capture-motion", title: "PRIVATE", ownerPID: 77, bundleID: "fixture.app",
+        frame: desktop.display.bounds, displayID: desktop.display.id, isVisible: true, isFrontmost: true)
+    desktop.targetWindow = original; desktop.selectedWindowID = original.id; desktop.focused = original.ownerPID
+    var captures = 0
+    desktop.captureHook = {
+        captures += 1
+        if captures == 1 {
+            desktop.targetWindow = NativeWindow(id: original.id, title: original.title, ownerPID: original.ownerPID,
+                bundleID: original.bundleID, frame: original.frame.offsetBy(dx: 1, dy: 0), displayID: original.displayID,
+                isVisible: true, isFrontmost: true)
+        }
+    }
+    let engine = Engine(platform: desktop)
+    let observed = engine.observe(request("observe", payload: ["window_id": .string(original.id),
+        "observation_id": .string("motion-settled")]))
+    expect(observed.outcome == .executed && captures == 2, "origin-only drift retries capture, never input")
+    let result = engine.execute(request("execute", payload: ["kind": .string("move"), "x": .number(2), "y": .number(2),
+        "window_id": .string(original.id), "observation_id": .string("motion-settled")]))
+    expect(result.outcome == .executed && desktop.posts.count == 1, "settled capture binds the actual current origin")
+}
+
+// The same read-only retry is bounded and cannot swallow real capture-layout changes.
+for change in ["continuous_motion", "dimensions", "display", "owner", "stop"] {
+    let desktop = FakeDesktop()
+    let original = NativeWindow(id: "capture-strict", title: "PRIVATE", ownerPID: 77, bundleID: "fixture.app",
+        frame: desktop.display.bounds, displayID: desktop.display.id, isVisible: true, isFrontmost: true)
+    desktop.targetWindow = original; desktop.selectedWindowID = original.id; desktop.focused = original.ownerPID
+    let engine = Engine(platform: desktop)
+    var captures = 0
+    desktop.captureHook = {
+        captures += 1
+        if change == "dimensions" { desktop.display = DisplayGeometry(id: desktop.display.id,
+            bounds: desktop.display.bounds, width: desktop.display.width + 1, height: desktop.display.height) }
+        if change == "stop" { try? engine.state.control(.stop, generation: 1) }
+        desktop.targetWindow = NativeWindow(id: original.id, title: original.title,
+            ownerPID: change == "owner" ? original.ownerPID + 1 : original.ownerPID,
+            bundleID: original.bundleID,
+            frame: change == "continuous_motion" ? original.frame.offsetBy(dx: CGFloat(captures), dy: 0) : original.frame,
+            displayID: change == "display" ? "2" : original.displayID, isVisible: true, isFrontmost: true)
+    }
+    let observed = engine.observe(request("observe", payload: ["window_id": .string(original.id),
+        "observation_id": .string("strict-layout")]))
+    expect(observed.outcome == .rejected && desktop.posts.isEmpty, "capture drift never authorizes input: \(change)")
+    expect(captures == (change == "continuous_motion" ? 3 : 1), "retry remains bounded and position-only: \(change)")
+}
+
+// Recovery after a completed input must retry only the after-image, not that input.
+do {
+    let desktop = FakeDesktop()
+    let original = NativeWindow(id: "after-motion", title: "PRIVATE", ownerPID: 77, bundleID: "fixture.app",
+        frame: desktop.display.bounds, displayID: desktop.display.id, isVisible: true, isFrontmost: true)
+    desktop.targetWindow = original; desktop.selectedWindowID = original.id; desktop.focused = original.ownerPID
+    let engine = Engine(platform: desktop)
+    _ = engine.observe(request("observe", payload: ["window_id": .string(original.id), "observation_id": .string("before-motion")]))
+    var captures = 0
+    desktop.captureHook = {
+        captures += 1
+        if captures == 1 { desktop.targetWindow = NativeWindow(id: original.id, title: original.title,
+            ownerPID: original.ownerPID, bundleID: original.bundleID, frame: original.frame.offsetBy(dx: 1, dy: 0),
+            displayID: original.displayID, isVisible: true, isFrontmost: true) }
+    }
+    let result = engine.execute(request("execute", payload: ["kind": .string("key"), "key": .string("a"),
+        "window_id": .string(original.id), "observation_id": .string("before-motion")]))
+    expect(result.outcome == .executed && result.error == nil && result.dispatchState == .complete,
+           "after-image motion preserves complete dispatch")
+    expect(captures == 2 && desktop.posts.count == 1, "after-image retry cannot replay input")
 }
 
 print("PASS: \(assertions) native safety assertions (fake platform; no real input/capture)")
