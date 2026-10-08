@@ -161,3 +161,32 @@ Remaining in descending priority:
 Existing real white screenshot in stability-observe-6cf1d91-01 remains failed
 historical evidence, not a passing screenshot. All requested /tmp diagnostic
 logs retained. Pre-existing scripts/__pycache__/ left untouched and uncommitted.
+
+
+### Resumed cold-start investigation — 2026-10-08
+
+- Resumed target thread `01a1194a-9317-75b3-b88b-3823b44a8577`; its last user
+  message was “已解锁，继续”. Pulled main (d789c13); only pre-existing generated
+  `scripts/__pycache__/` is dirty and remains excluded.
+- Current attested tagged app built and signed. Desktop is unlocked and host TCC
+  reports capture/input approved. Cold native launch returned the real rendered
+  WorkBuddy window in 4.59 s; first bound observe failed. Fresh diagnostics prove
+  launch used session `host`, observe used the actual controller session, and
+  Swift rejected `stale_observation`. This is not a capture/permission guess.
+- Minimal architecture correction: BackendLauncher receives the authorized
+  session explicitly from Controller; never infer it from a prior observation
+  or fall back to `host`. Native cross-session checks remain unchanged.
+- Intended/current-task files: computeruse/backend.go, controller.go,
+  targets_test.go; macos/backend.go, backend_test.go; this ledger. New cold-start
+  regression failed before the fix. Missing session is rejected before IPC;
+  forged Controller session never reaches the launcher. Focused six-package
+  tests, ComputerUse/macOS race tests, full `go test ./...`, tagged desktop
+  tests and Python 22 tests all pass. Commit/push precede rebuild and fresh
+  native/model acceptance.
+- Evidence (local ignored):
+  `desktop-v2/build/validation/20261008/continuation-d789c13/` (build identity,
+  initial state, build log) and `continuation-native-01/` (launch, failure
+  diagnostics, paused snapshot, Stop). No failed observation counted as pass.
+- Remaining order unchanged: repeated cold target captures + non-WorkBuddy
+  fixture + native controls; then requested-model 120 s loop. Old lock blocker
+  is cleared. Second physical display/formal signing remain deferred.

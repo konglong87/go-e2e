@@ -24,11 +24,11 @@ type Backend interface {
 	Close(context.Context) error
 }
 
-// BackendLauncher is the compatibility boundary used by a trusted host
-// backend. Controller launch calls resolve TargetID through TargetRegistry
-// before passing this opaque provider key to the backend.
+// BackendLauncher is the launch boundary used by a trusted host backend.
+// Controller resolves TargetID before passing the real session ID and opaque
+// provider key. A cold launch must never borrow identity from an observation.
 type BackendLauncher interface {
-	LaunchApp(context.Context, string) (LaunchReceipt, error)
+	LaunchApp(context.Context, string, string) (LaunchReceipt, error)
 }
 
 // BackendApplicationLauncher is retained as a source-compatible alias.

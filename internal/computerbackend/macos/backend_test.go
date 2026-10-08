@@ -684,7 +684,7 @@ func TestCompleteAcknowledgedInputCanReobserveAfterMissingEvidence(t *testing.T)
 func TestBackendLaunchAppBindsWindowAndObserveUsesIt(t *testing.T) {
 	b := newTestBackend(t, "launch", time.Second, "")
 	_ = observeTest(t, b)
-	receipt, err := b.LaunchApp(context.Background(), cu.WorkBuddyBundleID)
+	receipt, err := b.LaunchApp(context.Background(), "session-1", cu.WorkBuddyBundleID)
 	if err != nil || receipt.Outcome != cu.OutcomeExecuted {
 		t.Fatalf("launch receipt=%+v err=%v", receipt, err)
 	}
@@ -700,19 +700,45 @@ func TestBackendLaunchAppBindsWindowAndObserveUsesIt(t *testing.T) {
 	}
 }
 
+// A cold launch must bind the same session as the first observation. The
+// warm-launch test alone hid the "host" placeholder leaking into native state.
+func TestBackendColdLaunchThenObserveUsesSameSession(t *testing.T) {
+	b := newTestBackend(t, "launch", time.Second, "")
+	receipt, err := b.LaunchApp(context.Background(), "session-1", cu.WorkBuddyBundleID)
+	if err != nil || receipt.Outcome != cu.OutcomeExecuted {
+		t.Fatalf("cold launch receipt=%+v err=%v", receipt, err)
+	}
+	obs, err := b.Observe(context.Background(), cu.ObserveRequest{SessionID: "session-1"})
+	if err != nil || obs.WindowID != receipt.Window.ID {
+		t.Fatalf("first bound observe=%+v err=%v", obs, err)
+	}
+}
+
 func TestBackendLaunchAppTimeoutIsControlled(t *testing.T) {
 	b := newTestBackend(t, "launch-timeout", time.Second, "")
 	_ = observeTest(t, b)
-	receipt, err := b.LaunchApp(context.Background(), cu.WorkBuddyBundleID)
+	receipt, err := b.LaunchApp(context.Background(), "session-1", cu.WorkBuddyBundleID)
 	if err == nil || receipt.Outcome != cu.OutcomeRejected || receipt.ErrorCode != cu.ErrorCodeLaunchTimeout {
 		t.Fatalf("timeout receipt=%+v err=%v", receipt, err)
+	}
+}
+
+func TestBackendLaunchAppRejectsMissingSessionBeforeHelper(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "launch")
+	b := newTestBackend(t, "launch", time.Second, marker)
+	receipt, err := b.LaunchApp(context.Background(), "", cu.WorkBuddyBundleID)
+	if err == nil || receipt.Outcome != cu.OutcomeRejected || receipt.ErrorCode != cu.ErrorCodeInactive {
+		t.Fatalf("missing session receipt=%+v err=%v", receipt, err)
+	}
+	if data, readErr := os.ReadFile(marker); readErr == nil && strings.Contains(string(data), "launch") {
+		t.Fatalf("missing session reached helper: %q", data)
 	}
 }
 
 func TestBackendLaunchAppRejectsUnknownApplicationBeforeHelper(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "launch")
 	b := newTestBackend(t, "launch", time.Second, marker)
-	receipt, err := b.LaunchApp(context.Background(), "com.apple.Safari")
+	receipt, err := b.LaunchApp(context.Background(), "session-1", "com.apple.Safari")
 	if err == nil || receipt.Outcome != cu.OutcomeRejected || receipt.ErrorCode != cu.ErrorCodeUnsupportedTarget {
 		t.Fatalf("unknown app receipt=%+v err=%v", receipt, err)
 	}

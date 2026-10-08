@@ -238,7 +238,7 @@ func (c *Controller) LaunchTarget(ctx context.Context, owner SessionOwner, id st
 		receipt.ErrorCode = ErrorCodeLaunchFailed
 		return receipt, errors.New("computer target launcher is unavailable")
 	}
-	receipt, err = launcher.LaunchApp(ctx, target.Launch.ProviderKey)
+	receipt, err = launcher.LaunchApp(ctx, id, target.Launch.ProviderKey)
 	receipt.TargetID = target.ID
 	receipt.DisplayName = target.DisplayName
 	if receipt.ErrorCode != "" {
@@ -304,7 +304,7 @@ func (c *Controller) LaunchApp(ctx context.Context, owner SessionOwner, id, app 
 	if !ok {
 		return LaunchReceipt{Application: ComputerApplication(app), Outcome: OutcomeRejected, ErrorCode: ErrorCodeLaunchFailed, CompletedAt: time.Now()}, errors.New("computer application launcher is unavailable")
 	}
-	receipt, err := launcher.LaunchApp(ctx, app)
+	receipt, err := launcher.LaunchApp(ctx, id, app)
 	if receipt.ErrorCode != "" {
 		receipt.ErrorCode = PublicErrorCode(receipt.ErrorCode)
 	}

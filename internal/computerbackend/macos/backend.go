@@ -445,7 +445,7 @@ func (b *Backend) Capabilities(ctx context.Context) (cu.Capabilities, error) {
 // LaunchApp launches the trusted provider key resolved by the host target
 // registry. The model never supplies this value directly; the controller
 // passes only a registry-owned opaque key.
-func (b *Backend) LaunchApp(ctx context.Context, providerKey string) (receipt cu.LaunchReceipt, resultErr error) {
+func (b *Backend) LaunchApp(ctx context.Context, sessionID, providerKey string) (receipt cu.LaunchReceipt, resultErr error) {
 	started := b.config.Now()
 	receipt = cu.LaunchReceipt{BundleID: providerKey, Outcome: cu.OutcomeRejected}
 	finish := func(err error) (cu.LaunchReceipt, error) {
@@ -458,6 +458,10 @@ func (b *Backend) LaunchApp(ctx context.Context, providerKey string) (receipt cu
 			receipt.ErrorCode = cu.PublicErrorCode(receipt.ErrorCode)
 		}
 		return receipt, err
+	}
+	if strings.TrimSpace(sessionID) == "" {
+		receipt.ErrorCode = cu.ErrorCodeInactive
+		return finish(&rejection{cu.ErrorCodeInactive})
 	}
 	if strings.TrimSpace(providerKey) == "" || len(providerKey) > 256 || !b.allowedProviderKey(providerKey) {
 		receipt.ErrorCode = cu.ErrorCodeUnsupportedTarget
@@ -472,12 +476,6 @@ func (b *Backend) LaunchApp(ctx context.Context, providerKey string) (receipt cu
 		return finish(err)
 	}
 	defer func() { <-b.operation }()
-	b.mu.Lock()
-	sessionID := b.observation.SessionID
-	b.mu.Unlock()
-	if sessionID == "" {
-		sessionID = "host"
-	}
 	response, err := b.request(ctx, commandLaunchApp, sessionID, "", map[string]any{
 		"target_id":    providerKey,
 		"display_name": providerKey,
