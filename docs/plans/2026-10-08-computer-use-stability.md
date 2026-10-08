@@ -246,3 +246,23 @@ logs retained. Pre-existing scripts/__pycache__/ left untouched and uncommitted.
 - Next highest-priority gates: commit/push + rebuild; two cold observe-only
   native batches with exact process preflight; requested gpt-6-sol/high real
   launch/type/send once/reply/Stop <=120 s. Deferred gates unchanged.
+
+
+### Exact cold-start gates passed / model-wrapper discovery follow-up
+
+- Current 6e1365a attested app: two exact cold native batches passed, starting
+  with no primary executable and launching distinct PID/window pairs
+  (48855/27610 and 49436/27668). Each saved three same-session, same-target PNGs
+  and Stop. Launch 4.385/3.306 s. Actual ready images inspected; all six assets
+  retained under `continuation-cold-6e1365a-{01,02}/`. Separate project-ComputerUse
+  cleanup sessions Quit the fixture and confirm exact process termination.
+- 120 s model attempt stopped before any model call: wrapper process discovery
+  incorrectly required the complete host command line to end in its executable;
+  the native acceptance socket arguments made the valid host invisible.
+- Intended files: wrapper, regression tests, ledger. Match the executable token,
+  not the full command suffix; preserve existing workspace/server-parent gates.
+  Synthetic-token regression fails before fix; Python 25 tests pass after fix.
+  No auth token is emitted or persisted; no credential/config files accessed.
+- Next: commit/push, rebuild the current attested app, then actual requested-model
+  120 s loop (fresh directory). Native/cold successes above remain run-specific,
+  never merged into the model action chain. Hardware/signing deferrals unchanged.

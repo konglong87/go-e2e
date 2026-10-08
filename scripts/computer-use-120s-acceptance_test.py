@@ -53,6 +53,16 @@ class WrapperUnitTests(unittest.TestCase):
             self.assertTrue(preflight["running"])
 
 
+    def test_server_discovery_accepts_tagged_host_launch_arguments(self):
+        workspace = Path("/fixture/workspace")
+        host = str(workspace / "desktop-v2/build/bin/go-e2e.app/Contents/MacOS/go-e2e-desktop")
+        service = str(workspace / "desktop-v2/build/bin/go-e2e.app/Contents/MacOS/go-e2e")
+        rows = f"100 1 {host} --computer-acceptance-socket /fixture/control.sock\n101 100 {service} server --desktop-local --port 12345 --auth-token synthetic-token\n"
+        with mock.patch.object(MODULE.subprocess, "check_output", return_value=rows):
+            server = MODULE.find_local_server(workspace)
+        self.assertEqual((server.desktop_pid, server.server_pid, server.port), (100, 101, 12345))
+        self.assertEqual(server.token, "synthetic-token")
+
     def test_effective_provider_and_model_are_exact(self):
         session = {"provider": MODULE.DEFAULT_PROVIDER, "model": MODULE.DEFAULT_MODEL, "effort": "high", "status": "idle"}
         result = MODULE.validate_effective_config(session, MODULE.DEFAULT_PROVIDER, MODULE.DEFAULT_MODEL, "high")

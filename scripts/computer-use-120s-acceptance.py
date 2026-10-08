@@ -233,8 +233,12 @@ def find_local_server(workspace: Path = DEFAULT_WORKSPACE) -> LocalServer:
         if len(fields) != 3:
             continue
         pid, ppid, command = fields
-        if command.endswith("/Contents/MacOS/go-e2e-desktop") and str(workspace) + "/" in command:
-            desktops.append((int(pid), int(ppid), command))
+        try:
+            executable = shlex.split(command)[0]
+        except (ValueError, IndexError):
+            continue
+        if executable.endswith("/Contents/MacOS/go-e2e-desktop") and str(workspace) + "/" in executable:
+            desktops.append((int(pid), int(ppid), executable))
     if not desktops:
         raise RuntimeError("running desktop-v2 app was not found")
 
