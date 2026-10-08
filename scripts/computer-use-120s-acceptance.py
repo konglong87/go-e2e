@@ -198,10 +198,15 @@ def iso_now() -> str:
 
 
 def parse_iso(value: str) -> Optional[float]:
-    if not value:
+    if not isinstance(value, str) or not value:
         return None
+    # Go RFC3339Nano trims trailing fractional zeros. Python <3.11 accepts only
+    # 3/6 fractional digits, so normalize valid 1..9-digit fractions to Python's
+    # microsecond resolution without rewriting the original evidence timestamp.
+    normalized = re.sub(r"\.(\d{1,9})(?=(?:Z|[+-]\d{2}:\d{2})$)",
+                        lambda match: "." + match.group(1)[:6].ljust(6, "0"), value)
     try:
-        return dt.datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+        return dt.datetime.fromisoformat(normalized.replace("Z", "+00:00")).timestamp()
     except (TypeError, ValueError):
         return None
 
@@ -385,18 +390,54 @@ def merge_window_identity(item: dict[str, Any], value: Any) -> None:
         item["window_frame"] = frame
 
 
+def compact_receipt(value: Any, launch: bool = False) -> dict[str, Any]:
+    """Retain public receipt metadata only, never titles, text, errors or media URIs."""
+    if not isinstance(value, dict):
+        return {}
+    fields = ("target_id", "display_name", "bundle_id", "outcome", "error_code", "completed_at") if launch else (
+        "action_id", "session_id", "platform", "backend", "before_observation_id", "after_observation_id",
+        "outcome", "dispatch_state", "verification", "focus_before", "focus_after", "error_code", "completed_at")
+    result = {key: value[key] for key in fields if isinstance(value.get(key), str) and len(value[key]) <= 256}
+    if isinstance(value.get("duration"), (int, float)) and not isinstance(value["duration"], bool):
+        result["duration"] = value["duration"]
+    point = value.get("actual_point")
+    if isinstance(point, dict) and all(isinstance(point.get(key), int) and not isinstance(point[key], bool) for key in ("x", "y")):
+        result["actual_point"] = {key: point[key] for key in ("x", "y")}
+    window_key = "window" if launch else "active_window_after"
+    window = value.get(window_key)
+    if isinstance(window, dict):
+        identity: dict[str, Any] = {}
+        merge_window_identity(identity, window)
+        for key in ("is_visible", "is_frontmost"):
+            if isinstance(window.get(key), bool):
+                identity[key] = window[key]
+        # Preserve the native WindowRef schema without its private title.
+        result[window_key] = {key: identity[source] for key, source in (
+            ("id", "window_id"), ("bundle_id", "bundle_id"), ("owner_pid", "owner_pid"),
+            ("frame", "window_frame"), ("is_visible", "is_visible"), ("is_frontmost", "is_frontmost")) if source in identity}
+    return result
+
+
 def merge_tool_identity(item: dict[str, Any], output: Any) -> None:
     """Decode the stable fields in both legacy and atomic-observe responses."""
     if not isinstance(output, dict):
         return
-    for key in ("window_id", "bundle_id", "target_id", "outcome", "error_code"):
+    for key in ("window_id", "bundle_id", "target_id", "session_id", "outcome", "error_code", "dispatch_state"):
         value = output.get(key)
         if value not in (None, "") and key not in item:
             item[key] = str(value)
     merge_window_identity(item, output.get("target_window"))
     merge_window_identity(item, output.get("active_window"))
+    receipt = compact_receipt(output.get("receipt"))
+    if receipt:
+        item["receipt"] = receipt
+        for key in ("outcome", "error_code", "dispatch_state"):
+            if receipt.get(key):
+                item.setdefault(key, receipt[key])
+        merge_window_identity(item, output["receipt"].get("active_window_after"))
     launch = output.get("launch_receipt")
     if isinstance(launch, dict):
+        item["launch_receipt"] = compact_receipt(launch, launch=True)
         for key in ("target_id", "bundle_id", "outcome", "error_code"):
             value = launch.get(key)
             if value not in (None, "") and key not in item:
@@ -518,10 +559,29 @@ def validate_run_actions(actions: Iterable[Mapping[str, Any]], started_at: str, 
     started, ended = parse_iso(started_at), parse_iso(ended_at)
     if started is None or ended is None or ended < started:
         raise AcceptanceError("evidence_isolation", "invalid run time boundary")
+    host_session = ""
+    native_action_ids: set[str] = set()
     for action in actions:
         call, result = parse_iso(str(action.get("call_at", ""))), parse_iso(str(action.get("result_at", "")))
         if call is None or result is None or call < started or result < call or result > ended:
             raise AcceptanceError("evidence_isolation", "ComputerUse receipt timestamps do not belong to the current run")
+        receipt = action.get("receipt")
+        session_id = str(action.get("session_id", ""))
+        if isinstance(receipt, dict):
+            completed = parse_iso(str(receipt.get("completed_at", "")))
+            if completed is None or completed < call or completed > result:
+                raise AcceptanceError("evidence_isolation", "native receipt completion is outside its current tool call")
+            action_id = str(receipt.get("action_id", ""))
+            if not action_id or action_id in native_action_ids:
+                raise AcceptanceError("evidence_isolation", "missing or repeated native action ID")
+            native_action_ids.add(action_id)
+            session_id = str(receipt.get("session_id", ""))
+            if not session_id:
+                raise AcceptanceError("evidence_isolation", "native action receipt has no host session")
+        if session_id:
+            if host_session and host_session != session_id:
+                raise AcceptanceError("evidence_isolation", "mixed host session receipts")
+            host_session = session_id
 
 
 def png_has_visible_content(data: bytes) -> bool:
@@ -897,7 +957,9 @@ def build_timing(timing: Timing, final_status: str, end_monotonic: float, provid
         "end_time": iso_now(),
         "total_elapsed_seconds": round(total, 3),
         "launch_duration": timing.duration(timing.launch_started, timing.launch_finished),
-        "window_binding_duration": timing.duration(timing.binding_started, timing.binding_finished),
+        "window_binding_duration": (timing.duration(timing.binding_started, timing.binding_finished)
+                                    if timing.binding_started is not None else None),
+        "phase_timing_notes": "Atomic target binding is included in launch duration; readiness is the subsequent first capture, not a separately measured bind.",
         "readiness_duration": timing.duration(timing.launch_finished, timing.readiness_finished),
         "click_duration": round(timing.click_duration, 3),
         "type_duration": round(timing.type_duration, 3),
@@ -975,11 +1037,12 @@ def run_acceptance(
 
     try:
         initial_pids = application_process_ids(target_app_path, TARGET_BUNDLE_ID)
-        evidence.json("preflight-workbuddy-state.json", {
+        initial_target_state = {
             "checked_at": iso_now(), "source": "public bundle executable + exact process command path",
             "target_id": TARGET_ID, "target_bundle_id": TARGET_BUNDLE_ID,
             "running": bool(initial_pids), "owner_pids": initial_pids,
-        })
+        }
+        evidence.json("preflight-workbuddy-state.json", initial_target_state)
         if initial_pids:
             raise AcceptanceError("initial_state", "registered target is already running; cold-start gate rejected")
         create_key = "computer-use-gpt6-sol-120s-" + uuid.uuid4().hex
@@ -1084,14 +1147,11 @@ def run_acceptance(
         # reading or OCRing pixels; the screenshot itself is the authority.
         first_observation = next((item for item in actions if item.get("action") == "observe" and item.get("computer_observation")), None)
         if first_observation:
-            evidence.json("preflight-workbuddy-state.json", {
-                "source": "first ComputerUse observe",
-                "target_id": TARGET_ID,
-                "target_bundle_id": TARGET_BUNDLE_ID,
+            evidence.json("preflight-workbuddy-state.json", {**initial_target_state, "first_observation": {
                 "observation_id": first_observation["computer_observation"].get("observation_id"),
                 "workbuddy_bundle_seen": first_observation.get("bundle_id") == TARGET_BUNDLE_ID,
                 "screenshot_path": output_paths.get(first_observation["computer_observation"].get("observation_id", ""), ""),
-            })
+            }})
         launch_item = next((item for item in actions if item.get("action") == "launch_app"), None)
         if launch_item:
             timing.launch_started = parse_iso(str(launch_item.get("call_at", "")))
@@ -1104,6 +1164,18 @@ def run_acceptance(
                 timing.binding_started = timing.launch_finished
                 timing.binding_finished = parse_iso(str(first_target_observe.get("result_at", "")))
                 timing.readiness_finished = timing.binding_finished
+        atomic_launch = next((item for item in actions if item.get("implicit_launch")), None)
+        if atomic_launch:
+            receipt = atomic_launch.get("launch_receipt", {})
+            completed = parse_iso(str(receipt.get("completed_at", "")))
+            duration = receipt.get("duration")
+            if completed is not None and isinstance(duration, (int, float)):
+                timing.launch_finished = completed
+                timing.launch_started = completed - max(0.0, duration) / 1_000_000_000
+                timing.readiness_finished = parse_iso(str(atomic_launch.get("result_at", "")))
+        launch_evidence = next((item.get("launch_receipt") for item in actions if item.get("launch_receipt")), None)
+        if launch_evidence:
+            evidence.json("launch-receipt.json", launch_evidence)
         timing.click_duration = sum(float(item.get("duration_seconds", 0.0)) for item in actions if item.get("action") == "click")
         timing.type_duration = sum(float(item.get("duration_seconds", 0.0)) for item in actions if item.get("action") == "type")
         click_durations = [float(item.get("duration_seconds", 0.0)) for item in actions if item.get("action") == "click"]
@@ -1140,6 +1212,7 @@ def run_acceptance(
                 "screenshot_count": len(output_paths),
                 "validation_error": {"stage": exc.stage, "message": str(exc)},
             }
+        evidence.json("window-binding.json", binding)
         evidence.json("sanitized-timeline.json", {
             "schema_version": "computer-use-sanitized-timeline.v1", "provider": provider, "model": model,
             "effort": effort, "session_ref": ref, "session_status": final_status, "binding": binding,

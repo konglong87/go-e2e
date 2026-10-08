@@ -266,3 +266,33 @@ logs retained. Pre-existing scripts/__pycache__/ left untouched and uncommitted.
 - Next: commit/push, rebuild the current attested app, then actual requested-model
   120 s loop (fresh directory). Native/cold successes above remain run-specific,
   never merged into the model action chain. Hardware/signing deferrals unchanged.
+
+
+### RFC3339Nano / complete sanitized receipt follow-up
+
+- Actual requested-provider/model/high run on attested 8c0aae9 returned completed
+  in 93.887 s, with observe → input-focus click → select-all hotkey → type once
+  → send click once → wait → Stop. Wrapper rejected evidence because this
+  Mac's older Python cannot parse legal Go RFC3339Nano fractions of 4/5 digits
+  (`.39121Z`, `.8689Z`). It was a parsing false rejection, not old timestamps.
+- Preserve original failure/timing files. A read-only post-run image audit
+  downloaded the original six asset IDs into `continuation-model-8c0aae9-01/
+  post-run-image-audit/`. The wait screenshot visibly shows this run's newly
+  created task (19 vs initial 18), `1+1=2` and real response `2 ✅`. This audit
+  does not rewrite the failed batch as passed or replace a fresh acceptance run.
+- Intended files: Python wrapper/tests, computeruse/result_metadata.go and its
+  tests, this ledger. Normalize valid Nano fractions to Python microseconds
+  for comparison only; retain original timestamps and all isolation gates.
+  Preserve exact cold preflight instead of overwriting it with first-observe
+  metadata. Reuse ResultMetadata before text truncation to retain a sanitized
+  full action receipt (IDs, dispatch, verification, duration, completion and
+  window identity); exclude private errors, summaries, fingerprint/media URIs
+  and titles. Python retains these structured receipts and launch evidence.
+- Atomic timing comes from actual LaunchReceipt duration/completion; binding
+  remains included in launch and is not invented as an independently measured
+  operation. Separate first-capture readiness timing and stage notes are saved.
+- Timestamp regression fails before fix; Python 28 tests (including mixed native
+  session/stale completion rejection), focused Go, full `go test ./...`, tagged
+  desktop, ComputerUse/macOS race and native 267 assertions pass. Fixture Quit
+  and exact process exit confirmed through project ComputerUse. Commit/push,
+  rebuild and fresh requested-model 120 s loop remain the next gates.

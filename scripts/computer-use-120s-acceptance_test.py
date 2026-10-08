@@ -63,6 +63,38 @@ class WrapperUnitTests(unittest.TestCase):
         self.assertEqual((server.desktop_pid, server.server_pid, server.port), (100, 101, 12345))
         self.assertEqual(server.token, "synthetic-token")
 
+    def test_rfc3339nano_fraction_widths_are_valid_on_older_python(self):
+        expected = MODULE.parse_iso("2026-10-08T05:11:07.391210Z")
+        self.assertEqual(MODULE.parse_iso("2026-10-08T05:11:07.39121Z"), expected)
+        for width in range(1, 10):
+            fraction = "123456789"[:width]
+            self.assertIsNotNone(MODULE.parse_iso(f"2026-10-08T05:11:07.{fraction}Z"))
+            self.assertIsNotNone(MODULE.parse_iso(f"2026-10-08T13:11:07.{fraction}+08:00"))
+        MODULE.validate_run_actions([{
+            "call_at": "2026-10-08T05:11:39.8689Z", "result_at": "2026-10-08T05:11:48.699346Z",
+        }], "2026-10-08T05:10:50.356083+00:00", "2026-10-08T05:12:24.242298+00:00")
+
+    def test_structured_receipt_survives_truncated_output_without_private_fields(self):
+        output = {"receipt": {"action_id": "native-action", "session_id": "native-session", "outcome": "executed",
+            "dispatch_state": "complete", "completed_at": "2026-10-08T05:11:07.39121Z", "error_message": "SECRET",
+            "redacted_action_summary": "SECRET", "active_window_after": {"id": "42", "bundle_id": "fixture.app", "title": "SECRET"}}}
+        item = {}
+        MODULE.merge_tool_identity(item, output)
+        self.assertEqual(item["receipt"]["action_id"], "native-action")
+        self.assertEqual(item["dispatch_state"], "complete")
+        self.assertEqual(item["window_id"], "42")
+        self.assertNotIn("SECRET", json.dumps(item))
+
+    def test_isolation_rejects_mixed_native_sessions_and_stale_completion(self):
+        call, result = "2026-10-08T05:11:00Z", "2026-10-08T05:11:02Z"
+        action = {"call_at": call, "result_at": result, "receipt": {"action_id": "a1", "session_id": "s1", "completed_at": "2026-10-08T05:11:01Z"}}
+        other = {**action, "receipt": {**action["receipt"], "action_id": "a2", "session_id": "s2"}}
+        with self.assertRaises(MODULE.AcceptanceError):
+            MODULE.validate_run_actions([action, other], call, result)
+        with self.assertRaises(MODULE.AcceptanceError):
+            MODULE.validate_run_actions([{**action, "receipt": {**action["receipt"], "completed_at": "2026-10-08T05:10:59Z"}}], call, result)
+        MODULE.validate_run_actions([action], call, result)
+
     def test_effective_provider_and_model_are_exact(self):
         session = {"provider": MODULE.DEFAULT_PROVIDER, "model": MODULE.DEFAULT_MODEL, "effort": "high", "status": "idle"}
         result = MODULE.validate_effective_config(session, MODULE.DEFAULT_PROVIDER, MODULE.DEFAULT_MODEL, "high")
@@ -393,6 +425,10 @@ class AsyncDeadlineTests(unittest.TestCase):
             self.assertEqual(result["final_status"], "stopped")
             self.assertEqual(client.stop_calls, 1)
             self.assertTrue((Path(directory) / "conversation-trace.json").exists())
+            preflight = json.loads((Path(directory) / "preflight-workbuddy-state.json").read_text())
+            self.assertFalse(preflight["running"])
+            self.assertEqual(preflight["owner_pids"], [])
+            self.assertIn("first_observation", preflight)
             self.assertNotIn("auth-token", (Path(directory) / "conversation-trace.json").read_text())
 
 
