@@ -1014,3 +1014,18 @@ func TestEveryActionUsesTrustedSessionBindingInsteadOfModelSessionID(t *testing.
 		})
 	}
 }
+
+func TestCompleteDispatchWithoutEvidenceRecoversOnlyObservation(t *testing.T) {
+	service := screenshotService(t)
+	service.receipt = cu.ActionReceipt{Outcome: cu.OutcomeExecuted, DispatchState: cu.DispatchComplete, ErrorCode: cu.ErrorCodeScreenshotFailed}
+	tc := testContext(service)
+	tc.ComputerUseFastPath = true
+	result := New().Run(context.Background(), json.RawMessage(`{"action":"type","session_id":"computer-1","observation_id":"obs-1","text":"test"}`), tc)
+	if result.IsError {
+		t.Fatal(result.Content)
+	}
+	assertServiceOrder(t, service, callExecute, callObserve, callImagePrefix+testFreshImageID)
+	if strings.Count(strings.Join(service.order, ","), callExecute) != 1 {
+		t.Fatal("input was replayed")
+	}
+}

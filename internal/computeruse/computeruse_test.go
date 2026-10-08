@@ -73,20 +73,20 @@ func TestUnknownReceiptRequiresFreshObservationAndNeverReplays(t *testing.T) {
 	if err := session.RecordReceipt(ActionReceipt{ActionID: action.ID, SessionID: session.ID(), Outcome: OutcomeUnknown}); err != nil {
 		t.Fatal(err)
 	}
-	if session.State() != SessionNeedsObservation {
-		t.Fatalf("state = %s, want %s", session.State(), SessionNeedsObservation)
+	if session.State() != SessionFailed {
+		t.Fatalf("state = %s, want %s", session.State(), SessionFailed)
 	}
 	if err := session.ValidateAction(action); err == nil {
 		t.Fatal("unknown outcome allowed input replay")
 	}
 	fresh := readyObservation(session.ID(), now)
 	fresh.ID = "obs-2"
-	if err := session.SetObservation(fresh); err != nil {
-		t.Fatal(err)
+	if err := session.SetObservation(fresh); err == nil {
+		t.Fatal("unknown input restored authority through a new observation")
 	}
 	action.ID = "action-2"
-	if action.ObservationID = fresh.ID; session.ValidateAction(action) != nil {
-		t.Fatal("fresh observation did not unblock new evaluation")
+	if action.ObservationID = fresh.ID; session.ValidateAction(action) == nil {
+		t.Fatal("unknown input replayed under a new ID")
 	}
 }
 

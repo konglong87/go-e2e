@@ -52,16 +52,16 @@ func TestUnknownCannotReplayAfterFreshObservation(t *testing.T) {
 	}
 	o := readyObservation(s.ID(), now)
 	o.ID = "fresh"
-	if err := s.SetObservation(o); err != nil {
-		t.Fatal(err)
+	if err := s.SetObservation(o); err == nil {
+		t.Fatal("unknown input regained authority")
 	}
 	a.ObservationID = o.ID
 	if s.BeginAction(a) == nil {
 		t.Fatal("unknown action replayed")
 	}
 	a.ID = "new"
-	if err := s.BeginAction(a); err != nil {
-		t.Fatal(err)
+	if err := s.BeginAction(a); err == nil {
+		t.Fatal("unknown input replayed under a different ID")
 	}
 }
 func TestSessionSnapshotDoesNotMutateAuthority(t *testing.T) {
@@ -728,7 +728,7 @@ func (b *transientFocusBackend) Execute(ctx context.Context, a Action) (ActionRe
 // during input pauses the session and reopens the observation phase instead of
 // permanently failing the run. The run must stay non-terminal so a fresh
 // Observe can resume.
-func TestFocusChangedExecuteDoesNotFailRun(t *testing.T) {
+func TestUnknownFocusChangedExecuteFailsRun(t *testing.T) {
 	s, owner, now := newTestSession(t, false)
 	obs := readyObservation(s.ID(), now)
 	b := &transientFocusBackend{FakeBackend: &FakeBackend{ObservationValue: obs, ReceiptValue: ActionReceipt{Outcome: OutcomeExecuted, AfterObservationID: "after-1"}}}
@@ -745,14 +745,8 @@ func TestFocusChangedExecuteDoesNotFailRun(t *testing.T) {
 	if receipt.Outcome != OutcomeUnknown || receipt.ErrorCode != ErrorCodeFocusChanged {
 		t.Fatalf("receipt = %+v, want unknown/focus_changed", receipt)
 	}
-	if c.RunSnapshot().State == RunStateFailed {
-		t.Fatal("transient focus failure permanently failed the run")
-	}
-	if c.RunSnapshot().State != RunStateObserved {
-		t.Fatalf("run state = %s, want %s (observation phase reopened)", c.RunSnapshot().State, RunStateObserved)
-	}
-	if s.State() != SessionPaused {
-		t.Fatalf("session state = %s, want paused", s.State())
+	if c.RunSnapshot().State != RunStateFailed || s.State() != SessionFailed {
+		t.Fatal("focus error alone incorrectly made unknown input recoverable")
 	}
 }
 
@@ -783,7 +777,7 @@ func TestFatalUnknownExecuteFailsRun(t *testing.T) {
 type codedError struct{ code string }
 
 func (e *codedError) Error() string { return "computer failure: " + e.code }
-func (e *codedError) Code() string   { return e.code }
+func (e *codedError) Code() string  { return e.code }
 
 // TestFocusChangedObserveDoesNotFailRun verifies that a transient focus change
 // during Observe (not Execute) pauses and reopens the observation phase instead
@@ -832,5 +826,48 @@ func TestNewControllerWithBudget(t *testing.T) {
 	defSnap := defaultCtrl.RunSnapshot()
 	if defSnap.Budget != DefaultRunBudget() {
 		t.Fatalf("zero budget did not fall back to default: %+v", defSnap.Budget)
+	}
+}
+
+func TestCompleteDispatchWithoutEvidenceKeepsObservationRecoveryOpen(t *testing.T) {
+	s, owner, now := newTestSession(t, false)
+	obs := readyObservation(s.ID(), now)
+	b := &FakeBackend{ObservationValue: obs, ReceiptValue: ActionReceipt{Outcome: OutcomeExecuted, DispatchState: DispatchComplete, ErrorCode: ErrorCodeScreenshotFailed}}
+	c, err := NewController(s, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = c.Observe(context.Background(), owner, ObserveRequest{SessionID: s.ID()}); err != nil {
+		t.Fatal(err)
+	}
+	a := Action{ID: "complete", SessionID: s.ID(), ObservationID: obs.ID, Kind: ActionWait}
+	r, err := c.Execute(context.Background(), owner, a)
+	if err != nil || r.Outcome != OutcomeExecuted || c.RunSnapshot().State == RunStateFailed {
+		t.Fatalf("receipt=%+v err=%v state=%v", r, err, c.RunSnapshot().State)
+	}
+	b.ObservationValue.ID = "fresh-complete"
+	if _, err = c.Observe(context.Background(), owner, ObserveRequest{SessionID: s.ID()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = c.Execute(context.Background(), owner, a); err == nil {
+		t.Fatal("acknowledged action replayed")
+	}
+}
+
+func TestUnknownPausedSessionCannotResumeOrReplayUnderNewID(t *testing.T) {
+	s, owner, now := newTestSession(t, false)
+	_ = s.SetObservation(readyObservation(s.ID(), now))
+	a := Action{ID: "uncertain", SessionID: s.ID(), ObservationID: "obs-1", Kind: ActionType, Text: "test"}
+	if err := s.BeginAction(a); err != nil {
+		t.Fatal(err)
+	}
+	_ = s.Pause()
+	_ = s.RecordReceipt(ActionReceipt{ActionID: a.ID, SessionID: s.ID(), Outcome: OutcomeUnknown})
+	if err := s.Resume(owner); err == nil {
+		t.Fatal("unknown input restored by resume")
+	}
+	a.ID = "changed-id"
+	if err := s.BeginAction(a); err == nil {
+		t.Fatal("unknown replayed under new id")
 	}
 }

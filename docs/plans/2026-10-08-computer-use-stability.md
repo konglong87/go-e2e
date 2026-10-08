@@ -96,3 +96,18 @@ still rejects input. No identity loosening. Python blank guard ignores chrome
 and preserves failed/white images as invalid evidence instead of dropping them.
 Native 267 assertions and Python 20 tests pass. Actual latest-build cold/native
 and model acceptance pending; older white image remains failed evidence.
+
+### Slice 5 — dispatch-stage recovery
+
+Native/Go receipts now carry dispatch_state independently of screenshot
+verification. Fully acknowledged input with a failed after-image stays executed
+with verification unknown; only observation is refreshed, never the input.
+Partial/unknown input is terminal even if focus_changed or the helper is alive;
+Session latches uncertainty so new action IDs and Resume cannot replay it.
+Pause/Stop revocation and permission-required explicit recovery remain gates.
+Public screenshot_failed/input_uncertain codes are retained; read-only capture
+retries are bounded and generation/identity/permission checked.
+Verification: focused Go tests, broader query/agentruntime/server packages,
+race computeruse/macos, native 266 assertions (after-capture expectations now
+correctly distinguish acknowledged input from partial input). Actual native
+and production-model closure remain pending; no simulated pass is substituted.

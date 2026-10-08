@@ -402,7 +402,10 @@ func (t Tool) execute(ctx context.Context, service cu.Service, owner cu.SessionO
 	payload := map[string]any{"receipt": receipt}
 	out := tools.Result{IsError: executeErr != nil || receipt.Outcome != cu.OutcomeExecuted}
 	if out.IsError {
-		payload["error_code"] = "action_failed"
+		payload["error_code"] = cu.ErrorCodeActionFailed
+		if receipt.ErrorCode != "" {
+			payload["error_code"] = receipt.ErrorCode
+		}
 		payload["message"] = "computer action failed; inspect receipt before any further action"
 		if receipt.ErrorCode == cu.ErrorCodeSelfTarget {
 			payload["message"] = "the action was not dispatched because the go-e2e control window was the target; observe again and launch or switch to the requested app before continuing"
@@ -412,6 +415,9 @@ func (t Tool) execute(ctx context.Context, service cu.Service, owner cu.SessionO
 	// fresh Observe below. The receipt evidence image would be discarded, so do
 	// not fetch it. Failed and unknown outcomes retain evidence-only handling.
 	needsEvidenceImage := !tc.ComputerUseFastPath || executeErr != nil || receipt.Outcome != cu.OutcomeExecuted
+	if receipt.DispatchState == cu.DispatchComplete && executeErr == nil && receipt.Outcome == cu.OutcomeExecuted && receipt.AfterObservationID == "" {
+		needsEvidenceImage = false // recover only observation, never acknowledged input
+	}
 	if needsEvidenceImage {
 		if receipt.AfterObservationID != "" {
 			messages, imageErr := observationImage(ctx, service, owner, params.SessionID, receipt.AfterObservationID, actionEvidenceGuidance)

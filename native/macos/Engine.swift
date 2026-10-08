@@ -5,6 +5,7 @@ struct ActionResult {
     let outcome: Outcome
     let payload: JSONValue
     let error: SafetyError?
+    var dispatchState: DispatchState? = nil
 }
 
 private struct CapturedSnapshot {
@@ -275,18 +276,30 @@ final class Engine {
         }
     }
 
+    private func captureObservation(_ request: Envelope, expectedWindow: NativeWindow?) throws -> CapturedSnapshot {
+        for attempt in 0..<3 {
+            do {
+                let geometry = try resolveGeometry(for: request)
+                try target(request, geometry: geometry)
+                return try capture(request, geometry: geometry, expectedWindow: expectedWindow)
+            } catch let error as SafetyError where error == .screenshotFailed && attempt < 2 {
+                try wait(50 * (attempt + 1), request: request)
+            }
+        }
+        throw SafetyError.screenshotFailed
+    }
+
     func observe(_ request: Envelope) -> ActionResult {
         do {
             try state.gate(request)
             let window = try authorizedWindow(request)
             if let window { try activateTarget(window, request: request) }
-            let geometry = try resolveGeometry(for: request); try target(request, geometry: geometry)
             guard let id = request.payload["observation_id"]?.string, !id.isEmpty, id.utf8.count <= 256,
                   let focus = platform.focus() else { throw SafetyError.invalidAction }
-            let captured = try capture(request, geometry: geometry, expectedWindow: window)
+            let captured = try captureObservation(request, expectedWindow: window)
             guard case .object(var payload) = captured.payload else { throw SafetyError.screenshotFailed }
             guard platform.focus() == focus else { throw SafetyError.focusChanged }
-            if let windowID = geometry.windowID, platform.activeWindowID() != windowID { throw SafetyError.focusChanged }
+            if let windowID = captured.geometry.windowID, platform.activeWindowID() != windowID { throw SafetyError.focusChanged }
             let expires = now().addingTimeInterval(observationTTLSeconds)
             let topology = try displayIDs()
             try state.save(Snapshot(id: id, session: request.sessionID, geometry: captured.geometry, window: captured.window, displayIDs: topology, focus: captured.focus, expires: expires), for: request)
@@ -354,6 +367,7 @@ final class Engine {
     }
     func execute(_ request: Envelope) -> ActionResult {
         var posted = false
+        var inputComplete = false
         var pressedButton: CGMouseButton?
         defer { if let pressedButton { platform.releasePressedButton(pressedButton) } }
         do {
@@ -381,13 +395,15 @@ final class Engine {
                     try wait(plan.dragStepDelayMS, request: request)
                 }
             }
+            inputComplete = !plan.operations.isEmpty
             try wait(plan.waitMS, request: request)
             // The final atomic operation may legitimately activate another app.
             // Capture requires stable current focus, not the consumed binding;
             // subsequent input still needs a fresh observe. This is not visual
             // verification that the action achieved its intended result.
             let payload = try captureAfterInput(request, geometry: snapshot.geometry, expectedWindow: snapshot.window)
-            return ActionResult(outcome: .executed, payload: payload, error: nil)
+            return ActionResult(outcome: .executed, payload: payload, error: nil,
+                                dispatchState: inputComplete ? .complete : .notStarted)
         } catch {
             // Explicit Pause/Stop already invalidated the generation. Preserve
             // that state so Pause can Resume with a fresh observation; do not
@@ -395,11 +411,16 @@ final class Engine {
             if (error as? SafetyError) == .inputUncertain { posted = true }
             let safetyError = error as? SafetyError ?? .inputUnavailable
             record(request, phase: "execute_result", error: safetyError,
-                   fields: ["result": posted ? "unknown" : "rejected", "input_posted": posted])
-            if posted && safetyError != .inactive {
-                state.end()
+                   fields: ["result": inputComplete ? "executed" : (posted ? "unknown" : "rejected"),
+                            "dispatch_state": inputComplete ? "complete" : (posted ? "unknown" : "not_started"), "input_posted": posted])
+            if inputComplete && safetyError != .inputUncertain {
+                // All planned pairs were acknowledged. Losing only evidence
+                // must not turn confirmed dispatch into partial/unknown input.
+                return ActionResult(outcome: .executed, payload: .object([:]), error: safetyError, dispatchState: .complete)
             }
-            return ActionResult(outcome: posted ? .unknown : .rejected, payload: .object([:]), error: safetyError)
+            if posted && safetyError != .inactive { state.end() }
+            return ActionResult(outcome: posted ? .unknown : .rejected, payload: .object([:]), error: safetyError,
+                                dispatchState: posted ? .unknown : .notStarted)
         }
     }
 }

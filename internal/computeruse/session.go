@@ -59,6 +59,7 @@ type ComputerSession struct {
 	receipts       map[string]ActionReceipt
 	lastReceipt    *ActionReceipt
 	inFlight       string
+	uncertain      bool
 }
 
 func NewComputerSession(o SessionOptions) (*ComputerSession, error) {
@@ -144,13 +145,19 @@ func (s *ComputerSession) Pause() error {
 	s.hasObservation = false
 	return nil
 }
+func (s *ComputerSession) InputUncertain() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.uncertain
+}
+
 func (s *ComputerSession) Resume(o SessionOwner) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.owner != o {
 		return errors.New("computer session ownership mismatch")
 	}
-	if s.state != SessionPaused || !s.approved || !s.capabilities.Ready() {
+	if s.state != SessionPaused || !s.approved || !s.capabilities.Ready() || s.uncertain {
 		return errors.New("computer session cannot resume")
 	}
 	s.state = SessionNeedsObservation
@@ -237,7 +244,7 @@ func (s *ComputerSession) validateActionLocked(a Action) error {
 	if a.SessionID != s.id {
 		return errors.New("action session mismatch")
 	}
-	if s.state != SessionReady || !s.approved || !s.capabilities.Ready() {
+	if s.state != SessionReady || !s.approved || !s.capabilities.Ready() || s.uncertain {
 		return errors.New("computer session is not ready")
 	}
 	if s.inFlight != "" {
@@ -288,11 +295,17 @@ func (s *ComputerSession) RecordReceipt(r ActionReceipt) error {
 	s.lastReceipt = &r
 	s.receipts[r.ActionID] = r
 	s.inFlight = ""
+	if r.Outcome == OutcomeUnknown {
+		s.uncertain = true
+	}
 	// Revocation always wins over a late success/failure/unknown response.
 	if s.state == SessionStopped || s.state == SessionFailed || s.state == SessionPaused {
 		return nil
 	}
 	s.state = SessionNeedsObservation
+	if r.Outcome == OutcomeUnknown {
+		s.state = SessionFailed // cannot bypass uncertainty by changing action_id
+	}
 	if r.Outcome == OutcomeFailed {
 		s.state = SessionPaused
 	}

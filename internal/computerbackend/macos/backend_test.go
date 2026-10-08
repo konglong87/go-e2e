@@ -190,7 +190,13 @@ func TestHelperProcess(t *testing.T) {
 		if mode == "focus-failed" && req.Command == commandExecute {
 			errorCode = helperFocusChangedCode
 		}
-		payload, _ := json.Marshal(map[string]any{"ok": outcome == cu.OutcomeExecuted, "outcome": outcome, "result": result, "error_code": errorCode, "error_message": "SECRET-CREDENTIAL"})
+		var dispatchState cu.DispatchState
+		if mode == "complete-capture-failed" && req.Command == commandExecute {
+			dispatchState = cu.DispatchComplete
+			errorCode = cu.ErrorCodeScreenshotFailed
+			result = map[string]any{}
+		}
+		payload, _ := json.Marshal(map[string]any{"dispatch_state": dispatchState, "ok": outcome == cu.OutcomeExecuted, "outcome": outcome, "result": result, "error_code": errorCode, "error_message": "SECRET-CREDENTIAL"})
 		req.Payload = payload
 		_ = codec.WriteFrame(os.Stdout, req)
 		if req.Command == commandShutdown {
@@ -636,50 +642,39 @@ func TestCooperativeInterruptionRejectsMalformedNativeResponse(t *testing.T) {
 	}
 }
 
-func TestAcknowledgedFocusFailureIsTransient(t *testing.T) {
+func TestUnknownFocusFailureCannotResume(t *testing.T) {
 	b := newTestBackend(t, "focus-failed", time.Second, "")
 	obs := observeTest(t, b)
 	receipt, err := b.Execute(context.Background(), waitAction(obs))
-	if err == nil || receipt.Outcome != cu.OutcomeUnknown {
-		t.Fatalf("lost uncertainty: %+v %v", receipt, err)
+	if err == nil || receipt.Outcome != cu.OutcomeUnknown || receipt.ErrorCode != helperFocusChangedCode {
+		t.Fatalf("receipt=%+v err=%v", receipt, err)
 	}
-	if receipt.ErrorCode != helperFocusChangedCode {
-		t.Fatalf("want focus_changed code, got %q", receipt.ErrorCode)
-	}
-	// Focus change is transient: the helper process is still alive and the
-	// backend is paused but not failed. Resume must succeed and a fresh
-	// Observe must be able to re-activate the target window and resume.
-	if err := b.Resume(context.Background()); err != nil {
-		t.Fatalf("resume after transient focus failure: %v", err)
-	}
-	if _, err := b.Observe(context.Background(), cu.ObserveRequest{SessionID: obs.SessionID}); err != nil {
-		t.Fatalf("observe after transient focus failure: %v", err)
-	}
-	if err := b.Stop(context.Background()); err != nil {
-		t.Fatalf("stop after transient focus failure: %v", err)
+	if b.Resume(context.Background()) == nil {
+		t.Fatal("unknown focus failure resumed merely because helper was alive")
 	}
 }
 
-// A mismatched after screenshot with the helper still responsive is a transient
-// capture miss (mid-animation/window transition), not helper corruption. The
-// backend must revoke the generation without aborting the helper, so a fresh
-// Observe can recover.
-func TestInvalidAfterScreenshotIsTransientWhenHelperResponsive(t *testing.T) {
+func TestInvalidAfterScreenshotWithoutCompleteAcknowledgementCannotResume(t *testing.T) {
 	b := newTestBackend(t, "invalid-image", time.Second, "")
 	obs := observeTest(t, b)
 	receipt, err := b.Execute(context.Background(), waitAction(obs))
 	if err == nil || receipt.Outcome != cu.OutcomeUnknown {
-		t.Fatalf("want unknown outcome, got %+v %v", receipt, err)
+		t.Fatalf("receipt=%+v err=%v", receipt, err)
 	}
-	// Helper responded (OK present), so quarantineTransient must not abort it.
-	if err := b.Resume(context.Background()); err != nil {
-		t.Fatalf("resume after transient screenshot miss: %v", err)
+	if b.Resume(context.Background()) == nil {
+		t.Fatal("uncertain input resumed")
 	}
-	if _, err := b.Observe(context.Background(), cu.ObserveRequest{SessionID: obs.SessionID}); err != nil {
-		t.Fatalf("observe after transient screenshot miss: %v", err)
+}
+
+func TestCompleteAcknowledgedInputCanReobserveAfterMissingEvidence(t *testing.T) {
+	b := newTestBackend(t, "complete-capture-failed", time.Second, "")
+	obs := observeTest(t, b)
+	receipt, err := b.Execute(context.Background(), waitAction(obs))
+	if err != nil || receipt.Outcome != cu.OutcomeExecuted || receipt.DispatchState != cu.DispatchComplete || receipt.ErrorCode != cu.ErrorCodeScreenshotFailed {
+		t.Fatalf("receipt=%+v err=%v", receipt, err)
 	}
-	if err := b.Stop(context.Background()); err != nil {
-		t.Fatalf("stop after transient screenshot miss: %v", err)
+	if _, err = b.Observe(context.Background(), cu.ObserveRequest{SessionID: obs.SessionID}); err != nil {
+		t.Fatalf("fresh observe: %v", err)
 	}
 }
 

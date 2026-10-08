@@ -18,6 +18,7 @@ let appLaunchPollMS = 50
 
 enum Command: String { case requestPermissions = "request_permissions", readiness, launchApp = "launch_app", observe, execute, pause, resume, stop, shutdown }
 enum Outcome: String { case executed, rejected, unknown, failed }
+enum DispatchState: String { case notStarted = "not_started", complete, partial, unknown }
 enum ActionKind: String, CaseIterable {
     case click, doubleClick = "double_click", rightClick = "right_click", move, drag, type, key, hotkey, scroll, wait
 }
@@ -108,9 +109,10 @@ func readFrame() -> Data? {
 
 final class Responder {
     private let lock = NSLock()
-    func send(_ request: Envelope, outcome: Outcome, result: JSONValue = .object([:]), error: SafetyError? = nil) {
+    func send(_ request: Envelope, outcome: Outcome, result: JSONValue = .object([:]), error: SafetyError? = nil, dispatchState: DispatchState? = nil) {
         var payload: [String: JSONValue] = ["ok": .bool(outcome == .executed), "outcome": .string(outcome.rawValue), "result": result]
         if let error { payload["error_code"] = .string(error.rawValue) }
+        if let dispatchState { payload["dispatch_state"] = .string(dispatchState.rawValue) }
         let response = Envelope(protocolVersion: protocolVersion, requestID: request.requestID, sessionID: request.sessionID,
                                 actionID: request.actionID, deadline: request.deadline, command: request.command, payload: .object(payload))
         guard let body = try? JSONEncoder().encode(response), body.count <= maxFrameBytes else { exit(1) }

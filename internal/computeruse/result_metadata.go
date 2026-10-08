@@ -49,6 +49,9 @@ func ResultMetadata(output string) map[string]any {
 	var receipt ActionReceipt
 	if json.Unmarshal(root["receipt"], &receipt) == nil {
 		receipt.ActiveWindowAfter.Title = ""
+		if receipt.DispatchState != "" {
+			meta["dispatch_state"] = string(receipt.DispatchState)
+		}
 		if receipt.Outcome != "" {
 			meta["outcome"] = string(receipt.Outcome)
 		}

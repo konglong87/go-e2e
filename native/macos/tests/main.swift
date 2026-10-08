@@ -253,7 +253,7 @@ for change in ["title", "owner", "bundle", "frame", "closed", "focus-during-geom
             displayID: original.displayID, isVisible: true, isFrontmost: false)
     }
     let result = engine.execute(request("execute", payload: ["kind":.string("move"), "x":.number(2), "y":.number(2), "window_id":.string(original.id), "observation_id":.string("window-stale")]))
-    let expected: Outcome = change == "title" ? .executed : (change == "focus-after-input" ? .unknown : .rejected)
+    let expected: Outcome = change == "title" || change == "focus-after-input" ? .executed : .rejected
     expect(result.outcome == expected, "target outcome: \(change)")
     expect(desktop.posts.count == (change == "title" || change == "focus-after-input" ? 1 : 0), "target input count: \(change)")
     expect(desktop.activationCalls == activations, "Execute never activates window: \(change)")
@@ -471,7 +471,7 @@ for (kind, payload) in activationActions where kind == "type" || kind == "double
     let (engine,desktop) = setup()
     desktop.postHook = { desktop.focused = activatedFocus }
     let result = engine.execute(action(kind, payload))
-    expect(result.outcome == .unknown && result.error == .focusChanged && desktop.posts.count == 1,
+    expect(result.outcome == .unknown && result.dispatchState == .unknown && result.error == .focusChanged && desktop.posts.count == 1,
            "focus switch between operations aborts: \(kind)")
     expectThrows("ambiguous multi-operation action cannot resume: \(kind)") { try engine.state.control(.resume,generation:1) }
 }
@@ -488,10 +488,11 @@ for loseFocus in [false, true] {
         desktop.focused = loseFocus ? nil : originalFocus
     }
     let result = engine.execute(action("key", ["key":.string("return")]))
-    expect(result.outcome == .unknown && result.error == .focusChanged && desktop.posts.count == 1,
+    expect(result.outcome == .executed && result.dispatchState == .complete && result.error == .focusChanged && desktop.posts.count == 1,
            "focus changes during after-capture fail closed: \(loseFocus)")
     expect(captured && result.payload["data"] == nil, "inconsistent after-image is captured but not returned")
-    expectThrows("inconsistent after-capture cannot resume") { try engine.state.control(.resume,generation:1) }
+    try engine.state.control(.resume,generation:1)
+    expect(true, "confirmed complete input may recover observation")
     expect(engine.observe(request("observe", payload:["observation_id":.string("after-failure")])).outcome == .rejected,
            "inconsistent after-capture prevents new binding")
 }
@@ -503,9 +504,10 @@ do {
     desktop.postHook = { desktop.focused = nil }
     desktop.captureHook = { captured = true }
     let result = engine.execute(action("key", ["key":.string("return")]))
-    expect(result.outcome == .unknown && result.error == .focusChanged && desktop.posts.count == 1 && !captured,
+    expect(result.outcome == .executed && result.dispatchState == .complete && result.error == .focusChanged && desktop.posts.count == 1 && !captured,
            "missing after-focus fails before capture")
-    expectThrows("missing after-focus cannot resume") { try engine.state.control(.resume,generation:1) }
+    try engine.state.control(.resume,generation:1)
+    expect(true, "complete input with missing focus is not partial input")
 }
 
 for reason in ["permission","capture","focus","geometry","screenshot","deadline"] {
@@ -521,8 +523,13 @@ for reason in ["permission","capture","focus","geometry","screenshot","deadline"
         }
     }
     let result = engine.execute(action("type", ["text":.string(reason == "screenshot" ? "a" : "ab")], seconds: reason == "deadline" ? 0.03 : 5))
-    expect(result.outcome == .unknown && desktop.posts.count == 1, "post-input uncertainty: \(reason)")
-    expectThrows("unknown outcome cannot resume") { try engine.state.control(.resume,generation:1) }
+    if reason == "screenshot" {
+        expect(result.outcome == .executed && result.dispatchState == .complete && desktop.posts.count == 1, "complete input preserves acknowledged dispatch")
+        try engine.state.control(.resume,generation:1)
+    } else {
+        expect(result.outcome == .unknown && desktop.posts.count == 1, "post-input uncertainty: \(reason)")
+        expectThrows("unknown outcome cannot resume") { try engine.state.control(.resume,generation:1) }
+    }
 }
 
 do {

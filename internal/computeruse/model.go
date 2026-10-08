@@ -405,6 +405,8 @@ const (
 
 const (
 	ErrorCodeActionFailed           = "action_failed"
+	ErrorCodeScreenshotFailed       = "screenshot_failed"
+	ErrorCodeInputUncertain         = "input_uncertain"
 	ErrorCodeSelfTarget             = "self_target"
 	ErrorCodeTargetWindowMismatch   = "target_window_mismatch"
 	ErrorCodeUnsupportedApplication = "unsupported_application" // deprecated compatibility code
@@ -428,7 +430,7 @@ const (
 // collapsed so private host details never reach a model or UI.
 func PublicErrorCode(code string) string {
 	switch strings.TrimSpace(code) {
-	case ErrorCodeSelfTarget, ErrorCodeTargetWindowMismatch, ErrorCodePermissionRequired, ErrorCodeFocusChanged,
+	case ErrorCodeScreenshotFailed, ErrorCodeInputUncertain, ErrorCodeSelfTarget, ErrorCodeTargetWindowMismatch, ErrorCodePermissionRequired, ErrorCodeFocusChanged,
 		ErrorCodeUnsupportedDisplay, ErrorCodeInvalidAction, ErrorCodeInvalidBinding,
 		ErrorCodeInactive, ErrorCodeClosed, ErrorCodeInputUnavailable,
 		ErrorCodeUnsupportedApplication, ErrorCodeUnsupportedTarget, ErrorCodeLaunchFailed, ErrorCodeLaunchTimeout,
@@ -480,6 +482,16 @@ func (r LaunchReceipt) IsTerminal() bool {
 	return r.Outcome == OutcomeExecuted || r.Outcome == OutcomeRejected || r.Outcome == OutcomeFailed || r.Outcome == OutcomeUnknown
 }
 
+// DispatchState describes input acknowledgement independently of visual evidence.
+type DispatchState string
+
+const (
+	DispatchNotStarted DispatchState = "not_started"
+	DispatchComplete   DispatchState = "complete"
+	DispatchPartial    DispatchState = "partial"
+	DispatchUnknown    DispatchState = "unknown"
+)
+
 type ActionReceipt struct {
 	ActionID               string             `json:"action_id"`
 	SessionID              string             `json:"session_id"`
@@ -489,6 +501,7 @@ type ActionReceipt struct {
 	BeforeObservationID    string             `json:"before_observation_id,omitempty"`
 	AfterObservationID     string             `json:"after_observation_id,omitempty"`
 	Outcome                Outcome            `json:"outcome"`
+	DispatchState          DispatchState      `json:"dispatch_state,omitempty"`
 	Verification           VerificationStatus `json:"verification"`
 	FocusBefore            FocusState         `json:"focus_before"`
 	FocusAfter             FocusState         `json:"focus_after"`

@@ -37,7 +37,7 @@ while let data = readFrame() {
                 case .execute: result = engine.execute(request)
                 default: result = ActionResult(outcome: .rejected, payload: .object([:]), error: .invalidEnvelope)
                 }
-                responder.send(request, outcome: result.outcome, result: result.payload, error: result.error)
+                responder.send(request, outcome: result.outcome, result: result.payload, error: result.error, dispatchState: result.dispatchState)
             }
         }
     } catch { responder.send(request, outcome: .rejected, error: error as? SafetyError ?? .invalidEnvelope) }

@@ -200,10 +200,11 @@ func decodeCaptureTarget(result map[string]any, requested string) (cu.WindowRef,
 }
 
 type helperResponse struct {
-	OK        *bool          `json:"ok"`
-	Outcome   cu.Outcome     `json:"outcome"`
-	Result    map[string]any `json:"result"`
-	ErrorCode string         `json:"error_code"`
+	OK            *bool            `json:"ok"`
+	Outcome       cu.Outcome       `json:"outcome"`
+	Result        map[string]any   `json:"result"`
+	ErrorCode     string           `json:"error_code"`
+	DispatchState cu.DispatchState `json:"dispatch_state"`
 	// Intentionally do not decode or surface arbitrary helper error_message.
 }
 type rejection struct{ code string }
@@ -319,7 +320,7 @@ func (b *Backend) request(ctx context.Context, command, sessionID, actionID stri
 			"layer": "go_backend", "phase": "helper_result", "command": command,
 			"request_id": requestID, "action_id": actionID, "session_id": sessionID,
 			"window_id": payload["window_id"], "generation": payload["generation"],
-			"outcome": result.Outcome, "error_code": result.ErrorCode,
+			"outcome": result.Outcome, "error_code": result.ErrorCode, "dispatch_state": result.DispatchState,
 		})
 	}
 	switch result.Outcome {
@@ -770,6 +771,7 @@ func (b *Backend) Execute(ctx context.Context, action cu.Action) (receipt cu.Act
 	}
 
 	response, err := b.request(ctx, commandExecute, action.SessionID, action.ID, payload)
+	receipt.DispatchState = response.DispatchState
 	if err != nil {
 		var rejected *rejection
 		var call *native.CallError
@@ -787,32 +789,34 @@ func (b *Backend) Execute(ctx context.Context, action cu.Action) (receipt cu.Act
 			// Do not kill it before the queued control acknowledgement arrives.
 			// This exception never turns partial input into success or replay.
 			if !b.cooperativeInterruption(epoch, response) {
-				if response.OK != nil && !*response.OK && response.Outcome == cu.OutcomeUnknown && response.ErrorCode == helperFocusChangedCode {
-					// Focus change is transient: the helper cleaned up and paused
-					// itself, but the process is still alive. Revoke this
-					// generation's observation/input authority without aborting,
-					// so a fresh Observe can re-activate the target and resume.
-					b.quarantineTransient()
-				} else {
-					b.invalidate()
-				}
+				b.invalidate()
 			}
 		}
 		return finish(err)
+	}
+	if response.Outcome == cu.OutcomeExecuted && response.DispatchState == cu.DispatchComplete && response.ErrorCode != "" {
+		receipt.Outcome, receipt.Verification = cu.OutcomeExecuted, cu.VerificationUnknown
+		receipt.ErrorCode = cu.PublicErrorCode(response.ErrorCode)
+		b.mu.Lock()
+		b.observation = cu.Observation{}
+		b.mu.Unlock()
+		return finish(nil)
 	}
 	data, mediaType, width, height, err := decodeImage(response.Result)
 	if err != nil || width != obs.Width || height != obs.Height || response.Result["display_id"] != obs.DisplayID || response.Result["scale_factor"] != obs.ScaleFactor {
 		receipt.Outcome = cu.OutcomeUnknown
 		receipt.Verification = cu.VerificationUnknown
-		// The helper returned a response, so the process is alive. A mismatched
-		// after screenshot is typically a mid-animation or window-transition
-		// capture, not helper corruption: revoke this generation without
-		// aborting so a fresh Observe can recover.
-		if response.OK != nil {
-			b.quarantineTransient()
-		} else {
-			b.invalidate()
+		if response.DispatchState == cu.DispatchComplete {
+			receipt.Outcome, receipt.Verification = cu.OutcomeExecuted, cu.VerificationUnknown
+			receipt.ErrorCode = cu.ErrorCodeScreenshotFailed
+			b.mu.Lock()
+			b.observation = cu.Observation{}
+			b.mu.Unlock()
+			return finish(nil)
 		}
+		// Alive is not proof of complete input. Legacy/invalid uncertain
+		// responses remain terminal and can never be replayed under another ID.
+		b.invalidate()
 		return finish(errors.New("invalid after screenshot"))
 	}
 	if activeWindow, ok := decodeWindowRef(response.Result["active_window"]); ok {
@@ -855,21 +859,6 @@ func (b *Backend) quarantine() {
 	b.mu.Unlock()
 }
 
-// quarantineTransient revokes the current generation's observation and input
-// authority without marking the backend failed or aborting the helper. A
-// focus change or a mid-animation screenshot miss is transient: the helper
-// process is still alive and responsive, and a fresh Observe can re-activate
-// the target window and resume. This never turns partial input into success
-// or replay; the next input still requires a new observation-bound action.
-func (b *Backend) quarantineTransient() {
-	b.mu.Lock()
-	b.mouseBroker.revoke()
-	b.paused = true
-	b.failed = false
-	b.epoch++
-	b.observation = cu.Observation{}
-	b.mu.Unlock()
-}
 func (b *Backend) invalidate() {
 	b.quarantine()
 	b.process.Abort(errors.New("action outcome unknown; new helper required"))
