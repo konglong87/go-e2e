@@ -335,3 +335,23 @@ logs retained. Pre-existing scripts/__pycache__/ left untouched and uncommitted.
 - Next: commit/push; fresh tagged app; real 10000 ms wait + after-image + Stop
   on Calculator (no model), then isolated cold requested-model 120 s closure.
   Unknown input recovery/replay rules unchanged. Deferred gates unchanged.
+
+
+### Model prompt hardening after fresh no-send run
+
+- Fresh 9e4914e model run -02 had exact cold preflight, atomic launch and
+  successful click/type receipts, but the type after-image visibly remained an
+  empty composer; the model correctly stopped without replaying type, so the
+  batch failed the send gate. This is not counted as a pass. The prior fresh
+  -01 had a target-window mismatch before type; both failed evidence remain.
+- The earlier 8c0aae9 audit image had a visible `1+1=2` and reply, but was from
+  an older source/wrapper batch and is not retroactively promoted.
+- Harden the generic prompt (no WorkBuddy selector/coordinate): after locating
+  the input, click it, use exactly one `command+a` hotkey to select/clear any
+  existing draft, then exactly one type. Never replay type after a receipt;
+  verify the type after-image before send. This matches the observed successful
+  model action pattern while preserving unknown-input safety.
+- Next: commit/push this prompt-only acceptance slice, rebuild current attested
+  app, clean the fixture via project ComputerUse, rerun fresh exact cold model
+  closure. If type after-image is still empty, preserve and diagnose rather than
+  weakening replay/focus guards.
