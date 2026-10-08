@@ -217,3 +217,32 @@ logs retained. Pre-existing scripts/__pycache__/ left untouched and uncommitted.
   web suite passes: 79 files / 793 tests. Commit/push, fresh build and native
   UI click acceptance next. Model
   120 s acceptance follows native controls and a repeated cold observation.
+
+
+### Current desktop controls / exact cold-start evidence guard
+
+- e5b389b committed/pushed; full web 79 files / 793 tests and typecheck passed.
+  Current attested desktop build used for actual CUA clicks on Pause, Resume and
+  Stop. Exact host session snapshots confirm paused → needs_observation → stopped.
+  Evidence: `continuation-ui-e5b389b/02-paused.png`, `03-resumed.png`,
+  `04-stopped.png` and corresponding same-session JSON. This is the current Wails
+  in-window UI, not disabled standalone NSPanel acceptance. A stale CUA index
+  briefly opened the app menu; cancelled, freshly reindexed and never counted
+  as a Pause pass. Successful controls followed with actual screenshots.
+- Cold-start auditing found fixture executable is `Electron`, not its display
+  name `WorkBuddy`. Earlier local pgrep-by-display-name preflights cannot prove
+  cold state. Withdraw those cold labels (rendered captures/binding remain real);
+  do not combine them with a later run to claim closure.
+- Intended files: acceptance Python wrapper/tests and this ledger. Preflight now
+  reads public Info.plist metadata, verifies the registered bundle, matches the
+  exact primary executable path in `ps pid,comm` only, and rejects a warm target
+  before model-session creation. No environment/auth/config reads. Python 24
+  tests pass. Wrapper prompt also requires replacing any pre-existing draft
+  before the one fresh type action; old draft is never proof of new input.
+- One rapid relaunch after fixture Quit returned launch_timeout and no image;
+  preserved in `continuation-cold-e5b389b-02/`. Exact process exit must be confirmed
+  before rerun; no timeout extension or blind input. Fresh independent batches
+  and real image inspection still required.
+- Next highest-priority gates: commit/push + rebuild; two cold observe-only
+  native batches with exact process preflight; requested gpt-6-sol/high real
+  launch/type/send once/reply/Stop <=120 s. Deferred gates unchanged.

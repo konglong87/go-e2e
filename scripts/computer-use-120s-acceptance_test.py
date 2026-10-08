@@ -2,6 +2,7 @@
 import base64
 import importlib.util
 import json
+import plistlib
 from pathlib import Path
 import tempfile
 import unittest
@@ -28,6 +29,30 @@ DARK_PNG = base64.b64decode(
 
 
 class WrapperUnitTests(unittest.TestCase):
+    def test_cold_preflight_uses_exact_bundle_executable_not_display_name(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = Path(directory) / "Fixture App.app"
+            contents = app / "Contents"
+            contents.mkdir(parents=True)
+            (contents / "Info.plist").write_bytes(plistlib.dumps({
+                "CFBundleIdentifier": MODULE.TARGET_BUNDLE_ID, "CFBundleExecutable": "Electron",
+            }))
+            binary = contents / "MacOS/Electron"
+            listing = f" 12 {binary}\n 13 /Applications/Other.app/Contents/MacOS/Electron\n 14 {contents}/Frameworks/Fixture Helper\n"
+            self.assertEqual(MODULE.application_process_ids(app, MODULE.TARGET_BUNDLE_ID, listing), [12])
+            with self.assertRaises(MODULE.AcceptanceError):
+                MODULE.application_process_ids(app, "unregistered.bundle", listing)
+
+    def test_warm_target_is_rejected_before_model_session_creation(self):
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(MODULE, "application_process_ids", return_value=[42]):
+            client = mock.Mock()
+            result = MODULE.run_acceptance(client=client, evidence=MODULE.Evidence(Path(directory)))
+            self.assertEqual(result["failure_stage"], "initial_state")
+            client.request.assert_not_called()
+            preflight = json.loads((Path(directory) / "preflight-workbuddy-state.json").read_text())
+            self.assertTrue(preflight["running"])
+
+
     def test_effective_provider_and_model_are_exact(self):
         session = {"provider": MODULE.DEFAULT_PROVIDER, "model": MODULE.DEFAULT_MODEL, "effort": "high", "status": "idle"}
         result = MODULE.validate_effective_config(session, MODULE.DEFAULT_PROVIDER, MODULE.DEFAULT_MODEL, "high")
@@ -322,7 +347,7 @@ class EvidencePipelineTests(unittest.TestCase):
                     return FakeAcceptanceClient._png((255, 255, 255, 255)), "image/png"
                 return super().download(path, timeout)
 
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(MODULE, "application_process_ids", return_value=[]):
             result = MODULE.run_acceptance(
                 client=BlankFirstAssetClient(),
                 evidence=MODULE.Evidence(Path(directory)),
@@ -342,7 +367,7 @@ class EvidencePipelineTests(unittest.TestCase):
 
 class AsyncDeadlineTests(unittest.TestCase):
     def test_async_message_is_stopped_and_trace_is_collected(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(MODULE, "application_process_ids", return_value=[]):
             client = FakeAcceptanceClient()
             result = MODULE.run_acceptance(
                 client=client,

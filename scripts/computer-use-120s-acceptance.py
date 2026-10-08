@@ -20,6 +20,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import plistlib
 from pathlib import Path
 import re
 import shlex
@@ -51,6 +52,7 @@ TERMINAL_STATUSES = {"completed", "failed", "stopped", "idle", "archived"}
 COMPUTER_TOOL_NAME = "ComputerUse"
 TARGET_ID = "workbuddy"
 TARGET_BUNDLE_ID = "com.workbuddy.workbuddy"
+DEFAULT_TARGET_APP_PATH = Path("/Applications/WorkBuddy.app")
 SELF_BUNDLE_IDS = {"com.wails.go-e2e", "com.openai.codex"}
 EXPECTED_TYPED_TEXT = "1+1=2"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
@@ -260,6 +262,30 @@ def find_local_server(workspace: Path = DEFAULT_WORKSPACE) -> LocalServer:
     except (ValueError, IndexError) as exc:
         raise RuntimeError("desktop-v2 local server arguments are incomplete") from exc
     return LocalServer(desktop_pid=desktop_pid, server_pid=server_pid, port=port, token=token)
+
+
+def application_process_ids(app_path: Path, bundle_id: str, process_listing: Optional[str] = None) -> list[int]:
+    """Check a fixture's exact executable, not its display name (Electron apps differ).
+
+    Read public bundle metadata and process command paths only; never inspect
+    environment variables, provider configuration, or launch/manipulate the GUI.
+    """
+    try:
+        info = plistlib.loads((app_path / "Contents/Info.plist").read_bytes())
+        executable = info.get("CFBundleExecutable", "")
+        if info.get("CFBundleIdentifier") != bundle_id or not executable or Path(executable).name != executable:
+            raise ValueError("bundle metadata does not match registered target")
+        binary = (app_path / "Contents/MacOS" / executable).resolve()
+        if process_listing is None:
+            process_listing = subprocess.check_output(["ps", "-axo", "pid=,comm="], text=True)
+        pids = []
+        for line in process_listing.splitlines():
+            fields = line.strip().split(maxsplit=1)
+            if len(fields) == 2 and fields[0].isdigit() and Path(fields[1]).resolve() == binary:
+                pids.append(int(fields[0]))
+        return pids
+    except (OSError, ValueError, plistlib.InvalidFileException) as exc:
+        raise AcceptanceError("initial_state", "cannot attest registered target process state") from exc
 
 
 def source_commit(workspace: Path) -> str:
@@ -893,6 +919,7 @@ def run_acceptance(
     operational_deadline: float = DEFAULT_OPERATIONAL_DEADLINE_SECONDS,
     poll_interval: float = DEFAULT_POLL_INTERVAL_SECONDS,
     observe_only: bool = False,
+    target_app_path: Path = DEFAULT_TARGET_APP_PATH,
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
 ) -> dict[str, Any]:
@@ -928,7 +955,8 @@ def run_acceptance(
         "不要再重复 launch_app 或 observe，直接检查这一次返回的最新目标截图。只有首次 observe 没有完成启动绑定时，才使用 "
         "action=launch_app、target_id=workbuddy，然后 observe 绑定的目标窗口。必须等待内容 ready，不能只因为窗口出现就操作；"
         "如果白屏，最多等待 12 秒并重新 observe，仍白屏就 stop。内容 ready 后点击目标应用的新建会话或新建任务（如果已经在新建页面则跳过），"
-        "使用每个成功输入动作返回的最新 observation，不要无理由重复 observe；定位输入框，输入 1+1=2，直接检查 type 返回的最新截图，"
+        "使用每个成功输入动作返回的最新 observation，不要无理由重复 observe；定位输入框。已有草稿不算本次输入；"
+        "若框内已有文本，先在该框内选中全部文本，再只执行一次 type 输入 1+1=2，确保替换而不是追加；直接检查 type 返回的最新截图，"
         "真实点击发送/提交按钮，等待一次回复；使用 wait 返回的最新截图确认真实回复，最后使用 ComputerUse stop。"
         "所有后续 click/type/key/send 必须使用绑定的 window_id；如果目标窗口变成 go-e2e、Chrome、Edge 或其他应用，"
         "立即 stop。只使用 ComputerUse，不要使用 Bash、脚本、osascript、System Events、screencapture、open 或其他工具；"
@@ -942,6 +970,14 @@ def run_acceptance(
                   "无论成功失败，最后 action=stop。不要预打开应用，不使用任何其他工具。")
 
     try:
+        initial_pids = application_process_ids(target_app_path, TARGET_BUNDLE_ID)
+        evidence.json("preflight-workbuddy-state.json", {
+            "checked_at": iso_now(), "source": "public bundle executable + exact process command path",
+            "target_id": TARGET_ID, "target_bundle_id": TARGET_BUNDLE_ID,
+            "running": bool(initial_pids), "owner_pids": initial_pids,
+        })
+        if initial_pids:
+            raise AcceptanceError("initial_state", "registered target is already running; cold-start gate rejected")
         create_key = "computer-use-gpt6-sol-120s-" + uuid.uuid4().hex
         created = client.request("/tenant/session-control/sessions", "POST", {
             "session_key": create_key,
@@ -975,12 +1011,6 @@ def run_acceptance(
                           "computer_use_image_route": "pending tool_result evidence", "session_ref": ref})
         evidence.json("effective-config.json", effective)
 
-        evidence.json("preflight-workbuddy-state.json", {
-            "source": "first ComputerUse observe; WorkBuddy must not be pre-opened by this wrapper",
-            "target_id": TARGET_ID,
-            "target_bundle_id": TARGET_BUNDLE_ID,
-            "observed": False,
-        })
         evidence.json("run-prompt.json", {"prompt_sha256": sha256_text(prompt), "prompt_length": len(prompt)})
 
         send_body = {"content": prompt, "provider": provider, "model": model,
@@ -1146,6 +1176,7 @@ def run_acceptance(
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT.with_name(DEFAULT_OUTPUT.name + "-" + dt.datetime.now().strftime("%H%M%S") + "-" + uuid.uuid4().hex[:8]))
+    parser.add_argument("--target-app", type=Path, default=DEFAULT_TARGET_APP_PATH, help="public fixture bundle path for exact cold-start preflight")
     parser.add_argument("--observe-only", action="store_true", help="validate launch/binding/capture/stop without any input")
     parser.add_argument("--workspace", type=Path, default=DEFAULT_WORKSPACE)
     parser.add_argument("--app", type=Path, default=DEFAULT_APP_PATH)
@@ -1181,6 +1212,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             operational_deadline=min(args.operational_deadline, args.total_budget),
             poll_interval=args.poll_interval,
             observe_only=args.observe_only,
+            target_app_path=args.target_app,
         )
         print(json.dumps({"status": result.get("status"), "final_status": result.get("final_status"),
                           "failure_stage": result.get("failure_stage", ""), "evidence": str(args.output),
