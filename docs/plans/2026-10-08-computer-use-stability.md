@@ -63,3 +63,10 @@ acceptance CLI rejects stale/dirty/tampered builds. Added observe-only gate.
 Tests: Python 20 tests, ComputerUse tool tests; shell syntax check. Native test
 script executable-bit change from slice 1 is restored to the repository pattern.
 Full model closure remains pending; no old mixed batch is counted as a pass.
+
+Build-attestation follow-up: the outer codesign seal changes the main executable
+signature bytes, so embedding its full SHA in its own signed resources is
+circular. Use the immutable Go build ID in the resource manifest, helper SHA,
+and strict outer/nested codesign verification; measure final executable SHA in
+the run evidence. Initial gate correctly rejected this inconsistency before
+any target input. Follow-up tested; latest build rerun required.

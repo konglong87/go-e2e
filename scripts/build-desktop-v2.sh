@@ -77,7 +77,8 @@ resources.mkdir(exist_ok=True)
 (resources / "computer-use-build.json").write_text(json.dumps({
     "schema_version": "computer-use-build.v1", "source_commit": commit, "source_dirty": dirty,
     "built_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-    "desktop_sha256": digest(app / "Contents/MacOS/go-e2e-desktop"),
+    # Outer app sealing re-signs its main executable; a full SHA here would be circular.
+    "desktop_build_id": subprocess.check_output(["go", "tool", "buildid", str(app / "Contents/MacOS/go-e2e-desktop")], text=True).strip(),
     "helper_sha256": digest(app / "Contents/Helpers/ComputerHelper.app/Contents/MacOS/computer-helper-macos"),
 }, indent=2) + "\n")
 PYBUILD

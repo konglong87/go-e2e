@@ -277,6 +277,10 @@ def sha256_file(path: Path) -> str:
     return sha.hexdigest()
 
 
+def executable_build_id(path: Path) -> str:
+    return subprocess.check_output(["go", "tool", "buildid", str(path)], text=True, stderr=subprocess.DEVNULL).strip()
+
+
 def app_identity(app_path: Path) -> dict[str, Any]:
     result: dict[str, Any] = {"path": str(app_path), "exists": app_path.exists()}
     if app_path.exists():
@@ -284,6 +288,7 @@ def app_identity(app_path: Path) -> dict[str, Any]:
         manifest_path = app_path / "Contents/Resources/computer-use-build.json"
         if manifest_path.exists():
             result["manifest"] = json.loads(manifest_path.read_text())
+            result["desktop_sha256"] = sha256_file(app_path / "Contents/MacOS/go-e2e-desktop")
     return result
 
 
@@ -292,10 +297,11 @@ def validate_build_identity(workspace: Path, app_path: Path) -> None:
     manifest = identity.get("manifest", {})
     if not manifest or manifest.get("source_commit") != source_commit(workspace) or manifest.get("source_dirty") is not False:
         raise AcceptanceError("build_identity", "desktop app is not an attested clean build of current HEAD; rebuild via scripts/build-desktop-v2.sh")
-    for key, relative in [("desktop_sha256", "Contents/MacOS/go-e2e-desktop"),
-                          ("helper_sha256", "Contents/Helpers/ComputerHelper.app/Contents/MacOS/computer-helper-macos")]:
-        if manifest.get(key) != sha256_file(app_path / relative):
-            raise AcceptanceError("build_identity", "desktop/helper bytes do not match the source build manifest")
+    expected_build_id = manifest.get("desktop_build_id")
+    if not expected_build_id or expected_build_id != executable_build_id(app_path / "Contents/MacOS/go-e2e-desktop"):
+        raise AcceptanceError("build_identity", "desktop executable does not match the source build manifest")
+    if manifest.get("helper_sha256") != sha256_file(app_path / "Contents/Helpers/ComputerHelper.app/Contents/MacOS/computer-helper-macos"):
+        raise AcceptanceError("build_identity", "helper bytes do not match the source build manifest")
 
 
 
@@ -1140,6 +1146,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = parse_args(argv)
     try:
         validate_build_identity(args.workspace, args.app)
+        subprocess.run(["codesign", "--verify", "--deep", "--strict", str(args.app)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if args.port and args.auth_token:
             server = LocalServer(0, 0, args.port, args.auth_token)
         else:

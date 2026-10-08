@@ -215,8 +215,8 @@ class BuildAndObserveGateTests(unittest.TestCase):
             desktop.write_bytes(b"desktop")
             helper.write_bytes(b"helper")
             manifest.write_text(json.dumps({"source_commit": "current", "source_dirty": False,
-                "desktop_sha256": MODULE.sha256_file(desktop), "helper_sha256": MODULE.sha256_file(helper)}))
-            with mock.patch.object(MODULE, "source_commit", return_value="current"):
+                "desktop_build_id": "build-1", "helper_sha256": MODULE.sha256_file(helper)}))
+            with mock.patch.object(MODULE, "source_commit", return_value="current"), mock.patch.object(MODULE, "executable_build_id", return_value="build-1"):
                 MODULE.validate_build_identity(ROOT, app)
                 helper.write_bytes(b"stale")
                 with self.assertRaises(MODULE.AcceptanceError):
