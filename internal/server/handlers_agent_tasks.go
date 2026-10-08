@@ -22,6 +22,7 @@ import (
 	"github.com/konglong87/go-e2e/internal/agenttasks"
 	"github.com/konglong87/go-e2e/internal/anthropic"
 	"github.com/konglong87/go-e2e/internal/compact"
+	"github.com/konglong87/go-e2e/internal/computeruse"
 	"github.com/konglong87/go-e2e/internal/config"
 	"github.com/konglong87/go-e2e/internal/nextsteps"
 	"github.com/konglong87/go-e2e/internal/observability"
@@ -958,6 +959,11 @@ func appendAgentTaskToolEventsWithOptions(ctx context.Context, opts Options, tas
 			"preview":   truncateAgentTaskEventText(call.Output, 160),
 			"output":    truncateAgentTaskEventText(call.Output, 2000),
 		}
+		if call.Name == "ComputerUse" {
+			for key, value := range computeruse.ResultMetadata(call.Output) {
+				resultPayload[key] = value
+			}
+		}
 		if call.ComputerObservation != nil {
 			resultPayload["computer_observation"] = call.ComputerObservation
 		}
@@ -1530,6 +1536,11 @@ func (s *agentTaskTextSink) OnToolResult(ctx context.Context, trace query.ToolTr
 		"input":     truncateAgentTaskEventText(trace.Input, 600),
 		"preview":   truncateAgentTaskEventText(trace.Output, 160),
 		"output":    truncateAgentTaskEventText(trace.Output, 2000),
+	}
+	if trace.Name == "ComputerUse" {
+		for key, value := range computeruse.ResultMetadata(trace.Output) {
+			resultPayload[key] = value
+		}
 	}
 	if trace.ComputerObservation != nil {
 		resultPayload["computer_observation"] = trace.ComputerObservation

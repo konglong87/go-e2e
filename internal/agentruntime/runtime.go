@@ -20,6 +20,7 @@ import (
 	"github.com/konglong87/go-e2e/internal/anthropic"
 	"github.com/konglong87/go-e2e/internal/capabilityloop"
 	"github.com/konglong87/go-e2e/internal/compact"
+	"github.com/konglong87/go-e2e/internal/computeruse"
 	"github.com/konglong87/go-e2e/internal/config"
 	"github.com/konglong87/go-e2e/internal/defaults"
 	"github.com/konglong87/go-e2e/internal/gitcontext"
@@ -1959,31 +1960,7 @@ func marshalEventPayload(payload map[string]any) string {
 // acceptance harness and observability tools read window_id, bundle_id,
 // target_id, outcome, and error_code from the event payload.
 func computerUseIdentity(output string) map[string]any {
-	if output == "" {
-		return nil
-	}
-	var decoded map[string]any
-	if err := json.Unmarshal([]byte(output), &decoded); err != nil {
-		return nil
-	}
-	identity := map[string]any{}
-	for _, key := range []string{"window_id", "bundle_id", "target_id", "outcome", "error_code"} {
-		if v, ok := decoded[key]; ok && v != nil && v != "" {
-			identity[key] = v
-		}
-	}
-	if launch, ok := decoded["launch_receipt"].(map[string]any); ok {
-		identity["launch_receipt"] = launch
-	}
-	if obs, ok := decoded["observation"].(map[string]any); ok {
-		if aw, ok := obs["active_window"].(map[string]any); ok {
-			identity["active_window"] = aw
-		}
-	}
-	if len(identity) == 0 {
-		return nil
-	}
-	return identity
+	return computeruse.ResultMetadata(output)
 }
 
 func truncateEventText(text string, limit int) string {

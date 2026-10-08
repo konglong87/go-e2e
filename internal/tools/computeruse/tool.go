@@ -97,13 +97,11 @@ func (t Tool) Run(ctx context.Context, input json.RawMessage, tc tools.Context) 
 	if cu.ActionKind(params.Action) == cu.ActionLaunchApp && strings.TrimSpace(params.TargetID) == "" {
 		return errorResult("invalid_input", "target_id is required for launch_app")
 	}
-	// Session IDs are host-owned bindings, not model authority. For the launch
-	// boundary, always replace a model-supplied/stale ID with the exact session
-	// currently bound to this query before crossing the authenticated bridge.
-	if cu.ActionKind(params.Action) == cu.ActionLaunchApp {
+	// Every action uses the query-owned session, never a model-invented or stale
+	// session ID. Window/observation identity is still validated independently.
+	if params.SessionID != "" || cu.ActionKind(params.Action) == cu.ActionLaunchApp {
 		if binding, ok := service.(SessionBinding); ok {
-			boundID, bindErr := binding.CurrentComputerSession(ctx, owner)
-			if bindErr == nil && strings.TrimSpace(boundID) != "" {
+			if boundID, bindErr := binding.CurrentComputerSession(ctx, owner); bindErr == nil && strings.TrimSpace(boundID) != "" {
 				params.SessionID = boundID
 			}
 		}

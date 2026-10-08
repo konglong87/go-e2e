@@ -6693,3 +6693,29 @@ func TestAppendAgentTaskToolEventsIncludesOutput(t *testing.T) {
 		t.Fatalf("tool_result payload computer observation missing: payload=%v", resultPayload)
 	}
 }
+
+func TestAppendAgentTaskComputerUseMetadataSurvivesTruncation(t *testing.T) {
+	svc := &fakeTenantService{}
+	output := `{"padding":"` + strings.Repeat("x", 2500) + `","launch_receipt":{"target_id":"fixture","outcome":"executed","bundle_id":"fixture.app","window":{"id":"42","owner_pid":7,"bundle_id":"fixture.app","title":"PRIVATE TITLE"}},"observation":{"window_id":"42","active_window":{"id":"42","bundle_id":"fixture.app"}}}`
+	if err := appendAgentTaskToolEvents(context.Background(), svc, 7, "trace", []query.ToolTrace{{ID: "c1", Name: "ComputerUse", Output: output}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range svc.agentTaskEvents {
+		if event.EventType != agenttasks.EventToolResult {
+			continue
+		}
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(event.PayloadJSON), &payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload["window_id"] != "42" || payload["bundle_id"] != "fixture.app" || payload["launch_receipt"] == nil {
+			t.Fatalf("identity lost: %v", payload)
+		}
+		metadata, _ := json.Marshal(payload["launch_receipt"])
+		if strings.Contains(string(metadata), "PRIVATE TITLE") {
+			t.Fatal("private window title in structured metadata")
+		}
+		return
+	}
+	t.Fatal("missing result event")
+}

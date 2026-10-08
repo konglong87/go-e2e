@@ -361,6 +361,8 @@ def merge_tool_identity(item: dict[str, Any], output: Any) -> None:
         value = output.get(key)
         if value not in (None, "") and key not in item:
             item[key] = str(value)
+    merge_window_identity(item, output.get("target_window"))
+    merge_window_identity(item, output.get("active_window"))
     launch = output.get("launch_receipt")
     if isinstance(launch, dict):
         for key in ("target_id", "bundle_id", "outcome", "error_code"):

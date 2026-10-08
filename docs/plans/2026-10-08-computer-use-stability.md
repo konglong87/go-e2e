@@ -70,3 +70,17 @@ circular. Use the immutable Go build ID in the resource manifest, helper SHA,
 and strict outer/nested codesign verification; measure final executable SHA in
 the run evidence. Initial gate correctly rejected this inconsistency before
 any target input. Follow-up tested; latest build rerun required.
+
+### Fresh desktop diagnosis / slice 3
+
+Current attested 6cf1d91 cold run saved under
+`desktop-v2/build/validation/20261008/stability-observe-6cf1d91-01`.
+Correct actual route: jiuan-responses-gpt-5.6sol / gpt-6-sol / high, image/png.
+Native launch discovered two same-app windows and selected a frontmost blank
+full-screen window; the body screenshot is visibly white, not a pass. Later
+wait failed before backend dispatch. Persisted server events discarded structured
+identity and truncated the nested launch window. Fixes: all supplied model
+session IDs are rebound to trusted current session; shared ResultMetadata is
+used in both runtime and server event paths, with titles/private fields excluded.
+Focused/full computeruse/tool/agentruntime/server tests and Python 20 tests pass.
+This slice is separate from pending native readiness and dispatch recovery.

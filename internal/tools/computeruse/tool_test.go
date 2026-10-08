@@ -997,3 +997,20 @@ func TestAtomicObserveRetainsLaunchReceiptOnBoundCaptureFailure(t *testing.T) {
 	}
 	assertSanitizedResult(t, result)
 }
+
+func TestEveryActionUsesTrustedSessionBindingInsteadOfModelSessionID(t *testing.T) {
+	for _, action := range []string{"observe", "wait", "stop", "pause"} {
+		t.Run(action, func(t *testing.T) {
+			service := &coordinatingService{serviceStub: screenshotService(t), sessionID: testComputerSession}
+			service.receipt.Outcome = cu.OutcomeExecuted
+			input := json.RawMessage(`{"action":"` + action + `","session_id":"invented-by-model","observation_id":"obs-1","duration_ms":1}`)
+			_ = New().Run(context.Background(), input, testContext(service))
+			if action == "observe" && service.lastObserve.SessionID != testComputerSession {
+				t.Fatal("model session used for observe")
+			}
+			if action == "wait" && service.lastAction.SessionID != testComputerSession {
+				t.Fatal("model session used for action")
+			}
+		})
+	}
+}
