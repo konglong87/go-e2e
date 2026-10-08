@@ -209,14 +209,16 @@ class BuildAndObserveGateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             app = Path(directory)
             desktop = app / "Contents/MacOS/go-e2e-desktop"
+            service = app / "Contents/MacOS/go-e2e"
             helper = app / "Contents/Helpers/ComputerHelper.app/Contents/MacOS/computer-helper-macos"
             manifest = app / "Contents/Resources/computer-use-build.json"
             for path in (desktop, helper, manifest):
                 path.parent.mkdir(parents=True, exist_ok=True)
             desktop.write_bytes(b"desktop")
+            service.write_bytes(b"service")
             helper.write_bytes(b"helper")
             manifest.write_text(json.dumps({"source_commit": "current", "source_dirty": False,
-                "desktop_build_id": "build-1", "helper_sha256": MODULE.sha256_file(helper)}))
+                "desktop_build_id": "build-1", "helper_sha256": MODULE.sha256_file(helper), "service_sha256": MODULE.sha256_file(service)}))
             with mock.patch.object(MODULE, "source_commit", return_value="current"), mock.patch.object(MODULE, "executable_build_id", return_value="build-1"):
                 MODULE.validate_build_identity(ROOT, app)
                 helper.write_bytes(b"stale")

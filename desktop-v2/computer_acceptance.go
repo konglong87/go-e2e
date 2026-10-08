@@ -32,13 +32,14 @@ const (
 )
 
 type acceptanceRequest struct {
-	Op            string     `json:"op"`
-	SessionID     string     `json:"session_id,omitempty"`
-	Approved      bool       `json:"approved,omitempty"`
-	Action        *cu.Action `json:"action,omitempty"`
-	ObservationID string     `json:"observation_id,omitempty"`
-	DisplayID     string     `json:"display_id,omitempty"`
-	WindowID      string     `json:"window_id,omitempty"`
+	Op            string      `json:"op"`
+	TargetID      cu.TargetID `json:"target_id,omitempty"`
+	SessionID     string      `json:"session_id,omitempty"`
+	Approved      bool        `json:"approved,omitempty"`
+	Action        *cu.Action  `json:"action,omitempty"`
+	ObservationID string      `json:"observation_id,omitempty"`
+	DisplayID     string      `json:"display_id,omitempty"`
+	WindowID      string      `json:"window_id,omitempty"`
 }
 type acceptanceResponse struct {
 	Data  any    `json:"data,omitempty"`
@@ -196,6 +197,12 @@ func dispatchAcceptance(hostCtx, ctx context.Context, m *computerManager, r acce
 			return nil, errors.New("explicit acceptance session approval required")
 		}
 		return m.startWithLifetime(ctx, hostCtx, ComputerSessionStartInput{Approved: true})
+	case "launch_target":
+		controller, err := m.active(r.SessionID)
+		if err != nil {
+			return nil, err
+		}
+		return controller.LaunchTarget(ctx, m.owner, r.SessionID, r.TargetID)
 	case "observe":
 		return m.observeTarget(ctx, r.SessionID, cu.ObserveRequest{SessionID: r.SessionID, DisplayID: r.DisplayID, WindowID: r.WindowID})
 	case "pause":

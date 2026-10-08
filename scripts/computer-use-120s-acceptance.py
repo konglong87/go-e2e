@@ -302,6 +302,8 @@ def validate_build_identity(workspace: Path, app_path: Path) -> None:
         raise AcceptanceError("build_identity", "desktop executable does not match the source build manifest")
     if manifest.get("helper_sha256") != sha256_file(app_path / "Contents/Helpers/ComputerHelper.app/Contents/MacOS/computer-helper-macos"):
         raise AcceptanceError("build_identity", "helper bytes do not match the source build manifest")
+    if manifest.get("service_sha256") != sha256_file(app_path / "Contents/MacOS/go-e2e"):
+        raise AcceptanceError("build_identity", "model service bytes do not match the source build manifest")
 
 
 

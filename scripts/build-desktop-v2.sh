@@ -80,6 +80,7 @@ resources.mkdir(exist_ok=True)
     # Outer app sealing re-signs its main executable; a full SHA here would be circular.
     "desktop_build_id": subprocess.check_output(["go", "tool", "buildid", str(app / "Contents/MacOS/go-e2e-desktop")], text=True).strip(),
     "helper_sha256": digest(app / "Contents/Helpers/ComputerHelper.app/Contents/MacOS/computer-helper-macos"),
+    "service_sha256": digest(app / "Contents/MacOS/go-e2e"),
 }, indent=2) + "\n")
 PYBUILD
     codesign --force --sign - --requirements "${MACOS_ADHOC_DESIGNATED_REQUIREMENT}" --timestamp=none "${APP_PATH}"

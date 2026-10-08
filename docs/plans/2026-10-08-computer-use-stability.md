@@ -111,3 +111,14 @@ Verification: focused Go tests, broader query/agentruntime/server packages,
 race computeruse/macos, native 266 assertions (after-capture expectations now
 correctly distinguish acknowledged input from partial input). Actual native
 and production-model closure remain pending; no simulated pass is substituted.
+
+### Scripted acceptance support
+
+The opt-in computeracceptance build now exposes registered target launch through
+the same active Controller (forged session/unregistered target are rejected),
+so native smoke/cold-repeat checks do not spend model turns or use external
+GUI automation. This adapter remains disabled in ordinary builds. Build evidence
+also attests the embedded model-service bytes, not only desktop/helper.
+Tagged desktop tests and Python 20 tests pass. Next highest-priority gate:
+latest tagged .app, real cold target capture and a non-WorkBuddy fixture, then
+actual requested-provider/model 120-second closure. Deferred gates unchanged.

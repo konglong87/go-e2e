@@ -216,3 +216,21 @@ func TestAcceptanceShutdownDrainsAndRejectsNewCommands(t *testing.T) {
 		t.Fatal("cancelled host resurrected backend")
 	}
 }
+
+func TestAcceptanceTargetLaunchRequiresCurrentSessionAndRegisteredTarget(t *testing.T) {
+	m, _ := testComputerManager()
+	ctx := context.Background()
+	out, err := dispatchAcceptance(ctx, ctx, m, acceptanceRequest{Op: "start", Approved: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := out.(ComputerSessionDTO)
+	if _, err = dispatchAcceptance(ctx, ctx, m, acceptanceRequest{Op: "launch_target", SessionID: "forged", TargetID: "calculator"}); err == nil {
+		t.Fatal("forged launch session accepted")
+	}
+	out, err = dispatchAcceptance(ctx, ctx, m, acceptanceRequest{Op: "launch_target", SessionID: s.ID, TargetID: "unregistered"})
+	receipt, ok := out.(cu.LaunchReceipt)
+	if err == nil || !ok || receipt.Outcome != cu.OutcomeRejected || receipt.ErrorCode != cu.ErrorCodeUnsupportedTarget {
+		t.Fatalf("out=%+v err=%v", out, err)
+	}
+}
