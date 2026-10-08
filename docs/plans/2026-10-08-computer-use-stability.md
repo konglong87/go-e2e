@@ -355,3 +355,30 @@ logs retained. Pre-existing scripts/__pycache__/ left untouched and uncommitted.
   app, clean the fixture via project ComputerUse, rerun fresh exact cold model
   closure. If type after-image is still empty, preserve and diagnose rather than
   weakening replay/focus guards.
+
+### Final resumed-run state — 2026-10-08
+
+- `9e4914e` wait-policy build: the latest live Calculator 10 s wait batches
+  returned `focus_changed`/`unsupported_display` when the Wails host became the
+  active window during the long passive wait. Stop was acknowledged. This is
+  correctly a failed evidence action, not permission to bypass focus or activate
+  a different window automatically.
+- `5248e1a` prompt-hardening build: exact cold model run `continuation-model-
+  5248e1a-02` used the requested provider/model/high and launched WorkBuddy, but
+  after 30 s of model deliberation the bound window disappeared from the native
+  on-screen inventory (`window_unavailable`, no input posted). The model then
+  stopped; no type/send/reply pass. The immediately preceding `-01` failed the
+  exact cold preflight because the prior fixture process was still present; it
+  made no model request. Both are preserved as independent failures.
+- The successful older 8c0aae9 run's visible reply remains historical audit
+  evidence only; it cannot be promoted because it predates the RFC3339/receipt
+  fixes and current prompt/build. Current source is clean and pushed at
+  `5248e1a`; native/cold/control automated and real evidence above pass, but the
+  requested actual model-managed launch → type → send once → reply → Stop loop
+  is **not passed**. The concrete remaining blocker is nondeterministic external
+  target-window disappearance during model deliberation, while safety correctly
+  rejects stale binding and does not replay input.
+- No further code change is justified from these two external-state failures:
+  activating/rebinding a disappeared window or replaying type would violate the
+  established safety contract. Resume only with a fresh unlocked desktop run
+  where WorkBuddy remains visible/frontmost; otherwise leave this gate blocked.
