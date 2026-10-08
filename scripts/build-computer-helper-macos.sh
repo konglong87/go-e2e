@@ -19,6 +19,7 @@ swiftc -O \
   -framework ImageIO \
   -framework UniformTypeIdentifiers \
   "$ROOT_DIR/native/macos/Protocol.swift" \
+  "$ROOT_DIR/native/macos/Diagnostics.swift" \
   "$ROOT_DIR/native/macos/Safety.swift" \
   "$ROOT_DIR/native/macos/MouseButtonClient.swift" \
   "$ROOT_DIR/native/macos/Platform.swift" \

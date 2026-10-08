@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/konglong87/go-e2e/internal/computerbackend/native"
+	"github.com/konglong87/go-e2e/internal/computerdiag"
 	cu "github.com/konglong87/go-e2e/internal/computeruse"
 )
 
@@ -313,6 +314,14 @@ func (b *Backend) request(ctx context.Context, command, sessionID, actionID stri
 		b.process.Abort(errors.New("invalid helper response"))
 		return result, errors.New("invalid helper response")
 	}
+	if command == commandObserve || command == commandLaunchApp || command == commandExecute {
+		computerdiag.Append(computerdiag.GoMismatchPath, map[string]any{
+			"layer": "go_backend", "phase": "helper_result", "command": command,
+			"request_id": requestID, "action_id": actionID, "session_id": sessionID,
+			"window_id": payload["window_id"], "generation": payload["generation"],
+			"outcome": result.Outcome, "error_code": result.ErrorCode,
+		})
+	}
 	switch result.Outcome {
 	case cu.OutcomeExecuted:
 		if !*result.OK {
@@ -546,6 +555,15 @@ func (b *Backend) Observe(ctx context.Context, req cu.ObserveRequest) (cu.Observ
 	id := fmt.Sprintf("observation-%d", b.requestCounter.Add(1))
 	response, err := b.request(ctx, commandObserve, req.SessionID, "", map[string]any{"display_id": req.DisplayID, "window_id": req.WindowID, "observation_id": id, "generation": epoch})
 	if err != nil {
+		errorCode := "backend_observe_failed"
+		var rejected *rejection
+		if errors.As(err, &rejected) {
+			errorCode = rejected.Code()
+		}
+		computerdiag.Append(computerdiag.GoMismatchPath, map[string]any{
+			"layer": "go_backend", "phase": "observe_request_error", "observation_id": id,
+			"session_id": req.SessionID, "window_id": req.WindowID, "display_id": req.DisplayID, "error_code": cu.PublicErrorCode(errorCode),
+		})
 		return cu.Observation{}, err
 	}
 	data, mediaType, width, height, err := decodeImage(response.Result)
@@ -572,6 +590,12 @@ func (b *Backend) Observe(ctx context.Context, req cu.ObserveRequest) (cu.Observ
 		// capture's coordinate space, which is the authoritative position for
 		// the screenshot we actually took.
 		if targetWindow.Frame.Width != coordinateSpace.Bounds.Width || targetWindow.Frame.Height != coordinateSpace.Bounds.Height {
+			computerdiag.Append(computerdiag.GoMismatchPath, map[string]any{
+				"layer": "go_backend", "phase": "capture_geometry_mismatch", "window_id": targetWindow.ID,
+				"target_width": targetWindow.Frame.Width, "target_height": targetWindow.Frame.Height,
+				"capture_width": coordinateSpace.Bounds.Width, "capture_height": coordinateSpace.Bounds.Height,
+				"error_code": cu.ErrorCodeTargetWindowMismatch,
+			})
 			return cu.Observation{}, errors.New("screenshot target size does not match capture bounds")
 		}
 		targetWindow.Frame = coordinateSpace.Bounds
@@ -580,7 +604,16 @@ func (b *Backend) Observe(ctx context.Context, req cu.ObserveRequest) (cu.Observ
 	bound := b.targetBinding
 	b.mu.Unlock()
 	if bound != nil && !bound.Matches(targetWindow) {
-		_ = os.WriteFile("/tmp/go-mismatch.log", []byte(fmt.Sprintf("backend Observe Matches failed: bound={ID:%s PID:%d Bundle:%s} target={ID:%s PID:%d Bundle:%s}\n", bound.Window.ID, bound.Window.OwnerPID, bound.Window.BundleID, targetWindow.ID, targetWindow.OwnerPID, targetWindow.BundleID)), 0600)
+		computerdiag.Append(computerdiag.GoMismatchPath, map[string]any{
+			"layer": "go_backend", "phase": "target_binding_mismatch", "observation_id": id,
+			"bound_window": map[string]any{
+				"id": bound.Window.ID, "owner_pid": bound.Window.OwnerPID, "bundle_id": bound.Window.BundleID,
+			},
+			"current_window": map[string]any{
+				"id": targetWindow.ID, "owner_pid": targetWindow.OwnerPID, "bundle_id": targetWindow.BundleID,
+			},
+			"error_code": cu.ErrorCodeTargetWindowMismatch,
+		})
 		return cu.Observation{}, &rejection{cu.ErrorCodeTargetWindowMismatch}
 	}
 	b.mu.Lock()
@@ -821,6 +854,7 @@ func (b *Backend) quarantine() {
 	b.observation = cu.Observation{}
 	b.mu.Unlock()
 }
+
 // quarantineTransient revokes the current generation's observation and input
 // authority without marking the backend failed or aborting the helper. A
 // focus change or a mid-animation screenshot miss is transient: the helper

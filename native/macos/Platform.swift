@@ -39,8 +39,12 @@ extension DesktopPlatform {
 
 struct MacDesktop: DesktopPlatform {
     private let mouseBroker: MouseButtonClient?
+    private let diagnostic: ([String: Any]) -> Void
 
-    init(mouseBroker: MouseButtonClient? = nil) { self.mouseBroker = mouseBroker }
+    init(mouseBroker: MouseButtonClient? = nil, diagnostic: @escaping ([String: Any]) -> Void = { _ in }) {
+        self.mouseBroker = mouseBroker
+        self.diagnostic = diagnostic
+    }
     func supportsDrag() -> Bool { mouseBroker != nil }
 
     func prepareDrag(_ request: Envelope) throws {
@@ -182,6 +186,7 @@ struct MacDesktop: DesktopPlatform {
         }
 
         let deadline = ProcessInfo.processInfo.systemUptime + appLaunchTimeoutSeconds
+        var lastInventory = ""
         while ProcessInfo.processInfo.systemUptime < deadline {
             guard permitted() else { throw SafetyError.inactive }
             do {
@@ -189,6 +194,13 @@ struct MacDesktop: DesktopPlatform {
                     $0.bundleID == bundleID && $0.isVisible && $0.frame.width > 0 && $0.frame.height > 0
                 }
                 let frontmost = candidates.filter(\.isFrontmost)
+                let inventory = candidates.map { "\($0.id):\($0.ownerPID):\($0.isFrontmost)" }.joined(separator: ",")
+                if inventory != lastInventory {
+                    diagnostic(["layer": "swift_platform", "phase": "launch_inventory", "bundle_id": bundleID,
+                                "candidate_count": candidates.count, "frontmost_count": frontmost.count,
+                                "candidates": candidates.map(\.diagnosticFields)])
+                    lastInventory = inventory
+                }
                 if frontmost.count == 1, windowHasVisibleContent(frontmost[0], permitted: permitted) {
                     return frontmost[0]
                 }
@@ -196,6 +208,9 @@ struct MacDesktop: DesktopPlatform {
                     return candidates[0]
                 }
                 if candidates.count > 1 {
+                    diagnostic(["layer": "swift_platform", "phase": "launch_ambiguous", "bundle_id": bundleID,
+                                "candidate_count": candidates.count, "frontmost_count": frontmost.count,
+                                "error_code": SafetyError.targetWindowMismatch.rawValue])
                     throw SafetyError.targetWindowMismatch
                 }
             } catch let error as SafetyError {

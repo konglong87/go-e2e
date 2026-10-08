@@ -4,7 +4,7 @@ import Foundation
 // outstanding work avoids retaining arbitrary action/text queues in memory.
 let brokerWire = CommandLine.arguments.contains("--mouse-broker") ? try? PipeMouseBrokerWire() : nil
 let mouseBroker = brokerWire.map { MouseButtonClient(wire: $0) }
-let engine = Engine(platform: MacDesktop(mouseBroker: mouseBroker))
+let engine = Engine(platform: MacDesktop(mouseBroker: mouseBroker, diagnostic: NativeDiagnostics.append), diagnostic: NativeDiagnostics.append)
 let responder = Responder()
 let executor = DispatchQueue(label: "computer-helper.actions")
 let slots = DispatchSemaphore(value: 2)

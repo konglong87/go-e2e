@@ -1,6 +1,24 @@
 # Computer Use functional parity — implementation ledger
 
-## Current ordered queue — 2026-09-30
+## Current ordered queue — 2026-10-08
+
+The current stability/closure work is tracked in
+`docs/plans/2026-10-08-computer-use-stability.md`. Ordered remaining gates:
+
+1. P0: add sanitized append-only cross-layer diagnostics and locate the native
+   launch/observe mismatch on a fresh current-build run.
+2. P0: reject mixed acceptance batches and preserve complete launch/binding and
+   action evidence; repeated cold target observe-only must pass first.
+3. P0: align Swift/Go recovery by actual dispatch stage; no unknown input replay,
+   no automatic bypass of user Pause/Stop or permission revocation.
+4. P0: actual gpt-6-sol/high desktop ComputerUse launch/type/send/reply/Stop loop
+   within 120 seconds, with current-run screenshots and receipts.
+5. P1: outstanding native control/display regression from the historical queue.
+
+Second physical display and formal signing/distribution remain explicitly
+user-deferred. Optional GitHub binary release remains externally blocked.
+
+## Historical ordered queue — 2026-09-30
 
 This queue is authoritative; older phase notes below are historical and must not
 be read as evidence that the native overlay or the whole product fully passed.

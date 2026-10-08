@@ -12,19 +12,20 @@ import (
 	"fmt"
 	"image/png"
 	"io"
-	"os"
 	"strings"
 
 	"github.com/konglong87/go-e2e/internal/anthropic"
+	"github.com/konglong87/go-e2e/internal/computerdiag"
 	cu "github.com/konglong87/go-e2e/internal/computeruse"
 	"github.com/konglong87/go-e2e/internal/tools"
 )
 
 const (
-	ToolName     = "ComputerUse"
-	pngMediaType = "image/png"
-	maxPNGBytes  = 16 << 20
-	maxPNGPixels = 32 << 20
+	ToolName                  = "ComputerUse"
+	toolObserveDiagnosticPath = computerdiag.ToolObservePath
+	pngMediaType              = "image/png"
+	maxPNGBytes               = 16 << 20
+	maxPNGPixels              = 32 << 20
 
 	observationScreenshotGuidance = "Fresh Computer Use observation screenshot. Reference this observation ID for one input action. Each successful input returns another fresh observation; inspect it before deciding the next action and do not issue a redundant observe unless the transition is unsettled or the result is insufficient."
 	actionEvidenceGuidance        = "Computer Use post-action evidence only; not an actionable observation. A successful action also returns a fresh authoritative observation for the next input; never use this evidence image ID as observation_id. On an error or unknown outcome, stop without replaying input."
@@ -215,7 +216,15 @@ func (t Tool) launchApp(ctx context.Context, service cu.Service, owner cu.Sessio
 }
 
 func (t Tool) observe(ctx context.Context, service cu.Service, owner cu.SessionOwner, params request, tc tools.Context) tools.Result {
-	_ = os.WriteFile("/tmp/tool-observe.log", []byte(fmt.Sprintf("fastPath=%v targetID=%q\n", tc.ComputerUseFastPath, params.TargetID)), 0600)
+	computerdiag.Append(toolObserveDiagnosticPath, map[string]any{
+		"layer":      "go_tool",
+		"phase":      "observe_entry",
+		"action":     params.Action,
+		"fast_path":  tc.ComputerUseFastPath,
+		"target_id":  params.TargetID,
+		"session_id": params.SessionID,
+		"window_id":  params.WindowID,
+	})
 	// The first fast-path observe is a target-selection boundary, not merely a
 	// screenshot of whichever app happens to be frontmost. If this session
 	// already has an observation, preserve normal observe semantics and never
@@ -223,10 +232,15 @@ func (t Tool) observe(ctx context.Context, service cu.Service, owner cu.SessionO
 	if tc.ComputerUseFastPath && strings.TrimSpace(params.TargetID) != "" {
 		if binding, ok := service.(SessionBinding); ok {
 			if current, err := binding.CurrentComputerObservation(ctx, owner); err == nil && strings.TrimSpace(current) != "" {
+				computerdiag.Append(toolObserveDiagnosticPath, map[string]any{
+					"layer": "go_tool", "phase": "refresh_existing_observation",
+					"observation_id": current, "target_id": params.TargetID,
+				})
 				_, result := t.captureObservation(ctx, service, owner, params)
 				return result
 			}
 		}
+
 	}
 	_, result := t.captureObservation(ctx, service, owner, params)
 	if result.IsError || !tc.ComputerUseFastPath {
@@ -239,6 +253,9 @@ func (t Tool) observe(ctx context.Context, service cu.Service, owner cu.SessionO
 	if strings.TrimSpace(params.TargetID) == "" {
 		return result
 	}
+	computerdiag.Append(toolObserveDiagnosticPath, map[string]any{
+		"layer": "go_tool", "phase": "launch_begin", "target_id": params.TargetID, "session_id": params.SessionID,
+	})
 	var receipt cu.LaunchReceipt
 	var err error
 	if launcher, ok := service.(cu.TargetLauncher); ok {
@@ -251,6 +268,10 @@ func (t Tool) observe(ctx context.Context, service cu.Service, owner cu.SessionO
 	if receipt.ErrorCode != "" {
 		receipt.ErrorCode = cu.PublicErrorCode(receipt.ErrorCode)
 	}
+	computerdiag.Append(toolObserveDiagnosticPath, map[string]any{
+		"layer": "go_tool", "phase": "launch_result", "target_id": params.TargetID,
+		"outcome": receipt.Outcome, "error_code": receipt.ErrorCode, "window_id": receipt.Window.ID, "bundle_id": receipt.BundleID,
+	})
 	if err != nil || receipt.Outcome != cu.OutcomeExecuted || receipt.Window.ID == "" {
 		payload := map[string]any{"launch_receipt": receipt, "error_code": receipt.ErrorCode, "message": "ComputerUse target launch failed; stop without input replay"}
 		if payload["error_code"] == "" {
@@ -259,10 +280,19 @@ func (t Tool) observe(ctx context.Context, service cu.Service, owner cu.SessionO
 		return tools.Result{Content: marshal(payload), IsError: true}
 	}
 	params.WindowID = receipt.Window.ID
+	computerdiag.Append(toolObserveDiagnosticPath, map[string]any{
+		"layer": "go_tool", "phase": "launch_bound_observe_begin", "target_id": params.TargetID, "window_id": params.WindowID,
+	})
 	_, boundResult := t.captureObservation(ctx, service, owner, params)
 	if boundResult.IsError {
+		computerdiag.Append(toolObserveDiagnosticPath, map[string]any{
+			"layer": "go_tool", "phase": "launch_bound_observe_result", "target_id": params.TargetID, "window_id": params.WindowID, "result": "error",
+		})
 		return boundResult
 	}
+	computerdiag.Append(toolObserveDiagnosticPath, map[string]any{
+		"layer": "go_tool", "phase": "launch_bound_observe_result", "target_id": params.TargetID, "window_id": params.WindowID, "result": "success",
+	})
 	var boundPayload map[string]any
 	_ = json.Unmarshal([]byte(boundResult.Content), &boundPayload)
 	boundPayload["launch_receipt"] = receipt
@@ -272,14 +302,21 @@ func (t Tool) observe(ctx context.Context, service cu.Service, owner cu.SessionO
 }
 
 func (t Tool) captureObservation(ctx context.Context, service cu.Service, owner cu.SessionOwner, params request) (cu.Observation, tools.Result) {
+	computerdiag.Append(toolObserveDiagnosticPath, map[string]any{
+		"layer": "go_tool", "phase": "capture_observation_begin", "target_id": params.TargetID,
+		"session_id": params.SessionID, "window_id": params.WindowID, "display_id": params.DisplayID,
+	})
 	observation, err := service.Observe(ctx, owner, cu.ObserveRequest{SessionID: params.SessionID, DisplayID: params.DisplayID, WindowID: params.WindowID})
 	if err != nil {
-		_ = os.WriteFile("/tmp/tool-observe.log", []byte(fmt.Sprintf("captureObservation Observe err: %v windowID=%q\n", err, params.WindowID)), 0600)
 		errorCode := cu.ErrorCodeActionFailed
 		var coded interface{ Code() string }
 		if errors.As(err, &coded) {
 			errorCode = cu.PublicErrorCode(coded.Code())
 		}
+		computerdiag.Append(toolObserveDiagnosticPath, map[string]any{
+			"layer": "go_tool", "phase": "capture_observation_result", "result": "error",
+			"target_id": params.TargetID, "session_id": params.SessionID, "window_id": params.WindowID, "error_code": errorCode,
+		})
 		return cu.Observation{}, tools.Result{
 			Content: marshal(map[string]any{
 				"error_code": errorCode,
@@ -290,8 +327,17 @@ func (t Tool) captureObservation(ctx context.Context, service cu.Service, owner 
 	}
 	messages, err := observationImage(ctx, service, owner, params.SessionID, observation.ID, observationScreenshotGuidance)
 	if err != nil {
+		computerdiag.Append(toolObserveDiagnosticPath, map[string]any{
+			"layer": "go_tool", "phase": "capture_observation_result", "result": "image_error",
+			"target_id": params.TargetID, "session_id": params.SessionID, "window_id": observation.WindowID, "observation_id": observation.ID,
+			"error_code": "observation_image_failed",
+		})
 		return cu.Observation{}, errorResult("observation_image_failed", "valid computer screenshot unavailable")
 	}
+	computerdiag.Append(toolObserveDiagnosticPath, map[string]any{
+		"layer": "go_tool", "phase": "capture_observation_result", "result": "success",
+		"target_id": params.TargetID, "session_id": params.SessionID, "window_id": observation.WindowID, "observation_id": observation.ID,
+	})
 	return observation, tools.Result{Content: marshal(map[string]any{"observation": observation}), ContextMessages: messages}
 }
 

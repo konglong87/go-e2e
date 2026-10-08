@@ -3,10 +3,10 @@ package computeruse
 import (
 	"context"
 	"errors"
-	"fmt"
-	"os"
 	"sync"
 	"time"
+
+	"github.com/konglong87/go-e2e/internal/computerdiag"
 )
 
 // One total budget for control queuing, acknowledgement, and action draining.
@@ -259,7 +259,11 @@ func (c *Controller) LaunchTarget(ctx context.Context, owner SessionOwner, id st
 			err = errors.New("computer target window does not match registry policy")
 		}
 		if target.Window.RequireVisible && !receipt.Window.IsVisible {
-			_ = os.WriteFile("/tmp/go-mismatch.log", []byte(fmt.Sprintf("controller RequireVisible: window=%+v\n", receipt.Window)), 0600)
+			computerdiag.Append(computerdiag.GoMismatchPath, map[string]any{
+				"layer": "go_controller", "phase": "launch_require_visible", "target_id": target.ID,
+				"window_id": receipt.Window.ID, "owner_pid": receipt.Window.OwnerPID, "bundle_id": receipt.Window.BundleID,
+				"is_visible": receipt.Window.IsVisible, "is_frontmost": receipt.Window.IsFrontmost, "error_code": ErrorCodeTargetWindowMismatch,
+			})
 			receipt.Outcome = OutcomeRejected
 			receipt.ErrorCode = ErrorCodeTargetWindowMismatch
 			err = errors.New("computer target window is not visible")

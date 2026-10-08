@@ -615,4 +615,27 @@ do {
     expect(desktop.posts.count == 2, "lost down ACK still runs release cleanup")
 }
 
+// Diagnostics identify the failing native gate without carrying titles/text.
+do {
+    let desktop = FakeDesktop()
+    var events: [[String: Any]] = []
+    let engine = Engine(platform: desktop, diagnostic: { events.append($0) })
+    let window = launchWindow()
+    desktop.launchResult = window
+    let launch = engine.launchApp(request("launch_app", payload: [
+        "target_id": .string("fixture"), "display_name": .string("Fixture"),
+        "bundle_id": .string(window.bundleID)
+    ]))
+    expect(launch.outcome == .executed, "diagnostic baseline launch")
+    desktop.targetWindow = NativeWindow(id: window.id, title: "PRIVATE TITLE", ownerPID: window.ownerPID + 1,
+        bundleID: window.bundleID, frame: window.frame, displayID: window.displayID, isVisible: true, isFrontmost: true)
+    let result = engine.observe(request("observe", payload: ["window_id": .string(window.id), "observation_id": .string("diag-obs")]))
+    expect(result.outcome == .rejected && result.error == .targetWindowMismatch, "diagnostic identity rejection")
+    let mismatch = events.first { ($0["phase"] as? String) == "authorized_window" }
+    expect((mismatch?["identity_diffs"] as? [String]) == ["owner_pid"], "diagnostic exact mismatch field")
+    expect(mismatch?["request_id"] != nil && mismatch?["session_id"] != nil, "diagnostic correlated envelope")
+    let encoded = try JSONSerialization.data(withJSONObject: events)
+    expect(!String(decoding: encoded, as: UTF8.self).contains("PRIVATE TITLE"), "diagnostic excludes window titles")
+}
+
 print("PASS: \(assertions) native safety assertions (fake platform; no real input/capture)")

@@ -42,6 +42,14 @@ struct NativeWindow: Equatable {
     let isVisible: Bool
     let isFrontmost: Bool
 
+    func identityDiffs(_ other: NativeWindow) -> [String] {
+        var differences: [String] = []
+        if id != other.id { differences.append("window_id") }
+        if ownerPID != other.ownerPID { differences.append("owner_pid") }
+        if bundleID != other.bundleID { differences.append("bundle_id") }
+        return differences
+    }
+
     func matchesIdentity(_ other: NativeWindow) -> Bool {
         // Identity is the immutable Window Server identity: id, owner PID, and
         // bundle ID. Frame, displayID, and visibility can shift by a few pixels
@@ -50,7 +58,13 @@ struct NativeWindow: Equatable {
         // that resized by 1px after launch would otherwise be rejected as a
         // different target. Frame is still validated for non-zero dimensions
         // by the caller.
-        id == other.id && ownerPID == other.ownerPID && bundleID == other.bundleID
+        identityDiffs(other).isEmpty
+    }
+
+    var diagnosticFields: [String: Any] {
+        ["id": id, "owner_pid": ownerPID, "bundle_id": bundleID, "display_id": displayID,
+         "is_visible": isVisible, "is_frontmost": isFrontmost,
+         "frame": ["x": frame.origin.x, "y": frame.origin.y, "width": frame.width, "height": frame.height]]
     }
 
     var json: JSONValue {

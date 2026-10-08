@@ -6,12 +6,41 @@ struct ActionResult {
     let payload: JSONValue
     let error: SafetyError?
 }
+
+typealias NativeDiagnosticWriter = ([String: Any]) -> Void
+
 final class Engine {
     let state: SafetyState
     private let platform: DesktopPlatform
     private let now: () -> Date
-    init(platform: DesktopPlatform, now: @escaping () -> Date = Date.init) {
-        self.platform = platform; self.now = now; self.state = SafetyState(now: now)
+    private let diagnostic: NativeDiagnosticWriter
+
+    init(platform: DesktopPlatform, now: @escaping () -> Date = Date.init,
+         diagnostic: @escaping NativeDiagnosticWriter = { _ in }) {
+        self.platform = platform; self.now = now; self.diagnostic = diagnostic; self.state = SafetyState(now: now)
+    }
+
+    private func record(_ request: Envelope, phase: String, error: SafetyError? = nil,
+                        fields: [String: Any] = [:]) {
+        var event: [String: Any] = [
+            "layer": "swift_helper", "phase": phase, "command": request.command,
+            "request_id": request.requestID, "action_id": request.actionID, "session_id": request.sessionID,
+        ]
+        if let error { event["error_code"] = error.rawValue }
+        if let targetID = request.payload["target_id"]?.string { event["target_id"] = targetID }
+        if let windowID = request.payload["window_id"]?.string { event["requested_window_id"] = windowID }
+        if let displayID = request.payload["display_id"]?.string { event["requested_display_id"] = displayID }
+        for (key, value) in fields { event[key] = value }
+        diagnostic(event)
+    }
+
+    private func recordWindowMismatch(_ request: Envelope, phase: String, reason: String,
+                                      expected: NativeWindow? = nil, actual: NativeWindow? = nil) {
+        var fields: [String: Any] = ["reason": reason]
+        if let expected { fields["expected_window"] = expected.diagnosticFields }
+        if let actual { fields["actual_window"] = actual.diagnosticFields }
+        if let expected, let actual { fields["identity_diffs"] = expected.identityDiffs(actual) }
+        record(request, phase: phase, error: .targetWindowMismatch, fields: fields)
     }
 
     func requestPermissions() -> JSONValue {
@@ -58,8 +87,12 @@ final class Engine {
             let target = try requestedTarget(request.payload)
             try state.beginControl(request)
             let window = try platform.launchApplication(bundleID: target.bundleID) { self.state.permitted(request) }
-            guard window.bundleID == target.bundleID else { throw SafetyError.targetWindowMismatch }
+            guard window.bundleID == target.bundleID else {
+                recordWindowMismatch(request, phase: "launch_bundle_validation", reason: "bundle_id_mismatch", actual: window)
+                throw SafetyError.targetWindowMismatch
+            }
             try state.bindTarget(window, expectedBundleID: target.bundleID, for: request)
+            record(request, phase: "launch_result", fields: ["result": "success", "window": window.diagnosticFields])
             return ActionResult(outcome: .executed, payload: .object([
                 "operation": .string(Command.launchApp.rawValue),
                 "target_id": .string(target.id),
@@ -68,7 +101,9 @@ final class Engine {
                 "window": window.json
             ]), error: nil)
         } catch {
-            return ActionResult(outcome: .rejected, payload: .object([:]), error: error as? SafetyError ?? .launchFailed)
+            let safetyError = error as? SafetyError ?? .launchFailed
+            record(request, phase: "launch_result", error: safetyError, fields: ["result": "error"])
+            return ActionResult(outcome: .rejected, payload: .object([:]), error: safetyError)
         }
     }
     private func resolveGeometry(for request: Envelope) throws -> DisplayGeometry {
@@ -89,28 +124,50 @@ final class Engine {
     }
     private func authorizedWindow(_ request: Envelope) throws -> NativeWindow? {
         guard let bound = try state.target(for: request) else { return try requestedWindow(request) }
-        guard request.payload["window_id"]?.string == bound.id else { throw SafetyError.targetWindowMismatch }
+        guard request.payload["window_id"]?.string == bound.id else {
+            recordWindowMismatch(request, phase: "authorized_window", reason: "requested_window_id_mismatch", expected: bound)
+            throw SafetyError.targetWindowMismatch
+        }
         do {
-            guard let current = try requestedWindow(request), current.matchesIdentity(bound) else {
+            guard let current = try requestedWindow(request) else {
+                recordWindowMismatch(request, phase: "authorized_window", reason: "requested_window_not_found", expected: bound)
+                throw SafetyError.targetWindowMismatch
+            }
+            let differences = bound.identityDiffs(current)
+            guard differences.isEmpty else {
+                recordWindowMismatch(request, phase: "authorized_window", reason: "identity_mismatch", expected: bound, actual: current)
                 throw SafetyError.targetWindowMismatch
             }
             return bound
         } catch let error as SafetyError {
+            if error == .unsupportedDisplay {
+                recordWindowMismatch(request, phase: "authorized_window", reason: "window_unavailable", expected: bound)
+            }
             throw error == .unsupportedDisplay ? SafetyError.targetWindowMismatch : error
         } catch {
+            recordWindowMismatch(request, phase: "authorized_window", reason: "window_inventory_error", expected: bound)
             throw SafetyError.targetWindowMismatch
         }
     }
 
     private func target(_ request: Envelope, geometry: DisplayGeometry) throws {
         if let bound = try state.target(for: request) {
-            guard geometry.windowID == bound.id, try authorizedWindow(request) != nil else {
+            guard geometry.windowID == bound.id else {
+                recordWindowMismatch(request, phase: "target_validation", reason: "geometry_window_id_mismatch", expected: bound,
+                                     actual: try? requestedWindow(request))
                 throw SafetyError.targetWindowMismatch
             }
+            guard try authorizedWindow(request) != nil else { throw SafetyError.targetWindowMismatch }
         } else if let window = request.payload["window_id"]?.string, !window.isEmpty && geometry.windowID != window {
+            record(request, phase: "target_validation", error: .unsupportedDisplay,
+                   fields: ["reason": "requested_window_geometry_mismatch", "geometry_window_id": geometry.windowID ?? ""])
             throw SafetyError.unsupportedDisplay
         }
-        if let display = request.payload["display_id"]?.string, !display.isEmpty && display != geometry.id { throw SafetyError.unsupportedDisplay }
+        if let display = request.payload["display_id"]?.string, !display.isEmpty && display != geometry.id {
+            record(request, phase: "target_validation", error: .unsupportedDisplay,
+                   fields: ["reason": "display_id_mismatch", "geometry_display_id": geometry.id])
+            throw SafetyError.unsupportedDisplay
+        }
     }
     private func displayIDs() throws -> [String] {
         try platform.geometries().map(\.id).sorted()
@@ -119,9 +176,22 @@ final class Engine {
     // capturing evidence. A focus change must remain visible to the caller.
     private func checkWindow(_ request: Envelope, geometry: DisplayGeometry, expectedWindow: NativeWindow?) throws {
         if let expectedWindow {
-            guard let current = try requestedWindow(request), current.matchesIdentity(expectedWindow) else { throw SafetyError.targetWindowMismatch }
+            guard let current = try requestedWindow(request) else {
+                recordWindowMismatch(request, phase: "check_window", reason: "requested_window_not_found", expected: expectedWindow)
+                throw SafetyError.targetWindowMismatch
+            }
+            let differences = expectedWindow.identityDiffs(current)
+            guard differences.isEmpty else {
+                recordWindowMismatch(request, phase: "check_window", reason: "identity_mismatch", expected: expectedWindow, actual: current)
+                throw SafetyError.targetWindowMismatch
+            }
         }
-        if let windowID = geometry.windowID, platform.activeWindowID() != windowID { throw SafetyError.focusChanged }
+        if let windowID = geometry.windowID, platform.activeWindowID() != windowID {
+            record(request, phase: "check_window", error: .focusChanged,
+                   fields: ["reason": "active_window_mismatch", "geometry_window_id": windowID,
+                            "active_window_id": platform.activeWindowID() ?? ""])
+            throw SafetyError.focusChanged
+        }
     }
     private func capture(_ request: Envelope, geometry: DisplayGeometry, expectedWindow: NativeWindow? = nil) throws -> JSONValue {
         try state.gate(request)
@@ -136,7 +206,15 @@ final class Engine {
               resolved.id == geometry.id,
               resolved.windowID == geometry.windowID,
               resolved.width == geometry.width,
-              resolved.height == geometry.height else { throw SafetyError.screenshotFailed }
+              resolved.height == geometry.height else {
+            record(request, phase: "capture_precheck", error: .screenshotFailed,
+                   fields: ["reason": "geometry_changed", "expected_display_id": geometry.id,
+                            "actual_display_id": resolved.id, "expected_window_id": geometry.windowID ?? "",
+                            "actual_window_id": resolved.windowID ?? "", "expected_width": geometry.width,
+                            "expected_height": geometry.height, "actual_width": resolved.width,
+                            "actual_height": resolved.height])
+            throw SafetyError.screenshotFailed
+        }
         let active = resolved
         try checkWindow(request, geometry: active, expectedWindow: expectedWindow)
         guard let focus = platform.focus() else { throw SafetyError.focusChanged }
@@ -144,7 +222,13 @@ final class Engine {
         try state.gate(request)
         let postCheck = try resolveGeometry(for: request)
         guard postCheck.id == active.id, postCheck.windowID == active.windowID,
-              postCheck.width == active.width, postCheck.height == active.height else { throw SafetyError.unsupportedDisplay }
+              postCheck.width == active.width, postCheck.height == active.height else {
+            record(request, phase: "capture_postcheck", error: .unsupportedDisplay,
+                   fields: ["reason": "geometry_changed_after_capture", "window_id": active.windowID ?? "",
+                            "post_window_id": postCheck.windowID ?? "", "width": active.width,
+                            "height": active.height, "post_width": postCheck.width, "post_height": postCheck.height])
+            throw SafetyError.unsupportedDisplay
+        }
         try checkWindow(request, geometry: active, expectedWindow: expectedWindow)
         guard platform.focus() == focus else { throw SafetyError.focusChanged }
         var result: [String: JSONValue] = ["media_type": .string("image/png"), "data": .string(data.base64EncodedString()),
@@ -200,7 +284,11 @@ final class Engine {
             formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
             payload["observation_expires_at"] = .string(formatter.string(from: expires))
             return ActionResult(outcome: .executed, payload: .object(payload), error: nil)
-        } catch { return ActionResult(outcome: .rejected, payload: .object([:]), error: error as? SafetyError ?? .screenshotFailed) }
+        } catch {
+            let safetyError = error as? SafetyError ?? .screenshotFailed
+            record(request, phase: "observe_result", error: safetyError, fields: ["result": "error"])
+            return ActionResult(outcome: .rejected, payload: .object([:]), error: safetyError)
+        }
     }
     private func checkInput(_ snapshot: Snapshot, request: Envelope) throws {
         guard platform.inputAllowed(), platform.captureAllowed() else { throw SafetyError.permissionRequired }
@@ -295,8 +383,13 @@ final class Engine {
             // that state so Pause can Resume with a fresh observation; do not
             // turn cooperative interruption into an irreversible helper stop.
             if (error as? SafetyError) == .inputUncertain { posted = true }
-            if posted && (error as? SafetyError) != .inactive { state.end() }
-            return ActionResult(outcome: posted ? .unknown : .rejected, payload: .object([:]), error: error as? SafetyError ?? .inputUnavailable)
+            let safetyError = error as? SafetyError ?? .inputUnavailable
+            record(request, phase: "execute_result", error: safetyError,
+                   fields: ["result": posted ? "unknown" : "rejected", "input_posted": posted])
+            if posted && safetyError != .inactive {
+                state.end()
+            }
+            return ActionResult(outcome: posted ? .unknown : .rejected, payload: .object([:]), error: safetyError)
         }
     }
 }
