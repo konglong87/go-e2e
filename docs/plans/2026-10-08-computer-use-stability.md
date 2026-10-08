@@ -315,3 +315,23 @@ logs retained. Pre-existing scripts/__pycache__/ left untouched and uncommitted.
 - New run -01 started its wrapper before the asynchronous local service child
   existed; no model call occurred. -02 started only after read-only child readiness
   was confirmed. Startup failures remain separate and are not mixed into evidence.
+
+
+### Bounded operation/evidence deadline separation
+
+- Implemented a shared platform-neutral ActionExecutionTimeout policy: legal
+  wait/drag duration up to 10 s plus fixed 2 s evidence grace, only when longer
+  than the baseline. Invalid durations and other kinds never expand deadlines.
+  Earlier caller deadlines, cancellation, user Pause/Stop and total run budgets
+  remain authoritative. macOS execution envelopes and broker leases use this
+  same policy; ordinary observation/control RPC deadlines are unchanged.
+- Intended/completed files: computeruse/model.go, controller.go,
+  computeruse_test.go; macos/backend.go, backend_test.go; this ledger. Both the
+  Controller deadline test and native-envelope fixture failed before fix at
+  9.999 s / closed response; pass with <=12 s now. Earlier caller deadline and
+  kind/invalid-duration boundary regressions pass without long sleeps.
+- Focused six packages, full `go test ./...`, ComputerUse/macOS race, tagged
+  desktop tests pass. No native input was executed by these fake tests.
+- Next: commit/push; fresh tagged app; real 10000 ms wait + after-image + Stop
+  on Calculator (no model), then isolated cold requested-model 120 s closure.
+  Unknown input recovery/replay rules unchanged. Deferred gates unchanged.

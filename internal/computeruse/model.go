@@ -16,12 +16,27 @@ import (
 const (
 	ProtocolVersion     = "computer-use.v1"
 	MaxActionDurationMS = 10000
+	ActionEvidenceGrace = 2 * time.Second
 	MaxInputBytes       = 4096
 	MaxHotkeyKeys       = 5
 	MaxKeyBytes         = 32
 	MaxScrollDelta      = 10000
 	MaxDragDurationMS   = MaxActionDurationMS
 )
+
+// ActionExecutionTimeout separates a validated wait/drag duration from bounded
+// capture and acknowledgement overhead. The caller's earlier context deadline
+// always wins; this does not change any run's total budget or replay policy.
+func ActionExecutionTimeout(action Action, baseline time.Duration) time.Duration {
+	if (action.Kind != ActionWait && action.Kind != ActionDrag) || action.DurationMS <= 0 || action.DurationMS > MaxActionDurationMS {
+		return baseline
+	}
+	timeout := time.Duration(action.DurationMS)*time.Millisecond + ActionEvidenceGrace
+	if timeout > baseline {
+		return timeout
+	}
+	return baseline
+}
 
 // Platform identifies the host family without exposing platform implementation
 // details in the public contract.

@@ -1,6 +1,7 @@
 package computeruse
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -145,5 +146,57 @@ func TestCapabilitiesAreCrossPlatformNeutral(t *testing.T) {
 		if strings.Contains(string(encoded), forbidden) {
 			t.Fatalf("capabilities leaked platform implementation detail %q: %s", forbidden, encoded)
 		}
+	}
+}
+
+type deadlineWaitBackend struct {
+	Backend
+	remaining time.Duration
+}
+
+func (b *deadlineWaitBackend) Execute(ctx context.Context, a Action) (ActionReceipt, error) {
+	deadline, _ := ctx.Deadline()
+	b.remaining = time.Until(deadline)
+	return ActionReceipt{ActionID: a.ID, SessionID: a.SessionID, Outcome: OutcomeExecuted, DispatchState: DispatchNotStarted}, nil
+}
+func TestControllerMaximumWaitReservesEvidenceTime(t *testing.T) {
+	session, owner, now := newTestSession(t, false)
+	if err := session.SetObservation(readyObservation(session.ID(), now)); err != nil {
+		t.Fatal(err)
+	}
+	backend := &deadlineWaitBackend{}
+	controller, _ := NewController(session, backend)
+	action := Action{ID: "wait-deadline", SessionID: session.ID(), ObservationID: "obs-1", Kind: ActionWait, DurationMS: MaxActionDurationMS}
+	if _, err := controller.Execute(context.Background(), owner, action); err != nil {
+		t.Fatal(err)
+	}
+	if backend.remaining < 11*time.Second || backend.remaining > 12*time.Second {
+		t.Fatalf("maximum wait deadline=%s; needs bounded 2s evidence grace", backend.remaining)
+	}
+}
+
+func TestActionExecutionTimeoutIsBoundedAndKindScoped(t *testing.T) {
+	baseline := time.Duration(MaxActionDurationMS) * time.Millisecond
+	for _, kind := range []ActionKind{ActionWait, ActionDrag} {
+		if timeout := ActionExecutionTimeout(Action{Kind: kind, DurationMS: MaxActionDurationMS}, baseline); timeout != baseline+ActionEvidenceGrace {
+			t.Fatalf("%s timeout=%s", kind, timeout)
+		}
+	}
+	for _, action := range []Action{{Kind: ActionType, DurationMS: MaxActionDurationMS}, {Kind: ActionWait, DurationMS: MaxActionDurationMS + 1}, {Kind: ActionWait, DurationMS: -1}} {
+		if ActionExecutionTimeout(action, baseline) != baseline {
+			t.Fatalf("unvalidated duration expanded deadline: %+v", action)
+		}
+	}
+}
+func TestControllerEvidenceGraceHonorsEarlierCallerDeadline(t *testing.T) {
+	session, owner, now := newTestSession(t, false)
+	_ = session.SetObservation(readyObservation(session.ID(), now))
+	backend := &deadlineWaitBackend{}
+	controller, _ := NewController(session, backend)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	_, err := controller.Execute(ctx, owner, Action{ID: "wait-parent", SessionID: session.ID(), ObservationID: "obs-1", Kind: ActionWait, DurationMS: MaxActionDurationMS})
+	if err != nil || backend.remaining > 100*time.Millisecond {
+		t.Fatalf("caller deadline lost: remaining=%s err=%v", backend.remaining, err)
 	}
 }

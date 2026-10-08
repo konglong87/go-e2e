@@ -45,7 +45,8 @@ type Config struct {
 	HelperEnv  []string
 	// HostBundleID identifies the owning desktop UI for self-target safety.
 	// Empty keeps the backend platform-neutral in isolated tests.
-	HostBundleID           string
+	HostBundleID string
+	// Base RPC timeout; bounded wait/drag durations add evidence grace when needed.
 	RequestTimeout         time.Duration
 	RequestHostPermissions func()
 	// CheckHostPermissions is the signed host's TCC source of truth. Production
@@ -289,7 +290,11 @@ func New(ctx context.Context, c Config) (*Backend, error) {
 }
 
 func (b *Backend) request(ctx context.Context, command, sessionID, actionID string, payload map[string]any) (helperResponse, error) {
-	ctx, cancel := context.WithTimeout(ctx, b.config.RequestTimeout)
+	return b.requestWithTimeout(ctx, b.config.RequestTimeout, command, sessionID, actionID, payload)
+}
+
+func (b *Backend) requestWithTimeout(ctx context.Context, timeout time.Duration, command, sessionID, actionID string, payload map[string]any) (helperResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	deadline, _ := ctx.Deadline() // wall-clock deadline, including the caller's limit
 	requestID := fmt.Sprintf("request-%d", b.requestCounter.Add(1))
@@ -710,6 +715,7 @@ func (b *Backend) Execute(ctx context.Context, action cu.Action) (receipt cu.Act
 	b.mu.Lock()
 	b.observation = cu.Observation{} // consume before dispatch, including rejection
 	b.mu.Unlock()
+	executionTimeout := cu.ActionExecutionTimeout(action, b.config.RequestTimeout)
 	payload := map[string]any{"generation": epoch, "kind": action.Kind, "observation_id": action.ObservationID, "display_id": obs.DisplayID, "window_id": action.WindowID, "text": action.Text, "key": action.Key, "keys": action.Keys, "delta_x": action.DeltaX, "delta_y": action.DeltaY, "duration_ms": action.DurationMS}
 	if action.Point != nil {
 		payload["x"] = action.Point.X
@@ -734,7 +740,7 @@ func (b *Backend) Execute(ctx context.Context, action cu.Action) (receipt cu.Act
 			b.mu.Unlock()
 			return finish(&rejection{"inactive"})
 		}
-		token, authorizeErr := b.mouseBroker.authorize(ctx, action, epoch, b.config.RequestTimeout)
+		token, authorizeErr := b.mouseBroker.authorize(ctx, action, epoch, executionTimeout)
 		b.mu.Unlock()
 		if authorizeErr != nil {
 			return finish(&rejection{mouseBrokerInputUnavailable})
@@ -763,7 +769,7 @@ func (b *Backend) Execute(ctx context.Context, action cu.Action) (receipt cu.Act
 			b.mu.Unlock()
 			return finish(&rejection{"inactive"})
 		}
-		token, count, authorizeErr := b.mouseBroker.authorizeBatch(ctx, action, obs, b.config.RequestTimeout)
+		token, count, authorizeErr := b.mouseBroker.authorizeBatch(ctx, action, obs, executionTimeout)
 		b.mu.Unlock()
 		if authorizeErr != nil {
 			return finish(&rejection{mouseBrokerInputUnavailable})
@@ -783,7 +789,7 @@ func (b *Backend) Execute(ctx context.Context, action cu.Action) (receipt cu.Act
 		}()
 	}
 
-	response, err := b.request(ctx, commandExecute, action.SessionID, action.ID, payload)
+	response, err := b.requestWithTimeout(ctx, executionTimeout, commandExecute, action.SessionID, action.ID, payload)
 	receipt.DispatchState = response.DispatchState
 	if err != nil {
 		var rejected *rejection

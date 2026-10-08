@@ -118,13 +118,13 @@ func lockControllerGate(ctx context.Context, gate chan struct{}) (func(), error)
 	}
 	return func() { <-gate }, nil
 }
-func (c *Controller) acquire(ctx context.Context) (context.Context, func(), error) {
+func (c *Controller) acquire(ctx context.Context, timeout time.Duration) (context.Context, func(), error) {
 	release, err := lockControllerGate(ctx, c.serial)
 	if err != nil {
 		return nil, nil, err
 	}
 	c.mu.Lock()
-	op, cancel := context.WithTimeout(ctx, time.Duration(MaxActionDurationMS)*time.Millisecond)
+	op, cancel := context.WithTimeout(ctx, timeout)
 	c.cancel = cancel
 	c.mu.Unlock()
 	return op, func() { cancel(); c.mu.Lock(); c.cancel = nil; c.mu.Unlock(); release() }, nil
@@ -158,7 +158,7 @@ func (c *Controller) Observe(ctx context.Context, owner SessionOwner, r ObserveR
 	if err := c.authorize(owner, r.SessionID); err != nil {
 		return Observation{}, err
 	}
-	op, release, err := c.acquire(ctx)
+	op, release, err := c.acquire(ctx, time.Duration(MaxActionDurationMS)*time.Millisecond)
 	if err != nil {
 		return Observation{}, err
 	}
@@ -360,7 +360,7 @@ func (c *Controller) Execute(ctx context.Context, owner SessionOwner, a Action) 
 	if err := c.authorize(owner, a.SessionID); err != nil {
 		return ActionReceipt{}, err
 	}
-	op, release, err := c.acquire(ctx)
+	op, release, err := c.acquire(ctx, ActionExecutionTimeout(a, time.Duration(MaxActionDurationMS)*time.Millisecond))
 	if err != nil {
 		return ActionReceipt{}, err
 	}

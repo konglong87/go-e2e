@@ -134,6 +134,9 @@ func TestHelperProcess(t *testing.T) {
 				result["observation_expires_at"] = time.Now().Add(time.Hour).Format(time.RFC3339Nano)
 			}
 		case commandExecute:
+			if mode == "wait-deadline" && time.Until(req.Deadline) < 11*time.Second {
+				t.Fatal("maximum wait envelope left no evidence grace")
+			}
 			if marker != "" {
 				_ = os.WriteFile(marker, []byte("execute"), 0600)
 			}
@@ -756,5 +759,16 @@ func TestInvalidDispatchMetadataCannotLeakOrRestoreAuthority(t *testing.T) {
 	}
 	if b.Resume(context.Background()) == nil {
 		t.Fatal("invalid helper restored authority")
+	}
+}
+
+func TestBackendMaximumWaitReservesEvidenceTime(t *testing.T) {
+	b := newTestBackend(t, "wait-deadline", defaultTimeout, "")
+	obs := observeTest(t, b)
+	action := waitAction(obs)
+	action.DurationMS = cu.MaxActionDurationMS
+	receipt, err := b.Execute(context.Background(), action)
+	if err != nil || receipt.Outcome != cu.OutcomeExecuted {
+		t.Fatalf("receipt=%+v err=%v", receipt, err)
 	}
 }
