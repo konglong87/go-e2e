@@ -30,3 +30,11 @@ func TestResultMetadataRetainsSanitizedActionReceipt(t *testing.T) {
 		t.Fatalf("private receipt fields leaked: %s", data)
 	}
 }
+
+func TestResultMetadataDoesNotInventErrorForSuccessfulReceipt(t *testing.T) {
+	meta := ResultMetadata(`{"receipt":{"action_id":"a","session_id":"s","outcome":"executed","dispatch_state":"complete"}}`)
+	r := meta["receipt"].(ActionReceipt)
+	if r.ErrorCode != "" || meta["error_code"] != nil {
+		t.Fatalf("success gained an error: %#v", meta)
+	}
+}

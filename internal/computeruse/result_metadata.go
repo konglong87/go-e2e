@@ -56,7 +56,9 @@ func ResultMetadata(output string) map[string]any {
 		receipt.RedactedActionSummary = ""
 		receipt.EnvironmentFingerprint = ""
 		receipt.Before, receipt.After = nil, nil
-		receipt.ErrorCode = PublicErrorCode(receipt.ErrorCode)
+		if receipt.ErrorCode != "" {
+			receipt.ErrorCode = PublicErrorCode(receipt.ErrorCode)
+		}
 		// Keep action/session/evidence IDs and acknowledged dispatch/completion
 		// metadata even when generic text output is truncated.
 		meta["receipt"] = receipt

@@ -296,3 +296,22 @@ logs retained. Pre-existing scripts/__pycache__/ left untouched and uncommitted.
   desktop, ComputerUse/macOS race and native 267 assertions pass. Fixture Quit
   and exact process exit confirmed through project ComputerUse. Commit/push,
   rebuild and fresh requested-model 120 s loop remain the next gates.
+
+
+### Legal maximum wait exposes shared-deadline defect
+
+- 6dcd58c current-build model run -02 completed in 74.401 s, but failed acceptance:
+  legal `wait(duration_ms=10000)` consumed the entire 10 s Controller/RPC deadline,
+  leaving no capture/receipt time. RPC timed out, helper became unavailable and
+  subsequent Stop had control_failed. Preserve failed batch/screenshots; no replay.
+- Receipt metadata follow-up: empty success error codes must remain empty, not
+  normalize to action_failed. Regression and focused Go gate pass before commit.
+- Next architecture slice: retain 10 s operation-duration validation but separate
+  a fixed 2 s evidence grace in Controller + macOS execute RPC timeout. Reuse a
+  platform-neutral timeout policy, apply to wait/drag only, honor shorter caller
+  deadlines/cancellation/Stop. This is <=12 s bounded per operation, not any change
+  to the business run budget or the 120 s acceptance deadline. Tests must inspect
+  both Controller and native envelope deadlines without sleeping ten seconds.
+- New run -01 started its wrapper before the asynchronous local service child
+  existed; no model call occurred. -02 started only after read-only child readiness
+  was confirmed. Startup failures remain separate and are not mixed into evidence.
