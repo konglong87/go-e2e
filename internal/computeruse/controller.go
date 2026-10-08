@@ -3,6 +3,8 @@ package computeruse
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 	"sync"
 	"time"
 )
@@ -257,6 +259,7 @@ func (c *Controller) LaunchTarget(ctx context.Context, owner SessionOwner, id st
 			err = errors.New("computer target window does not match registry policy")
 		}
 		if target.Window.RequireVisible && !receipt.Window.IsVisible {
+			_ = os.WriteFile("/tmp/go-mismatch.log", []byte(fmt.Sprintf("controller RequireVisible: window=%+v\n", receipt.Window)), 0600)
 			receipt.Outcome = OutcomeRejected
 			receipt.ErrorCode = ErrorCodeTargetWindowMismatch
 			err = errors.New("computer target window is not visible")

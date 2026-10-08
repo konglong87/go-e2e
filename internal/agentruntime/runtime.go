@@ -860,13 +860,19 @@ func (r Runtime) Run(ctx context.Context, req Request, toolContext tools.Context
 			})
 			result.ToolCalls = append(result.ToolCalls, trace)
 			persistence.record("append tool transcript", recordTool(recorder, trace))
-			emitEvent(agenttasks.EventToolResult, map[string]any{
+			payload := map[string]any{
 				"turn":      turn,
 				"tool_id":   trace.ID,
 				"tool_name": trace.Name,
 				"is_error":  trace.IsError,
 				"preview":   truncateEventText(trace.Output, 160),
-			})
+			}
+			if tools.IsComputerUseTool(trace.Name) {
+				if identity := computerUseIdentity(trace.Output); identity != nil {
+					payload["output"] = identity
+				}
+			}
+			emitEvent(agenttasks.EventToolResult, payload)
 			toolResults = append(toolResults, anthropic.ContentBlock{
 				Type:      "tool_result",
 				ToolUseID: block.ID,
@@ -1945,6 +1951,39 @@ func marshalEventPayload(payload map[string]any) string {
 		return ""
 	}
 	return string(data)
+}
+
+// computerUseIdentity extracts stable identity fields from a ComputerUse tool
+// result output so they are available in persisted tool_result events without
+// retaining the full (potentially large, screenshot-bearing) output. The
+// acceptance harness and observability tools read window_id, bundle_id,
+// target_id, outcome, and error_code from the event payload.
+func computerUseIdentity(output string) map[string]any {
+	if output == "" {
+		return nil
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal([]byte(output), &decoded); err != nil {
+		return nil
+	}
+	identity := map[string]any{}
+	for _, key := range []string{"window_id", "bundle_id", "target_id", "outcome", "error_code"} {
+		if v, ok := decoded[key]; ok && v != nil && v != "" {
+			identity[key] = v
+		}
+	}
+	if launch, ok := decoded["launch_receipt"].(map[string]any); ok {
+		identity["launch_receipt"] = launch
+	}
+	if obs, ok := decoded["observation"].(map[string]any); ok {
+		if aw, ok := obs["active_window"].(map[string]any); ok {
+			identity["active_window"] = aw
+		}
+	}
+	if len(identity) == 0 {
+		return nil
+	}
+	return identity
 }
 
 func truncateEventText(text string, limit int) string {

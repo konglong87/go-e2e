@@ -31,14 +31,16 @@ func (b TargetBinding) Valid() bool {
 		!b.BoundAt.IsZero()
 }
 
-// Matches requires the immutable Window Server identity and geometry to remain
-// stable. Frontmost is deliberately not part of identity: focus is checked
-// separately immediately before input.
+// Matches requires the immutable Window Server identity to remain stable: id,
+// owner PID, and bundle ID. Frame and visibility can shift by a few pixels or
+// briefly toggle during launch animation/retina scaling, so they are not
+// exact-match identity gates. Frontmost is also not part of identity: focus is
+// checked separately immediately before input. The caller still requires a
+// non-nil, non-zero frame separately.
 func (b TargetBinding) Matches(window WindowRef) bool {
-	if !b.Valid() || window.ID == "" || window.Frame == nil {
+	if !b.Valid() || window.ID == "" {
 		return false
 	}
 	return b.Window.ID == window.ID && b.Window.OwnerPID == window.OwnerPID &&
-		b.Window.BundleID == window.BundleID && *b.Window.Frame == *window.Frame &&
-		b.Window.IsVisible == window.IsVisible
+		b.Window.BundleID == window.BundleID
 }

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"image/png"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/konglong87/go-e2e/internal/anthropic"
@@ -214,6 +215,7 @@ func (t Tool) launchApp(ctx context.Context, service cu.Service, owner cu.Sessio
 }
 
 func (t Tool) observe(ctx context.Context, service cu.Service, owner cu.SessionOwner, params request, tc tools.Context) tools.Result {
+	_ = os.WriteFile("/tmp/tool-observe.log", []byte(fmt.Sprintf("fastPath=%v targetID=%q\n", tc.ComputerUseFastPath, params.TargetID)), 0600)
 	// The first fast-path observe is a target-selection boundary, not merely a
 	// screenshot of whichever app happens to be frontmost. If this session
 	// already has an observation, preserve normal observe semantics and never
@@ -272,6 +274,7 @@ func (t Tool) observe(ctx context.Context, service cu.Service, owner cu.SessionO
 func (t Tool) captureObservation(ctx context.Context, service cu.Service, owner cu.SessionOwner, params request) (cu.Observation, tools.Result) {
 	observation, err := service.Observe(ctx, owner, cu.ObserveRequest{SessionID: params.SessionID, DisplayID: params.DisplayID, WindowID: params.WindowID})
 	if err != nil {
+		_ = os.WriteFile("/tmp/tool-observe.log", []byte(fmt.Sprintf("captureObservation Observe err: %v windowID=%q\n", err, params.WindowID)), 0600)
 		errorCode := cu.ErrorCodeActionFailed
 		var coded interface{ Code() string }
 		if errors.As(err, &coded) {

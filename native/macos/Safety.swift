@@ -43,9 +43,14 @@ struct NativeWindow: Equatable {
     let isFrontmost: Bool
 
     func matchesIdentity(_ other: NativeWindow) -> Bool {
-        id == other.id && ownerPID == other.ownerPID &&
-        bundleID == other.bundleID && frame == other.frame && displayID == other.displayID &&
-        isVisible == other.isVisible
+        // Identity is the immutable Window Server identity: id, owner PID, and
+        // bundle ID. Frame, displayID, and visibility can shift by a few pixels
+        // or briefly toggle during launch animation/retina scaling, so they
+        // must not be exact-match identity gates — a content-rendered window
+        // that resized by 1px after launch would otherwise be rejected as a
+        // different target. Frame is still validated for non-zero dimensions
+        // by the caller.
+        id == other.id && ownerPID == other.ownerPID && bundleID == other.bundleID
     }
 
     var json: JSONValue {

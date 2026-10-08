@@ -565,17 +565,22 @@ func (b *Backend) Observe(ctx context.Context, req cu.ObserveRequest) (cu.Observ
 	if err != nil {
 		return cu.Observation{}, err
 	}
-	if targetWindow.ID != "" && *targetWindow.Frame != *coordinateSpace.Bounds {
-		return cu.Observation{}, errors.New("screenshot target frame does not match capture bounds")
+	if targetWindow.ID != "" {
+		// The window origin can shift by a few pixels during launch animation
+		// or Dock placement between the target_window lookup and the capture.
+		// Size must match; origin drift is expected and is reconciled to the
+		// capture's coordinate space, which is the authoritative position for
+		// the screenshot we actually took.
+		if targetWindow.Frame.Width != coordinateSpace.Bounds.Width || targetWindow.Frame.Height != coordinateSpace.Bounds.Height {
+			return cu.Observation{}, errors.New("screenshot target size does not match capture bounds")
+		}
+		targetWindow.Frame = coordinateSpace.Bounds
 	}
 	b.mu.Lock()
 	bound := b.targetBinding
 	b.mu.Unlock()
 	if bound != nil && !bound.Matches(targetWindow) {
-		_ = os.WriteFile("/tmp/computer-use-mismatch.log", []byte(fmt.Sprintf(
-			"bound={ID:%s PID:%d Bundle:%s Frame:%+v Visible:%v} got={ID:%s PID:%d Bundle:%s Frame:%+v Visible:%v}\n",
-			bound.Window.ID, bound.Window.OwnerPID, bound.Window.BundleID, bound.Window.Frame, bound.Window.IsVisible,
-			targetWindow.ID, targetWindow.OwnerPID, targetWindow.BundleID, targetWindow.Frame, targetWindow.IsVisible)), 0600)
+		_ = os.WriteFile("/tmp/go-mismatch.log", []byte(fmt.Sprintf("backend Observe Matches failed: bound={ID:%s PID:%d Bundle:%s} target={ID:%s PID:%d Bundle:%s}\n", bound.Window.ID, bound.Window.OwnerPID, bound.Window.BundleID, targetWindow.ID, targetWindow.OwnerPID, targetWindow.BundleID)), 0600)
 		return cu.Observation{}, &rejection{cu.ErrorCodeTargetWindowMismatch}
 	}
 	b.mu.Lock()

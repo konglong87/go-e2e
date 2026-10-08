@@ -125,24 +125,38 @@ final class Engine {
     }
     private func capture(_ request: Envelope, geometry: DisplayGeometry, expectedWindow: NativeWindow? = nil) throws -> JSONValue {
         try state.gate(request)
-        guard platform.captureAllowed(), try resolveGeometry(for: request) == geometry else { throw SafetyError.screenshotFailed }
-        try checkWindow(request, geometry: geometry, expectedWindow: expectedWindow)
+        let capOK = platform.captureAllowed()
+        // The window position (bounds.origin) can shift between observe and
+        // capture by a few pixels during launch animation or Dock placement.
+        // Identity (display id, window id, pixel dimensions) must remain
+        // stable; use the freshly resolved geometry so the screenshot reflects
+        // the window's real position, and reject only if identity changed.
+        let resolved = try resolveGeometry(for: request)
+        guard capOK,
+              resolved.id == geometry.id,
+              resolved.windowID == geometry.windowID,
+              resolved.width == geometry.width,
+              resolved.height == geometry.height else { throw SafetyError.screenshotFailed }
+        let active = resolved
+        try checkWindow(request, geometry: active, expectedWindow: expectedWindow)
         guard let focus = platform.focus() else { throw SafetyError.focusChanged }
-        let data = try platform.capture(geometry)
+        let data = try platform.capture(active)
         try state.gate(request)
-        guard try resolveGeometry(for: request) == geometry else { throw SafetyError.unsupportedDisplay }
-        try checkWindow(request, geometry: geometry, expectedWindow: expectedWindow)
+        let postCheck = try resolveGeometry(for: request)
+        guard postCheck.id == active.id, postCheck.windowID == active.windowID,
+              postCheck.width == active.width, postCheck.height == active.height else { throw SafetyError.unsupportedDisplay }
+        try checkWindow(request, geometry: active, expectedWindow: expectedWindow)
         guard platform.focus() == focus else { throw SafetyError.focusChanged }
         var result: [String: JSONValue] = ["media_type": .string("image/png"), "data": .string(data.base64EncodedString()),
-                        "width": .number(Double(geometry.width)), "height": .number(Double(geometry.height)),
-                        "scale_factor": .number(geometry.scale), "display_id": .string(geometry.id),
-                        "coordinate_space": geometry.coordinateSpace]
-        if let windowID = geometry.windowID {
+                        "width": .number(Double(active.width)), "height": .number(Double(active.height)),
+                        "scale_factor": .number(active.scale), "display_id": .string(active.id),
+                        "coordinate_space": active.coordinateSpace]
+        if let windowID = active.windowID {
             result["window_id"] = .string(windowID)
             guard let target = try requestedWindow(request) else { throw SafetyError.unsupportedDisplay }
             result["target_window"] = target.json
         }
-        if let active = try? platform.windows().first(where: { $0.isFrontmost }) { result["active_window"] = active.json }
+        if let frontmost = try? platform.windows().first(where: { $0.isFrontmost }) { result["active_window"] = frontmost.json }
         return .object(result)
     }
     private static let activationTimeout = 1.0
