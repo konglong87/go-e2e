@@ -249,6 +249,65 @@ describe("read-only session synchronization", () => {
     expect(client.observe).not.toHaveBeenCalled();
   });
 
+  it("rediscovers a replacement after Stop without carrying old preview, receipts or approval", async () => {
+    client.getActiveSession = vi.fn().mockRejectedValue(new Error("No active session"));
+    await start();
+    client.getReceipt = vi.fn().mockResolvedValue(receipt);
+    await act(async () => { await result.observe(); await result.getReceipt(receipt.action_id); });
+    await act(async () => { await result.stop(); });
+    const replacement = { ...snapshot("ready", "model-replacement"), owner_kind: "managed_conversation" as const };
+    client.getActiveSession = vi.fn().mockResolvedValue(replacement);
+    await tick();
+    expect(result.session?.session_id).toBe(replacement.session_id);
+    expect(result.approvedConversationRef).toBeNull();
+    expect(result.observation).toBeNull();
+    expect(result.receipts).toEqual([]);
+    expect(result.controlIntent).toBeNull();
+    expect(client.start).toHaveBeenCalledTimes(1);
+    expect(client.observe).toHaveBeenCalledTimes(1);
+    client.stop = vi.fn().mockResolvedValue(snapshot("stopped", replacement.session_id));
+    await act(async () => { await result.stop(); });
+    expect(client.stop).toHaveBeenLastCalledWith(replacement.session_id);
+  });
+
+  it("rediscovers after failure without resuming the failed session", async () => {
+    client.getActiveSession = vi.fn().mockRejectedValue(new Error("No active session"));
+    await start();
+    client.getSession = vi.fn().mockResolvedValue(snapshot("failed"));
+    await tick();
+    const replacement = snapshot("ready", "replacement-after-failure");
+    client.getActiveSession = vi.fn().mockResolvedValue(replacement);
+    await tick();
+    expect(result.session?.session_id).toBe(replacement.session_id);
+    expect(client.resume).not.toHaveBeenCalled();
+    expect(client.observe).not.toHaveBeenCalled();
+  });
+
+  it("ignores a terminal-session discovery that returns after a newer local start", async () => {
+    client.getActiveSession = vi.fn().mockRejectedValue(new Error("No active session"));
+    await start();
+    await act(async () => { await result.stop(); });
+    const read = deferred<ComputerSessionSnapshot>();
+    client.getActiveSession = vi.fn().mockReturnValue(read.promise);
+    await tick();
+    client.start = vi.fn().mockResolvedValue(snapshot("ready", "local-replacement"));
+    await act(async () => { await result.start({ approved: true }); });
+    await act(async () => { read.resolve(snapshot("ready", "obsolete-discovery")); });
+    expect(result.session?.session_id).toBe("local-replacement");
+    expect(result.controlIntent).toBeNull();
+  });
+
+  it("never revives a terminal session from stale same-ID active discovery", async () => {
+    client.getActiveSession = vi.fn().mockRejectedValue(new Error("No active session"));
+    await start();
+    await act(async () => { await result.stop(); });
+    client.getActiveSession = vi.fn().mockResolvedValue(snapshot("ready"));
+    await tick(2);
+    expect(client.getActiveSession).toHaveBeenCalled();
+    expect(result.session?.state).toBe("stopped");
+    expect(client.observe).not.toHaveBeenCalled();
+  });
+
   it("preserves existing preview bytes while model observation metadata changes", async () => {
     await start();
     await act(async () => { await result.observe(); });

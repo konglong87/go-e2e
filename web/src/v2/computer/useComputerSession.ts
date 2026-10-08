@@ -18,6 +18,8 @@ type ComputerState = {
 };
 export const COMPUTER_SESSION_POLL_INTERVAL_MS = 1000;
 const isTerminal = (session: ComputerSessionSnapshot) => session.state === "stopped" || session.state === "failed";
+const canDiscoverSession = (state: ComputerState) => !state.loading && !state.controlIntent
+  && (!state.session || isTerminal(state.session));
 
 const initialState: ComputerState = { available: false, capabilities: null, session: null, approvedConversationRef: null, observation: null, receipts: [], loading: false, error: null, controlIntent: null };
 
@@ -58,33 +60,36 @@ export function useComputerSession(client: ComputerClient | null) {
   const sessionID = state.session?.session_id;
   const polling = !!state.session && !isTerminal(state.session);
 
-  // Discover model-created sessions through an authoritative read-only host
-  // status probe. Never infer an ID from Lookup or capture a screenshot here.
+  // Discover model-created replacements after a terminal session too. Status
+  // discovery grants no approval, never observes, and cannot revive a stopped ID.
   useEffect(() => {
-    if (!client?.getActiveSession || sessionID) return;
+    if (!client?.getActiveSession || polling) return;
     let disposed = false;
     let timer: ReturnType<typeof setTimeout>;
     const schedule = () => {
       if (!disposed) timer = setTimeout(() => { void discover(); }, COMPUTER_SESSION_POLL_INTERVAL_MS);
     };
     const discover = async () => {
-      const before = current.current;
-      if (disposed || before.loading || before.session?.session_id) return;
+      if (disposed) return;
+      if (!canDiscoverSession(current.current)) { schedule(); return; }
+      const version = generation.current;
       try {
         const snapshot = await client.getActiveSession!();
         const latest = current.current;
-        if (!disposed && mounted.current && !latest.loading && !latest.session) {
-          update({ ...mergeSnapshot(latest, snapshot), approvedConversationRef: null });
-        }
+        if (disposed || !mounted.current || version !== generation.current || !canDiscoverSession(latest)
+          || !snapshot.session_id || isTerminal(snapshot) || snapshot.session_id === latest.session?.session_id) return;
+        // Reset all old-session evidence and user control/approval state. The
+        // returned host snapshot supplies metadata, never old preview authority.
+        update({ ...mergeSnapshot({ ...initialState, available: latest.available }, snapshot), approvedConversationRef: null });
       } catch {
         // Idle with no active session is expected; do not surface polling errors.
       } finally {
-        if (!disposed && !current.current.session) schedule();
+        if (!disposed && (!current.current.session || isTerminal(current.current.session))) schedule();
       }
     };
     void discover();
     return () => { disposed = true; clearTimeout(timer); };
-  }, [client, sessionID, update]);
+  }, [client, sessionID, polling, update]);
   useEffect(() => {
     if (!client || !sessionID || !polling) return;
     let disposed = false;

@@ -190,3 +190,30 @@ logs retained. Pre-existing scripts/__pycache__/ left untouched and uncommitted.
 - Remaining order unchanged: repeated cold target captures + non-WorkBuddy
   fixture + native controls; then requested-model 120 s loop. Old lock blocker
   is cleared. Second physical display/formal signing remain deferred.
+
+
+### Resumed desktop control discovery slice
+
+- e45454d is committed/pushed. Current rebuilt native host cold-starts WorkBuddy
+  and captures rendered content successfully. `continuation-native-e45454d-02/`
+  holds three same-session/window/PID/bundle captures (0.138/0.128/0.251 s), a
+  3.287 s launch and Stop. Calculator launch (1.075 s) and two 396x700 captures
+  are in `continuation-calculator-e45454d-01/`. Actual PNGs inspected. The -01
+  WorkBuddy capture succeeded, but the local validation client used the wrong
+  metadata path and aborted; retained as harness failure, not product pass.
+- Current architecture already intentionally disabled the independent NSPanel
+  in c77d5d7 (“keep computer use overlay inside desktop window”). Do not undo
+  this product choice to satisfy historical NSPanel queue text. Current desktop
+  control acceptance targets actual clicks/screenshots inside the Wails window;
+  disabled NSPanel acceptance remains unclaimed.
+- Fresh native screenshot showed stale “stopped” while host's exact-session
+  snapshot was ready. Root cause: useComputerSession stopped discovery forever
+  as soon as any session ID existed, even after terminal Stop/failure.
+- Intended files: useComputerSession.ts and its tests, this ledger. Restart
+  read-only discovery only when idle/terminal; never resurrect same terminal ID,
+  resume Pause/Stop, Observe as a fallback, or retain old images/receipts/approval
+  when binding a replacement. Generation checks reject races with local starts.
+- Regression tests fail before fix; focused UI tests and typecheck pass. Full
+  web suite passes: 79 files / 793 tests. Commit/push, fresh build and native
+  UI click acceptance next. Model
+  120 s acceptance follows native controls and a repeated cold observation.
