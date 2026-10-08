@@ -99,6 +99,8 @@ class Evidence:
 
     def __init__(self, root: Path):
         self.root = root
+        if self.root.exists() and any(self.root.iterdir()):
+            raise AcceptanceError("evidence_isolation", "evidence directory is not empty; use a fresh run directory")
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         try:
             os.chmod(self.root, 0o700)
@@ -267,14 +269,34 @@ def source_commit(workspace: Path) -> str:
         return ""
 
 
+def sha256_file(path: Path) -> str:
+    sha = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            sha.update(chunk)
+    return sha.hexdigest()
+
+
 def app_identity(app_path: Path) -> dict[str, Any]:
     result: dict[str, Any] = {"path": str(app_path), "exists": app_path.exists()}
     if app_path.exists():
-        try:
-            result["modified_at"] = dt.datetime.fromtimestamp(app_path.stat().st_mtime, tz=dt.timezone.utc).isoformat()
-        except OSError:
-            pass
+        result["modified_at"] = dt.datetime.fromtimestamp(app_path.stat().st_mtime, tz=dt.timezone.utc).isoformat()
+        manifest_path = app_path / "Contents/Resources/computer-use-build.json"
+        if manifest_path.exists():
+            result["manifest"] = json.loads(manifest_path.read_text())
     return result
+
+
+def validate_build_identity(workspace: Path, app_path: Path) -> None:
+    identity = app_identity(app_path)
+    manifest = identity.get("manifest", {})
+    if not manifest or manifest.get("source_commit") != source_commit(workspace) or manifest.get("source_dirty") is not False:
+        raise AcceptanceError("build_identity", "desktop app is not an attested clean build of current HEAD; rebuild via scripts/build-desktop-v2.sh")
+    for key, relative in [("desktop_sha256", "Contents/MacOS/go-e2e-desktop"),
+                          ("helper_sha256", "Contents/Helpers/ComputerHelper.app/Contents/MacOS/computer-helper-macos")]:
+        if manifest.get(key) != sha256_file(app_path / relative):
+            raise AcceptanceError("build_identity", "desktop/helper bytes do not match the source build manifest")
+
 
 
 def json_from_text(value: Any) -> Optional[dict[str, Any]]:
@@ -424,6 +446,7 @@ def tool_events(events: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
         # first-observe response nests the launch window under
         # launch_receipt.window, so parse that known schema instead of relying
         # on a flat regex match.
+        merge_tool_identity(item, result_payload)
         decoded_output = json_from_text(output)
         if decoded_output is not None:
             merge_tool_identity(item, decoded_output)
@@ -432,7 +455,7 @@ def tool_events(events: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
                 value = regex_value(output, key)
                 if value:
                     item[key] = value
-        if action == "observe" and '"launch_receipt"' in output:
+        if action == "observe" and ('"launch_receipt"' in output or isinstance(result_payload.get("launch_receipt"), dict)):
             # The generic first-observe fast path may return launch, binding,
             # and the target observation as one host-authorized result.
             item["implicit_launch"] = True
@@ -448,6 +471,17 @@ def tool_events(events: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
         ordered.append(item)
     ordered.sort(key=lambda item: item.get("call_at", ""))
     return ordered
+
+
+def validate_run_actions(actions: Iterable[Mapping[str, Any]], started_at: str, ended_at: str) -> None:
+    """Fail closed on stale receipts, missing timestamps or reversed events."""
+    started, ended = parse_iso(started_at), parse_iso(ended_at)
+    if started is None or ended is None or ended < started:
+        raise AcceptanceError("evidence_isolation", "invalid run time boundary")
+    for action in actions:
+        call, result = parse_iso(str(action.get("call_at", ""))), parse_iso(str(action.get("result_at", "")))
+        if call is None or result is None or call < started or result < call or result > ended:
+            raise AcceptanceError("evidence_isolation", "ComputerUse receipt timestamps do not belong to the current run")
 
 
 def png_has_visible_content(data: bytes) -> bool:
@@ -778,6 +812,27 @@ def validate_actions(
     }
 
 
+def validate_observe_only(actions: list[dict[str, Any]], output_paths: Mapping[str, str], final_status: str) -> dict[str, Any]:
+    if not actions or actions[0].get("action") != "observe":
+        raise AcceptanceError("observe_only", "first action must be target observe")
+    if any(item.get("action") not in {"observe", "launch_app", "wait", "stop"} for item in actions):
+        raise AcceptanceError("observe_only", "observe-only run must not post input")
+    launch = next((item for item in actions if item.get("implicit_launch") or item.get("action") == "launch_app"), {})
+    if not launch or launch.get("is_error") or launch.get("outcome") != "executed" or launch.get("bundle_id") != TARGET_BUNDLE_ID or not launch.get("window_id"):
+        raise AcceptanceError("launch", "observe-only launch/binding was not successful")
+    if actions[-1].get("action") != "stop" or actions[-1].get("is_error") or final_status not in TERMINAL_STATUSES:
+        raise AcceptanceError("stop", "observe-only run did not stop")
+    for item in actions[:-1]:
+        if item.get("is_error"):
+            raise AcceptanceError("observe_only", "observe-only native operation failed")
+        if item.get("window_id") and item["window_id"] != launch["window_id"]:
+            raise AcceptanceError("window binding", "observe-only capture changed target identity")
+    if not output_paths:
+        raise AcceptanceError("content readiness", "observe-only has no valid saved observation")
+    return {"target_id": TARGET_ID, "bundle_id": TARGET_BUNDLE_ID, "window_id": launch["window_id"],
+            "action_count": len(actions), "screenshot_count": len(output_paths), "mode": "observe_only"}
+
+
 def build_timing(timing: Timing, final_status: str, end_monotonic: float, provider: str, model: str, effort: str, error_stage: str = "") -> dict[str, Any]:
     total = max(0.0, end_monotonic - timing.start_monotonic)
     return {
@@ -813,6 +868,7 @@ def run_acceptance(
     total_budget: float = DEFAULT_TOTAL_BUDGET_SECONDS,
     operational_deadline: float = DEFAULT_OPERATIONAL_DEADLINE_SECONDS,
     poll_interval: float = DEFAULT_POLL_INTERVAL_SECONDS,
+    observe_only: bool = False,
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
 ) -> dict[str, Any]:
@@ -854,6 +910,12 @@ def run_acceptance(
         "立即 stop。只使用 ComputerUse，不要使用 Bash、脚本、osascript、System Events、screencapture、open 或其他工具；"
         "不要操作 go-e2e 自己；每个输入前必须使用最新 observe；任何失败或不确定立即 stop，不要重放或重复点击发送。"
     )
+
+    if observe_only:
+        prompt = ("只用 ComputerUse 做一次冷启动观察验收，不进行任何 click/type/key/hotkey 等输入。"
+                  "第一步 action=observe,target_id=workbuddy，由 ComputerUse 启动绑定应用。"
+                  "检查返回的真实目标截图是否 ready；白屏最多被动观察12秒，保存每张截图。"
+                  "无论成功失败，最后 action=stop。不要预打开应用，不使用任何其他工具。")
 
     try:
         create_key = "computer-use-gpt6-sol-120s-" + uuid.uuid4().hex
@@ -958,6 +1020,7 @@ def run_acceptance(
         evidence.json("action-receipts.json", {"schema_version": "computer-use-action-receipts.v1", "actions": actions})
         evidence.json("conversation-trace.json", safe_event_trace(events, actions))
         evidence.json("execution-log-metrics.json", log_metrics)
+        validate_run_actions(actions, timing.started_at, iso_now())
         output_paths, invalid_assets = save_observation_assets(client, evidence, actions, deadline)
         # Update preflight evidence from the first actual observation without
         # reading or OCRing pixels; the screenshot itself is the authority.
@@ -1008,7 +1071,8 @@ def run_acceptance(
 
         validation_error: Optional[AcceptanceError] = None
         try:
-            binding = validate_actions(actions, output_paths, final_status, invalid_assets=invalid_assets)
+            binding = (validate_observe_only(actions, output_paths, final_status) if observe_only
+                       else validate_actions(actions, output_paths, final_status, invalid_assets=invalid_assets))
         except AcceptanceError as exc:
             validation_error = exc
             binding = {
@@ -1057,7 +1121,8 @@ def run_acceptance(
 
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT.with_name(DEFAULT_OUTPUT.name + "-" + dt.datetime.now().strftime("%H%M%S") + "-" + uuid.uuid4().hex[:8]))
+    parser.add_argument("--observe-only", action="store_true", help="validate launch/binding/capture/stop without any input")
     parser.add_argument("--workspace", type=Path, default=DEFAULT_WORKSPACE)
     parser.add_argument("--app", type=Path, default=DEFAULT_APP_PATH)
     parser.add_argument("--port", type=int, default=0, help="use an explicit local server port instead of process discovery")
@@ -1074,6 +1139,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
 def main(argv: Optional[list[str]] = None) -> int:
     args = parse_args(argv)
     try:
+        validate_build_identity(args.workspace, args.app)
         if args.port and args.auth_token:
             server = LocalServer(0, 0, args.port, args.auth_token)
         else:
@@ -1089,6 +1155,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             total_budget=args.total_budget,
             operational_deadline=min(args.operational_deadline, args.total_budget),
             poll_interval=args.poll_interval,
+            observe_only=args.observe_only,
         )
         print(json.dumps({"status": result.get("status"), "final_status": result.get("final_status"),
                           "failure_stage": result.get("failure_stage", ""), "evidence": str(args.output),

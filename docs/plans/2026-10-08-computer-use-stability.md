@@ -22,8 +22,8 @@ inspection. Existing /tmp/tool-observe.log and /tmp/go-mismatch.log retained.
 
 | Priority | Slice / intended files | Gate | Status |
 |---|---|---|---|
-| P0-1 | Append-only Go/native diagnostics; computerdiag, tool, backend, controller, native Diagnostics/Engine/Platform/Safety, helper build/tests | Focused Go + native regression; commit/push before real run | implemented; focused Go and 257 native assertions pass; commit/push below |
-| P0-2 | Fresh-run evidence isolation; scripts/computer-use-120s-acceptance.py and tests | Reject mixed time/session/build evidence and existing output dir; preserve launch receipt on observation failure | pending |
+| P0-1 | Append-only Go/native diagnostics; computerdiag, tool, backend, controller, native Diagnostics/Engine/Platform/Safety, helper build/tests | Focused Go + native regression; commit/push before real run | implemented; focused Go and 257 native assertions pass; committed/pushed d16fad7 |
+| P0-2 | Fresh-run evidence isolation; scripts/computer-use-120s-acceptance.py and tests | Reject mixed time/session/build evidence and existing output dir; preserve launch receipt on observation failure | implemented; tests below; commit/push pending |
 | P0-3 | Diagnose real launch/observe; bounded unique-window stabilization and capture snapshot consistency | Fresh build identity + repeated cold observe-only, screenshots and Stop | depends P0-1/2 |
 | P0-4 | Dispatch-stage recovery contract across Swift/Go/controller/session | Native partial/complete/before-input faults, Go contract tests, unknown replay prevention, Pause/Stop/permission races | pending |
 | P0-5 | Actual autonomous model closure | Actual provider jiuan-responses-gpt-5.6sol, gpt-6-sol, high; launch→observe ready→new task→type 1+1=2→send once→reply screenshot→Stop, <=120 s | depends above |
@@ -52,3 +52,14 @@ semantics changed. Focused six Go packages plus computerdiag pass; native
 fake-platform suite 257 assertions passes. Diagnostics now identify helper
 command/request IDs and native identity/geometry gates. New native log:
 `/tmp/swift-mismatch.log`. Real current-build acceptance still pending.
+
+### Slice 2 verification
+
+Acceptance now uses unique default directories and rejects nonempty directories;
+action timestamps must belong to the current run. Structured launch identity is
+read even when tool output is truncated. Launch receipt is retained if the bound
+observe fails. Build entry adds a signed-resource source/byte attestation;
+acceptance CLI rejects stale/dirty/tampered builds. Added observe-only gate.
+Tests: Python 20 tests, ComputerUse tool tests; shell syntax check. Native test
+script executable-bit change from slice 1 is restored to the repository pattern.
+Full model closure remains pending; no old mixed batch is counted as a pass.

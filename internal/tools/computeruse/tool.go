@@ -284,14 +284,9 @@ func (t Tool) observe(ctx context.Context, service cu.Service, owner cu.SessionO
 		"layer": "go_tool", "phase": "launch_bound_observe_begin", "target_id": params.TargetID, "window_id": params.WindowID,
 	})
 	_, boundResult := t.captureObservation(ctx, service, owner, params)
-	if boundResult.IsError {
-		computerdiag.Append(toolObserveDiagnosticPath, map[string]any{
-			"layer": "go_tool", "phase": "launch_bound_observe_result", "target_id": params.TargetID, "window_id": params.WindowID, "result": "error",
-		})
-		return boundResult
-	}
 	computerdiag.Append(toolObserveDiagnosticPath, map[string]any{
-		"layer": "go_tool", "phase": "launch_bound_observe_result", "target_id": params.TargetID, "window_id": params.WindowID, "result": "success",
+		"layer": "go_tool", "phase": "launch_bound_observe_result", "target_id": params.TargetID,
+		"window_id": params.WindowID, "is_error": boundResult.IsError,
 	})
 	var boundPayload map[string]any
 	_ = json.Unmarshal([]byte(boundResult.Content), &boundPayload)

@@ -60,6 +60,27 @@ if [[ -d "${APP_BIN}" ]]; then
     macos_codesign "${APP_BIN}/go-e2e-desktop"
     macos_codesign "${APP_BIN}/go-e2e"
     macos_codesign "${helper_app}"
+    # Attest the exact committed source and executable bytes before sealing.
+    python3 - "${APP_PATH}" "${ROOT}" <<'PYBUILD'
+import datetime, hashlib, json, pathlib, subprocess, sys
+app, root = map(pathlib.Path, sys.argv[1:])
+def digest(path):
+    sha = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            sha.update(chunk)
+    return sha.hexdigest()
+commit = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
+dirty = subprocess.run(["git", "-C", str(root), "diff", "--quiet", "HEAD", "--"]).returncode != 0
+resources = app / "Contents/Resources"
+resources.mkdir(exist_ok=True)
+(resources / "computer-use-build.json").write_text(json.dumps({
+    "schema_version": "computer-use-build.v1", "source_commit": commit, "source_dirty": dirty,
+    "built_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    "desktop_sha256": digest(app / "Contents/MacOS/go-e2e-desktop"),
+    "helper_sha256": digest(app / "Contents/Helpers/ComputerHelper.app/Contents/MacOS/computer-helper-macos"),
+}, indent=2) + "\n")
+PYBUILD
     codesign --force --sign - --requirements "${MACOS_ADHOC_DESIGNATED_REQUIREMENT}" --timestamp=none "${APP_PATH}"
     codesign --verify --deep --strict --verbose=2 "${APP_PATH}"
   fi

@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 import sys
 import time
 
@@ -163,6 +164,75 @@ class WrapperUnitTests(unittest.TestCase):
         self.assertEqual(result["action_rows"][1]["gap_after_previous_result_seconds"], 5.0)
         self.assertEqual(result["usage_rows"][0]["input_tokens"], 10)
 
+class EvidenceIsolationTests(unittest.TestCase):
+    def test_rejects_nonempty_evidence_directory_without_overwriting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            old = Path(directory) / "run-start.json"
+            old.write_text("old evidence")
+            with self.assertRaises(MODULE.AcceptanceError):
+                MODULE.Evidence(Path(directory))
+            self.assertEqual(old.read_text(), "old evidence")
+
+    def test_each_default_output_is_unique(self):
+        self.assertNotEqual(MODULE.parse_args([]).output, MODULE.parse_args([]).output)
+
+    def test_rejects_old_or_reversed_action_timestamps(self):
+        for call, result in [("2026-10-08T00:00:00Z", "2026-10-08T00:00:01Z"),
+                             ("2026-10-08T01:00:02Z", "2026-10-08T01:00:01Z")]:
+            with self.assertRaises(MODULE.AcceptanceError):
+                MODULE.validate_run_actions([{"call_at": call, "result_at": result}],
+                                            "2026-10-08T01:00:00Z", "2026-10-08T01:01:00Z")
+
+    def test_accepts_current_action_timestamps(self):
+        MODULE.validate_run_actions([{"call_at": "2026-10-08T01:00:01Z", "result_at": "2026-10-08T01:00:02Z"}],
+                                    "2026-10-08T01:00:00Z", "2026-10-08T01:01:00Z")
+
+    def test_structured_result_survives_truncated_output(self):
+        events = [
+            {"event_type": "tool_call", "payload_json": {"tool_id": "a", "tool_name": "ComputerUse", "input": {"action": "observe"}}},
+            {"event_type": "tool_result", "payload_json": {"tool_id": "a", "tool_name": "ComputerUse", "output": "{truncated",
+             "launch_receipt": {"target_id": "workbuddy", "bundle_id": "com.workbuddy.workbuddy", "outcome": "executed", "window": {"id": "123", "owner_pid": 456}}}},
+        ]
+        item = MODULE.tool_events(events)[0]
+        self.assertEqual(item["window_id"], "123")
+        self.assertTrue(item["implicit_launch"])
+
+
+class BuildAndObserveGateTests(unittest.TestCase):
+    def test_build_gate_rejects_missing_manifest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(MODULE.AcceptanceError):
+                MODULE.validate_build_identity(ROOT, Path(directory))
+
+    def test_build_gate_rejects_changed_executable_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = Path(directory)
+            desktop = app / "Contents/MacOS/go-e2e-desktop"
+            helper = app / "Contents/Helpers/ComputerHelper.app/Contents/MacOS/computer-helper-macos"
+            manifest = app / "Contents/Resources/computer-use-build.json"
+            for path in (desktop, helper, manifest):
+                path.parent.mkdir(parents=True, exist_ok=True)
+            desktop.write_bytes(b"desktop")
+            helper.write_bytes(b"helper")
+            manifest.write_text(json.dumps({"source_commit": "current", "source_dirty": False,
+                "desktop_sha256": MODULE.sha256_file(desktop), "helper_sha256": MODULE.sha256_file(helper)}))
+            with mock.patch.object(MODULE, "source_commit", return_value="current"):
+                MODULE.validate_build_identity(ROOT, app)
+                helper.write_bytes(b"stale")
+                with self.assertRaises(MODULE.AcceptanceError):
+                    MODULE.validate_build_identity(ROOT, app)
+
+    def test_observe_only_gate_never_accepts_input(self):
+        actions = [{"action": "observe", "implicit_launch": True, "outcome": "executed", "bundle_id": MODULE.TARGET_BUNDLE_ID,
+                    "window_id": "1"}, {"action": "stop"}]
+        result = MODULE.validate_observe_only(actions, {"obs": "image.png"}, "stopped")
+        self.assertEqual(result["mode"], "observe_only")
+        actions.insert(1, {"action": "type"})
+        with self.assertRaises(MODULE.AcceptanceError):
+            MODULE.validate_observe_only(actions, {"obs": "image.png"}, "stopped")
+
+
+
 class FakeAcceptanceClient:
     def __init__(self):
         self.stop_calls = 0
@@ -212,7 +282,7 @@ class FakeAcceptanceClient:
             self.stop_calls += 1
             return {"data": {"session": {"status": "stopped"}}}
         if path.endswith("/conversation"):
-            return {"data": {"events": self.events}}
+            return {"data": {"events": [dict(event, created_at=MODULE.iso_now()) for event in self.events]}}
         if path == "/tenant/session-control/sessions":
             return {"data": {"session": {"id": 1, "ref": "tenant:test", "provider": MODULE.DEFAULT_PROVIDER, "model": MODULE.DEFAULT_MODEL, "effort": "high", "status": "idle"}}}
         self.poll_calls += 1

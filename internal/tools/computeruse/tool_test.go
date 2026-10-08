@@ -969,3 +969,31 @@ func TestLaunchAppRejectsUnknownApplicationBeforeService(t *testing.T) {
 		t.Fatalf("result=%+v starts=%d launchCalls=%d", result, service.starts, service.launchCalls)
 	}
 }
+
+// Successful launch is independent evidence even when the bound capture fails.
+func TestAtomicObserveRetainsLaunchReceiptOnBoundCaptureFailure(t *testing.T) {
+	service := &launchingService{
+		coordinatingService: &coordinatingService{serviceStub: screenshotService(t), sessionID: testComputerSession},
+		launchReceipt:       cu.LaunchReceipt{BundleID: "fixture.app", Window: cu.WindowRef{ID: "fixture-window", OwnerPID: 84, BundleID: "fixture.app"}, Outcome: cu.OutcomeExecuted},
+	}
+	service.forceEmptyObservation = true
+	service.afterImageRead = func(string) { service.observeErr = errors.New(testPrivateError) }
+	tc := testContext(service)
+	tc.ComputerUseFastPath = true
+	result := New().Run(context.Background(), json.RawMessage(`{"action":"observe","target_id":"fixture"}`), tc)
+	if !result.IsError || service.launchCalls != 1 {
+		t.Fatalf("result=%s launch calls=%d", result.Content, service.launchCalls)
+	}
+	var payload struct {
+		Launch cu.LaunchReceipt `json:"launch_receipt"`
+		Window string           `json:"window_id"`
+		Code   string           `json:"error_code"`
+	}
+	if err := json.Unmarshal([]byte(result.Content), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Launch.Outcome != cu.OutcomeExecuted || payload.Window != "fixture-window" || payload.Code == "" {
+		t.Fatalf("lost launch/error evidence: %s", result.Content)
+	}
+	assertSanitizedResult(t, result)
+}
