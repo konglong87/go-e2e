@@ -638,4 +638,49 @@ do {
     expect(!String(decoding: encoded, as: UTF8.self).contains("PRIVATE TITLE"), "diagnostic excludes window titles")
 }
 
+// Launch readiness ignores window chrome and requires stable rendered content.
+do {
+    let context = CGContext(data: nil, width: 100, height: 100, bitsPerComponent: 8, bytesPerRow: 400,
+        space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+    context.setFillColor(CGColor(gray: 1, alpha: 1)); context.fill(CGRect(x: 0, y: 0, width: 100, height: 100))
+    expect(!WindowContentReadiness.hasRenderedContent(context.makeImage()!), "white content is not ready")
+    context.setFillColor(CGColor(gray: 0, alpha: 1)); context.fill(CGRect(x: 0, y: 95, width: 100, height: 5))
+    expect(!WindowContentReadiness.hasRenderedContent(context.makeImage()!), "titlebar/chrome does not make white content ready")
+    context.fill(CGRect(x: 30, y: 40, width: 40, height: 10))
+    expect(WindowContentReadiness.hasRenderedContent(context.makeImage()!), "rendered body variation is ready")
+    var stability = LaunchWindowStability()
+    let window = launchWindow()
+    expect(stability.update(window, contentReady: true, uptime: 1) == nil, "first sample never binds")
+    expect(stability.update(window, contentReady: true, uptime: 1.11)?.id == window.id, "stable ready identity binds")
+    expect(stability.update(window, contentReady: false, uptime: 1.2) == nil, "blank resets stability")
+    expect(stability.update(window, contentReady: true, uptime: 1.3) == nil, "readiness must stabilize again")
+    let other = NativeWindow(id: "other", title: "", ownerPID: window.ownerPID, bundleID: window.bundleID,
+        frame: window.frame, displayID: window.displayID, isVisible: true, isFrontmost: true)
+    expect(LaunchWindowStability.candidate(from: [window, other]) == nil, "ambiguous frontmost fails selection")
+}
+
+// Snapshot geometry must be the geometry actually used to capture, not an
+// earlier lookup. Input still rejects motion after that fresh snapshot.
+do {
+    let desktop = FakeDesktop()
+    let original = NativeWindow(id: "geometry-fresh", title: "Fixture", ownerPID: 77, bundleID: "fixture.app",
+        frame: desktop.display.bounds, displayID: desktop.display.id, isVisible: true, isFrontmost: true)
+    desktop.targetWindow = original
+    var lookups = 0
+    desktop.windowGeometryHook = {
+        lookups += 1
+        if lookups == 2 {
+            desktop.targetWindow = NativeWindow(id: original.id, title: original.title, ownerPID: original.ownerPID,
+                bundleID: original.bundleID, frame: original.frame.offsetBy(dx: 1, dy: 0), displayID: original.displayID,
+                isVisible: true, isFrontmost: true)
+        }
+    }
+    let engine = Engine(platform: desktop)
+    let observed = engine.observe(request("observe", payload: ["window_id": .string(original.id), "observation_id": .string("fresh-geometry")]))
+    expect(observed.outcome == .executed, "observe uses newly captured geometry")
+    let moved = engine.execute(request("execute", payload: ["kind": .string("move"), "x": .number(2), "y": .number(2),
+        "window_id": .string(original.id), "observation_id": .string("fresh-geometry")]))
+    expect(moved.outcome == .executed && desktop.posts.count == 1, "input uses actual capture geometry without stale-origin rejection")
+}
+
 print("PASS: \(assertions) native safety assertions (fake platform; no real input/capture)")

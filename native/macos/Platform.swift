@@ -136,23 +136,7 @@ struct MacDesktop: DesktopPlatform {
               let number = UInt32(window.id),
               let image = CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(number), [.bestResolution, .boundsIgnoreFraming]),
               image.width > 0, image.height > 0 else { return false }
-        let width = image.width, height = image.height
-        let bytesPerRow = image.bytesPerRow
-        guard let base = image.dataProvider?.data else { return false }
-        guard let ptr = CFDataGetBytePtr(base) else { return false }
-        let bytesPerPixel = image.bitsPerPixel / 8
-        guard bytesPerPixel >= 3 else { return false }
-        let length = CFDataGetLength(base)
-        let stepX = max(1, width / 32), stepY = max(1, height / 32)
-        for y in stride(from: 0, to: height, by: stepY) {
-            for x in stride(from: 0, to: width, by: stepX) {
-                let offset = y * bytesPerRow + x * bytesPerPixel
-                guard offset + 2 < length else { continue }
-                let r = ptr[offset], g = ptr[offset + 1], b = ptr[offset + 2]
-                if r < 250 || g < 250 || b < 250 { return true }
-            }
-        }
-        return false
+        return WindowContentReadiness.hasRenderedContent(image) && permitted()
     }
 
     func launchApplication(bundleID: String, permitted: () -> Bool) throws -> NativeWindow {
@@ -187,6 +171,8 @@ struct MacDesktop: DesktopPlatform {
 
         let deadline = ProcessInfo.processInfo.systemUptime + appLaunchTimeoutSeconds
         var lastInventory = ""
+        var stability = LaunchWindowStability()
+        var ambiguous = false
         while ProcessInfo.processInfo.systemUptime < deadline {
             guard permitted() else { throw SafetyError.inactive }
             do {
@@ -201,18 +187,12 @@ struct MacDesktop: DesktopPlatform {
                                 "candidates": candidates.map(\.diagnosticFields)])
                     lastInventory = inventory
                 }
-                if frontmost.count == 1, windowHasVisibleContent(frontmost[0], permitted: permitted) {
-                    return frontmost[0]
+                let candidate = LaunchWindowStability.candidate(from: candidates)
+                let contentReady = candidate.map { windowHasVisibleContent($0, permitted: permitted) } ?? false
+                if let stable = stability.update(candidate, contentReady: contentReady, uptime: ProcessInfo.processInfo.systemUptime) {
+                    return stable
                 }
-                if candidates.count == 1, windowHasVisibleContent(candidates[0], permitted: permitted) {
-                    return candidates[0]
-                }
-                if candidates.count > 1 {
-                    diagnostic(["layer": "swift_platform", "phase": "launch_ambiguous", "bundle_id": bundleID,
-                                "candidate_count": candidates.count, "frontmost_count": frontmost.count,
-                                "error_code": SafetyError.targetWindowMismatch.rawValue])
-                    throw SafetyError.targetWindowMismatch
-                }
+                ambiguous = candidate == nil && candidates.count > 1
             } catch let error as SafetyError {
                 if error == .targetWindowMismatch { throw error }
             } catch {
@@ -220,7 +200,7 @@ struct MacDesktop: DesktopPlatform {
             }
             Thread.sleep(forTimeInterval: Double(appLaunchPollMS) / 1000)
         }
-        throw SafetyError.launchTimeout
+        throw ambiguous ? SafetyError.targetWindowMismatch : SafetyError.launchTimeout
     }
 
     func activateWindow(_ id: String, permitted: () -> Bool) -> Bool {

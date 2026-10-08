@@ -1,0 +1,57 @@
+import Foundation
+import CoreGraphics
+
+// A generic launch-time blank-content guard, not proof that an app's UI is
+// usable. Ignore chrome/shadows, normalize pixel layout and alpha, and require
+// variation inside the content body. The model still verifies the real image.
+enum WindowContentReadiness {
+    private static let sampleSize = 32
+    private static let minimumDiverseSamples = 8
+    static func hasRenderedContent(_ image: CGImage) -> Bool {
+        let body = CGRect(x: Double(image.width) * 0.10, y: Double(image.height) * 0.15,
+                          width: Double(image.width) * 0.80, height: Double(image.height) * 0.75).integral
+        guard let cropped = image.cropping(to: body), let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else { return false }
+        var pixels = [UInt8](repeating: 0, count: sampleSize * sampleSize * 4)
+        let drawn = pixels.withUnsafeMutableBytes { bytes -> Bool in
+            guard let context = CGContext(data: bytes.baseAddress, width: sampleSize, height: sampleSize,
+                bitsPerComponent: 8, bytesPerRow: sampleSize * 4, space: colorSpace,
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue) else { return false }
+            let rect = CGRect(x: 0, y: 0, width: sampleSize, height: sampleSize)
+            context.setFillColor(CGColor(gray: 1, alpha: 1)); context.fill(rect)
+            context.draw(cropped, in: rect)
+            return true
+        }
+        guard drawn else { return false }
+        var histogram: [Int: Int] = [:]
+        for offset in stride(from: 0, to: pixels.count, by: 4) {
+            let color = (Int(pixels[offset]) >> 4) << 8 | (Int(pixels[offset + 1]) >> 4) << 4 | Int(pixels[offset + 2]) >> 4
+            histogram[color, default: 0] += 1
+        }
+        let dominant = histogram.values.max() ?? 0
+        return sampleSize * sampleSize - dominant >= minimumDiverseSamples
+    }
+}
+
+// Do not bind a transient splash/full-screen animation window. Ambiguity is
+// observed within the existing bounded launch budget, never randomly resolved.
+struct LaunchWindowStability {
+    private static let requiredStableSeconds: TimeInterval = 0.10
+    private var previous: NativeWindow?
+    private var stableSince: TimeInterval = 0
+    mutating func update(_ candidate: NativeWindow?, contentReady: Bool, uptime: TimeInterval) -> NativeWindow? {
+        guard let candidate, contentReady else { previous = nil; return nil }
+        if let previous, previous.matchesIdentity(candidate), previous.frame == candidate.frame,
+           previous.displayID == candidate.displayID {
+            if uptime - stableSince >= Self.requiredStableSeconds { return candidate }
+        } else {
+            stableSince = uptime
+        }
+        previous = candidate
+        return nil
+    }
+    static func candidate(from windows: [NativeWindow]) -> NativeWindow? {
+        let frontmost = windows.filter(\.isFrontmost)
+        if frontmost.count == 1 { return frontmost[0] }
+        return windows.count == 1 ? windows[0] : nil
+    }
+}

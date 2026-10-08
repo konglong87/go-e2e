@@ -84,3 +84,15 @@ session IDs are rebound to trusted current session; shared ResultMetadata is
 used in both runtime and server event paths, with titles/private fields excluded.
 Focused/full computeruse/tool/agentruntime/server tests and Python 20 tests pass.
 This slice is separate from pending native readiness and dispatch recovery.
+
+### Slice 4 — native readiness / snapshot consistency
+
+Generic content-body variation sampling excludes titlebar/shadows and normalizes
+pixel format/alpha. A ready candidate must keep the same stable identity/frame
+for 100 ms; ambiguous startup inventory waits within the existing launch budget
+rather than failing immediately. Capture returns the actual geometry/window
+snapshot, which is saved for next-input authorization; motion after observation
+still rejects input. No identity loosening. Python blank guard ignores chrome
+and preserves failed/white images as invalid evidence instead of dropping them.
+Native 267 assertions and Python 20 tests pass. Actual latest-build cold/native
+and model acceptance pending; older white image remains failed evidence.

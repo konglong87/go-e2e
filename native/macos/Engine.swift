@@ -7,6 +7,13 @@ struct ActionResult {
     let error: SafetyError?
 }
 
+private struct CapturedSnapshot {
+    let payload: JSONValue
+    let geometry: DisplayGeometry
+    let window: NativeWindow?
+    let focus: Int32
+}
+
 typealias NativeDiagnosticWriter = ([String: Any]) -> Void
 
 final class Engine {
@@ -138,7 +145,7 @@ final class Engine {
                 recordWindowMismatch(request, phase: "authorized_window", reason: "identity_mismatch", expected: bound, actual: current)
                 throw SafetyError.targetWindowMismatch
             }
-            return bound
+            return current
         } catch let error as SafetyError {
             if error == .unsupportedDisplay {
                 recordWindowMismatch(request, phase: "authorized_window", reason: "window_unavailable", expected: bound)
@@ -193,7 +200,7 @@ final class Engine {
             throw SafetyError.focusChanged
         }
     }
-    private func capture(_ request: Envelope, geometry: DisplayGeometry, expectedWindow: NativeWindow? = nil) throws -> JSONValue {
+    private func capture(_ request: Envelope, geometry: DisplayGeometry, expectedWindow: NativeWindow? = nil) throws -> CapturedSnapshot {
         try state.gate(request)
         let capOK = platform.captureAllowed()
         // The window position (bounds.origin) can shift between observe and
@@ -222,7 +229,7 @@ final class Engine {
         try state.gate(request)
         let postCheck = try resolveGeometry(for: request)
         guard postCheck.id == active.id, postCheck.windowID == active.windowID,
-              postCheck.width == active.width, postCheck.height == active.height else {
+              postCheck.width == active.width, postCheck.height == active.height, postCheck.bounds == active.bounds else {
             record(request, phase: "capture_postcheck", error: .unsupportedDisplay,
                    fields: ["reason": "geometry_changed_after_capture", "window_id": active.windowID ?? "",
                             "post_window_id": postCheck.windowID ?? "", "width": active.width,
@@ -235,13 +242,15 @@ final class Engine {
                         "width": .number(Double(active.width)), "height": .number(Double(active.height)),
                         "scale_factor": .number(active.scale), "display_id": .string(active.id),
                         "coordinate_space": active.coordinateSpace]
+        let target = try requestedWindow(request)
         if let windowID = active.windowID {
             result["window_id"] = .string(windowID)
-            guard let target = try requestedWindow(request) else { throw SafetyError.unsupportedDisplay }
+            guard let target, target.frame == active.bounds else { throw SafetyError.screenshotFailed }
+            if let expectedWindow, !target.matchesIdentity(expectedWindow) { throw SafetyError.targetWindowMismatch }
             result["target_window"] = target.json
         }
         if let frontmost = try? platform.windows().first(where: { $0.isFrontmost }) { result["active_window"] = frontmost.json }
-        return .object(result)
+        return CapturedSnapshot(payload: .object(result), geometry: active, window: target, focus: focus)
     }
     private static let activationTimeout = 1.0
     private static let activationPollMS = 20
@@ -274,12 +283,13 @@ final class Engine {
             let geometry = try resolveGeometry(for: request); try target(request, geometry: geometry)
             guard let id = request.payload["observation_id"]?.string, !id.isEmpty, id.utf8.count <= 256,
                   let focus = platform.focus() else { throw SafetyError.invalidAction }
-            guard case .object(var payload) = try capture(request, geometry: geometry, expectedWindow: window) else { throw SafetyError.screenshotFailed }
+            let captured = try capture(request, geometry: geometry, expectedWindow: window)
+            guard case .object(var payload) = captured.payload else { throw SafetyError.screenshotFailed }
             guard platform.focus() == focus else { throw SafetyError.focusChanged }
             if let windowID = geometry.windowID, platform.activeWindowID() != windowID { throw SafetyError.focusChanged }
             let expires = now().addingTimeInterval(observationTTLSeconds)
             let topology = try displayIDs()
-            try state.save(Snapshot(id: id, session: request.sessionID, geometry: geometry, window: window, displayIDs: topology, focus: focus, expires: expires), for: request)
+            try state.save(Snapshot(id: id, session: request.sessionID, geometry: captured.geometry, window: captured.window, displayIDs: topology, focus: captured.focus, expires: expires), for: request)
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
             payload["observation_expires_at"] = .string(formatter.string(from: expires))
@@ -335,12 +345,12 @@ final class Engine {
         try waitForAppActivation(request, geometry: geometry)
         for attempt in 0..<3 {
             do {
-                return try capture(request, geometry: geometry, expectedWindow: expectedWindow)
+                return try capture(request, geometry: geometry, expectedWindow: expectedWindow).payload
             } catch let error as SafetyError where error == .screenshotFailed && attempt < 2 {
                 Thread.sleep(forTimeInterval: 0.05 * Double(attempt + 1))
             }
         }
-        return try capture(request, geometry: geometry, expectedWindow: expectedWindow)
+        return try capture(request, geometry: geometry, expectedWindow: expectedWindow).payload
     }
     func execute(_ request: Envelope) -> ActionResult {
         var posted = false

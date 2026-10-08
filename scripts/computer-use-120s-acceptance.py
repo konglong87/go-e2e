@@ -98,7 +98,7 @@ class Evidence:
     """Write private, JSON-only evidence without ever persisting credentials."""
 
     def __init__(self, root: Path):
-        self.root = root
+        self.root = root.resolve()
         if self.root.exists() and any(self.root.iterdir()):
             raise AcceptanceError("evidence_isolation", "evidence directory is not empty; use a fresh run directory")
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -549,7 +549,13 @@ def png_has_visible_content(data: bytes) -> bool:
                 current[index] = (current[index] + predictor) & 0xFF
             elif filter_type != 0:
                 return True
-        for x in range(0, width, sample_step):
+        # Exclude shadows/window borders/titlebar: a single dark chrome pixel
+        # must not certify a white content body as ready.
+        if height >= 16 and not int(height * 0.15) <= row < int(height * 0.90):
+            previous = current
+            continue
+        x_start, x_end = (int(width * 0.10), int(width * 0.90)) if width >= 16 else (0, width)
+        for x in range(x_start, x_end, sample_step):
             pixel = current[x * channels : (x + 1) * channels]
             if len(pixel) >= 3 and any(channel < 250 for channel in pixel[:3]):
                 return True
@@ -601,12 +607,16 @@ def save_observation_assets(
             data, media_type = client.download(
                 f"/tenant/media/assets/{asset_id}", timeout=min(8.0, remaining - 0.1)
             )
-            validate_png(data, media_type or str(observation.get("media_type", "")))
             number += 1
+            if not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", observation_id):
+                raise ValueError("invalid observation identifier")
             name = f"observation-{number:02d}-{observation_id}.png"
-            path = evidence.bytes(name, data)
+            if data.startswith(PNG_SIGNATURE) and len(data) <= 16 * 1024 * 1024:
+                path = evidence.bytes(name, data)
+                row.update({"path": str(path), "bytes": len(data)})
+            validate_png(data, media_type or str(observation.get("media_type", "")))
             paths[observation_id] = str(path)
-            row.update({"status": "saved", "path": str(path), "bytes": len(data)})
+            row.update({"status": "saved"})
         except Exception as exc:
             row.update({"status": "invalid", "error": str(exc)[:240]})
         asset_rows.append(row)

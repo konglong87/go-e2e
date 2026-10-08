@@ -132,7 +132,8 @@ class WrapperUnitTests(unittest.TestCase):
             report = json.loads((Path(directory) / "observation-assets.json").read_text())
             self.assertEqual(report["saved_count"], 1)
             self.assertEqual(report["invalid_count"], 1)
-            self.assertTrue((Path(directory) / "observation-01-o-good.png").exists())
+            self.assertTrue((Path(directory) / "observation-01-o-blank.png").exists())
+            self.assertTrue((Path(directory) / "observation-02-o-good.png").exists())
 
     def test_evidence_directory_is_private(self):
         with tempfile.TemporaryDirectory() as directory:
