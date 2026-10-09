@@ -9,6 +9,7 @@ protocol DesktopPlatform {
     func geometry() throws -> DisplayGeometry
     func geometries() throws -> [DisplayGeometry]
     func windows() throws -> [NativeWindow]
+    func allWindows() throws -> [NativeWindow]
     func windowDiagnostics(_ target: NativeWindow) -> [String: Any]
     func windowGeometry(_ id: String) throws -> DisplayGeometry
     func launchApplication(bundleID: String, permitted: () -> Bool) throws -> NativeWindow
@@ -32,6 +33,7 @@ extension DesktopPlatform {
     func prepareInput(_ request: Envelope) throws {}
     func geometries() throws -> [DisplayGeometry] { [try geometry()] }
     func windows() throws -> [NativeWindow] { [] }
+    func allWindows() throws -> [NativeWindow] { try windows() }
     func windowDiagnostics(_ target: NativeWindow) -> [String: Any] { [:] }
     func windowGeometry(_ id: String) throws -> DisplayGeometry { throw SafetyError.unsupportedDisplay }
     func launchApplication(bundleID: String, permitted: () -> Bool) throws -> NativeWindow { throw SafetyError.launchFailed }
@@ -96,7 +98,17 @@ struct MacDesktop: DesktopPlatform {
         return result
     }
     func windows() throws -> [NativeWindow] {
-        let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+        try windowInventory(options: [.optionOnScreenOnly, .excludeDesktopElements])
+    }
+
+    // Full Window Server inventory is used only for same-target lifecycle
+    // recovery and diagnostics. Input/capture still require the target to be
+    // raised and present in the normal on-screen inventory before dispatch.
+    func allWindows() throws -> [NativeWindow] {
+        try windowInventory(options: [.optionAll, .excludeDesktopElements])
+    }
+
+    private func windowInventory(options: CGWindowListOption) throws -> [NativeWindow] {
         guard let raw = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else { return [] }
         let activeID = activeWindowID()
         let displays = try geometries()
@@ -211,7 +223,7 @@ struct MacDesktop: DesktopPlatform {
         while ProcessInfo.processInfo.systemUptime < deadline {
             guard permitted() else { throw SafetyError.inactive }
             do {
-                let candidates = try windows().filter {
+                let candidates = try allWindows().filter {
                     $0.bundleID == bundleID && $0.isVisible && $0.frame.width > 0 && $0.frame.height > 0
                 }
                 let frontmost = candidates.filter(\.isFrontmost)
@@ -248,11 +260,11 @@ struct MacDesktop: DesktopPlatform {
     func activateWindow(_ id: String, permitted: () -> Bool) -> Bool {
         guard permitted() else { return false }
         let list: [NativeWindow]
-        do { list = try windows() } catch { return false }
+        do { list = try allWindows() } catch { return false }
         guard let window = list.first(where: { $0.id == id }), window.ownerPID > 0 else { return false }
         if focus() == window.ownerPID && (window.isFrontmost || activeWindowID() == id) { return true }
         return AccessibilityWindowActivator.raise(window, permitted: permitted) {
-            guard let current = try? self.windows().first(where: { $0.id == id }) else { return false }
+            guard let current = try? self.allWindows().first(where: { $0.id == id }) else { return false }
             return current.matchesIdentity(window)
         }
     }

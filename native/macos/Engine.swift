@@ -132,7 +132,7 @@ final class Engine {
     }
     private func requestedWindow(_ request: Envelope) throws -> NativeWindow? {
         guard let id = request.payload["window_id"]?.string, !id.isEmpty else { return nil }
-        guard let window = try platform.windows().first(where: { $0.id == id }) else { throw SafetyError.unsupportedDisplay }
+        guard let window = try platform.allWindows().first(where: { $0.id == id }) else { throw SafetyError.unsupportedDisplay }
         return window
     }
     private func authorizedWindow(_ request: Envelope) throws -> NativeWindow? {

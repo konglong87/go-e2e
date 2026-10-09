@@ -10,9 +10,12 @@ The current stability/closure work is tracked in
 2. P0: repair bounded observation recovery for position-only motion, retaining
    exact identity/dimension/topology and Pause/Stop/permission checks.
 3. P0: fixed one-shot input probe (no model, no send, no replay), inspected
-   current-run screenshots; classify keyboard delivery vs render timing.
-4. P0: actual gpt-6-sol/high desktop launch/type/send once/reply/Stop <=120s.
-5. P1: outstanding native control/display regression from the historical queue.
+   current-run screenshots; classify keyboard delivery vs render timing. **Passed**
+   on `input-1e1c343-02`: click, command+a, one type, visible `1+1=2`.
+4. P0: same-window focus/Space recovery and model prompt contract; exact
+   full-inventory identity only, fresh observe after pre-dispatch rejection.
+5. P0: actual gpt-6-sol/high desktop ComputerUse launch/type/send once/reply/Stop.
+6. P1: outstanding native control/display regression from the historical queue.
 
 Earlier cold-launch and native Pause/Resume/Stop batches passed as recorded in
 that stability ledger. They do not prove current model closure. The evening

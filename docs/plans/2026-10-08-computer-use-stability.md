@@ -410,6 +410,26 @@ logs retained. Pre-existing scripts/__pycache__/ left untouched and uncommitted.
   established safety contract. Resume only with a fresh unlocked desktop run
   where WorkBuddy remains visible/frontmost; otherwise leave this gate blocked.
 
+### Evening continuation — confirmed focus race and same-window recovery foundation
+
+- Fresh unlocked run `lifecycle-1e1c343-01` reproduced the failure with no input:
+  PID 5050/window 32058 remained running and present in the full Window Server
+  inventory, but at 15 seconds `application_active=false`,
+  `workspace_frontmost_pid=5050`, and `window_order_focus_pid=39522`
+  (`ChatGPT.app`). The target was not destroyed or rebound; the two frontmost
+  signals disagreed while the target left the normal on-screen inventory.
+- Fresh continuous input run `input-1e1c343-02` passed click → command+a → one type
+  (`1+1=2`) with all receipts `executed/complete`; screenshots visibly show the
+  text in the WorkBuddy input and later observation. No send or replay occurred.
+- Source slice in progress: separate full Window Server inventory from on-screen
+  inventory. Same-target authorization and launch activation can now find the
+  original window by exact ID/PID/bundle during Space/focus recovery, while
+  capture/input still require the target to be raised and on-screen. Fake native
+  regression covers an off-screen bound target and no input dispatch.
+- Acceptance prompt now treats pre-dispatch focus/window rejection as a recovery
+  path: fresh observe with the same identity, never action replay; unknown or
+  dispatched actions remain terminal.
+
 ### Evening slice 1 — lifecycle evidence / position-only capture retry
 
 - Intended/completed source files: native Platform/Engine/fake tests and the two

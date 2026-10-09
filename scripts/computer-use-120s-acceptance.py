@@ -1026,8 +1026,11 @@ def run_acceptance(
         "不要在 type 回执后重放 type；直接检查 type 返回的最新截图，"
         "真实点击发送/提交按钮，等待一次回复；使用 wait 返回的最新截图确认真实回复，最后使用 ComputerUse stop。"
         "所有后续 click/type/key/send 必须使用绑定的 window_id；如果目标窗口变成 go-e2e、Chrome、Edge 或其他应用，"
-        "立即 stop。只使用 ComputerUse，不要使用 Bash、脚本、osascript、System Events、screencapture、open 或其他工具；"
-        "不要操作 go-e2e 自己；每个输入前必须使用最新 observe；任何失败或不确定立即 stop，不要重放或重复点击发送。"
+        "立即 stop。若 click/type/key/hotkey 在尚未 dispatch 时因 target_window_mismatch、window_unavailable 或 focus_changed 被拒绝，"
+        "禁止重试原动作、禁止更换 action_id 重放；先用同一个 target_id 和 window_id 做一次 fresh observe，让 ComputerUse 恢复同一目标窗口。"
+        "只有 fresh observe 成功且 window_id、owner_pid、bundle_id 仍完全一致时，才继续下一步；恢复观察失败或身份变化立即 stop。"
+        "只使用 ComputerUse，不要使用 Bash、脚本、osascript、System Events、screencapture、open 或其他工具；"
+        "不要操作 go-e2e 自己；每个输入前必须使用最新 observe；任何未知或已 dispatch 的动作立即 stop，不要重放或重复点击发送。"
     )
 
     if observe_only:

@@ -10,6 +10,7 @@ final class FakeDesktop: DesktopPlatform {
     var display = DisplayGeometry(id: "1", bounds: CGRect(x: 100, y: -50, width: 100, height: 50), width: 200, height: 100)
     var extraDisplays: [DisplayGeometry] = []
     var targetWindow: NativeWindow?
+    var onScreenWindows = true
     var selectedWindowID: String?
     var launchResult: NativeWindow?
     var launchError: SafetyError?
@@ -35,7 +36,8 @@ final class FakeDesktop: DesktopPlatform {
     func windowDiagnostics(_ target: NativeWindow) -> [String: Any] { lifecycleReads += 1; return lifecycle }
     func geometry() throws -> DisplayGeometry { if failGeometry { throw SafetyError.unsupportedDisplay }; return display }
     func geometries() throws -> [DisplayGeometry] { if failGeometry { throw SafetyError.unsupportedDisplay }; return [display] + extraDisplays }
-    func windows() throws -> [NativeWindow] { targetWindow.map { [$0] } ?? [] }
+    func windows() throws -> [NativeWindow] { onScreenWindows ? (targetWindow.map { [$0] } ?? []) : [] }
+    func allWindows() throws -> [NativeWindow] { targetWindow.map { [$0] } ?? [] }
     func windowGeometry(_ id: String) throws -> DisplayGeometry {
         windowGeometryHook?()
         guard let window = targetWindow, window.id == id else { throw SafetyError.unsupportedDisplay }
@@ -720,6 +722,23 @@ do {
     expect(result.outcome == .rejected && result.error == .targetWindowMismatch && desktop.posts.isEmpty,
            "diagnostics never authorize off-screen input")
     expect(desktop.activationCalls == 0, "lifecycle probe cannot reactivate a missing window")
+}
+
+// A bound target may temporarily leave the on-screen inventory while the
+// app/Space is being restored. Authorization must use the full inventory, but
+// the target identity remains exact and no alternate window is accepted.
+do {
+    let desktop = FakeDesktop()
+    let window = launchWindow()
+    desktop.targetWindow = window
+    desktop.selectedWindowID = window.id
+    desktop.focused = window.ownerPID
+    desktop.onScreenWindows = false
+    let engine = Engine(platform: desktop)
+    let observed = engine.observe(request("observe", payload: ["window_id": .string(window.id),
+        "observation_id": .string("full-inventory-target")]))
+    expect(observed.outcome == .executed, "full inventory can find same bound target")
+    expect(desktop.posts.isEmpty, "off-screen recovery lookup never posts input")
 }
 
 // Motion during a capture invalidates that image, not the stable target identity.
