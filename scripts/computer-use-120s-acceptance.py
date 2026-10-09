@@ -906,6 +906,26 @@ def latest_conversation_events(client: APIClient, path: str, timeout: float = 8.
     return [event for event in events if isinstance(event, dict)]
 
 
+def conversation_heartbeat(client: APIClient, path: str, timeout: float = 2.0) -> dict[str, Any]:
+    """Summarize provider/session progress without persisting event payloads."""
+
+    heartbeat: dict[str, Any] = {"captured_at": iso_now(), "event_count": 0, "event_types": []}
+    try:
+        events = latest_conversation_events(client, path, timeout=timeout)
+        types = [str(event.get("event_type", "")) for event in events if event.get("event_type")]
+        heartbeat.update({
+            "event_count": len(events),
+            "event_types": sorted(set(types)),
+            "tool_call_count": types.count("tool_call"),
+            "tool_result_count": types.count("tool_result"),
+            "message_stop_count": types.count("message_stop"),
+            "last_event_at": str(events[-1].get("created_at", "")) if events else "",
+        })
+    except Exception as exc:
+        heartbeat["error"] = type(exc).__name__
+    return heartbeat
+
+
 def validate_effective_config(session: Mapping[str, Any], provider: str, model: str, effort: str) -> dict[str, Any]:
     effective = {
         "effective_provider": str(session.get("provider", "")),
@@ -1085,6 +1105,8 @@ def run_acceptance(
     final_status = "failed"
     error_stage = ""
     log_metrics: dict[str, Any] = {}
+    heartbeat_samples: list[dict[str, Any]] = []
+    last_heartbeat_at = 0.0
     message_future: Optional[concurrent.futures.Future[Any]] = None
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="computer-use-message")
 
@@ -1195,6 +1217,12 @@ def run_acceptance(
                 sleep(min(poll_interval, max(0.05, operational - clock())))
                 continue
             status_history.append({"at": iso_now(), "elapsed_seconds": round(clock() - start, 3), "status": status})
+            if session_path and clock() - last_heartbeat_at >= 2.0:
+                heartbeat = conversation_heartbeat(client, session_path)
+                heartbeat["elapsed_seconds"] = round(clock() - start, 3)
+                heartbeat_samples.append(heartbeat)
+                evidence.append_jsonl("conversation-heartbeat.ndjson", heartbeat)
+                last_heartbeat_at = clock()
             if status in TERMINAL_STATUSES and (clock() - start) > 0.2:
                 final_status = status
                 break
@@ -1341,6 +1369,12 @@ def run_acceptance(
         evidence.json("timing.json", timing_data)
         return {"status": "failed", "final_status": final_status, "failure_stage": error_stage, "message": str(exc)[:500], "timing": timing_data}
     finally:
+        if heartbeat_samples:
+            evidence.json("conversation-heartbeat-summary.json", {
+                "sample_count": len(heartbeat_samples),
+                "first": heartbeat_samples[0],
+                "last": heartbeat_samples[-1],
+            })
         executor.shutdown(wait=False, cancel_futures=True)
 
 

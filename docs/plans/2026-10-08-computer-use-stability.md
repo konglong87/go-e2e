@@ -641,3 +641,17 @@ logs retained. Pre-existing scripts/__pycache__/ left untouched and uncommitted.
   still open; the next slice should inspect provider run events/latency and
   distinguish “provider has not emitted a turn” from “model emitted no tool
   call” before another production-model retry.
+
+### Provider event heartbeat slice — 2026-10-09
+
+- Added redacted `conversation-heartbeat.ndjson` sampling during model runs.
+  It records only event count, event types, tool-call/result counts, last event
+  timestamp, and elapsed time; event payloads and sensitive content are not
+  persisted.
+- This separates provider states such as “session running but no event emitted”
+  from “events exist but no ComputerUse tool call” without extending the
+  120-second contract or replaying any action. Wrapper tests now total 32
+  passed.
+- Next gate: rebuild and run one fresh model attempt, then use the heartbeat
+  timeline to choose the final provider/session fix or confirm an external
+  provider no-action blocker.

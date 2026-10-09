@@ -42,6 +42,22 @@ class WrapperUnitTests(unittest.TestCase):
         self.assertEqual(snapshot["server_port"], 54321)
         self.assertNotIn("SECRET-TOKEN", json.dumps(snapshot))
 
+    def test_conversation_heartbeat_summarizes_events_without_payloads(self):
+        client = mock.Mock()
+        client.request.return_value = {
+            "events": [
+                {"event_type": "message_start", "created_at": "now", "payload_json": "SECRET"},
+                {"event_type": "tool_call", "created_at": "later", "payload_json": "SECRET"},
+                {"event_type": "tool_result", "created_at": "latest", "payload_json": "SECRET"},
+            ]
+        }
+        heartbeat = MODULE.conversation_heartbeat(client, "/session/path")
+        self.assertEqual(heartbeat["event_count"], 3)
+        self.assertEqual(heartbeat["tool_call_count"], 1)
+        self.assertEqual(heartbeat["tool_result_count"], 1)
+        self.assertEqual(heartbeat["last_event_at"], "latest")
+        self.assertNotIn("SECRET", json.dumps(heartbeat))
+
     def test_desktop_health_snapshot_records_connection_failure_without_raw_error(self):
         server = MODULE.LocalServer(101, 202, 54321, "SECRET-TOKEN")
         client = mock.Mock()
