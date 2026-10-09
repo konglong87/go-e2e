@@ -29,6 +29,33 @@ DARK_PNG = base64.b64decode(
 
 
 class WrapperUnitTests(unittest.TestCase):
+    def test_desktop_health_snapshot_is_redacted_and_reachable(self):
+        server = MODULE.LocalServer(101, 202, 54321, "SECRET-TOKEN")
+        client = mock.Mock()
+        with mock.patch.object(MODULE, "process_presence", side_effect=[
+            {"pid": 101, "ppid": 1, "stat": "S", "alive": True},
+            {"pid": 202, "ppid": 101, "stat": "S", "alive": True},
+        ]):
+            snapshot = MODULE.desktop_health_snapshot(server, client, captured_at="now")
+        client.request.assert_called_once_with("/health", timeout=0.75)
+        self.assertTrue(snapshot["health_reachable"])
+        self.assertEqual(snapshot["server_port"], 54321)
+        self.assertNotIn("SECRET-TOKEN", json.dumps(snapshot))
+
+    def test_desktop_health_snapshot_records_connection_failure_without_raw_error(self):
+        server = MODULE.LocalServer(101, 202, 54321, "SECRET-TOKEN")
+        client = mock.Mock()
+        client.request.side_effect = ConnectionRefusedError("http://127.0.0.1:54321 SECRET-TOKEN")
+        with mock.patch.object(MODULE, "process_presence", side_effect=[
+            {"pid": 101, "ppid": 1, "stat": "S", "alive": True},
+            {"pid": 202, "alive": False},
+        ]):
+            snapshot = MODULE.desktop_health_snapshot(server, client, captured_at="now")
+        self.assertFalse(snapshot["health_reachable"])
+        self.assertEqual(snapshot["health_error"], "ConnectionRefusedError")
+        self.assertFalse(snapshot["server"]["alive"])
+        self.assertNotIn("SECRET-TOKEN", json.dumps(snapshot))
+
     def test_cold_preflight_uses_exact_bundle_executable_not_display_name(self):
         with tempfile.TemporaryDirectory() as directory:
             app = Path(directory) / "Fixture App.app"

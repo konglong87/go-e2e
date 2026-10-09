@@ -28,6 +28,7 @@ import shutil
 import subprocess
 import struct
 import sys
+import threading
 import time
 import zlib
 import urllib.error
@@ -75,6 +76,83 @@ class LocalServer:
     started_at: str = ""
 
 
+def process_presence(pid: int) -> dict[str, Any]:
+    """Return non-sensitive host/process liveness metadata for evidence."""
+
+    result = subprocess.run(
+        ["ps", "-p", str(pid), "-o", "pid=,ppid=,stat="],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    row = result.stdout.strip().split()
+    if len(row) < 3:
+        return {"pid": pid, "alive": False}
+    return {"pid": int(row[0]), "ppid": int(row[1]), "stat": row[2], "alive": True}
+
+
+def desktop_health_snapshot(server: LocalServer, client: APIClient, captured_at: Optional[str] = None) -> dict[str, Any]:
+    """Capture host/server liveness without persisting commands or credentials."""
+
+    snapshot: dict[str, Any] = {
+        "captured_at": captured_at or iso_now(),
+        "desktop": process_presence(server.desktop_pid),
+        "server": process_presence(server.server_pid),
+        "server_port": server.port,
+        "health_reachable": False,
+        "health_error": "",
+    }
+    try:
+        client.request("/health", timeout=0.75)
+        snapshot["health_reachable"] = True
+    except Exception as exc:
+        # Keep only the exception class. URL, headers, auth token, and response
+        # bodies are deliberately excluded from evidence.
+        snapshot["health_error"] = type(exc).__name__
+    return snapshot
+
+
+class DesktopHealthMonitor:
+    """Sample desktop/server liveness while a model acceptance run is active."""
+
+    def __init__(self, server: LocalServer, client: APIClient, evidence: Evidence, interval: float = 0.5):
+        self.server = server
+        self.client = client
+        self.evidence = evidence
+        self.interval = max(0.1, interval)
+        self._stop = threading.Event()
+        self._done = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+        self._snapshots: list[dict[str, Any]] = []
+        self._lock = threading.Lock()
+
+    def start(self) -> None:
+        self._thread = threading.Thread(target=self._run, name="desktop-health-monitor", daemon=True)
+        self._thread.start()
+
+    def stop(self) -> dict[str, Any]:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=max(2.0, self.interval * 4))
+        self._done.set()
+        with self._lock:
+            snapshots = list(self._snapshots)
+        final = snapshots[-1] if snapshots else desktop_health_snapshot(self.server, self.client)
+        self.evidence.json("desktop-health-final.json", final)
+        return {"sample_count": len(snapshots), "final": final}
+
+    def _run(self) -> None:
+        try:
+            while not self._stop.is_set():
+                snapshot = desktop_health_snapshot(self.server, self.client)
+                with self._lock:
+                    self._snapshots.append(snapshot)
+                self.evidence.append_jsonl("desktop-health.ndjson", snapshot)
+                self._stop.wait(self.interval)
+        finally:
+            self._done.set()
+
+
 @dataclasses.dataclass
 class Timing:
     started_at: str
@@ -112,6 +190,15 @@ class Evidence:
     def json(self, name: str, value: Any) -> None:
         path = self.root / name
         path.write_text(json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
+
+    def append_jsonl(self, name: str, value: Mapping[str, Any]) -> None:
+        path = self.root / name
+        with path.open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(value, ensure_ascii=False, sort_keys=True) + "\n")
         try:
             os.chmod(path, 0o600)
         except OSError:
@@ -1284,20 +1371,27 @@ def main(argv: Optional[list[str]] = None) -> int:
             server = LocalServer(0, 0, args.port, args.auth_token)
         else:
             server = find_local_server(args.workspace)
-        result = run_acceptance(
-            client=APIClient(server.port, server.token),
-            evidence=Evidence(args.output),
-            workspace=args.workspace,
-            app_path=args.app,
-            provider=args.provider,
-            model=args.model,
-            effort=args.effort,
-            total_budget=args.total_budget,
-            operational_deadline=min(args.operational_deadline, args.total_budget),
-            poll_interval=args.poll_interval,
-            observe_only=args.observe_only,
-            target_app_path=args.target_app,
-        )
+        evidence = Evidence(args.output)
+        client = APIClient(server.port, server.token)
+        monitor = DesktopHealthMonitor(server, client, evidence)
+        monitor.start()
+        try:
+            result = run_acceptance(
+                client=client,
+                evidence=evidence,
+                workspace=args.workspace,
+                app_path=args.app,
+                provider=args.provider,
+                model=args.model,
+                effort=args.effort,
+                total_budget=args.total_budget,
+                operational_deadline=min(args.operational_deadline, args.total_budget),
+                poll_interval=args.poll_interval,
+                observe_only=args.observe_only,
+                target_app_path=args.target_app,
+            )
+        finally:
+            monitor.stop()
         print(json.dumps({"status": result.get("status"), "final_status": result.get("final_status"),
                           "failure_stage": result.get("failure_stage", ""), "evidence": str(args.output),
                           "total_elapsed_seconds": result.get("timing", {}).get("total_elapsed_seconds")}, ensure_ascii=False))

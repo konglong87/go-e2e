@@ -603,3 +603,21 @@ logs retained. Pre-existing scripts/__pycache__/ left untouched and uncommitted.
   reply, or model-managed screenshot was accepted. Native lifecycle recovery
   and the fixed one-shot input probe remain passed; the next model attempt must
   start from a fresh host/session and new evidence directory.
+
+### Desktop/session health observability slice — 2026-10-09
+
+- Added redacted host/server health monitoring to the 120-second acceptance
+  wrapper. During every run it records `desktop-health.ndjson` and a final
+  `desktop-health-final.json` containing only desktop PID/server PID liveness,
+  process state, server port, health reachability, and exception class.
+  Commands, auth tokens, headers, URLs, response bodies, and credentials are
+  never persisted.
+- This directly distinguishes host exit, server-child exit, and a refused
+  local health connection during model closure without changing action replay,
+  deadline, or safety behavior.
+- Added two wrapper regressions for healthy and `ConnectionRefusedError`
+  snapshots with token-redaction assertions. Full acceptance wrapper tests:
+  31 passed.
+- Next gate: rebuild the current tagged app, run one fresh requested-model
+  closure attempt, and inspect the health timeline before changing desktop
+  lifecycle code or model orchestration.
