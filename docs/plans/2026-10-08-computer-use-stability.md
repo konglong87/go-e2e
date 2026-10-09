@@ -655,3 +655,21 @@ logs retained. Pre-existing scripts/__pycache__/ left untouched and uncommitted.
 - Next gate: rebuild and run one fresh model attempt, then use the heartbeat
   timeline to choose the final provider/session fix or confirm an external
   provider no-action blocker.
+
+### Second heartbeat model retry narrows host exit timing — 2026-10-09
+
+- Fresh run `model-9772943-01` produced a different and more useful trace.
+  The provider conversation emitted one `tool_call` and one `tool_result` by
+  approximately 31 seconds, then no further events. The desktop health monitor
+  shows the host/server alive and healthy until the final snapshot, where both
+  processes were gone and the local connection was refused.
+- This proves the failure occurs after the first model ComputerUse turn, not at
+  initial session creation or provider startup. The exact tool action is not
+  persisted by the redacted heartbeat yet; no input/send/reply pass is claimed.
+- Added `before close`, `shutdown begin`, and `shutdown complete` startup-log
+  markers to distinguish graceful Wails shutdown from an abrupt host exit on
+  the next fresh run. This is read-only lifecycle evidence and does not alter
+  action authority or replay semantics.
+- Next gate: rebuild with the lifecycle markers, run one fresh model attempt,
+  inspect the shutdown markers plus the first tool action, then fix the actual
+  host/helper exit path if the exit is reproducible.

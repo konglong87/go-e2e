@@ -246,6 +246,7 @@ func (a *app) SelectWorkspace() (string, error) {
 }
 
 func (a *app) beforeClose(ctx context.Context) bool {
+	startupLog("before close")
 	if err := a.persistWindowState(ctx); err != nil {
 		wailsruntime.LogErrorf(ctx, "save window state: %v", err)
 	}
@@ -288,6 +289,8 @@ func desktopSQLitePath() (string, error) {
 }
 
 func (a *app) shutdown(ctx context.Context) {
+	startupLog("shutdown begin")
+	defer startupLog("shutdown complete")
 	if a.acceptanceClose != nil {
 		a.acceptanceClose()
 	}
