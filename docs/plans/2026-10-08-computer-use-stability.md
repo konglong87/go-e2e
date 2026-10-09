@@ -441,6 +441,11 @@ logs retained. Pre-existing scripts/__pycache__/ left untouched and uncommitted.
   launch receipt. The run was rejected at launch with no target input. The
   prompt now makes `launch_app(target_id=workbuddy)` the mandatory first action,
   removing ambiguity from implicit observe launch.
+- Model run `model-2c483f3-01` used the explicit launch correctly, but the
+  persisted WorkBuddy main window was found at `x=-1338` outside the active
+  display/Space and launch timed out after the weak activation path. No input
+  or screenshot was accepted. Same-target activation now includes
+  `activateAllWindows` before AXRaise; it does not relax identity checks.
 
 ### Evening slice 1 — lifecycle evidence / position-only capture retry
 

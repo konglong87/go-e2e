@@ -60,7 +60,12 @@ enum AccessibilityWindowActivator {
         }
         guard let index = WindowTargetSelector.uniqueIndex(for: target, candidates: candidates.map { $0.1 }),
               permitted(), stillCurrent(), permitted(), let app = NSRunningApplication(processIdentifier: target.ownerPID) else { return false }
-        _ = app.activate(options: [])
+        // Bring the same application window back to the active Space before
+        // AXRaise. This is a same-PID/window recovery, not a target rebind.
+        // Without activateAllWindows, a persisted window on another Space can
+        // remain in the full Window Server inventory but never become the
+        // frontmost on-screen target, causing launch/observe timeout.
+        _ = app.activate(options: [.activateAllWindows])
         // Do not retry AX actions after timeout/unknown effects. The Engine will
         // require the requested ID to become frontmost before capture/input.
         guard permitted() else { return false }
