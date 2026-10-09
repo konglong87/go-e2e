@@ -621,3 +621,23 @@ logs retained. Pre-existing scripts/__pycache__/ left untouched and uncommitted.
 - Next gate: rebuild the current tagged app, run one fresh requested-model
   closure attempt, and inspect the health timeline before changing desktop
   lifecycle code or model orchestration.
+
+### Health-monitored autonomous model retry — 2026-10-09
+
+- Fresh run `model-eb1c7b8-01` used the current health-instrumented tagged
+  build and the requested provider/model/high configuration. The desktop host
+  and local server stayed alive for the entire run; `/health` remained
+  reachable, and the final snapshot confirms both PIDs were alive:
+  `desktop-v2/build/validation/20261009/model-eb1c7b8-01/desktop-health-final.json`.
+- The failure is therefore not a desktop host exit, server-child exit, port
+  refusal, or local connection failure. The model session remained `running`
+  but persisted zero ComputerUse actions and no image route before the
+  110-second operational deadline. The wrapper stopped the session safely and
+  retained the exact evidence under:
+  `desktop-v2/build/validation/20261009/model-eb1c7b8-01/`.
+- Root-cause boundary is now narrowed to provider/session orchestration latency
+  or no-action model completion, not native ComputerUse or local desktop
+  availability. Do not modify native safety or replay inputs. Model closure is
+  still open; the next slice should inspect provider run events/latency and
+  distinguish “provider has not emitted a turn” from “model emitted no tool
+  call” before another production-model retry.
