@@ -421,6 +421,10 @@ logs retained. Pre-existing scripts/__pycache__/ left untouched and uncommitted.
 - Fresh continuous input run `input-1e1c343-02` passed click → command+a → one type
   (`1+1=2`) with all receipts `executed/complete`; screenshots visibly show the
   text in the WorkBuddy input and later observation. No send or replay occurred.
+- Model run `model-e1372a6-02` completed explicit launch and target observe,
+  but made no input action before the 110-second operational deadline. The
+  screenshot still showed the persisted old draft. The prompt now makes the
+  post-observe sequence a hard next-call chain: click → command+a → type.
 - Source slice in progress: separate full Window Server inventory from on-screen
   inventory. Same-target authorization and launch activation can now find the
   original window by exact ID/PID/bundle during Space/focus recovery, while
