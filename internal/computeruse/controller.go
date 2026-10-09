@@ -341,7 +341,8 @@ func observeFailure(err error) error {
 // decide"; it never replays the interrupted input.
 func transientFailureCode(code string) bool {
 	switch code {
-	case ErrorCodeFocusChanged, ErrorCodePermissionRequired, ErrorCodeScreenshotFailed:
+	case ErrorCodeFocusChanged, ErrorCodePermissionRequired, ErrorCodeScreenshotFailed,
+		ErrorCodeTargetWindowMismatch, ErrorCodeUnsupportedDisplay:
 		return true
 	}
 	return false

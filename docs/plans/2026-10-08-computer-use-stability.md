@@ -522,3 +522,26 @@ logs retained. Pre-existing scripts/__pycache__/ left untouched and uncommitted.
   manual Mac unlock followed by a fresh tagged lifecycle/one-shot input rerun;
   do not bypass the lock or enter credentials through automation. The
   autonomous model closure remains blocked behind this native gate.
+
+### Unlocked lifecycle evidence exposes pre-dispatch geometry recovery gap — 2026-10-09
+
+- After the user manually unlocked the Mac, the current tagged host built from
+  `bed4763` reached ready native capabilities (`2704x1756`, scale 2, capture and
+  input approved). A fresh two-window fixture launched and the first screenshot
+  was visually inspected at:
+  `desktop-v2/build/validation/20261009/lifecycle-bed4763-01/move-before.png`.
+- The fixture's independent move mutation preserved the exact window ID, owner
+  PID, bundle ID, dimensions, and topology, but changed its position. The stale
+  click was rejected before dispatch as `unsupported_display`; the fixture click
+  counter stayed unchanged. This is the correct no-replay safety result.
+- The controller nevertheless treated that pre-dispatch rejection as terminal
+  because `unsupported_display` was not in the transient observation-recovery
+  set. The lifecycle driver then could not perform its required fresh observe.
+- Added a focused contract regression: pre-dispatch `unsupported_display` and
+  `target_window_mismatch` reopen observation recovery without replaying input;
+  unknown/partial outcomes remain terminal. Focused ComputerUse/macOS tests and
+  race tests pass. Intended files: `internal/computeruse/controller.go`,
+  `internal/computeruse/safety_test.go`, and this ledger.
+- Next gate: commit/push this safety slice, rebuild the current tagged app, and
+  rerun the same lifecycle fixture. Only after lifecycle recovery passes will
+  the one-shot input and requested-model closure runs resume.

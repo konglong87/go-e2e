@@ -724,6 +724,99 @@ func (b *transientFocusBackend) Execute(ctx context.Context, a Action) (ActionRe
 	return b.FakeBackend.Execute(ctx, a)
 }
 
+// preDispatchRecoveryBackend models a native rejection that is known to happen
+// before any input reaches the OS. The next fresh observation is allowed to
+// continue the run, but the rejected action itself must never be replayed.
+type preDispatchRecoveryBackend struct {
+	*FakeBackend
+	code  string
+	calls int
+	mu    sync.Mutex
+}
+
+func (b *preDispatchRecoveryBackend) Execute(ctx context.Context, action Action) (ActionReceipt, error) {
+	b.mu.Lock()
+	b.calls++
+	first := b.calls == 1
+	b.mu.Unlock()
+	if first {
+		return ActionReceipt{
+			ActionID: action.ID, SessionID: action.SessionID,
+			Outcome: OutcomeRejected, DispatchState: DispatchNotStarted,
+			ErrorCode: b.code,
+		}, &codedError{code: b.code}
+	}
+	return b.FakeBackend.Execute(ctx, action)
+}
+
+func TestPreDispatchWindowGeometryRejectionReopensObservation(t *testing.T) {
+	s, owner, now := newTestSession(t, false)
+	obs := readyObservation(s.ID(), now)
+	b := &preDispatchRecoveryBackend{
+		FakeBackend: &FakeBackend{ObservationValue: obs},
+		code:        ErrorCodeUnsupportedDisplay,
+	}
+	c, err := NewController(s, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = c.Observe(context.Background(), owner, ObserveRequest{SessionID: s.ID()}); err != nil {
+		t.Fatal(err)
+	}
+
+	a := Action{ID: "geometry-moved", SessionID: s.ID(), ObservationID: obs.ID, Kind: ActionWait}
+	receipt, err := c.Execute(context.Background(), owner, a)
+	if err == nil {
+		t.Fatal("expected pre-dispatch rejection")
+	}
+	if receipt.Outcome != OutcomeRejected || receipt.DispatchState != DispatchNotStarted || receipt.ErrorCode != ErrorCodeUnsupportedDisplay {
+		t.Fatalf("receipt = %+v, want rejected/not_started/unsupported_display", receipt)
+	}
+	if s.State() != SessionPaused || c.RunSnapshot().State != RunStateObserved {
+		t.Fatalf("recovery state = session=%s run=%s, want paused/observed", s.State(), c.RunSnapshot().State)
+	}
+	if len(b.Executed) != 0 {
+		t.Fatalf("pre-dispatch rejection recorded execution: %+v", b.Executed)
+	}
+
+	b.FakeBackend.mu.Lock()
+	b.FakeBackend.ObservationValue.ID = "obs-after-recovery"
+	b.FakeBackend.mu.Unlock()
+	if _, err = c.Observe(context.Background(), owner, ObserveRequest{SessionID: s.ID()}); err != nil {
+		t.Fatalf("fresh observation did not recover: %v", err)
+	}
+	if c.RunSnapshot().State != RunStateObserved {
+		t.Fatalf("run state after fresh observation = %s, want observed", c.RunSnapshot().State)
+	}
+}
+
+func TestUnknownUnsupportedDisplayStillFailsRun(t *testing.T) {
+	s, owner, now := newTestSession(t, false)
+	obs := readyObservation(s.ID(), now)
+	b := &FakeBackend{
+		ObservationValue: obs,
+		ReceiptValue: ActionReceipt{
+			Outcome: OutcomeUnknown, DispatchState: DispatchUnknown,
+			ErrorCode: ErrorCodeUnsupportedDisplay,
+		},
+		ExecuteError: errors.New("native dispatch outcome unknown"),
+	}
+	c, err := NewController(s, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = c.Observe(context.Background(), owner, ObserveRequest{SessionID: s.ID()}); err != nil {
+		t.Fatal(err)
+	}
+	a := Action{ID: "unknown-geometry", SessionID: s.ID(), ObservationID: obs.ID, Kind: ActionWait}
+	if _, err = c.Execute(context.Background(), owner, a); err == nil {
+		t.Fatal("expected unknown dispatch error")
+	}
+	if c.RunSnapshot().State != RunStateFailed || s.State() != SessionFailed {
+		t.Fatalf("unknown outcome was recovered: session=%s run=%s", s.State(), c.RunSnapshot().State)
+	}
+}
+
 // TestFocusChangedExecuteDoesNotFailRun verifies that a transient focus change
 // during input pauses the session and reopens the observation phase instead of
 // permanently failing the run. The run must stay non-terminal so a fresh
