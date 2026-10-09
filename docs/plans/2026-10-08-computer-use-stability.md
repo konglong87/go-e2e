@@ -586,3 +586,20 @@ logs retained. Pre-existing scripts/__pycache__/ left untouched and uncommitted.
   current acceptance build. Next gate is the requested gpt-6-sol/high
   autonomous launch → type → send once → reply screenshot → Stop run within the
   120-second budget.
+
+### Requested autonomous model retry — 2026-10-09
+
+- Fresh requested run `model-064685f-05` used the current attested tagged build,
+  provider `jiuan-responses-gpt-5.6sol`, model `gpt-6-sol`, and effort `high`.
+  The local session was created with the requested effective configuration and
+  reached `running`, but no ComputerUse action trace or screenshot was
+  persisted.
+- At the 110-second operational deadline, the wrapper's conversation-trace
+  request failed because the desktop local server connection was refused. The
+  run is retained at:
+  `desktop-v2/build/validation/20261009/model-064685f-05/`.
+- This is an external local-session availability failure, not a native input
+  or window-identity pass. It does not count as model closure. No type, send,
+  reply, or model-managed screenshot was accepted. Native lifecycle recovery
+  and the fixed one-shot input probe remain passed; the next model attempt must
+  start from a fresh host/session and new evidence directory.
