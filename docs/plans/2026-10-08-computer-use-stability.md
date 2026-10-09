@@ -436,6 +436,11 @@ logs retained. Pre-existing scripts/__pycache__/ left untouched and uncommitted.
   type replay, or false pass was accepted. Prompt wording now explicitly treats
   any pre-existing text, including the expected text, as stale and requires the
   fixed click → command+a → type sequence before send/stop.
+- Model run `model-d91d5f5-01` did not launch the target: its first observe
+  returned the current Edge window (`com.microsoft.edgemac`) and no WorkBuddy
+  launch receipt. The run was rejected at launch with no target input. The
+  prompt now makes `launch_app(target_id=workbuddy)` the mandatory first action,
+  removing ambiguity from implicit observe launch.
 
 ### Evening slice 1 — lifecycle evidence / position-only capture retry
 
