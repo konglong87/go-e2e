@@ -429,6 +429,13 @@ logs retained. Pre-existing scripts/__pycache__/ left untouched and uncommitted.
 - Acceptance prompt now treats pre-dispatch focus/window rejection as a recovery
   path: fresh observe with the same identity, never action replay; unknown or
   dispatched actions remain terminal.
+- Model run `model-fa7b57c-03` reached cold launch, ready observe and one
+  executed click after the focus-race recovery. It stopped before type because
+  the screenshot contained a persisted old draft `1+1=2`; the prior wording did
+  not force the post-click command+a → type sequence strongly enough. No send,
+  type replay, or false pass was accepted. Prompt wording now explicitly treats
+  any pre-existing text, including the expected text, as stale and requires the
+  fixed click → command+a → type sequence before send/stop.
 
 ### Evening slice 1 — lifecycle evidence / position-only capture retry
 
