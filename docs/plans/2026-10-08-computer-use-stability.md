@@ -566,3 +566,23 @@ logs retained. Pre-existing scripts/__pycache__/ left untouched and uncommitted.
   gate is the fixed one-shot input probe, then the requested autonomous model
   closure. The earlier `lifecycle-bed4763-01` and `lifecycle-8c28ac4-01`
   failures remain retained as historical diagnostics, not passes.
+
+### Fixed one-shot WorkBuddy input probe passes — 2026-10-09
+
+- Fresh current-build probe `input-eb07b4d-04` passed the exact no-model,
+  no-send sequence: cold launch through the trusted target registry, observe,
+  click the composer once, fresh observe, `command+a` once, fresh observe, type
+  `1+1=2` once, then three passive observations and Stop.
+- Every input receipt was `outcome=executed` and `dispatch_state=complete`.
+  The final screenshot was visually inspected and clearly shows `1+1=2` in the
+  WorkBuddy composer:
+  `desktop-v2/build/validation/20261009/input-eb07b4d-04/06-type-once-after.png`.
+  The summary records `typed_once=true` and `sent=false`.
+- An earlier fresh attempt `input-eb07b4d-02` was correctly rejected before
+  dispatch as `input_unavailable`; no text was sent. The successful retry used
+  the explicit left-button action field and is the accepted probe. No replay of
+  the rejected action is counted.
+- Native lifecycle recovery and the fixed one-shot input gate now pass on the
+  current acceptance build. Next gate is the requested gpt-6-sol/high
+  autonomous launch → type → send once → reply screenshot → Stop run within the
+  120-second budget.
