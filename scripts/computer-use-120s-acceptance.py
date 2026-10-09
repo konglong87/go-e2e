@@ -913,12 +913,28 @@ def conversation_heartbeat(client: APIClient, path: str, timeout: float = 2.0) -
     try:
         events = latest_conversation_events(client, path, timeout=timeout)
         types = [str(event.get("event_type", "")) for event in events if event.get("event_type")]
+        tool_summaries: list[dict[str, Any]] = []
+        for event in events:
+            event_type = str(event.get("event_type", ""))
+            if event_type not in {"tool_call", "tool_result"}:
+                continue
+            payload = json_from_text(event.get("payload_json")) or {}
+            summary: dict[str, Any] = {"event_type": event_type, "tool_name": payload.get("tool_name", "")}
+            if event_type == "tool_call":
+                call_input = json_from_text(payload.get("input")) or {}
+                summary["action"] = call_input.get("action") or call_input.get("kind") or ""
+            else:
+                output = json_from_text(payload.get("output")) or {}
+                summary["outcome"] = output.get("outcome", "")
+                summary["error_code"] = output.get("error_code", "")
+            tool_summaries.append(summary)
         heartbeat.update({
             "event_count": len(events),
             "event_types": sorted(set(types)),
             "tool_call_count": types.count("tool_call"),
             "tool_result_count": types.count("tool_result"),
             "message_stop_count": types.count("message_stop"),
+            "tool_summaries": tool_summaries[-10:],
             "last_event_at": str(events[-1].get("created_at", "")) if events else "",
         })
     except Exception as exc:

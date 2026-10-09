@@ -47,8 +47,14 @@ class WrapperUnitTests(unittest.TestCase):
         client.request.return_value = {
             "events": [
                 {"event_type": "message_start", "created_at": "now", "payload_json": "SECRET"},
-                {"event_type": "tool_call", "created_at": "later", "payload_json": "SECRET"},
-                {"event_type": "tool_result", "created_at": "latest", "payload_json": "SECRET"},
+                {"event_type": "tool_call", "created_at": "later", "payload_json": json.dumps({
+                    "tool_name": "ComputerUse",
+                    "input": json.dumps({"action": "launch_app", "text": "SECRET-INPUT"}),
+                })},
+                {"event_type": "tool_result", "created_at": "latest", "payload_json": json.dumps({
+                    "tool_name": "ComputerUse",
+                    "output": json.dumps({"outcome": "executed", "error_code": "", "screenshot": "SECRET-SCREENSHOT"}),
+                })},
             ]
         }
         heartbeat = MODULE.conversation_heartbeat(client, "/session/path")
@@ -56,6 +62,10 @@ class WrapperUnitTests(unittest.TestCase):
         self.assertEqual(heartbeat["tool_call_count"], 1)
         self.assertEqual(heartbeat["tool_result_count"], 1)
         self.assertEqual(heartbeat["last_event_at"], "latest")
+        self.assertEqual(heartbeat["tool_summaries"], [
+            {"event_type": "tool_call", "tool_name": "ComputerUse", "action": "launch_app"},
+            {"event_type": "tool_result", "tool_name": "ComputerUse", "outcome": "executed", "error_code": ""},
+        ])
         self.assertNotIn("SECRET", json.dumps(heartbeat))
 
     def test_desktop_health_snapshot_records_connection_failure_without_raw_error(self):
