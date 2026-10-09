@@ -451,6 +451,35 @@ logs retained. Pre-existing scripts/__pycache__/ left untouched and uncommitted.
   or screenshot was accepted. Same-target activation now includes
   `activateAllWindows` before AXRaise; it does not relax identity checks.
 
+### Final model closure audit — 2026-10-09
+
+- Native recovery evidence passed on current `773cc14` build:
+  launch recovered the same WorkBuddy target window to `x=76,y=35,1200x792`,
+  observe returned a real 2400x1584 image, and ComputerUse hotkey quit completed;
+  exact primary executable exited. This validates `activateAllWindows` + AXRaise
+  same-target recovery, not a new target binding.
+- Real one-shot input remains passed in `input-1e1c343-02`: click, command+a,
+  one type, visible `1+1=2`, no send/replay.
+- Requested model closure remains **not passed** after fresh current-build runs:
+  - `model-fa7b57c-03`: launch/observe/click executed after focus recovery, but no
+    type before the 110s operational deadline.
+  - `model-d91d5f5-01`: first action was an invalid current Edge observe; fixed by
+    making explicit launch mandatory.
+  - `model-2c483f3-01`: explicit launch timed out while the persisted target was
+    outside the active Space; fixed and verified by native recovery regression.
+  - `model-e1372a6-02`: explicit launch + observe succeeded, but no input before
+    deadline.
+  - `model-e1372a6-01`: provider/session emitted a failed event with zero actions.
+  - `model-773cc14-01`: local desktop server connection was refused during the
+    session GET, with zero actions.
+- No run is accepted as passed unless the current run has exactly one fresh type,
+  one send click after type, a reply wait screenshot and Stop. Existing screenshots
+  are retained as failed evidence and are never mixed into a pass.
+- Current conclusion: native safety/input/lifecycle path is verified; remaining
+  blocker is autonomous model/tool orchestration and intermittent local/provider
+  session availability within the 120-second budget, not an unresolved native
+  window-identity failure.
+
 ### Evening slice 1 — lifecycle evidence / position-only capture retry
 
 - Intended/completed source files: native Platform/Engine/fake tests and the two
