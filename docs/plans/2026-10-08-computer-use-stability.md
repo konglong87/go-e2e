@@ -545,3 +545,24 @@ logs retained. Pre-existing scripts/__pycache__/ left untouched and uncommitted.
 - Next gate: commit/push this safety slice, rebuild the current tagged app, and
   rerun the same lifecycle fixture. Only after lifecycle recovery passes will
   the one-shot input and requested-model closure runs resume.
+
+### Native lifecycle recovery passes on current build — 2026-10-09
+
+- The tagged `8c28ac4` build was rebuilt and verified. The lifecycle driver was
+  corrected so every pre-dispatch stale-input rejection explicitly performs
+  `capabilities` → `resume` → fresh observe before the positive recovery click;
+  the rejected action is never replayed. This applies to move/resize as well as
+  minimize/close.
+- Fresh native acceptance `lifecycle-8c28ac4-04` passed all four cases:
+  `move`, `resize`, `minimize`, and `close`. Each stale click was rejected with
+  `dispatch_state=not_started` and no fixture counter change; recovery used a
+  fresh observation and a new click. `stop_confirmed=true`.
+- Real screenshots were inspected. For example,
+  `move-recovered-verified.png` shows the fixture counter changing from `0` to
+  `1`, and `minimize-recovered-verified.png` shows the recovered window and
+  counter `3`. Evidence is retained under:
+  `desktop-v2/build/validation/20261009/lifecycle-8c28ac4-04/`.
+- Native lifecycle recovery is now passed for the current build. Next highest
+  gate is the fixed one-shot input probe, then the requested autonomous model
+  closure. The earlier `lifecycle-bed4763-01` and `lifecycle-8c28ac4-01`
+  failures remain retained as historical diagnostics, not passes.

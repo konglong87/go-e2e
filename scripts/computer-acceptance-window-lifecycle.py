@@ -138,10 +138,12 @@ def main():
                         raise RuntimeError('observe unexpectedly unminimized window')
                     mutate('restore')
                     wait_for(state, lambda s: not next(w for w in s['windows'] if w['key'] == 'A')['minimized'])
-                # Failed capture pauses authority; recovery is explicit and
-                # never retries the rejected action or reuses its screenshot.
-                driver.require(driver.call('capabilities'))
-                driver.control('resume')
+            # Every pre-dispatch stale-input rejection pauses the session,
+            # including position/size-only geometry changes. Resume explicitly
+            # before the fresh recovery observation; never replay the rejected
+            # action or reuse its screenshot.
+            driver.require(driver.call('capabilities'))
+            driver.control('resume')
             case['recovery'] = positive_click('B' if operation == 'close' else 'A', operation + '-recovered')
             driver.control('stop')
             case['passed'] = True
