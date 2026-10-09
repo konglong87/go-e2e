@@ -159,6 +159,15 @@ class WrapperUnitTests(unittest.TestCase):
         self.assertEqual(action["owner_pid"], 9120)
         self.assertEqual(action["window_frame"], {"x": 0, "y": 34, "width": 1352, "height": 844})
 
+    def test_action_validation_accepts_explicit_launch_as_first_action(self):
+        actions = MODULE.tool_events(FakeAcceptanceClient._events())
+        launch = next(item for item in actions if item["action"] == "launch_app")
+        ordered = [launch] + [item for item in actions if item is not launch and item["action"] != "observe" or (item is not launch and item["action"] == "observe" and item.get("window_id") == "19988")]
+        # Keep the observation after launch and remove only the pre-launch observe.
+        result = MODULE.validate_actions(ordered, {"observation-5": "reply.png"}, "stopped")
+        self.assertEqual(result["launch_mode"], "launch_app")
+        self.assertEqual(result["window_id"], "19988")
+
     def test_action_validation_rejects_control_window(self):
         actions = [
             {"tool_id": "1", "action": "observe", "is_error": False, "computer_observation": {"observation_id": "o1"}},

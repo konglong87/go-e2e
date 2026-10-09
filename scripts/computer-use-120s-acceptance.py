@@ -846,8 +846,8 @@ def validate_actions(
     if not actions:
         raise AcceptanceError("conversation_trace", "no ComputerUse actions were persisted")
     action_names = [str(item.get("action", "")) for item in actions]
-    if action_names[0] != "observe":
-        raise AcceptanceError("conversation_trace", "the first ComputerUse action was not observe")
+    if action_names[0] not in {"observe", "launch_app"}:
+        raise AcceptanceError("conversation_trace", "the first ComputerUse action was neither launch_app nor observe")
     launch_indices = [
         index for index, item in enumerate(actions)
         if item.get("action") == "launch_app" or item.get("implicit_launch")
