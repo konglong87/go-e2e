@@ -501,3 +501,24 @@ logs retained. Pre-existing scripts/__pycache__/ left untouched and uncommitted.
   acceptance claim. Current-build native and model acceptance still pending.
 - Commit/push this coherent slice, rebuild from the clean commit, then repeat
   lifecycle/one-type experiments before spending another production-model run.
+
+### Fresh tagged lifecycle rerun — 2026-10-09
+
+- Rebuilt the current clean `c4bee52` commit with `-tags computeracceptance`.
+  The build manifest records `source_dirty=false`, the current source commit,
+  and deep/strict ad-hoc signature verification passed. Evidence:
+  `desktop-v2/build/validation/20261009/rebuild-c4bee52-tagged/`.
+- Started the tagged host with its owner-only acceptance socket and built a
+  fresh two-window native fixture. The fixture itself launched and published
+  valid window state, but the host capabilities reported
+  `capture_readiness=unavailable`, `input_readiness=unavailable`, and a zero
+  coordinate space. The scripted lifecycle driver stopped before dispatching
+  any fixture input with `computer backend is not ready`.
+- The authoritative native desktop inventory independently reported that the
+  Mac was locked and automatic unlock could not unlock it. The failed run is
+  retained at `desktop-v2/build/validation/20261009/lifecycle-c4bee52-01/`;
+  it is not a product pass and contains no input acceptance.
+- No source regression is inferred from this run. The next gate remains a
+  manual Mac unlock followed by a fresh tagged lifecycle/one-shot input rerun;
+  do not bypass the lock or enter credentials through automation. The
+  autonomous model closure remains blocked behind this native gate.
