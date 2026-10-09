@@ -673,3 +673,33 @@ logs retained. Pre-existing scripts/__pycache__/ left untouched and uncommitted.
 - Next gate: rebuild with the lifecycle markers, run one fresh model attempt,
   inspect the shutdown markers plus the first tool action, then fix the actual
   host/helper exit path if the exit is reproducible.
+
+### Fresh tagged model attempts after heartbeat summaries — 2026-10-09
+
+- Commit `218b27a` added redacted `tool_summaries` to heartbeat evidence and an
+  explicit wrapper assertion; `python3 -m unittest scripts/computer-use-120s-acceptance_test.py -v`
+  passed all 32 tests. The rebuilt tagged app attests `source_commit=218b27a`,
+  `source_dirty=false`, and passes `codesign --verify --deep --strict`.
+- Fresh requested-provider runs were isolated under
+  `desktop-v2/build/validation/20261009/model-218b27a-01/` through `-07/`.
+  None is a model-closure pass: no run produced the required type/send/reply
+  sequence and no reply screenshot is accepted.
+- Runs `-03` and `-06` reached `launch_app` successfully, but the native
+  diagnostic recorded `observe_result error_code=focus_changed`. The external
+  AX/global-state keepalive was observed to move focus away from WorkBuddy; those
+  runs are retained as harness-interference diagnostics, not product passes.
+- Run `-04` reached the operational deadline while the second observe was being
+  dispatched; the conversation result was `context canceled`. Run `-05` stopped
+  after launch/observe without a type action. Run `-01` and `-02` show graceful
+  host shutdown after the first provider turn. Run `-07` again ended with host
+  connection refusal before a verifiable action trail; native launch inventory
+  showed periods with no frontmost WorkBuddy window.
+- During the final native inspection, the computer-use surface reported that the
+  Mac was locked and automatic unlock could not unlock it. This is an external
+  desktop-state blocker, not evidence to weaken focus/window safety or replay an
+  action. The user must unlock the Mac manually before the final fresh run.
+- Remaining P0 is unchanged: after manual unlock, cold-start the attested
+  `218b27a` app, verify a fresh WorkBuddy `launch_app → observe → click →
+  command+a → type 1+1=2 → send once → wait reply screenshot → stop` run within
+  the existing 120-second/110-second contract. Do not count any of `-01`…`-07`
+  as a pass and do not reuse their evidence or replay their actions.
