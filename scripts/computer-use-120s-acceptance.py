@@ -1135,7 +1135,31 @@ def run_acceptance(
     heartbeat_samples: list[dict[str, Any]] = []
     last_heartbeat_at = 0.0
     message_future: Optional[concurrent.futures.Future[Any]] = None
+    message_response: Any = None
+    message_dispatch_completed = False
+    message_dispatch_error: Optional[Exception] = None
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="computer-use-message")
+
+    def resolve_message_future() -> None:
+        """Observe the dispatch future without treating stale idle as terminal."""
+
+        nonlocal message_response, message_dispatch_completed, message_dispatch_error
+        if message_future is None or message_dispatch_completed or not message_future.done():
+            return
+        message_dispatch_completed = True
+        try:
+            message_response = message_future.result()
+            evidence.json("message-response.json", {
+                "captured_at": iso_now(),
+                "response": unwrap(message_response),
+            })
+        except Exception as exc:
+            message_dispatch_error = exc
+            evidence.json("message-response.json", {
+                "captured_at": iso_now(),
+                "request_status": "error",
+                "error": type(exc).__name__,
+            })
 
     evidence.json("run-start.json", {
         "started_at": timing.started_at,
@@ -1233,6 +1257,9 @@ def run_acceptance(
         stop_sent = False
         stop_response: Any = None
         while clock() < deadline:
+            resolve_message_future()
+            if message_dispatch_error is not None:
+                raise AcceptanceError("message_dispatch", "session message request failed before provider execution")
             remaining = deadline - clock()
             try:
                 snapshot, status = get_status(client.request(session_path, timeout=min(5.0, max(1.0, remaining))))
@@ -1243,17 +1270,29 @@ def run_acceptance(
                     break
                 sleep(min(poll_interval, max(0.05, operational - clock())))
                 continue
-            status_history.append({"at": iso_now(), "elapsed_seconds": round(clock() - start, 3), "status": status})
+            resolve_message_future()
+            if message_dispatch_error is not None:
+                raise AcceptanceError("message_dispatch", "session message request failed before provider execution")
+            status_history.append({"at": iso_now(), "elapsed_seconds": round(clock() - start, 3), "status": status,
+                                   "message_dispatch_completed": message_dispatch_completed})
             if session_path and clock() - last_heartbeat_at >= 2.0:
                 heartbeat = conversation_heartbeat(client, session_path)
                 heartbeat["elapsed_seconds"] = round(clock() - start, 3)
                 heartbeat_samples.append(heartbeat)
                 evidence.append_jsonl("conversation-heartbeat.ndjson", heartbeat)
                 last_heartbeat_at = clock()
-            if status in TERMINAL_STATUSES and (clock() - start) > 0.2:
+            # A newly-created session is legitimately idle until the asynchronous
+            # message POST has created and claimed its run. Treating that stale
+            # snapshot as terminal can stop evidence collection before the provider
+            # has emitted a single event. Never close over idle while dispatch is
+            # still in flight; after dispatch, keep polling until the operational
+            # stop gate so a provider failure is represented by its real status or
+            # by the explicit empty-trace validation below.
+            terminal_status = status in TERMINAL_STATUSES and status != "idle"
+            if terminal_status and (clock() - start) > 0.2:
                 final_status = status
                 break
-            if clock() >= operational and not stop_sent:
+            if clock() >= operational and not stop_sent and message_dispatch_completed:
                 stop_started = clock()
                 try:
                     stop_response = client.request(session_path + "/stop", "POST", {}, timeout=min(5.0, max(1.0, deadline - clock())))
@@ -1264,20 +1303,21 @@ def run_acceptance(
                 stop_sent = True
             sleep(min(poll_interval, max(0.05, deadline - clock())))
 
+        resolve_message_future()
+        if not message_dispatch_completed:
+            evidence.json("message-response.json", {
+                "captured_at": iso_now(),
+                "request_status": "not_completed_before_deadline",
+            })
+            raise AcceptanceError("message_dispatch", "session message request did not complete before the evidence deadline")
+        if message_dispatch_error is not None:
+            raise AcceptanceError("message_dispatch", "session message request failed before provider execution")
         if not final_status or final_status == "failed":
             snapshot, final_status = get_status(client.request(session_path, timeout=min(5.0, max(1.0, deadline - clock()))))
-        if final_status not in TERMINAL_STATUSES:
-            raise AcceptanceError("stop", f"session did not reach a terminal status before the 120-second deadline: {final_status!r}")
+        if final_status not in TERMINAL_STATUSES or final_status == "idle":
+            raise AcceptanceError("stop", f"session did not reach a non-idle terminal status before the 120-second deadline: {final_status!r}")
 
         evidence.json("status-history.json", {"captured_at": iso_now(), "history": status_history})
-        try:
-            if message_future is not None and message_future.done():
-                message_response = message_future.result()
-                evidence.json("message-response.json", {"captured_at": iso_now(), "response": unwrap(message_response)})
-            else:
-                evidence.json("message-response.json", {"captured_at": iso_now(), "request_status": "not_completed_before_deadline"})
-        except Exception as exc:
-            evidence.json("message-response.json", {"captured_at": iso_now(), "request_status": "error", "error": str(exc)[:200]})
 
         remaining = deadline - clock()
         if remaining <= 0.25:

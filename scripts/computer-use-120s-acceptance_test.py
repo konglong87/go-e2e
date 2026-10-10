@@ -491,6 +491,55 @@ class EvidencePipelineTests(unittest.TestCase):
 
 
 class AsyncDeadlineTests(unittest.TestCase):
+    def test_initial_idle_is_not_terminal_before_message_dispatch_completes(self):
+        class DelayedMessageClient(FakeAcceptanceClient):
+            def __init__(self):
+                super().__init__()
+                import threading
+                self.message_completed = threading.Event()
+                self.stop_before_message = False
+                self.session_stopped = False
+
+            def request(self, path, method="GET", body=None, timeout=None):
+                if path.endswith("/messages"):
+                    time.sleep(0.35)
+                    self.message_completed.set()
+                    return {"data": {"session": {"status": "running"}, "operation_id": "op-delayed"}}
+                if path.endswith("/stop"):
+                    self.stop_before_message = not self.message_completed.is_set()
+                    self.stop_calls += 1
+                    self.session_stopped = True
+                    return {"data": {"session": {"status": "stopped"}}}
+                if path.endswith("/conversation"):
+                    return {"data": {"events": [dict(event, created_at=MODULE.iso_now()) for event in self.events]}}
+                if path == "/tenant/session-control/sessions":
+                    return {"data": {"session": {"id": 1, "ref": "tenant:test", "provider": MODULE.DEFAULT_PROVIDER, "model": MODULE.DEFAULT_MODEL, "effort": "high", "status": "idle"}}}
+                self.poll_calls += 1
+                if self.session_stopped:
+                    status = "stopped"
+                else:
+                    status = "idle" if not self.message_completed.is_set() else "running"
+                return {"data": {"session": {"id": 1, "ref": "tenant:test", "provider": MODULE.DEFAULT_PROVIDER, "model": MODULE.DEFAULT_MODEL, "effort": "high", "status": status}}}
+
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(MODULE, "application_process_ids", return_value=[]):
+            client = DelayedMessageClient()
+            result = MODULE.run_acceptance(
+                client=client,
+                evidence=MODULE.Evidence(Path(directory)),
+                workspace=ROOT,
+                app_path=ROOT / "desktop-v2/build/bin/go-e2e.app",
+                total_budget=2.0,
+                operational_deadline=0.6,
+                poll_interval=0.01,
+                sleep=lambda seconds: time.sleep(min(seconds, 0.01)),
+            )
+            self.assertEqual(result["status"], "passed")
+            self.assertEqual(result["final_status"], "stopped")
+            self.assertTrue(client.message_completed.is_set())
+            self.assertFalse(client.stop_before_message)
+            message_response = json.loads((Path(directory) / "message-response.json").read_text())
+            self.assertEqual(message_response["response"]["operation_id"], "op-delayed")
+
     def test_async_message_is_stopped_and_trace_is_collected(self):
         with tempfile.TemporaryDirectory() as directory, mock.patch.object(MODULE, "application_process_ids", return_value=[]):
             client = FakeAcceptanceClient()
