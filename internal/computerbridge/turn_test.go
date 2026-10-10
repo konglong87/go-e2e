@@ -168,3 +168,37 @@ func TestHandlerExecuteTurnDoesNotFallbackToLegacyExecute(t *testing.T) {
 		t.Fatalf("execute_turn fell back to legacy service: code=%d calls=%d body=%s", response.Code, host.calls, response.Body.String())
 	}
 }
+
+func TestClientExecuteTurnPreservesUnknownReceiptWhenBridgeReportsErrorWithData(t *testing.T) {
+	now := time.Now()
+	action := testAction()
+	unknown := cu.ComputerTurnResult{
+		ProtocolVersion: cu.ProtocolVersion, TurnID: "turn-ambiguous", SessionID: action.SessionID, ActionID: action.ID, ActionKind: action.Kind,
+		DispatchState: cu.DispatchUnknown, Outcome: cu.OutcomeUnknown, Verification: cu.VerificationUnknown,
+		Receipt:          cu.ActionReceipt{ActionID: action.ID, SessionID: action.SessionID, BeforeObservationID: action.ObservationID, Outcome: cu.OutcomeUnknown, DispatchState: cu.DispatchUnknown, Verification: cu.VerificationUnknown, ErrorCode: cu.ErrorCodeInputUncertain, CompletedAt: now},
+		ObservationState: cu.ObservationInvalidated, ScreenshotState: cu.ScreenshotNotRequested, ErrorCode: cu.ErrorCodeInputUncertain, RetryPolicy: cu.RetryNever,
+		Sequence: 1, StartedAt: now, CompletedAt: now,
+	}
+	client := newUnixClient(t, 0, func(w http.ResponseWriter, r *http.Request) {
+		_ = readRequest(t, r)
+		data, _ := json.Marshal(ExecuteTurnResponse{Result: unknown})
+		_ = json.NewEncoder(w).Encode(Response{Data: data, Error: "host operation failed"})
+	})
+
+	result, err := client.ExecuteTurn(context.Background(), testOwner(), action)
+	if err == nil || result.Outcome != cu.OutcomeUnknown || result.Receipt.ActionID != action.ID || result.RetryPolicy != cu.RetryNever {
+		t.Fatalf("ambiguous response lost receipt: result=%+v err=%v", result, err)
+	}
+}
+
+func TestClientExecuteTurnRejectsExpiredScreenshotTTL(t *testing.T) {
+	result, data := testTurnResult(t)
+	client := newUnixClient(t, 0, func(w http.ResponseWriter, r *http.Request) {
+		_ = readRequest(t, r)
+		writeData(t, w, ExecuteTurnResponse{Result: result, ScreenshotData: base64.StdEncoding.EncodeToString(data), ScreenshotMediaType: pngMediaType, ScreenshotExpiresAt: time.Now().Add(-time.Second)})
+	})
+	actual, err := client.ExecuteTurn(context.Background(), testOwner(), testAction())
+	if !errors.Is(err, ErrInvalidImage) || actual.Receipt.ActionID != result.ActionID || actual.Receipt.Outcome != cu.OutcomeExecuted {
+		t.Fatalf("expired TTL result=%+v err=%v", actual, err)
+	}
+}

@@ -229,7 +229,7 @@ func validateObservationState(r ComputerTurnResult) error {
 		if o.ID == "" || o.SessionID != r.SessionID || o.Width <= 0 || o.Height <= 0 || o.ObservedAt.IsZero() {
 			return fmt.Errorf("%w: ready observation metadata is invalid", errInvalidComputerTurnResult)
 		}
-		if !o.ExpiresAt.IsZero() && !o.ExpiresAt.After(o.ObservedAt) {
+		if o.ExpiresAt.IsZero() || !o.ExpiresAt.After(o.ObservedAt) {
 			return fmt.Errorf("%w: ready observation TTL is invalid", errInvalidComputerTurnResult)
 		}
 		if err := o.Capabilities.Validate(); err != nil {
