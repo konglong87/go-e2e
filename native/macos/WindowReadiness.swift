@@ -36,6 +36,13 @@ enum WindowContentReadiness {
 // observed within the existing bounded launch budget, never randomly resolved.
 struct LaunchWindowStability {
     private static let requiredStableSeconds: TimeInterval = 0.10
+    // Window Server exposes menu-bar and title-bar companion windows under the
+    // same bundle. They can contain enough pixel variation to look rendered,
+    // but they are never valid Computer Use targets. Prefer a substantial
+    // content window when one exists; retain the old candidate behavior when
+    // no substantial window is present so this is not an app-size bypass.
+    private static let substantialWidth: CGFloat = 240
+    private static let substantialHeight: CGFloat = 160
     private var previous: NativeWindow?
     private var stableSince: TimeInterval = 0
     mutating func update(_ candidate: NativeWindow?, contentReady: Bool, uptime: TimeInterval) -> NativeWindow? {
@@ -50,8 +57,12 @@ struct LaunchWindowStability {
         return nil
     }
     static func candidate(from windows: [NativeWindow]) -> NativeWindow? {
-        let frontmost = windows.filter(\.isFrontmost)
+        let substantial = windows.filter {
+            $0.frame.width >= Self.substantialWidth && $0.frame.height >= Self.substantialHeight
+        }
+        let candidates = substantial.isEmpty ? windows : substantial
+        let frontmost = candidates.filter(\.isFrontmost)
         if frontmost.count == 1 { return frontmost[0] }
-        return windows.count == 1 ? windows[0] : nil
+        return candidates.count == 1 ? candidates[0] : nil
     }
 }

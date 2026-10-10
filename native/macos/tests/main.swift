@@ -670,8 +670,12 @@ do {
         frame: window.frame, displayID: window.displayID, isVisible: true, isFrontmost: true)
     expect(LaunchWindowStability.candidate(from: [window, other]) == nil, "ambiguous frontmost fails selection")
     let rendered = NativeWindow(id: "rendered-main", title: "", ownerPID: window.ownerPID, bundleID: window.bundleID,
-        frame: window.frame, displayID: window.displayID, isVisible: true, isFrontmost: false)
+        frame: CGRect(x: 0, y: 35, width: 1200, height: 792), displayID: window.displayID, isVisible: true, isFrontmost: false)
     expect(LaunchWindowStability.candidate(from: [rendered])?.id == rendered.id, "unique rendered main can be raised instead of binding blank splash")
+    let menuBar = NativeWindow(id: "menu-bar", title: "", ownerPID: window.ownerPID, bundleID: window.bundleID,
+        frame: CGRect(x: 0, y: 0, width: 1352, height: 34), displayID: window.displayID, isVisible: true, isFrontmost: false)
+    expect(LaunchWindowStability.candidate(from: [rendered, menuBar])?.id == rendered.id,
+           "window chrome must not make a ready main window ambiguous")
 }
 
 // Snapshot geometry must be the geometry actually used to capture, not an
