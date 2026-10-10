@@ -241,3 +241,283 @@
 .webui2-settings-center .agent-workbench-main { background: var(--webui2-surface); min-width: 0; overflow: auto; }
 .webui2-settings-center .agent-team-panel,
 .webui2-settings-center .agent-profile-panel { min-width: 0; }
+
+/* Teams is a full-height workbench: the page heading stays compact while the
+   actual team workspace consumes the remaining viewport instead of floating
+   as a small island in the middle of the page. */
+.webui2-settings-center .settings-main-teams {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+.webui2-settings-center .settings-content-teams {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  height: 100%;
+  max-width: none;
+  min-height: 0;
+  overflow: hidden;
+  padding: 14px 24px 18px;
+}
+.webui2-settings-center .settings-content-teams .settings-active-environment {
+  flex: 0 0 auto;
+  font-size: 11px;
+  margin: 0 0 4px;
+}
+.webui2-settings-center .settings-content-teams .settings-page-heading {
+  align-items: baseline;
+  flex: 0 0 auto;
+  gap: 18px;
+  margin-bottom: 12px;
+}
+.webui2-settings-center .settings-content-teams .settings-page-heading h1 {
+  font-size: 20px;
+  line-height: 1.2;
+  margin: 0 0 3px;
+}
+.webui2-settings-center .settings-content-teams .settings-page-heading p {
+  font-size: 12px;
+  line-height: 1.45;
+}
+.webui2-settings-center .settings-content-teams > .agent-team-panel {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+}
+.webui2-settings-center .settings-content-teams .agent-workbench-header {
+  align-items: center;
+  min-height: 58px;
+  padding: 9px 13px;
+}
+.webui2-settings-center .settings-content-teams .agent-workbench-header .title-row {
+  flex: 1 1 auto;
+  min-width: 230px;
+}
+.webui2-settings-center .settings-content-teams .agent-workbench-header .title-row > svg {
+  color: var(--webui2-accent);
+  height: 17px;
+  width: 17px;
+}
+.webui2-settings-center .settings-content-teams .agent-workbench-header h2 {
+  font-size: 14px;
+  line-height: 1.2;
+}
+.webui2-settings-center .settings-content-teams .agent-workbench-header p {
+  color: var(--webui2-text-muted);
+  font-size: 11px;
+  line-height: 1.3;
+  margin-top: 2px;
+  max-width: 440px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.webui2-settings-center .settings-content-teams .agent-workbench-header .panel-header-actions {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  gap: 7px;
+}
+.webui2-settings-center .settings-content-teams .team-header-picker {
+  min-height: 32px;
+  width: min(280px, 27vw);
+}
+.webui2-settings-center .settings-content-teams .team-header-picker select {
+  min-height: 26px;
+  font-size: 11px;
+}
+.webui2-settings-center .settings-content-teams .agent-workbench-header .status-pill {
+  font-size: 11px;
+  min-height: 32px;
+  padding: 6px 8px;
+}
+.webui2-settings-center .settings-content-teams .agent-workbench-body,
+.webui2-settings-center .settings-content-teams .agent-workbench-main {
+  min-height: 0;
+}
+.webui2-settings-center .settings-content-teams .agent-workbench-main {
+  overflow: auto;
+}
+.webui2-settings-center .settings-content-teams .agent-detail-view {
+  gap: 12px;
+  min-height: 100%;
+  padding: 15px 17px 17px;
+}
+
+/* Dense overview layout: summary facts and two information columns share the
+   available width, so the main body reads like a workbench rather than a
+   narrow stack of cards. */
+.webui2-settings-center .team-overview-view {
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+}
+.webui2-settings-center .team-overview-header,
+.webui2-settings-center .team-empty-header {
+  align-items: flex-start;
+  border-bottom: 1px solid var(--webui2-border);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding-bottom: 11px;
+}
+.webui2-settings-center .team-overview-header h3,
+.webui2-settings-center .team-empty-header h3 {
+  font-size: 17px;
+  line-height: 1.25;
+  margin: 3px 0 3px;
+}
+.webui2-settings-center .team-overview-header p,
+.webui2-settings-center .team-empty-header p {
+  color: var(--webui2-text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+  margin: 0;
+  max-width: 660px;
+}
+.webui2-settings-center .team-overview-actions {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 7px;
+}
+.webui2-settings-center .team-status-chip {
+  align-items: center;
+  border: 1px solid var(--webui2-border);
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 600;
+  min-height: 28px;
+  padding: 0 9px;
+  white-space: nowrap;
+}
+.webui2-settings-center .team-status-published { background: color-mix(in srgb, var(--webui2-accent) 10%, var(--webui2-surface)); color: var(--webui2-accent); }
+.webui2-settings-center .team-status-draft { background: color-mix(in srgb, #bd8b2b 11%, var(--webui2-surface)); color: #946d18; }
+.webui2-settings-center .team-status-neutral { color: var(--webui2-text-muted); }
+.webui2-settings-center .team-fact-grid {
+  display: grid;
+  gap: 7px;
+  grid-template-columns: minmax(0, 1.4fr) repeat(4, minmax(90px, .7fr));
+}
+.webui2-settings-center .team-fact-grid > div {
+  background: var(--webui2-surface-muted);
+  border: 1px solid var(--webui2-border);
+  border-radius: 6px;
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 9px 10px;
+}
+.webui2-settings-center .team-fact-grid span,
+.webui2-settings-center .team-card-heading span,
+.webui2-settings-center .team-rule-list span {
+  color: var(--webui2-text-muted);
+  font-size: 10px;
+}
+.webui2-settings-center .team-fact-grid strong {
+  color: var(--webui2-text);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.webui2-settings-center .team-overview-columns {
+  display: grid;
+  gap: 9px;
+  grid-template-columns: minmax(0, 1.16fr) minmax(250px, .84fr);
+  min-height: 0;
+}
+.webui2-settings-center .team-overview-card {
+  border: 1px solid var(--webui2-border);
+  border-radius: 7px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  padding: 11px 12px;
+}
+.webui2-settings-center .team-card-heading {
+  align-items: center;
+  border-bottom: 1px solid var(--webui2-border);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding-bottom: 8px;
+}
+.webui2-settings-center .team-card-heading > div { display: grid; gap: 2px; min-width: 0; }
+.webui2-settings-center .team-card-heading strong { color: var(--webui2-text); font-size: 12px; }
+.webui2-settings-center .team-card-heading > span,
+.webui2-settings-center .team-card-heading > svg { color: var(--webui2-accent); flex: 0 0 auto; }
+.webui2-settings-center .team-member-compact-list { display: grid; gap: 0; overflow: auto; }
+.webui2-settings-center .team-member-compact-row {
+  align-items: center;
+  border-bottom: 1px solid var(--webui2-border);
+  display: grid;
+  gap: 9px;
+  grid-template-columns: 25px minmax(0, 1fr) auto;
+  min-height: 43px;
+}
+.webui2-settings-center .team-member-compact-row:last-child { border-bottom: 0; }
+.webui2-settings-center .team-member-index { color: var(--webui2-text-muted); font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.webui2-settings-center .team-member-compact-row > div { display: grid; gap: 2px; min-width: 0; }
+.webui2-settings-center .team-member-compact-row strong { color: var(--webui2-text); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.webui2-settings-center .team-member-compact-row span:not(.team-member-index) { color: var(--webui2-text-muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.webui2-settings-center .team-member-compact-row em { color: var(--webui2-accent); font-size: 10px; font-style: normal; }
+.webui2-settings-center .team-inline-empty { color: var(--webui2-text-muted); font-size: 11px; padding: 18px 0; }
+.webui2-settings-center .team-rule-list { display: grid; }
+.webui2-settings-center .team-rule-list > div { align-items: center; border-bottom: 1px solid var(--webui2-border); display: flex; gap: 12px; justify-content: space-between; min-height: 38px; }
+.webui2-settings-center .team-rule-list > div:last-child { border-bottom: 0; }
+.webui2-settings-center .team-rule-list strong { color: var(--webui2-text); font-size: 11px; font-weight: 600; }
+.webui2-settings-center .team-overview-footer { align-items: center; color: var(--webui2-text-muted); display: flex; font-size: 10px; gap: 6px; line-height: 1.4; padding-top: 1px; }
+.webui2-settings-center .team-overview-footer svg { color: var(--webui2-accent); flex: 0 0 auto; }
+
+/* Empty state uses the full workbench width and provides an actionable,
+   three-step starting point instead of a false zero-valued dashboard. */
+.webui2-settings-center .team-empty-view { align-content: start; grid-template-rows: auto minmax(0, 1fr); }
+.webui2-settings-center .team-empty-header { align-items: center; }
+.webui2-settings-center .team-quick-start-grid { align-content: start; display: grid; gap: 8px; grid-template-columns: repeat(3, minmax(0, 1fr)); padding-top: 12px; }
+.webui2-settings-center .team-quick-start-card { align-items: flex-start; background: var(--webui2-surface-muted); border: 1px solid var(--webui2-border); border-radius: 7px; display: flex; gap: 10px; padding: 12px; }
+.webui2-settings-center .team-quick-start-number { color: var(--webui2-accent); font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; padding-top: 2px; }
+.webui2-settings-center .team-quick-start-card strong { color: var(--webui2-text); font-size: 11px; }
+.webui2-settings-center .team-quick-start-card p { color: var(--webui2-text-muted); font-size: 10px; line-height: 1.45; margin: 4px 0 0; }
+
+@media (max-width: 980px) {
+  .webui2-settings-center .settings-content-teams .agent-workbench-header { align-items: flex-start; flex-direction: column; }
+  .webui2-settings-center .settings-content-teams .agent-workbench-header .panel-header-actions { width: 100%; }
+  .webui2-settings-center .settings-content-teams .team-header-picker { flex: 1 1 230px; width: auto; }
+  .webui2-settings-center .team-fact-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .webui2-settings-center .team-overview-columns { grid-template-columns: 1fr; }
+}
+@media (max-width: 700px) {
+  .webui2-settings-center .settings-main-teams { display: block; overflow-y: auto; }
+  .webui2-settings-center .settings-content-teams { height: auto; min-height: 100%; overflow: visible; padding: 16px 14px 28px; }
+  .webui2-settings-center .settings-content-teams > .agent-team-panel { display: block; }
+  .webui2-settings-center .settings-content-teams .agent-workbench-body { grid-template-columns: 128px minmax(0, 1fr); overflow: visible; }
+  .webui2-settings-center .team-fact-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .webui2-settings-center .team-quick-start-grid { grid-template-columns: 1fr; }
+}
+.webui2-settings-center .settings-content-teams .settings-page-heading p { display: none; }
+.webui2-settings-center .settings-content-teams .settings-page-heading { margin-bottom: 9px; }
+.webui2-settings-center .team-empty-lower-grid { display: grid; gap: 9px; grid-template-columns: minmax(0, 1.15fr) minmax(250px, .85fr); min-height: 0; padding-top: 10px; }
+.webui2-settings-center .team-empty-panel { border: 1px solid var(--webui2-border); border-radius: 7px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; padding: 11px 12px; }
+.webui2-settings-center .team-empty-flow { display: grid; gap: 0; min-height: 0; }
+.webui2-settings-center .team-empty-flow > div { align-items: center; border-bottom: 1px solid var(--webui2-border); display: grid; gap: 8px; grid-template-columns: 25px 135px minmax(0, 1fr); min-height: 42px; }
+.webui2-settings-center .team-empty-flow > div:last-child { border-bottom: 0; }
+.webui2-settings-center .team-empty-flow b { color: var(--webui2-accent); font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.webui2-settings-center .team-empty-flow strong { color: var(--webui2-text); font-size: 11px; }
+.webui2-settings-center .team-empty-flow span { color: var(--webui2-text-muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.webui2-settings-center .team-empty-guardrails { display: grid; gap: 0; }
+.webui2-settings-center .team-empty-guardrails > div { align-items: center; border-bottom: 1px solid var(--webui2-border); display: flex; gap: 8px; min-height: 35px; }
+.webui2-settings-center .team-empty-guardrails > div:last-child { border-bottom: 0; }
+.webui2-settings-center .team-empty-guardrails svg { color: var(--webui2-accent); flex: 0 0 auto; }
+.webui2-settings-center .team-empty-guardrails span { color: var(--webui2-text-muted); font-size: 10px; }
+@media (max-width: 980px) {
+  .webui2-settings-center .team-empty-lower-grid { grid-template-columns: 1fr; }
+}
+.webui2-settings-center .team-empty-view { align-content: stretch; grid-template-rows: auto minmax(112px, .7fr) minmax(180px, 1fr); }
+.webui2-settings-center .team-quick-start-grid { align-content: stretch; min-height: 0; }
+.webui2-settings-center .team-quick-start-card { min-height: 0; }
+@media (max-width: 700px) {
+  .webui2-settings-center .team-empty-view { grid-template-rows: auto auto auto; }
+}
