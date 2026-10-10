@@ -71,11 +71,24 @@ def digest(path):
             sha.update(chunk)
     return sha.hexdigest()
 commit = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
-dirty = subprocess.run(["git", "-C", str(root), "diff", "--quiet", "HEAD", "--"]).returncode != 0
+status = subprocess.check_output(["git", "-C", str(root), "status", "--porcelain=v1", "--untracked-files=all"], text=True)
+paths = []
+for line in status.splitlines():
+    value = line[3:] if len(line) >= 4 else ""
+    if " -> " in value:
+        value = value.rsplit(" -> ", 1)[-1]
+    if value:
+        paths.append(value)
+web_dirty = bool(paths) and all(path == "web" or path.startswith("web/") for path in paths)
+runtime_dirty = bool(paths) and not web_dirty
 resources = app / "Contents/Resources"
 resources.mkdir(exist_ok=True)
 (resources / "computer-use-build.json").write_text(json.dumps({
-    "schema_version": "computer-use-build.v1", "source_commit": commit, "source_dirty": dirty,
+    "schema_version": "computer-use-build.v1", "source_commit": commit,
+    # Web UI-only edits do not alter the Computer Use runtime/service/helper
+    # bytes. Keep that fact explicit instead of mixing UI work into runtime
+    # evidence or silently pretending the entire workspace is clean.
+    "source_dirty": runtime_dirty, "web_source_dirty": web_dirty,
     "built_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     # Outer app sealing re-signs its main executable; a full SHA here would be circular.
     "desktop_build_id": subprocess.check_output(["go", "tool", "buildid", str(app / "Contents/MacOS/go-e2e-desktop")], text=True).strip(),
