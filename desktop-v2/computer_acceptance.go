@@ -62,7 +62,7 @@ func startComputerAcceptance(ctx context.Context, manager *computerManager, args
 		listener.Close()
 		return nil, err
 	}
-	hostCtx, cancel := context.WithCancel(ctx)
+	hostCtx := manager.runtimeContext()
 	gate := &acceptanceAdmission{}
 	server := &http.Server{Handler: gate.wrap(acceptanceHandler(hostCtx, manager)), ReadHeaderTimeout: time.Second,
 		ReadTimeout: acceptanceTimeout, WriteTimeout: acceptanceTimeout, IdleTimeout: time.Second, MaxHeaderBytes: 4096}
@@ -72,7 +72,6 @@ func startComputerAcceptance(ctx context.Context, manager *computerManager, args
 		once.Do(func() {
 			close(done)
 			gate.close()
-			cancel()
 			_ = server.Close()
 			gate.active.Wait()
 			_ = listener.Close()

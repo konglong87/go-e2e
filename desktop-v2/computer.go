@@ -92,6 +92,8 @@ type computerManager struct {
 	controller *cu.Controller
 	owner      cu.SessionOwner
 	factory    computerBackendFactory
+	runtimeCtx context.Context
+	events     *cu.EventBus
 	attemptsMu sync.Mutex
 	attempts   map[computerStartAttemptKey]string
 }
@@ -102,7 +104,24 @@ type computerStartAttemptKey struct {
 }
 
 func newComputerManager() *computerManager {
-	return &computerManager{owner: cu.SessionOwner{TenantID: localComputerTenantID, UserID: localComputerUserID}, factory: newComputerBackend, attempts: make(map[computerStartAttemptKey]string)}
+	return newComputerManagerWithRuntime(context.Background(), cu.NewEventBus())
+}
+
+func newComputerManagerWithRuntime(runtimeCtx context.Context, events *cu.EventBus) *computerManager {
+	if runtimeCtx == nil {
+		runtimeCtx = context.Background()
+	}
+	if events == nil {
+		events = cu.NewEventBus()
+	}
+	return &computerManager{owner: cu.SessionOwner{TenantID: localComputerTenantID, UserID: localComputerUserID}, factory: newComputerBackend, runtimeCtx: runtimeCtx, events: events, attempts: make(map[computerStartAttemptKey]string)}
+}
+
+func (m *computerManager) runtimeContext() context.Context {
+	if m.runtimeCtx != nil {
+		return m.runtimeCtx
+	}
+	return context.Background()
 }
 
 func (m *computerManager) rememberStartAttempt(owner cu.SessionOwner, attemptID, sessionID string) {
@@ -194,7 +213,11 @@ func (m *computerManager) capabilities(ctx context.Context) (cu.Capabilities, er
 	return caps, nil
 }
 func (m *computerManager) start(ctx context.Context, in ComputerSessionStartInput) (ComputerSessionDTO, error) {
-	return m.startWithLifetime(ctx, ctx, in)
+	return m.startOwned(ctx, in, m.owner)
+}
+
+func (m *computerManager) startOwned(ctx context.Context, in ComputerSessionStartInput, owner cu.SessionOwner) (ComputerSessionDTO, error) {
+	return m.startOwnedWithLifetime(ctx, m.runtimeContext(), in, owner)
 }
 
 // The host owns the helper lifetime; approval belongs to the live caller.
@@ -259,6 +282,9 @@ func (m *computerManager) startOwnedWithLifetime(ctx, lifetime context.Context, 
 		return ComputerSessionDTO{}, err
 	}
 	m.controller = c
+	if m.events != nil {
+		c.SetTurnPublisher(m.events)
+	}
 	if in.Approved {
 		if err := s.Approve(owner); err != nil {
 			return ComputerSessionDTO{}, err
@@ -316,6 +342,9 @@ func (m *computerManager) replaceBackendLocked(ctx context.Context) error {
 			return err
 		}
 		m.controller = c
+		if m.events != nil {
+			c.SetTurnPublisher(m.events)
+		}
 	}
 	return nil
 }
@@ -463,11 +492,23 @@ func (a *app) GetComputerActionReceipt(id, actionID string) (cu.ActionReceipt, e
 	}
 	return r, nil
 }
+func (a *app) runtime() *RuntimeSupervisor {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.computerRuntime == nil {
+		a.computerRuntime = newComputerRuntime(nil)
+	}
+	return a.computerRuntime
+}
+
 func (a *app) computer() *computerManager {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.computerManager == nil {
-		a.computerManager = newComputerManager()
+		if a.computerRuntime == nil {
+			a.computerRuntime = newComputerRuntime(nil)
+		}
+		a.computerManager = a.computerRuntime.Manager()
 	}
 	return a.computerManager
 }

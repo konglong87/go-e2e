@@ -36,6 +36,7 @@ type app struct {
 	token             string
 	service           *localServiceController
 	computerManager   *computerManager
+	computerRuntime   *RuntimeSupervisor
 	acceptanceClose   func()
 	computerBridge    *computerbridge.Listener
 	windowCtx         context.Context
@@ -145,7 +146,11 @@ func (a *app) startup(ctx context.Context) {
 	serverLogPath := filepath.Join(filepath.Dir(sqlitePath), "go-e2e-server.log")
 	var bridgeConfig *computerbridge.Config
 	if stdruntime.GOOS == "darwin" {
-		bridge, err := startDesktopComputerBridge(ctx, filepath.Dir(sqlitePath), a.computer())
+		bridgeCtx := ctx
+		if runtime := a.runtime(); runtime != nil {
+			bridgeCtx = runtime.Context()
+		}
+		bridge, err := startDesktopComputerBridge(bridgeCtx, filepath.Dir(sqlitePath), a.computer())
 		if err != nil {
 			startupLog("computer bridge unavailable: " + err.Error())
 		} else {
@@ -302,15 +307,21 @@ func (a *app) shutdown(ctx context.Context) {
 	a.mu.Lock()
 	service := a.service
 	computer := a.computerManager
+	runtime := a.computerRuntime
 	bridge := a.computerBridge
 	a.computerBridge = nil
 	a.service = nil
 	a.computerManager = nil
+	a.computerRuntime = nil
 	a.mu.Unlock()
 	if bridge != nil {
 		_ = bridge.Close()
 	}
-	if computer != nil {
+	if runtime != nil {
+		if err := runtime.Stop(ctx); err != nil {
+			wailsruntime.LogErrorf(ctx, "stop computer runtime: %v", err)
+		}
+	} else if computer != nil {
 		if err := computer.close(ctx); err != nil {
 			wailsruntime.LogErrorf(ctx, "stop computer helper: %v", err)
 		}

@@ -16,5 +16,5 @@ func startDesktopComputerBridge(ctx context.Context, dataDir string, manager *co
 	}
 	// StartListener verifies ownership, mode and no symlink components. Do not
 	// chmod existing user directories or silently replace an insecure endpoint.
-	return computerbridge.StartListener(ctx, root, computerAgentService{manager: manager, lifetime: func() context.Context { return ctx }})
+	return computerbridge.StartListener(ctx, root, computerAgentService{manager: manager})
 }
