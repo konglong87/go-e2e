@@ -232,6 +232,39 @@ func TestSessionControlStartRunFailureTerminalizesPreparedTask(t *testing.T) {
 	}
 }
 
+func TestSessionControlProviderFailurePersistsFailedTaskState(t *testing.T) {
+	fake := &fakeTenantService{}
+	task := mysqlstore.AgentTask{
+		ID:              51,
+		TenantID:        7,
+		UserID:          11,
+		ParentSessionID: 41,
+		AgentName:       agenttasks.AgentNameWeb,
+		Model:           "gpt-6-sol",
+		MetadataJSON:    `{"cwd":"` + t.TempDir() + `","provider":"jiuan-responses-gpt-5.6sol"}`,
+	}
+	result, err := runAgentTaskMessage(context.Background(), Options{TenantService: fake}, func(context.Context, QueryRequest) (query.Result, error) {
+		return query.Result{}, errors.New("provider unavailable")
+	}, task, agenttasks.MessageInput{TaskID: task.ID, Content: "launch", TraceID: "trace-provider-failure"})
+	if err != nil {
+		t.Fatalf("runAgentTaskMessage error = %v, want persisted terminal failure", err)
+	}
+	if result.Status != agenttasks.StatusFailed {
+		t.Fatalf("result status = %q, want %q", result.Status, agenttasks.StatusFailed)
+	}
+	status, payload := fake.lastFinishedAgentSnapshot()
+	if status != agenttasks.StatusFailed {
+		t.Fatalf("persisted task status = %q, want %q", status, agenttasks.StatusFailed)
+	}
+	if !strings.Contains(payload, `"trace_id":"trace-provider-failure"`) {
+		t.Fatalf("failure payload missing trace id: %s", payload)
+	}
+	lastEvent := fake.lastAgentTaskEventInputSnapshot()
+	if lastEvent.EventType != agenttasks.EventFailed {
+		t.Fatalf("last event type = %q, want %q", lastEvent.EventType, agenttasks.EventFailed)
+	}
+}
+
 func TestConcurrentSessionControlLaunchLoserCannotUnregisterWinner(t *testing.T) {
 	startEntered := make(chan struct{})
 	releaseStart := make(chan struct{})
