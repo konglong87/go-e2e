@@ -327,8 +327,13 @@ func (o *Orchestrator) runMember(ctx context.Context, member Member, prompt, run
 			content = result.Error
 		}
 		message := Message{TenantID: member.TenantID, RunID: runID, FromMember: member.Key, ToMember: "coordinator", Kind: "member_result", Sequence: sequence, IdempotencyKey: runID + ":" + member.Key, Content: content, EvidenceRef: strings.Join(result.Evidence, ","), Status: "pending"}
-		_ = o.mailbox.Append(ctx, message)
-		o.emitEvent(ctx, events, RunEvent{TenantID: member.TenantID, RunID: runID, EventType: RunEventMailboxMessage, MemberKey: member.Key, FromMember: member.Key, ToMember: "coordinator", Status: StatusRunning, Summary: eventSummary(result.Error, content), PayloadJSON: memberResultPayload(result), ArtifactRef: strings.Join(result.Evidence, ",")})
+		mailboxStatus := StatusCompleted
+		mailboxSummary := eventSummary(result.Error, content)
+		if err := o.mailbox.Append(ctx, message); err != nil {
+			mailboxStatus = StatusFailed
+			mailboxSummary = eventSummary(err.Error(), "mailbox append failed")
+		}
+		o.emitEvent(ctx, events, RunEvent{TenantID: member.TenantID, RunID: runID, EventType: RunEventMailboxMessage, MemberKey: member.Key, FromMember: member.Key, ToMember: "coordinator", Status: mailboxStatus, Summary: mailboxSummary, PayloadJSON: memberResultPayload(result), ArtifactRef: strings.Join(result.Evidence, ",")})
 	}
 	return result
 }

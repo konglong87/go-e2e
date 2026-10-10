@@ -96,6 +96,14 @@ func (r *recordingRunEvents) Append(_ context.Context, event RunEvent) error {
 	return nil
 }
 
+type failingMailbox struct {
+	err error
+}
+
+func (m *failingMailbox) Append(context.Context, Message) error                   { return m.err }
+func (m *failingMailbox) List(context.Context, uint64, string) ([]Message, error) { return nil, m.err }
+func (m *failingMailbox) Consume(context.Context, uint64, string, string) error   { return m.err }
+
 func TestOrchestratorPersistsMemberAndMailboxEvents(t *testing.T) {
 	recorder := &recordingRunRecorder{}
 	events := &recordingRunEvents{}
@@ -108,6 +116,9 @@ func TestOrchestratorPersistsMemberAndMailboxEvents(t *testing.T) {
 	seen := map[string]bool{}
 	for _, event := range events.events {
 		seen[event.EventType] = true
+		if event.EventType == RunEventMailboxMessage && event.Status != StatusCompleted {
+			t.Fatalf("successful mailbox event status = %q, want %q", event.Status, StatusCompleted)
+		}
 	}
 	for _, eventType := range []string{RunEventRunStarted, RunEventMemberStarted, RunEventMemberCompleted, RunEventMailboxMessage, RunEventCoordinatorStarted, RunEventCoordinatorDone, RunEventRunFinished} {
 		if !seen[eventType] {
@@ -119,6 +130,26 @@ func TestOrchestratorPersistsMemberAndMailboxEvents(t *testing.T) {
 			t.Fatalf("event sequence is not monotonic: %+v", events.events)
 		}
 	}
+}
+
+func TestOrchestratorRecordsMailboxAppendFailure(t *testing.T) {
+	recorder := &recordingRunRecorder{}
+	events := &recordingRunEvents{}
+	orchestrator := NewOrchestratorWithRecorder(&fakeMemberRunner{}, &failingMailbox{err: fmt.Errorf("mailbox unavailable")}, recorder, events)
+	team := Team{TenantID: 7, ID: 9, Key: "events", Version: 1, Status: StatusPublished, Policy: TeamPolicy{Mode: ModeCoordinator, CoordinatorMember: "editor", MaxRounds: 1, MaxParallelMembers: 1}, Members: []Member{{TenantID: 7, Key: "editor", Role: RoleCoordinator}, {TenantID: 7, Key: "researcher", Role: RoleResearcher}}}
+	result, err := orchestrator.Run(context.Background(), team, "mailbox failure")
+	if err != nil || result.Status != StatusCompleted {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+	for _, event := range events.events {
+		if event.EventType == RunEventMailboxMessage {
+			if event.Status != StatusFailed || event.Summary != "mailbox unavailable" {
+				t.Fatalf("mailbox event = %+v, want failed append diagnostic", event)
+			}
+			return
+		}
+	}
+	t.Fatalf("mailbox failure event missing from %+v", events.events)
 }
 
 func TestOrchestratorMarksCoordinatorFailureTerminal(t *testing.T) {
