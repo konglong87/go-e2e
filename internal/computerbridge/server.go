@@ -176,13 +176,17 @@ func dispatchHost(r *http.Request, host Host, q Request) (any, error) {
 		}
 		out := ExecuteTurnResponse{Result: result}
 		if result.ScreenshotState == cu.ScreenshotReady {
-			reader, ok := host.(TurnScreenshotReader)
-			if !ok {
-				return out, ErrRemote
-			}
-			data, media, readErr := reader.TurnScreenshot(ctx, q.Owner, result)
-			if readErr != nil {
-				return out, readErr
+			data, media := result.ScreenshotData, "image/png"
+			if len(data) == 0 {
+				reader, ok := host.(TurnScreenshotReader)
+				if !ok {
+					return out, ErrRemote
+				}
+				var readErr error
+				data, media, readErr = reader.TurnScreenshot(ctx, q.Owner, result)
+				if readErr != nil {
+					return out, readErr
+				}
 			}
 			out.ScreenshotData = base64.StdEncoding.EncodeToString(data)
 			out.ScreenshotMediaType = media

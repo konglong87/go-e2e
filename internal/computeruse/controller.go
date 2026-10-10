@@ -565,13 +565,14 @@ func (c *Controller) ExecuteTurn(ctx context.Context, owner SessionOwner, a Acti
 			result.ErrorCode = publicErrorCode(observeErr)
 			turnErr = observeErr
 		} else {
-			imageRef, imageErr := c.readTurnScreenshot(op, next)
+			imageRef, imageData, imageErr := c.readTurnScreenshot(op, next)
 			if imageErr != nil {
 				result.ErrorCode = ErrorCodeScreenshotFailed
 				turnErr = imageErr
 			} else {
 				next.Screenshot = imageRef
 				result.Screenshot = &imageRef
+				result.ScreenshotData = imageData
 				result.ScreenshotState = ScreenshotReady
 			}
 			if setErr := c.session.SetObservation(next); setErr != nil {
@@ -734,23 +735,23 @@ func (r ActionReceipt) DispatchStateOrUnknown() DispatchState {
 	return r.DispatchState
 }
 
-func (c *Controller) readTurnScreenshot(ctx context.Context, observation Observation) (MediaRef, error) {
+func (c *Controller) readTurnScreenshot(ctx context.Context, observation Observation) (MediaRef, []byte, error) {
 	reader, ok := c.backend.(ImageReader)
 	if !ok {
-		return MediaRef{}, errors.New("computer image reader is unavailable")
+		return MediaRef{}, nil, errors.New("computer image reader is unavailable")
 	}
 	data, mediaType, err := reader.ObservationImage(ctx, observation.ID)
 	if err != nil {
-		return MediaRef{}, err
+		return MediaRef{}, nil, err
 	}
 	if len(data) == 0 || mediaType != "image/png" {
-		return MediaRef{}, errors.New("computer screenshot is unavailable")
+		return MediaRef{}, nil, errors.New("computer screenshot is unavailable")
 	}
 	mediaID := observation.Screenshot.ID
 	if mediaID == "" {
 		mediaID = observation.ID + "-screenshot"
 	}
-	return NewMediaRef(mediaID, mediaType, data, observation.Width, observation.Height), nil
+	return NewMediaRef(mediaID, mediaType, data, observation.Width, observation.Height), data, nil
 }
 
 func mediaRefPointer(ref MediaRef) *MediaRef {
@@ -770,6 +771,24 @@ func publicErrorCode(err error) string {
 		return PublicErrorCode(coded.Code())
 	}
 	return ErrorCodeActionFailed
+}
+
+// TurnScreenshot transfers the screenshot already associated with a committed
+// turn. It is a read-only media transfer and never executes or observes again.
+func (c *Controller) TurnScreenshot(ctx context.Context, owner SessionOwner, result ComputerTurnResult) ([]byte, string, error) {
+	if err := c.authorize(owner, result.SessionID); err != nil {
+		return nil, "", err
+	}
+	if result.ScreenshotState != ScreenshotReady || result.Screenshot == nil {
+		return nil, "", errors.New("computer turn screenshot is unavailable")
+	}
+	if len(result.ScreenshotData) > 0 {
+		return append([]byte(nil), result.ScreenshotData...), result.Screenshot.MediaType, nil
+	}
+	if result.Observation == nil || result.Observation.ID == "" {
+		return nil, "", errors.New("computer turn observation is unavailable")
+	}
+	return c.ObservationImage(ctx, owner, result.SessionID, result.Observation.ID)
 }
 
 func (c *Controller) ObservationImage(ctx context.Context, owner SessionOwner, id, observationID string) ([]byte, string, error) {

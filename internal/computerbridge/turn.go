@@ -27,9 +27,11 @@ func (c *Client) ExecuteTurn(ctx context.Context, owner cu.SessionOwner, action 
 		return unknownTurnResult(action), joinTurnError(callErr, ErrInvalidResponse)
 	}
 	if out.Result.ScreenshotState == cu.ScreenshotReady {
-		if err := validateTurnScreenshot(out); err != nil {
+		data, err := validatedTurnScreenshotData(out)
+		if err != nil {
 			return out.Result, joinTurnError(callErr, err)
 		}
+		out.Result.ScreenshotData = data
 	} else if out.ScreenshotData != "" || out.ScreenshotMediaType != "" || !out.ScreenshotExpiresAt.IsZero() {
 		return out.Result, joinTurnError(callErr, ErrInvalidResponse)
 	}
@@ -40,26 +42,31 @@ func (c *Client) ExecuteTurn(ctx context.Context, owner cu.SessionOwner, action 
 }
 
 func validateTurnScreenshot(response ExecuteTurnResponse) error {
+	_, err := validatedTurnScreenshotData(response)
+	return err
+}
+
+func validatedTurnScreenshotData(response ExecuteTurnResponse) ([]byte, error) {
 	result := response.Result
 	if result.Screenshot == nil || result.Observation == nil || result.ObservationState != cu.ObservationReady || result.Observation.ExpiresAt.IsZero() {
-		return ErrInvalidImage
+		return nil, ErrInvalidImage
 	}
 	if response.ScreenshotMediaType != pngMediaType || response.ScreenshotData == "" || response.ScreenshotExpiresAt.IsZero() || !response.ScreenshotExpiresAt.Equal(result.Observation.ExpiresAt) || !response.ScreenshotExpiresAt.After(time.Now()) {
-		return ErrInvalidImage
+		return nil, ErrInvalidImage
 	}
 	data, media, err := decodeImage(ImageResponse{MediaType: response.ScreenshotMediaType, ImageData: response.ScreenshotData})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	config, err := png.DecodeConfig(bytes.NewReader(data))
 	if err != nil || config.Width != result.Screenshot.Width || config.Height != result.Screenshot.Height {
-		return ErrInvalidImage
+		return nil, ErrInvalidImage
 	}
 	ref := cu.NewMediaRef(result.Screenshot.ID, media, data, config.Width, config.Height)
 	if ref.MediaType != result.Screenshot.MediaType || ref.SHA256 != result.Screenshot.SHA256 || ref.SizeBytes != result.Screenshot.SizeBytes || ref.Width != result.Screenshot.Width || ref.Height != result.Screenshot.Height {
-		return ErrInvalidImage
+		return nil, ErrInvalidImage
 	}
-	return nil
+	return data, nil
 }
 
 func unknownTurnResult(action cu.Action) cu.ComputerTurnResult {

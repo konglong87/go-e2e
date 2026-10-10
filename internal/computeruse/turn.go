@@ -85,6 +85,10 @@ type ComputerTurnResult struct {
 	ObservationState ObservationState `json:"observation_state"`
 	Screenshot       *MediaRef        `json:"screenshot,omitempty"`
 	ScreenshotState  ScreenshotState  `json:"screenshot_state"`
+	// ScreenshotData is an in-memory provider transfer only. It is intentionally
+	// excluded from JSON and session snapshots; MediaRef remains the persisted
+	// authority while the tool receives the same-turn PNG without a second RPC.
+	ScreenshotData []byte `json:"-"`
 
 	ErrorCode   string        `json:"error_code,omitempty"`
 	RetryPolicy RetryPolicy   `json:"retry_policy"`

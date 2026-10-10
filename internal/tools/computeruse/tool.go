@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -155,6 +156,12 @@ func (t Tool) Run(ctx context.Context, input json.RawMessage, tc tools.Context) 
 	case cu.ActionStop:
 		return t.control(ctx, owner, params, func() error { return service.Stop(ctx, owner, params.SessionID) })
 	case cu.ActionClick, cu.ActionDoubleClick, cu.ActionRightClick, cu.ActionMove, cu.ActionDrag, cu.ActionType, cu.ActionKey, cu.ActionHotkey, cu.ActionScroll, cu.ActionWait:
+		if _, ok := service.(cu.TurnService); ok {
+			return t.executeTurn(ctx, service.(cu.TurnService), owner, params, tc)
+		}
+		// Legacy adapters remain available only when they do not expose the new
+		// atomic capability. New provider/runtime paths never fall back after a
+		// turn service has been selected.
 		return t.execute(ctx, service, owner, params, tc)
 	default:
 		return errorResult("invalid_input", "unsupported computer action")
@@ -375,10 +382,64 @@ func invocationActionID(tc tools.Context) (string, error) {
 	return fmt.Sprintf("computer-%x", sha256.Sum256(data)), nil
 }
 
-func (t Tool) execute(ctx context.Context, service cu.Service, owner cu.SessionOwner, params request, tc tools.Context) tools.Result {
-	id, err := invocationActionID(tc)
+func (t Tool) executeTurn(ctx context.Context, service cu.TurnService, owner cu.SessionOwner, params request, tc tools.Context) tools.Result {
+	action, err := actionFromRequest(params, tc)
 	if err != nil {
 		return errorResult("invalid_context", "trusted runtime invocation is required")
+	}
+	result, turnErr := service.ExecuteTurn(ctx, owner, action)
+	if err := result.Validate(); err != nil {
+		return errorResult("invalid_turn_result", "computer turn result was invalid")
+	}
+	payload := map[string]any{
+		"turn_result":    result,
+		"receipt":        result.Receipt,
+		"dispatch_state": result.DispatchState,
+		"outcome":        result.Outcome,
+		"error_code":     result.ErrorCode,
+	}
+	out := tools.Result{IsError: turnErr != nil || result.Outcome != cu.OutcomeExecuted}
+	if result.ObservationState == cu.ObservationReady && result.Observation != nil {
+		payload["observation"] = result.Observation
+	}
+	if result.Outcome == cu.OutcomeExecuted {
+		if result.ScreenshotState == cu.ScreenshotReady {
+			messages, imageErr := turnScreenshotMessages(result, observationScreenshotGuidance)
+			if imageErr != nil {
+				out.IsError = true
+				payload["image_error_code"] = "observation_image_failed"
+			} else {
+				out.ContextMessages = messages
+			}
+		} else {
+			out.IsError = true
+			payload["image_error_code"] = "observation_image_failed"
+		}
+		if result.ObservationState != cu.ObservationReady || result.ScreenshotState != cu.ScreenshotReady {
+			payload["message"] = "input was executed but same-turn observation or screenshot is unavailable; stop without replaying input"
+		}
+	} else if result.Outcome == cu.OutcomeUnknown {
+		out.IsError = true
+		payload["message"] = "computer action dispatch is unknown; input may already have been dispatched, do not replay it"
+	} else {
+		out.IsError = true
+		payload["message"] = "computer action was not executed; observe again before deciding, do not replay the same action automatically"
+	}
+	if out.IsError && payload["error_code"] == "" {
+		if result.ErrorCode != "" {
+			payload["error_code"] = result.ErrorCode
+		} else {
+			payload["error_code"] = cu.ErrorCodeActionFailed
+		}
+	}
+	out.Content = marshal(payload)
+	return out
+}
+
+func actionFromRequest(params request, tc tools.Context) (cu.Action, error) {
+	id, err := invocationActionID(tc)
+	if err != nil {
+		return cu.Action{}, err
 	}
 	action := cu.Action{
 		ID: id, SessionID: params.SessionID, ObservationID: params.ObservationID, Kind: cu.ActionKind(params.Action),
@@ -390,6 +451,39 @@ func (t Tool) execute(ctx context.Context, service cu.Service, owner cu.SessionO
 	}
 	if params.StartX != nil && params.StartY != nil {
 		action.StartPoint = &cu.Point{X: *params.StartX, Y: *params.StartY}
+	}
+	return action, nil
+}
+
+func turnScreenshotMessages(result cu.ComputerTurnResult, guidance string) ([]anthropic.MessageParam, error) {
+	if result.Screenshot == nil || result.Observation == nil || result.ObservationState != cu.ObservationReady || result.ScreenshotState != cu.ScreenshotReady {
+		return nil, errors.New("same-turn screenshot unavailable")
+	}
+	data := result.ScreenshotData
+	if result.Screenshot.MediaType != pngMediaType || len(data) == 0 || len(data) > maxPNGBytes || result.Screenshot.SizeBytes != int64(len(data)) {
+		return nil, errors.New("invalid same-turn screenshot")
+	}
+	config, err := png.DecodeConfig(bytes.NewReader(data))
+	if err != nil || config.Width <= 0 || config.Height <= 0 || config.Width > maxPNGPixels/config.Height || config.Width != result.Screenshot.Width || config.Height != result.Screenshot.Height {
+		return nil, errors.New("invalid same-turn screenshot dimensions")
+	}
+	if _, err := png.Decode(bytes.NewReader(data)); err != nil {
+		return nil, errors.New("invalid same-turn screenshot content")
+	}
+	hash := sha256.Sum256(data)
+	if hex.EncodeToString(hash[:]) != result.Screenshot.SHA256 {
+		return nil, errors.New("same-turn screenshot hash mismatch")
+	}
+	return []anthropic.MessageParam{{Role: "user", Content: []anthropic.ContentBlock{
+		{Type: "text", Text: fmt.Sprintf("%s Observation ID: %q. Image dimensions: %dx%d pixels. %s", guidance, result.Observation.ID, config.Width, config.Height, screenshotCoordinateGuidance)},
+		{Type: "image", Source: &anthropic.ContentSource{Type: "base64", MediaType: pngMediaType, Data: base64.StdEncoding.EncodeToString(data)}},
+	}}}, nil
+}
+
+func (t Tool) execute(ctx context.Context, service cu.Service, owner cu.SessionOwner, params request, tc tools.Context) tools.Result {
+	action, err := actionFromRequest(params, tc)
+	if err != nil {
+		return errorResult("invalid_context", "trusted runtime invocation is required")
 	}
 	receipt, executeErr := service.Execute(ctx, owner, action)
 	// Errors can accompany an unknown outcome after input was dispatched. Never

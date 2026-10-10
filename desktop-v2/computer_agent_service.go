@@ -128,6 +128,14 @@ func (s computerAgentService) Observe(ctx context.Context, owner cu.SessionOwner
 	}
 	return c.Observe(ctx, owner, r)
 }
+func (s computerAgentService) ExecuteTurn(ctx context.Context, owner cu.SessionOwner, a cu.Action) (cu.ComputerTurnResult, error) {
+	c, err := s.controller(ctx, owner, a.SessionID, false)
+	if err != nil {
+		return cu.ComputerTurnResult{}, err
+	}
+	return c.ExecuteTurn(ctx, owner, a)
+}
+
 func (s computerAgentService) Execute(ctx context.Context, owner cu.SessionOwner, a cu.Action) (cu.ActionReceipt, error) {
 	c, err := s.controller(ctx, owner, a.SessionID, false)
 	if err != nil {
@@ -171,6 +179,14 @@ func (s computerAgentService) Stop(ctx context.Context, owner cu.SessionOwner, i
 		return errComputerAgentUnauthorized
 	}
 	return c.Stop(ctx, owner, id)
+}
+
+func (s computerAgentService) TurnScreenshot(ctx context.Context, owner cu.SessionOwner, result cu.ComputerTurnResult) ([]byte, string, error) {
+	c, err := s.controller(ctx, owner, result.SessionID, false)
+	if err != nil {
+		return nil, "", err
+	}
+	return c.TurnScreenshot(ctx, owner, result)
 }
 
 func (s computerAgentService) ObservationImage(ctx context.Context, owner cu.SessionOwner, id, observationID string) ([]byte, string, error) {
