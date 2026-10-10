@@ -676,6 +676,12 @@ do {
         frame: CGRect(x: 0, y: 0, width: 1352, height: 34), displayID: window.displayID, isVisible: true, isFrontmost: false)
     expect(LaunchWindowStability.candidate(from: [rendered, menuBar])?.id == rendered.id,
            "window chrome must not make a ready main window ambiguous")
+    expect(LaunchBindingFailureReason.classify(readyCandidateCount: 1, selectedCandidate: true,
+        activationAttempted: true, activationSucceeded: false, confirmedFrontmost: false) == "window_activation_failed",
+        "failed window activation must be diagnostically distinct from missing content")
+    expect(LaunchBindingFailureReason.classify(readyCandidateCount: 2, selectedCandidate: false,
+        activationAttempted: false, activationSucceeded: false, confirmedFrontmost: false) == "ambiguous_ready_windows",
+        "multiple ready windows must remain an ambiguity")
 }
 
 // Snapshot geometry must be the geometry actually used to capture, not an

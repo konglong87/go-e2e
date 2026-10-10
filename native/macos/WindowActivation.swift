@@ -14,13 +14,17 @@ struct AccessibleWindowDescriptor {
 enum WindowTargetSelector {
     static let geometryTolerance: CGFloat = 0.5
 
-    static func uniqueIndex(for target: NativeWindow, candidates: [AccessibleWindowDescriptor]) -> Int? {
-        guard target.isVisible, target.ownerPID > 0 else { return nil }
-        let matches = candidates.indices.filter { index in
+    static func matchingIndices(for target: NativeWindow, candidates: [AccessibleWindowDescriptor]) -> [Int] {
+        guard target.isVisible, target.ownerPID > 0 else { return [] }
+        return candidates.indices.filter { index in
             let candidate = candidates[index]
             return !candidate.minimized && framesMatch(target.frame, candidate.frame) &&
                 (target.title.isEmpty || candidate.title == target.title)
         }
+    }
+
+    static func uniqueIndex(for target: NativeWindow, candidates: [AccessibleWindowDescriptor]) -> Int? {
+        let matches = matchingIndices(for: target, candidates: candidates)
         return matches.count == 1 ? matches.first : nil
     }
 
@@ -34,20 +38,55 @@ enum WindowTargetSelector {
 
 // Keep the native AX adapter separate from the identity selection policy so
 // matching and ambiguity are tested without touching the user's desktop.
+struct AccessibilityWindowActivationResult {
+    let success: Bool
+    let reason: String
+    let axTrusted: Bool
+    let axWindowCount: Int
+    let geometryMatchCount: Int
+
+    var diagnosticFields: [String: Any] {
+        [
+            "activation_succeeded": success,
+            "activation_failure_reason": reason,
+            "ax_trusted": axTrusted,
+            "ax_window_count": axWindowCount,
+            "ax_geometry_match_count": geometryMatchCount,
+        ]
+    }
+}
+
 enum AccessibilityWindowActivator {
     static let messagingTimeout: Float = 0.1
     static let maxWindows = 128
 
     static func raise(_ target: NativeWindow, permitted: () -> Bool, stillCurrent: () -> Bool) -> Bool {
-        guard permitted(), AXIsProcessTrusted(), target.ownerPID > 0 else { return false }
+        raiseDetailed(target, permitted: permitted, stillCurrent: stillCurrent).success
+    }
+
+    static func raiseDetailed(_ target: NativeWindow, permitted: () -> Bool, stillCurrent: () -> Bool) -> AccessibilityWindowActivationResult {
+        func failure(_ reason: String, axTrusted: Bool = false, axWindowCount: Int = 0, geometryMatchCount: Int = 0) -> AccessibilityWindowActivationResult {
+            AccessibilityWindowActivationResult(success: false, reason: reason, axTrusted: axTrusted,
+                                                axWindowCount: axWindowCount, geometryMatchCount: geometryMatchCount)
+        }
+        guard permitted() else { return failure("permission_revoked") }
+        let axTrusted = AXIsProcessTrusted()
+        guard axTrusted else { return failure("ax_not_trusted") }
+        guard target.ownerPID > 0 else { return failure("target_pid_invalid", axTrusted: axTrusted) }
         let appElement = AXUIElementCreateApplication(target.ownerPID)
-        guard AXUIElementSetMessagingTimeout(appElement, messagingTimeout) == .success else { return false }
+        guard AXUIElementSetMessagingTimeout(appElement, messagingTimeout) == .success else {
+            return failure("ax_app_timeout_setup_failed", axTrusted: axTrusted)
+        }
         var count: CFIndex = 0
         guard permitted(), AXUIElementGetAttributeValueCount(appElement, kAXWindowsAttribute as CFString, &count) == .success,
-              count > 0, count <= maxWindows else { return false }
+              count > 0, count <= maxWindows else {
+            return failure("ax_window_inventory_failed", axTrusted: axTrusted)
+        }
         var value: CFArray?
         guard permitted(), AXUIElementCopyAttributeValues(appElement, kAXWindowsAttribute as CFString, 0, count, &value) == .success,
-              let elements = value as? [AXUIElement] else { return false }
+              let elements = value as? [AXUIElement] else {
+            return failure("ax_window_values_failed", axTrusted: axTrusted, axWindowCount: Int(count))
+        }
         // Do not drop unreadable windows: that could hide an ambiguous match.
         // Timeout is per AX object (not inherited from its application).
         var candidates: [(AXUIElement, AccessibleWindowDescriptor)] = []
@@ -55,11 +94,19 @@ enum AccessibilityWindowActivator {
             var pid: pid_t = 0
             guard permitted(), AXUIElementGetPid(element, &pid) == .success, pid == target.ownerPID,
                   AXUIElementSetMessagingTimeout(element, messagingTimeout) == .success,
-                  let descriptor = descriptor(element, permitted: permitted) else { return false }
+                  let descriptor = descriptor(element, permitted: permitted) else {
+                return failure("ax_window_unreadable", axTrusted: axTrusted, axWindowCount: Int(count))
+            }
             candidates.append((element, descriptor))
         }
-        guard let index = WindowTargetSelector.uniqueIndex(for: target, candidates: candidates.map { $0.1 }),
-              permitted(), stillCurrent(), permitted(), let app = NSRunningApplication(processIdentifier: target.ownerPID) else { return false }
+        let matches = WindowTargetSelector.matchingIndices(for: target, candidates: candidates.map { $0.1 })
+        guard matches.count == 1 else {
+            return failure(matches.isEmpty ? "ax_geometry_no_match" : "ax_geometry_ambiguous",
+                           axTrusted: axTrusted, axWindowCount: Int(count), geometryMatchCount: matches.count)
+        }
+        guard permitted(), stillCurrent(), permitted(), let app = NSRunningApplication(processIdentifier: target.ownerPID) else {
+            return failure("binding_changed_before_raise", axTrusted: axTrusted, axWindowCount: Int(count), geometryMatchCount: matches.count)
+        }
         // Bring the same application window back to the active Space before
         // AXRaise. This is a same-PID/window recovery, not a target rebind.
         // Without activateAllWindows, a persisted window on another Space can
@@ -68,8 +115,14 @@ enum AccessibilityWindowActivator {
         _ = app.activate(options: [.activateAllWindows])
         // Do not retry AX actions after timeout/unknown effects. The Engine will
         // require the requested ID to become frontmost before capture/input.
-        guard permitted() else { return false }
-        return AXUIElementPerformAction(candidates[index].0, kAXRaiseAction as CFString) == .success
+        guard permitted() else {
+            return failure("permission_revoked_before_raise", axTrusted: axTrusted, axWindowCount: Int(count), geometryMatchCount: matches.count)
+        }
+        guard AXUIElementPerformAction(candidates[matches[0]].0, kAXRaiseAction as CFString) == .success else {
+            return failure("ax_raise_failed", axTrusted: axTrusted, axWindowCount: Int(count), geometryMatchCount: matches.count)
+        }
+        return AccessibilityWindowActivationResult(success: true, reason: "", axTrusted: axTrusted,
+                                                   axWindowCount: Int(count), geometryMatchCount: matches.count)
     }
 
     private static func attribute(_ element: AXUIElement, _ name: String, permitted: () -> Bool) -> CFTypeRef? {

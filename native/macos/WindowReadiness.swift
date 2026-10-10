@@ -32,6 +32,19 @@ enum WindowContentReadiness {
     }
 }
 
+
+enum LaunchBindingFailureReason {
+    static func classify(readyCandidateCount: Int, selectedCandidate: Bool,
+                         activationAttempted: Bool, activationSucceeded: Bool,
+                         confirmedFrontmost: Bool) -> String {
+        guard readyCandidateCount > 0 else { return "no_ready_window" }
+        guard selectedCandidate else { return "ambiguous_ready_windows" }
+        if activationAttempted && !activationSucceeded { return "window_activation_failed" }
+        guard confirmedFrontmost else { return "window_not_frontmost" }
+        return ""
+    }
+}
+
 // Do not bind a transient splash/full-screen animation window. Ambiguity is
 // observed within the existing bounded launch budget, never randomly resolved.
 struct LaunchWindowStability {
@@ -56,10 +69,13 @@ struct LaunchWindowStability {
         previous = candidate
         return nil
     }
-    static func candidate(from windows: [NativeWindow]) -> NativeWindow? {
-        let substantial = windows.filter {
+    static func substantialCandidates(from windows: [NativeWindow]) -> [NativeWindow] {
+        windows.filter {
             $0.frame.width >= Self.substantialWidth && $0.frame.height >= Self.substantialHeight
         }
+    }
+    static func candidate(from windows: [NativeWindow]) -> NativeWindow? {
+        let substantial = substantialCandidates(from: windows)
         let candidates = substantial.isEmpty ? windows : substantial
         let frontmost = candidates.filter(\.isFrontmost)
         if frontmost.count == 1 { return frontmost[0] }

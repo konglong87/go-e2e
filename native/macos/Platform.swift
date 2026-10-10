@@ -236,13 +236,43 @@ struct MacDesktop: DesktopPlatform {
                 }
                 let readyCandidates = candidates.filter { windowHasVisibleContent($0, permitted: permitted) }
                 let candidate = LaunchWindowStability.candidate(from: readyCandidates)
+                let substantialCandidates = LaunchWindowStability.substantialCandidates(from: readyCandidates)
+                var activationAttempted = false
+                var activationSucceeded = false
                 // A temporary frontmost splash can cover a rendered main
                 // window. Select only an unambiguous ready window and raise it
                 // during launch, never while authorizing input/evidence.
                 if let candidate, !candidate.isFrontmost {
-                    _ = activateWindow(candidate.id, permitted: permitted)
+                    activationAttempted = true
+                    activationSucceeded = activateWindow(candidate.id, permitted: permitted)
                 }
                 let confirmed = candidate?.isFrontmost == true ? candidate : nil
+                let failureReason = LaunchBindingFailureReason.classify(
+                    readyCandidateCount: readyCandidates.count,
+                    selectedCandidate: candidate != nil,
+                    activationAttempted: activationAttempted,
+                    activationSucceeded: activationSucceeded,
+                    confirmedFrontmost: confirmed != nil)
+                if !failureReason.isEmpty {
+                    var fields: [String: Any] = [
+                        "phase": "launch_binding",
+                        "bundle_id": bundleID,
+                        "ready_candidate_count": readyCandidates.count,
+                        "substantial_candidate_count": substantialCandidates.count,
+                        "selected_candidate": candidate != nil,
+                        "activation_attempted": activationAttempted,
+                        "activation_succeeded": activationSucceeded,
+                        "confirmed_frontmost": confirmed != nil,
+                        "failure_reason": failureReason,
+                    ]
+                    if let candidate {
+                        fields["selected_window_id"] = candidate.id
+                        fields["selected_owner_pid"] = Int(candidate.ownerPID)
+                        fields["selected_is_frontmost"] = candidate.isFrontmost
+                    }
+                    if let pid = focus() { fields["window_order_focus_pid"] = Int(pid) }
+                    diagnostic(fields)
+                }
                 if let stable = stability.update(confirmed, contentReady: confirmed != nil, uptime: ProcessInfo.processInfo.systemUptime) {
                     return stable
                 }
@@ -262,11 +292,28 @@ struct MacDesktop: DesktopPlatform {
         let list: [NativeWindow]
         do { list = try allWindows() } catch { return false }
         guard let window = list.first(where: { $0.id == id }), window.ownerPID > 0 else { return false }
-        if focus() == window.ownerPID && (window.isFrontmost || activeWindowID() == id) { return true }
-        return AccessibilityWindowActivator.raise(window, permitted: permitted) {
+        if focus() == window.ownerPID && (window.isFrontmost || activeWindowID() == id) {
+            diagnostic([
+                "phase": "window_activation",
+                "window_id": id,
+                "owner_pid": Int(window.ownerPID),
+                "activation_succeeded": true,
+                "activation_failure_reason": "already_frontmost",
+            ])
+            return true
+        }
+        let result = AccessibilityWindowActivator.raiseDetailed(window, permitted: permitted) {
             guard let current = try? self.allWindows().first(where: { $0.id == id }) else { return false }
             return current.matchesIdentity(window)
         }
+        var fields: [String: Any] = [
+            "phase": "window_activation",
+            "window_id": id,
+            "owner_pid": Int(window.ownerPID),
+        ]
+        for (key, value) in result.diagnosticFields { fields[key] = value }
+        diagnostic(fields)
+        return result.success
     }
 
     func activeWindowID() -> String? {
