@@ -5,10 +5,8 @@ import {
   CheckCircle2,
   CircleDashed,
   CircleStop,
-  Clock3,
   Code2,
   Eye,
-  GitBranch,
   MessageSquare,
   ShieldAlert,
   Sparkles,
@@ -17,7 +15,8 @@ import {
   XCircle
 } from "lucide-react";
 import { useMemo, useState, type JSX } from "react";
-import type { AgentProfileRecord, AgentTeamMember, AgentTeamRecord, AgentTeamRun } from "../lib/types";
+import type { AgentProfileRecord, AgentTeamMember, AgentTeamRecord, AgentTeamRun, AgentTeamRunTimeline } from "../lib/types";
+import { TeamRunObservability, type RunSnapshot, type TeamRunObservation } from "./TeamRunObservability";
 import "./collaborationRunConsole.css";
 
 type Language = "en" | "zh";
@@ -40,8 +39,10 @@ type TeamRunReplayConsoleProps = {
   members: AgentTeamMember[];
   profiles: AgentProfileRecord[];
   run: AgentTeamRun | null;
+  timeline?: AgentTeamRunTimeline | null;
   validation: { valid: boolean; issues?: Array<{ code: string; message: string }> } | null;
   onBack: () => void;
+  onRefresh?: () => void;
 };
 
 const copy = {
@@ -279,69 +280,44 @@ export function TeamRunConsole({ language, team, members, profiles, runs, onInsp
   );
 }
 
-export function TeamRunReplayConsole({ language, team, members, profiles, run, validation, onBack }: TeamRunReplayConsoleProps): JSX.Element {
-  const labels = copy[language];
-  const memberProfiles = useMemo(() => new Map(profiles.map((profile) => [profile.id, profile])), [profiles]);
-  const memberStates = useMemo(() => parseRunMembers(run), [run]);
-
-  return (
-    <section className="collaboration-console collaboration-console--replay" aria-label={labels.replay}>
-      <header className="collaboration-console-header">
-        <div className="collaboration-console-heading">
-          <button className="collaboration-back-button" onClick={onBack} type="button"><ArrowLeft size={15} />{labels.back}</button>
-          <span className="collaboration-kicker"><GitBranch size={14} />{labels.replay}</span>
-          <h3>{run ? run.id : labels.noTeam}</h3>
-          <p>{labels.replaySubtitle}</p>
-        </div>
-        {run ? <StatusBadge language={language} status={run.status} /> : null}
-      </header>
-
-      {run ? <>
-        <div className="collaboration-run-hero">
-          <div><span className="collaboration-run-hero-label">{labels.coordinatorMember}</span><strong>{run.coordinator_member_key || "—"}</strong></div>
-          <div><span className="collaboration-run-hero-label">{labels.duration}</span><strong>{duration(run)}</strong></div>
-          <div><span className="collaboration-run-hero-label">{labels.tokens}</span><strong>{(run.used_tokens || 0).toLocaleString()}</strong></div>
-          <div><span className="collaboration-run-hero-label">{labels.turns}</span><strong>{(run.used_turns || 0).toLocaleString()}</strong></div>
-        </div>
-
-        <div className="collaboration-replay-grid">
-          <section className="collaboration-surface collaboration-topology-card">
-            <SectionHeading icon={<Users size={15} />} title={labels.topology} hint={labels.topologyHint} />
-            {members.length === 0 ? <EmptyMemberState labels={labels} /> : <div className="collaboration-node-list">{members.map((member) => {
-              const profile = memberProfiles.get(member.profile_id);
-              const state = memberStates.get(member.member_key) ?? "observed";
-              return <div className={`collaboration-node collaboration-node--${state}`} key={member.id ?? member.member_key}>
-                <span className="collaboration-node-icon"><NodeIcon role={member.role} /></span>
-                <div className="collaboration-node-main"><strong>{profileName(profile, member, language)}</strong><span>{roleLabel(member.role, language)} · {profile?.profile_key || "—"}{profile?.profile_version ? `@v${profile.profile_version}` : ""}</span></div>
-                <span className="collaboration-node-state">{state === "observed" ? labels.observed : statusLabel(state, language)}</span>
-              </div>;
-            })}</div>}
-            <div className="collaboration-node-note"><CircleDashed size={14} /><span>{labels.nodeEventsPending}</span></div>
-            <p className="collaboration-muted-note">{labels.nodeEventsPendingHint}</p>
-          </section>
-
-          <section className="collaboration-surface collaboration-facts-card">
-            <SectionHeading icon={<Clock3 size={15} />} title={labels.execution} hint={team ? `${team.team_key} · v${team.team_version}` : "—"} />
-            <dl className="collaboration-facts">
-              <Fact label={labels.runID} value={run.id} />
-              <Fact label={labels.status} value={statusLabel(run.status, language)} />
-              <Fact label={labels.started} value={formatDate(run.started_at, language)} />
-              <Fact label={labels.finished} value={formatDate(run.finished_at, language)} />
-              <Fact label={labels.teamVersion} value={team ? `${team.team_key} · v${team.team_version}` : "—"} />
-            </dl>
-            {run.error_message ? <div className="collaboration-error-callout"><XCircle size={16} /><span>{run.error_message}</span></div> : null}
-            {validation ? <div className={`collaboration-validation ${validation.valid ? "valid" : "invalid"}`}><span>{labels.validation}</span><strong>{validation.valid ? labels.valid : labels.invalid}</strong></div> : null}
-          </section>
-        </div>
-
-        <section className="collaboration-surface collaboration-result-card">
-          <SectionHeading icon={<Sparkles size={15} />} title={labels.finalResult} hint={run.coordinator_member_key || labels.coordinator} />
-          {run.result_json ? <div className="collaboration-result-copy">{run.result_json}</div> : <div className="collaboration-empty-inline">{labels.noEvidence}</div>}
-          {run.result_json ? <details className="collaboration-raw-details"><summary>{labels.rawEvidence}</summary><pre>{run.result_json}</pre></details> : null}
-        </section>
-      </> : <div className="collaboration-empty-state"><CircleDashed size={30} /><strong>{labels.noTeam}</strong><p>{labels.noTeamHint}</p></div>}
-    </section>
-  );
+export function TeamRunReplayConsole({ language, team, members, profiles, run, timeline, validation, onBack, onRefresh }: TeamRunReplayConsoleProps): JSX.Element {
+  const teamMode = team ? (() => {
+    try {
+      const policy = JSON.parse(team.policy_json) as { orchestration?: { mode?: string } };
+      return policy.orchestration?.mode || "coordinator";
+    } catch {
+      return "coordinator";
+    }
+  })() : "coordinator";
+  const snapshot: RunSnapshot | undefined = team ? {
+    team_key: team.team_key,
+    team_version: team.team_version,
+    display_name: team.display_name,
+    coordinator_member: run?.coordinator_member_key || "coordinator",
+    mode: teamMode,
+    source: run?.source_kind ? {
+      provider: run.source_kind,
+      account_key: run.source_account_id ? `#${run.source_account_id}` : "—",
+      external_chat_id: run.conversation_id ? `#${run.conversation_id}` : "—"
+    } : undefined,
+    members: members.map((member) => {
+      const profile = profiles.find((item) => item.id === member.profile_id);
+      return { member_key: member.member_key, display_name: profile?.display_name, profile_key: profile?.profile_key || "", profile_version: profile?.profile_version || 0, role: member.role, profile_id: member.profile_id };
+    })
+  } : undefined;
+  const observation: TeamRunObservation = {
+    run: run || { id: "", status: "unknown" },
+    snapshot,
+    events: timeline?.events || [],
+    mailbox: timeline?.mailbox || [],
+    next_cursor: timeline?.events?.length || 0,
+    has_more: false
+  };
+  return <section className="collaboration-console collaboration-console--replay" aria-label={copy[language].replay}>
+    <div className="collaboration-replay-toolbar"><button className="collaboration-back-button" onClick={onBack} type="button"><ArrowLeft size={15} />{copy[language].back}</button><span>{run?.id || copy[language].noTeam}</span></div>
+    {run ? <TeamRunObservability language={language} observation={observation} onRefresh={onRefresh || (() => undefined)} onLoadMore={() => undefined} /> : <div className="collaboration-empty-state"><CircleDashed size={30} /><strong>{copy[language].noTeam}</strong><p>{copy[language].noTeamHint}</p></div>}
+    {validation ? <div className={`collaboration-validation ${validation.valid ? "valid" : "invalid"}`}><span>{copy[language].validation}</span><strong>{validation.valid ? copy[language].valid : copy[language].invalid}</strong></div> : null}
+  </section>;
 }
 
 function RunCard({ language, labels, run, latest, onInspect, onCancel }: { language: Language; labels: Copy; run: AgentTeamRun; latest: boolean; onInspect: (run: AgentTeamRun) => void; onCancel: (run: AgentTeamRun) => void }): JSX.Element {

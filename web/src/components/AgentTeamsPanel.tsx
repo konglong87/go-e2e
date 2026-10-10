@@ -1,10 +1,10 @@
 import { Bot, Check, GitCompareArrows, History, Plus, RefreshCcw, Save, ShieldCheck, Users, Workflow } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { cancelAgentTeamRun, getAgentTeamRun, listAgentProfiles, listAgentTeamBindings, listAgentTeamMembers, listAgentTeamRuns, listAgentTeams, listChannelAccounts, publishAgentTeam, saveAgentTeam, saveAgentTeamBindings, saveAgentTeamMembers, validateAgentTeam } from "../lib/api";
+import { cancelAgentTeamRun, getAgentTeamRun, getAgentTeamRunTimeline, listAgentProfiles, listAgentTeamBindings, listAgentTeamMembers, listAgentTeamRuns, listAgentTeams, listChannelAccounts, publishAgentTeam, saveAgentTeam, saveAgentTeamBindings, saveAgentTeamMembers, validateAgentTeam } from "../lib/api";
 import { defaultTeamPolicy } from "../lib/agentProfiles";
 import { TeamRunConsole, TeamRunReplayConsole } from "./CollaborationRunConsole";
 import { useI18n } from "../lib/i18n";
-import type { AgentProfileRecord, AgentTeamBinding, AgentTeamMember, AgentTeamPolicy, AgentTeamRecord, AgentTeamRun, ChannelAccountRecord, IdentityConfig } from "../lib/types";
+import type { AgentProfileRecord, AgentTeamBinding, AgentTeamMember, AgentTeamPolicy, AgentTeamRecord, AgentTeamRun, AgentTeamRunTimeline, ChannelAccountRecord, IdentityConfig } from "../lib/types";
 
 type TeamWorkspace = "workspace" | "operations";
 type Props = { identity: IdentityConfig; onStatus: (message: string) => void; onDataChanged?: () => void; workspace?: TeamWorkspace; onWorkspaceChange?: (workspace: TeamWorkspace) => void };
@@ -40,6 +40,7 @@ export function AgentTeamsPanel({ identity, onStatus, onDataChanged, workspace =
   const [bindings, setBindings] = useState<AgentTeamBinding[]>([]);
   const [runs, setRuns] = useState<AgentTeamRun[]>([]);
   const [selectedRun, setSelectedRun] = useState<AgentTeamRun | null>(null);
+  const [selectedRunTimeline, setSelectedRunTimeline] = useState<AgentTeamRunTimeline | null>(null);
   const [dirty, setDirty] = useState(false);
   const [_loading, setLoading] = useState(false);
   const [validation, setValidation] = useState<{ valid: boolean; issues?: Array<{ code: string; message: string }> } | null>(null);
@@ -83,7 +84,15 @@ export function AgentTeamsPanel({ identity, onStatus, onDataChanged, workspace =
   async function saveGraph() { if (!selected?.id) return; try { await saveAgentTeamMembers(identity, selected.team_key, selected.team_version, members); await saveAgentTeamBindings(identity, selected.team_key, selected.team_version, bindings); await hydrate(selected); onDataChanged?.(); onStatus(language === "zh" ? "成员和绑定已保存" : "Members and bindings saved"); } catch (error) { onStatus(message(error)); } }
   async function validate() { if (!selected) return; try { const result = await validateAgentTeam(identity, selected.team_key, { policy: parsePolicy(policyText), members, bindings }); setValidation(result); selectView("replay"); } catch (error) { onStatus(message(error)); } }
   async function publish() { if (!selected?.id) return; try { await publishAgentTeam(identity, selected.team_key, selected.team_version); await refresh(selected.team_key); onDataChanged?.(); onStatus(language === "zh" ? "Team 已发布" : "Team published"); } catch (error) { onStatus(message(error)); } }
-  async function inspectRun(run: AgentTeamRun) { if (!selected) return; try { setSelectedRun(await getAgentTeamRun(identity, selected.team_key, selected.team_version, run.id)); selectView("replay"); } catch (error) { onStatus(message(error)); } }
+  async function inspectRun(run: AgentTeamRun) {
+    if (!selected) return;
+    try {
+      const [fullRun, timeline] = await Promise.all([getAgentTeamRun(identity, selected.team_key, selected.team_version, run.id), getAgentTeamRunTimeline(identity, selected.team_key, selected.team_version, run.id).catch(() => null)]);
+      setSelectedRun(fullRun);
+      setSelectedRunTimeline(timeline);
+      selectView("replay");
+    } catch (error) { onStatus(message(error)); }
+  }
   async function cancelRun(run: AgentTeamRun) { if (!selected) return; try { await cancelAgentTeamRun(identity, selected.team_key, selected.team_version, run.id); await hydrate(selected); } catch (error) { onStatus(message(error)); } }
 
   const viewNames: Record<View, string> = { catalog: text(language, "catalog", "目录"), builder: text(language, "builder", "编排器"), bindings: text(language, "bindings", "群绑定"), runs: text(language, "runs", "运行记录"), replay: text(language, "replay", "回放") };
@@ -107,7 +116,7 @@ export function AgentTeamsPanel({ identity, onStatus, onDataChanged, workspace =
       {view === "builder" ? <TeamBuilderView language={language} selected={selected} policyText={policyText} members={members} profiles={profiles} memberProfiles={memberProfiles} dirty={dirty} onPolicy={(value) => { setPolicyText(value); setDirty(true); }} onTeamName={(value) => { if (selected) setSelected({ ...selected, display_name: value }); setDirty(true); }} onMember={updateMember} onRemoveMember={(index) => { setMembers((current) => current.filter((_, itemIndex) => itemIndex !== index)); setDirty(true); }} onAdd={addMember} onSave={saveTeam} onSaveGraph={saveGraph} onValidate={() => void validate()} onPublish={() => void publish()} /> : null}
       {view === "bindings" ? <TeamBindingsView language={language} bindings={bindings} accounts={accounts} onBinding={updateBinding} onRemove={(index) => { setBindings((current) => current.filter((_, itemIndex) => itemIndex !== index)); setDirty(true); }} onAdd={addBinding} onSave={saveGraph} /> : null}
       {view === "runs" ? <TeamRunConsole language={language} team={selected} members={members} profiles={profiles} runs={runs} onInspect={(run) => void inspectRun(run)} onCancel={(run) => void cancelRun(run)} /> : null}
-      {view === "replay" ? <TeamRunReplayConsole language={language} team={selected} members={members} profiles={profiles} run={selectedRun} validation={validation} onBack={() => selectView("runs")} /> : null}
+      {view === "replay" ? <TeamRunReplayConsole language={language} team={selected} members={members} profiles={profiles} run={selectedRun} timeline={selectedRunTimeline} validation={validation} onBack={() => selectView("runs")} onRefresh={() => { if (selectedRun) void inspectRun(selectedRun); }} /> : null}
       </div>
     </div>
   </section>;
