@@ -58,6 +58,8 @@ type ComputerSession struct {
 	actions        map[string]struct{}
 	receipts       map[string]ActionReceipt
 	lastReceipt    *ActionReceipt
+	turnSequence   uint64
+	currentTurn    *ComputerTurnResult
 	inFlight       string
 	uncertain      bool
 }
@@ -311,6 +313,57 @@ func (s *ComputerSession) RecordReceipt(r ActionReceipt) error {
 	}
 	return nil
 }
+
+// NextTurnSequence reserves a monotonically increasing sequence for a new
+// provider turn. Reserving the sequence before dispatch lets runtime layers
+// correlate late/unknown responses without reusing a prior turn identity.
+func (s *ComputerSession) NextTurnSequence() uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.turnSequence++
+	return s.turnSequence
+}
+
+// RecordTurnResult commits the already-validated, authoritative turn result.
+// It is deliberately separate from RecordReceipt so Controller can persist the
+// receipt before observation or screenshot work and commit the completed turn
+// only after those optional artifacts have been resolved.
+func (s *ComputerSession) RecordTurnResult(result ComputerTurnResult) error {
+	if err := result.Validate(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if result.SessionID != s.id {
+		return errors.New("turn result session mismatch")
+	}
+	if s.currentTurn != nil && result.Sequence <= s.currentTurn.Sequence {
+		return errors.New("turn result sequence is not increasing")
+	}
+	if result.Sequence > s.turnSequence {
+		s.turnSequence = result.Sequence
+	}
+	copy := cloneTurnResult(result)
+	s.currentTurn = &copy
+	receipt := cloneReceipt(result.Receipt)
+	s.lastReceipt = &receipt
+	s.receipts[receipt.ActionID] = receipt
+	return nil
+}
+
+func (s *ComputerSession) CurrentTurnResult() (ComputerTurnResult, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.currentTurn == nil {
+		return ComputerTurnResult{}, false
+	}
+	return cloneTurnResult(*s.currentTurn), true
+}
+
+func (s *ComputerSession) LastCommittedReceipt() (ActionReceipt, bool) {
+	return s.LastReceipt()
+}
+
 func (s *ComputerSession) LastReceipt() (ActionReceipt, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -381,4 +434,16 @@ func cloneReceipt(r ActionReceipt) ActionReceipt {
 		r.ActualPoint = &v
 	}
 	return r
+}
+func cloneTurnResult(result ComputerTurnResult) ComputerTurnResult {
+	result.Receipt = cloneReceipt(result.Receipt)
+	if result.Observation != nil {
+		observation := cloneObservation(*result.Observation)
+		result.Observation = &observation
+	}
+	if result.Screenshot != nil {
+		screenshot := *result.Screenshot
+		result.Screenshot = &screenshot
+	}
+	return result
 }
