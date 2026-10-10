@@ -436,6 +436,9 @@ func cloneReceipt(r ActionReceipt) ActionReceipt {
 	return r
 }
 func cloneTurnResult(result ComputerTurnResult) ComputerTurnResult {
+	// Raw screenshot bytes are an in-memory provider transfer only; session
+	// snapshots retain the MediaRef and never persist pixels.
+	result.ScreenshotData = nil
 	result.Receipt = cloneReceipt(result.Receipt)
 	if result.Observation != nil {
 		observation := cloneObservation(*result.Observation)

@@ -107,6 +107,9 @@ func TestComputerSessionStoresTurnSequenceAndLastCommittedResult(t *testing.T) {
 	if !ok || last.ActionID != result.ActionID || last.SessionID != session.ID() {
 		t.Fatalf("last committed receipt = %+v, ok=%v", last, ok)
 	}
+	if current.ScreenshotData != nil {
+		t.Fatal("session turn snapshot retained raw screenshot bytes")
+	}
 }
 
 func TestComputerTurnResultFailureMatrix(t *testing.T) {
