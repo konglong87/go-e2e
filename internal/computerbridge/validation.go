@@ -57,7 +57,7 @@ func validRequest(r Request) bool {
 	case OpObserve:
 		return r.StartupAttemptID == "" && r.ObserveRequest != nil && r.ObserveRequest.SessionID == r.SessionID &&
 			optionalID(r.ObserveRequest.DisplayID) && optionalID(r.ObserveRequest.WindowID) && r.Action == nil && r.ObservationID == ""
-	case OpExecute:
+	case OpExecute, OpExecuteTurn:
 		return r.StartupAttemptID == "" && r.Action != nil && r.Action.SessionID == r.SessionID && validAction(*r.Action) && r.ObserveRequest == nil && r.ObservationID == ""
 	case OpImage:
 		return r.StartupAttemptID == "" && validID(r.ObservationID) && r.ObserveRequest == nil && r.Action == nil
@@ -144,4 +144,11 @@ func validLaunchReceipt(r cu.LaunchReceipt, sessionID, targetID, application str
 		return r.ErrorCode != ""
 	}
 	return r.Window.ID != "" && r.Window.OwnerPID > 0 && r.BundleID != "" && r.Window.BundleID == r.BundleID
+}
+
+func validTurnResultForAction(result cu.ComputerTurnResult, action cu.Action) bool {
+	if result.Validate() != nil || result.SessionID != action.SessionID || result.ActionID != action.ID || result.ActionKind != action.Kind {
+		return false
+	}
+	return result.Receipt.BeforeObservationID == "" || result.Receipt.BeforeObservationID == action.ObservationID
 }

@@ -27,6 +27,7 @@ const (
 	OpCapabilities  = "capabilities"
 	OpObserve       = "observe"
 	OpExecute       = "execute"
+	OpExecuteTurn   = "execute_turn"
 	OpPause         = "pause"
 	OpResume        = "resume"
 	OpStop          = "stop"
@@ -51,6 +52,20 @@ var (
 type Service interface {
 	cu.Service
 	ObservationImage(context.Context, cu.SessionOwner, string, string) ([]byte, string, error)
+}
+
+// TurnService is the atomic bridge path used by the provider adapter. It is
+// separate from Service during migration so old host fakes remain source
+// compatible while new callers can require one turn result.
+type TurnService interface {
+	cu.TurnService
+}
+
+// TurnScreenshotReader transfers the already-produced screenshot asset for a
+// committed turn. It is not an execute/image fallback: the turn authority has
+// already decided the screenshot state before this read-only transfer.
+type TurnScreenshotReader interface {
+	TurnScreenshot(context.Context, cu.SessionOwner, cu.ComputerTurnResult) ([]byte, string, error)
 }
 
 // SessionLookup only discovers sessions approved and bound by the host UI.
@@ -111,6 +126,16 @@ type SessionResponse struct {
 
 // LookupResponse identifies an existing host-approved session.
 type LookupResponse = SessionResponse
+
+// ExecuteTurnResponse keeps the authoritative turn metadata and its optional
+// inline PNG in one RPC response. The PNG is validated against the MediaRef
+// hash, dimensions, MIME and the observation TTL before the client exposes it.
+type ExecuteTurnResponse struct {
+	Result              cu.ComputerTurnResult `json:"result"`
+	ScreenshotData      string                `json:"screenshot_data,omitempty"`
+	ScreenshotMediaType string                `json:"screenshot_media_type,omitempty"`
+	ScreenshotExpiresAt time.Time             `json:"screenshot_expires_at,omitempty"`
+}
 
 // ImageResponse carries base64-encoded PNG bytes, not a data URL. Explicit IDs
 // bind the bytes to the requested observation and approved host session.

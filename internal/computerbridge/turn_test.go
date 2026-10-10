@@ -1,0 +1,170 @@
+package computerbridge
+
+import (
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"strings"
+	"testing"
+	"time"
+
+	cu "github.com/konglong87/go-e2e/internal/computeruse"
+)
+
+func testTurnResult(t *testing.T) (cu.ComputerTurnResult, []byte) {
+	t.Helper()
+	now := time.Now().Add(-time.Second)
+	data := testPNG(t)
+	observation := testObservation()
+	observation.Width = 2
+	observation.Height = 3
+	observation.ObservedAt = now
+	observation.ExpiresAt = now.Add(time.Minute)
+	observation.Screenshot = cu.NewMediaRef("screenshot-1", pngMediaType, data, observation.Width, observation.Height)
+	action := testAction()
+	receipt := testReceipt()
+	receipt.DispatchState = cu.DispatchComplete
+	receipt.CompletedAt = now
+	receipt.Duration = time.Millisecond
+	return cu.ComputerTurnResult{
+		ProtocolVersion:  cu.ProtocolVersion,
+		TurnID:           "turn-1",
+		SessionID:        action.SessionID,
+		ActionID:         action.ID,
+		ActionKind:       action.Kind,
+		DispatchState:    cu.DispatchComplete,
+		Outcome:          cu.OutcomeExecuted,
+		Verification:     cu.VerificationNotChecked,
+		Receipt:          receipt,
+		Observation:      &observation,
+		ObservationState: cu.ObservationReady,
+		Screenshot:       &observation.Screenshot,
+		ScreenshotState:  cu.ScreenshotReady,
+		RetryPolicy:      cu.RetryNever,
+		Sequence:         1,
+		StartedAt:        now,
+		CompletedAt:      now,
+		Duration:         time.Millisecond,
+	}, data
+}
+
+func TestClientExecuteTurnReturnsBoundResultAndValidatedPNG(t *testing.T) {
+	result, data := testTurnResult(t)
+	client := newUnixClient(t, 0, func(w http.ResponseWriter, r *http.Request) {
+		req := readRequest(t, r)
+		if req.Op != OpExecuteTurn || req.Action == nil || req.Action.ID != result.ActionID || req.SessionID != result.SessionID {
+			t.Fatalf("execute_turn binding lost: %+v", req)
+		}
+		writeData(t, w, ExecuteTurnResponse{
+			Result:              result,
+			ScreenshotData:      base64.StdEncoding.EncodeToString(data),
+			ScreenshotMediaType: pngMediaType,
+			ScreenshotExpiresAt: result.Observation.ExpiresAt,
+		})
+	})
+
+	actual, err := client.ExecuteTurn(context.Background(), testOwner(), testAction())
+	if err != nil {
+		t.Fatalf("ExecuteTurn() error = %v", err)
+	}
+	if actual.TurnID != result.TurnID || actual.Receipt.ActionID != result.Receipt.ActionID || actual.ScreenshotState != cu.ScreenshotReady {
+		t.Fatalf("actual turn = %+v", actual)
+	}
+}
+
+func TestClientExecuteTurnRejectsScreenshotHashMismatchWithoutDroppingReceipt(t *testing.T) {
+	result, data := testTurnResult(t)
+	result.Screenshot.SHA256 = strings.Repeat("0", 64)
+	client := newUnixClient(t, 0, func(w http.ResponseWriter, r *http.Request) {
+		_ = readRequest(t, r)
+		writeData(t, w, ExecuteTurnResponse{
+			Result:              result,
+			ScreenshotData:      base64.StdEncoding.EncodeToString(data),
+			ScreenshotMediaType: pngMediaType,
+			ScreenshotExpiresAt: result.Observation.ExpiresAt,
+		})
+	})
+
+	actual, err := client.ExecuteTurn(context.Background(), testOwner(), testAction())
+	if !errors.Is(err, ErrInvalidImage) || actual.Receipt.ActionID != result.ActionID || actual.Receipt.Outcome != cu.OutcomeExecuted {
+		t.Fatalf("hash mismatch result=%+v err=%v", actual, err)
+	}
+}
+
+func TestValidRequestExecuteTurnRequiresBoundAction(t *testing.T) {
+	owner := testOwner()
+	action := testAction()
+	if !validRequest(Request{Op: OpExecuteTurn, Owner: owner, SessionID: action.SessionID, Action: &action}) {
+		t.Fatal("valid execute_turn request was rejected")
+	}
+	if validRequest(Request{Op: OpExecuteTurn, Owner: owner, SessionID: action.SessionID}) {
+		t.Fatal("execute_turn request without action was accepted")
+	}
+}
+
+type turnHostSpy struct {
+	serverSpy
+	result     cu.ComputerTurnResult
+	imageData  []byte
+	imageMedia string
+	turnCalls  int
+	imageCalls int
+}
+
+func (s *turnHostSpy) ExecuteTurn(context.Context, cu.SessionOwner, cu.Action) (cu.ComputerTurnResult, error) {
+	s.turnCalls++
+	return s.result, nil
+}
+
+func (s *turnHostSpy) TurnScreenshot(context.Context, cu.SessionOwner, cu.ComputerTurnResult) ([]byte, string, error) {
+	s.imageCalls++
+	return s.imageData, s.imageMedia, nil
+}
+
+func TestHandlerExecuteTurnUsesAtomicServiceAndInlineScreenshot(t *testing.T) {
+	result, data := testTurnResult(t)
+	host := &turnHostSpy{result: result, imageData: data, imageMedia: pngMediaType}
+	h, err := NewHandler(serverTestToken, host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	action := testAction()
+	body, err := json.Marshal(Request{Op: OpExecuteTurn, Owner: testOwner(), SessionID: action.SessionID, Action: &action})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := serverCall(h, string(body), serverTestToken, "")
+	if response.Code != http.StatusOK || host.turnCalls != 1 || host.imageCalls != 1 {
+		t.Fatalf("response=%d turn_calls=%d image_calls=%d body=%s", response.Code, host.turnCalls, host.imageCalls, response.Body.String())
+	}
+	var envelope Response
+	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	var out ExecuteTurnResponse
+	if err := json.Unmarshal(envelope.Data, &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Result.TurnID != result.TurnID || out.ScreenshotData == "" || out.ScreenshotMediaType != pngMediaType {
+		t.Fatalf("execute_turn response = %+v", out)
+	}
+}
+
+func TestHandlerExecuteTurnDoesNotFallbackToLegacyExecute(t *testing.T) {
+	host := &serverSpy{}
+	h, err := NewHandler(serverTestToken, host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	action := testAction()
+	body, err := json.Marshal(Request{Op: OpExecuteTurn, Owner: testOwner(), SessionID: action.SessionID, Action: &action})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := serverCall(h, string(body), serverTestToken, "")
+	if response.Code != http.StatusOK || host.calls != 0 {
+		t.Fatalf("execute_turn fell back to legacy service: code=%d calls=%d body=%s", response.Code, host.calls, response.Body.String())
+	}
+}

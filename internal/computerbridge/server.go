@@ -61,7 +61,7 @@ func NewHandler(token string, host Host) (http.Handler, error) {
 		}
 		// Only a bound Execute receipt survives errors. Never return arbitrary
 		// backend strings, images from a failing reader, or partial capabilities.
-		if err == nil || req.Op == OpExecute || req.Op == OpLaunchApp {
+		if err == nil || req.Op == OpExecute || req.Op == OpExecuteTurn || req.Op == OpLaunchApp {
 			if data != nil {
 				out.Data, _ = json.Marshal(data)
 			}
@@ -163,6 +163,37 @@ func dispatchHost(r *http.Request, host Host, q Request) (any, error) {
 			receipt.ErrorCode = cu.PublicErrorCode(receipt.ErrorCode)
 		}
 		return receipt, err
+	case OpExecuteTurn:
+		turnService, ok := host.(cu.TurnService)
+		if !ok {
+			return nil, ErrRemote
+		}
+		result, err := turnService.ExecuteTurn(ctx, q.Owner, *q.Action)
+		if !validTurnResultForAction(result, *q.Action) {
+			// A malformed response after dispatch is ambiguous. Preserve a bound
+			// unknown result instead of manufacturing a rejection or zero receipt.
+			return unknownTurnResult(*q.Action), ErrInvalidResponse
+		}
+		out := ExecuteTurnResponse{Result: result}
+		if result.ScreenshotState == cu.ScreenshotReady {
+			reader, ok := host.(TurnScreenshotReader)
+			if !ok {
+				return out, ErrRemote
+			}
+			data, media, readErr := reader.TurnScreenshot(ctx, q.Owner, result)
+			if readErr != nil {
+				return out, readErr
+			}
+			out.ScreenshotData = base64.StdEncoding.EncodeToString(data)
+			out.ScreenshotMediaType = media
+			if result.Observation != nil {
+				out.ScreenshotExpiresAt = result.Observation.ExpiresAt
+			}
+			if err := validateTurnScreenshot(out); err != nil {
+				return out, err
+			}
+		}
+		return out, err
 	case OpPause:
 		return SessionResponse{SessionID: q.SessionID}, host.Pause(ctx, q.Owner, q.SessionID)
 	case OpResume:
