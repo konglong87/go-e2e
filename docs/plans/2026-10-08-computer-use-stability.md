@@ -703,3 +703,27 @@ logs retained. Pre-existing scripts/__pycache__/ left untouched and uncommitted.
   command+a → type 1+1=2 → send once → wait reply screenshot → stop` run within
   the existing 120-second/110-second contract. Do not count any of `-01`…`-07`
   as a pass and do not reuse their evidence or replay their actions.
+
+### Unlock-cleared model closure attempts — 2026-10-10
+
+- Manual unlock cleared the earlier desktop-lock blocker. The current tagged
+  build was rebuilt from `9f15d35`, then the wrapper was fixed in commit
+  `56b8352` to ignore zero-value native receipt placeholders from failed tool
+  results; wrapper tests increased to 33/33 and the fix was pushed.
+- Fresh run `model-9f15d35-01` is the closest real model result so far. The
+  requested provider/model/high session successfully executed, with verified
+  native receipts and same target window identity for:
+  `launch_app → observe → click → command+a → type(1+1=2) → click(send) → wait`.
+  WorkBuddy visibly rendered the real `1+1=2` reply. The final `wait` result,
+  however, returned `action_failed` with `observation_image_failed` and a
+  zero-value receipt placeholder; the wrapper's previous parser incorrectly
+  classified that placeholder as a native receipt and cancelled at the
+  operational boundary before a model Stop. This is retained as near-pass, not
+  as a completed acceptance.
+- Runs `model-56b8352-01` through `-03` did not produce a complete closure:
+  provider timing/no-action and focus timing prevented the required type/send/
+  reply/Stop sequence. No failed run is promoted to a pass.
+- The remaining P0 gate is now narrowly bounded to making the model obtain one
+  valid post-send reply observation and issue the final ComputerUse Stop within
+  the existing 120-second/110-second contract. Do not replay the already
+  executed input or send action; use a fresh cold run and fresh evidence.
