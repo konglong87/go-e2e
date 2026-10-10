@@ -25,6 +25,7 @@ import type {
   AgentTeamMember,
   AgentTeamBinding,
   AgentTeamRun,
+  AgentTeamRunTimeline,
   ChannelAccountRecord,
   AutoMemoryReviewRequest,
   DocumentRecord,
@@ -883,6 +884,10 @@ export async function getAgentTeamRun(identity: IdentityConfig, teamKey: string,
 
 export async function cancelAgentTeamRun(identity: IdentityConfig, teamKey: string, teamVersion: number, runId: string): Promise<void> {
   await apiRequest(identity, `/tenant/agent-teams/${encodeURIComponent(teamKey)}/runs/${encodeURIComponent(runId)}/cancel?version=${teamVersion}`, { method: "POST" });
+}
+
+export async function getAgentTeamRunTimeline(identity: IdentityConfig, teamKey: string, teamVersion: number, runId: string, limit = 500): Promise<AgentTeamRunTimeline> {
+  return apiRequest<AgentTeamRunTimeline>(identity, `/tenant/agent-teams/${encodeURIComponent(teamKey)}/runs/${encodeURIComponent(runId)}/events?version=${teamVersion}&limit=${limit}`);
 }
 
 export async function listChannelAccounts(identity: IdentityConfig): Promise<ChannelAccountRecord[]> {

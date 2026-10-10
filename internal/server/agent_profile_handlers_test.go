@@ -96,6 +96,12 @@ func (s *agentProfileHandlerStub) ListAgentTeamRuns(context.Context, string, uin
 func (s *agentProfileHandlerStub) GetAgentTeamRun(context.Context, string) (mysqlstore.AgentTeamRun, error) {
 	return mysqlstore.AgentTeamRun{}, nil
 }
+func (s *agentProfileHandlerStub) ListAgentTeamRunEvents(context.Context, string, uint, string, int) ([]mysqlstore.AgentTeamRunEvent, error) {
+	return nil, nil
+}
+func (s *agentProfileHandlerStub) ListAgentTeamMailbox(context.Context, string, uint, string, int) ([]mysqlstore.AgentTeamMailbox, error) {
+	return nil, nil
+}
 func (s *agentProfileHandlerStub) CancelAgentTeamRun(context.Context, string) error { return nil }
 func (s *agentProfileHandlerStub) ListChannelAccounts(context.Context, int) ([]mysqlstore.ChannelAccount, error) {
 	return nil, nil

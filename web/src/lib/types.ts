@@ -929,9 +929,50 @@ export type AgentTeamBinding = {
   status?: string;
 };
 
+export type AgentTeamRunEvent = {
+  id: number;
+  tenant_id?: number;
+  team_run_id: string;
+  sequence_no: number;
+  event_type: string;
+  member_key?: string;
+  from_member_key?: string;
+  to_member_key?: string;
+  status?: string;
+  summary?: string;
+  payload_json?: string;
+  artifact_ref?: string;
+  created_at: string;
+};
+
+export type AgentTeamMailboxMessage = {
+  id: number;
+  tenant_id?: number;
+  team_run_id: string;
+  from_member_key: string;
+  to_member_key: string;
+  message_kind: string;
+  sequence_no: number;
+  idempotency_key?: string;
+  payload_ref?: string;
+  evidence_ref?: string;
+  status: string;
+  created_at: string;
+  updated_at?: string;
+};
+
+export type AgentTeamRunTimeline = {
+  run_id: string;
+  events: AgentTeamRunEvent[];
+  mailbox: AgentTeamMailboxMessage[];
+};
+
 export type AgentTeamRun = {
   id: string;
   team_id?: number;
+  source_account_id?: number;
+  source_kind?: string;
+  conversation_id?: number;
   status: string;
   coordinator_member_key?: string;
   member_count?: number;

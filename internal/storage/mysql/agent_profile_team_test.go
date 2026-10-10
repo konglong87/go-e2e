@@ -17,6 +17,8 @@ func TestAgentProfileTeamMigrationsDeclareTenantScopedContracts(t *testing.T) {
 	profileDown := readMigrationFile(t, filepath.Join(root, "000015_agent_profiles.down.sql"))
 	teamUp := readMigrationFile(t, filepath.Join(root, "000016_agent_teams.up.sql"))
 	teamDown := readMigrationFile(t, filepath.Join(root, "000016_agent_teams.down.sql"))
+	eventsUp := readMigrationFile(t, filepath.Join(root, "000028_agent_team_run_events.up.sql"))
+	eventsDown := readMigrationFile(t, filepath.Join(root, "000028_agent_team_run_events.down.sql"))
 
 	for _, statement := range []string{
 		"CREATE TABLE IF NOT EXISTS agent_profiles",
@@ -69,6 +71,18 @@ func TestAgentProfileTeamMigrationsDeclareTenantScopedContracts(t *testing.T) {
 			t.Errorf("team down migration missing %q", statement)
 		}
 	}
+	for _, statement := range []string{
+		"CREATE TABLE IF NOT EXISTS agent_team_run_events",
+		"idx_agent_team_run_events_timeline",
+		"FOREIGN KEY (tenant_id, team_run_id)",
+	} {
+		if !strings.Contains(eventsUp, statement) {
+			t.Errorf("event migration missing %q", statement)
+		}
+	}
+	if !strings.Contains(eventsDown, "DROP TABLE IF EXISTS agent_team_run_events") {
+		t.Errorf("event down migration missing drop statement")
+	}
 }
 
 func TestAgentProfileRepositoryRejectsInvalidInput(t *testing.T) {
@@ -94,6 +108,9 @@ func TestAgentTeamRepositoryRejectsInvalidInput(t *testing.T) {
 	}
 	if _, err := repo.AppendAgentTeamMailbox(context.Background(), AgentTeamMailboxInput{TeamRunID: "run"}); err != ErrInvalidInput {
 		t.Fatalf("AppendAgentTeamMailbox error = %v, want ErrInvalidInput", err)
+	}
+	if _, err := repo.AppendAgentTeamRunEvent(context.Background(), AgentTeamRunEventInput{TeamRunID: "run"}); err != ErrInvalidInput {
+		t.Fatalf("AppendAgentTeamRunEvent error = %v, want ErrInvalidInput", err)
 	}
 }
 

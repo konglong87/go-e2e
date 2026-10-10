@@ -14,12 +14,21 @@ type TeamRunStore interface {
 	UpdateAgentTeamRun(context.Context, mysqlstore.AgentTeamRunUpdate) error
 }
 
-type MySQLRunRecorder struct {
-	store TeamRunStore
+type TeamRunEventStore interface {
+	AppendAgentTeamRunEvent(context.Context, mysqlstore.AgentTeamRunEventInput) (mysqlstore.AgentTeamRunEvent, error)
 }
 
-func NewMySQLRunRecorder(store TeamRunStore) *MySQLRunRecorder {
-	return &MySQLRunRecorder{store: store}
+type MySQLRunRecorder struct {
+	store      TeamRunStore
+	eventStore TeamRunEventStore
+}
+
+func NewMySQLRunRecorder(store TeamRunStore, eventStore ...TeamRunEventStore) *MySQLRunRecorder {
+	recorder := &MySQLRunRecorder{store: store}
+	if len(eventStore) > 0 {
+		recorder.eventStore = eventStore[0]
+	}
+	return recorder
 }
 
 func (r *MySQLRunRecorder) Start(ctx context.Context, record RunRecord) error {
@@ -49,4 +58,17 @@ func (r *MySQLRunRecorder) Finish(ctx context.Context, record RunRecord) error {
 		return err
 	}
 	return r.store.UpdateAgentTeamRun(ctx, mysqlstore.AgentTeamRunUpdate{TenantID: record.TenantID, RunID: record.RunID, Status: string(record.Status), UsedTokens: record.UsedTokens, UsedTurns: record.UsedTurns, FinishedAt: finishedAt, ResultJSON: string(resultJSON), ErrorMessage: record.Error})
+}
+
+func (r *MySQLRunRecorder) Append(ctx context.Context, event RunEvent) error {
+	if r == nil || r.eventStore == nil || event.TenantID == 0 || strings.TrimSpace(event.RunID) == "" || event.Sequence == 0 || strings.TrimSpace(event.EventType) == "" {
+		return mysqlstore.ErrInvalidInput
+	}
+	_, err := r.eventStore.AppendAgentTeamRunEvent(ctx, mysqlstore.AgentTeamRunEventInput{
+		TenantID: event.TenantID, TeamRunID: event.RunID, SequenceNo: event.Sequence, EventType: event.EventType,
+		MemberKey: event.MemberKey, FromMemberKey: event.FromMember, ToMemberKey: event.ToMember,
+		Status: string(event.Status), Summary: event.Summary, PayloadJSON: event.PayloadJSON,
+		ArtifactRef: event.ArtifactRef, CreatedAt: event.CreatedAt,
+	})
+	return err
 }

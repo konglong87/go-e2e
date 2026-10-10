@@ -94,7 +94,8 @@ func (r *channelTeamRuntime) execute(ctx context.Context, input channelruntime.T
 		return channelruntime.TeamDispatchResult{}, err
 	}
 	memberRunner := &channelTeamMemberRunner{base: r.baseRunner, repo: r.repo, service: r.service, tenantID: r.tenantID, userID: input.UserID, tenantKey: r.tenantKey, userKey: r.userKey, conversationID: input.Run.ConversationID, sessionID: input.Run.SessionID, scope: input.Scope, message: msg, workspace: r.workspace, permissionMode: r.permissionMode, model: r.model}
-	orchestrator := agentteam.NewOrchestratorWithRecorder(memberRunner, agentteam.NewMySQLMailbox(r.repo), agentteam.NewMySQLRunRecorder(r.repo))
+	runRecorder := agentteam.NewMySQLRunRecorder(r.repo, r.repo)
+	orchestrator := agentteam.NewOrchestratorWithRecorder(memberRunner, agentteam.NewMySQLMailbox(r.repo), runRecorder, runRecorder)
 	teamOptions := agentteam.RunOptions{InboxEventID: input.Inbox.ID, SourceAccountID: r.accountID, ConversationID: input.Run.ConversationID}
 	var result agentteam.TeamRunResult
 	if input.Stream != nil {

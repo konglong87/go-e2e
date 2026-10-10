@@ -221,6 +221,37 @@ type RunRecorder interface {
 	Finish(context.Context, RunRecord) error
 }
 
+const (
+	RunEventRunStarted         = "run_started"
+	RunEventMemberStarted      = "member_started"
+	RunEventMemberCompleted    = "member_completed"
+	RunEventMemberFailed       = "member_failed"
+	RunEventCoordinatorStarted = "coordinator_started"
+	RunEventCoordinatorDelta   = "coordinator_delta"
+	RunEventCoordinatorDone    = "coordinator_completed"
+	RunEventMailboxMessage     = "mailbox_message"
+	RunEventRunFinished        = "run_finished"
+)
+
+type RunEvent struct {
+	TenantID    uint64
+	RunID       string
+	Sequence    uint64
+	EventType   string
+	MemberKey   string
+	FromMember  string
+	ToMember    string
+	Status      Status
+	Summary     string
+	PayloadJSON string
+	ArtifactRef string
+	CreatedAt   time.Time
+}
+
+type RunEventRecorder interface {
+	Append(context.Context, RunEvent) error
+}
+
 type ProfileAvailability struct {
 	PublishedProfiles map[ProfileRef]bool
 }

@@ -40,6 +40,8 @@ type AgentTeamService interface {
 	ListAgentTeamBindings(context.Context, string, uint, int) ([]mysqlstore.AgentTeamBinding, error)
 	ListAgentTeamRuns(context.Context, string, uint, int) ([]mysqlstore.AgentTeamRun, error)
 	GetAgentTeamRun(context.Context, string) (mysqlstore.AgentTeamRun, error)
+	ListAgentTeamRunEvents(context.Context, string, uint, string, int) ([]mysqlstore.AgentTeamRunEvent, error)
+	ListAgentTeamMailbox(context.Context, string, uint, string, int) ([]mysqlstore.AgentTeamMailbox, error)
 	CancelAgentTeamRun(context.Context, string) error
 	ListChannelAccounts(context.Context, int) ([]mysqlstore.ChannelAccount, error)
 }

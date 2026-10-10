@@ -1258,6 +1258,19 @@ func swaggerAgentTeamRuns() {}
 // @Router /tenant/agent-teams/{key}/runs/{run_id} [get]
 func swaggerAgentTeamRun() {}
 
+// swaggerAgentTeamRunEvents godoc
+// @Summary Get member events and mailbox timeline for an agent team run
+// @Tags Agent Teams
+// @Security ApiKeyAuth
+// @Produce json
+// @Param key path string true "Team key"
+// @Param run_id path string true "Team run id"
+// @Param version query int true "Pinned team version"
+// @Param limit query int false "Limit"
+// @Success 200 {object} map[string]interface{}
+// @Router /tenant/agent-teams/{key}/runs/{run_id}/events [get]
+func swaggerAgentTeamRunEvents() {}
+
 // swaggerAgentTeamRunCancel godoc
 // @Summary Cancel agent team run
 // @Tags Agent Teams

@@ -327,6 +327,39 @@ func tenantAgentTeamRunsHandler(opts Options) http.HandlerFunc {
 	})
 }
 
+func tenantAgentTeamRunTimelineHandler(opts Options) http.HandlerFunc {
+	return tenantEndpoint(opts, nil, func(w http.ResponseWriter, r *http.Request) {
+		service, ok := optionalAgentTeamService(opts)
+		if !ok {
+			writeTenantError(w, http.StatusServiceUnavailable, "agent team service is not configured")
+			return
+		}
+		if r.Method != http.MethodGet {
+			writeTenantError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		teamKey := agentTeamPathKey(r)
+		runID := agentTeamRunPathID(r)
+		version, versionOK := parseOptionalUint(r.URL.Query().Get("version"))
+		if teamKey == "" || !versionOK || version == 0 || runID == "" {
+			writeTenantError(w, http.StatusBadRequest, "team key, version and run_id are required")
+			return
+		}
+		limit := parseLimit(r.URL.Query().Get("limit"))
+		events, err := service.ListAgentTeamRunEvents(r.Context(), teamKey, version, runID, limit)
+		if err != nil {
+			writeTenantServiceError(w, err)
+			return
+		}
+		mailbox, err := service.ListAgentTeamMailbox(r.Context(), teamKey, version, runID, limit)
+		if err != nil {
+			writeTenantServiceError(w, err)
+			return
+		}
+		writeJSON(w, map[string]any{"run_id": runID, "events": events, "mailbox": mailbox})
+	})
+}
+
 func tenantAgentTeamRunHandler(opts Options) http.HandlerFunc {
 	return tenantEndpoint(opts, nil, func(w http.ResponseWriter, r *http.Request) {
 		service, ok := optionalAgentTeamService(opts)

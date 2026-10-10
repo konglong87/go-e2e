@@ -252,6 +252,7 @@ type AgentTeamRun struct {
 	TeamID               uint64    `json:"team_id"`
 	InboxEventID         uint64    `json:"inbox_event_id"`
 	SourceAccountID      uint64    `json:"source_account_id"`
+	SourceKind           string    `json:"source_kind,omitempty"`
 	ConversationID       uint64    `json:"conversation_id,omitempty"`
 	CoordinatorMemberKey string    `json:"coordinator_member_key"`
 	Status               string    `json:"status"`
@@ -300,6 +301,37 @@ type AgentTeamMailboxInput struct {
 	PayloadCiphertext []byte
 	EvidenceRef       string
 	Status            string
+}
+
+type AgentTeamRunEventInput struct {
+	TenantID      uint64
+	TeamRunID     string
+	SequenceNo    uint64
+	EventType     string
+	MemberKey     string
+	FromMemberKey string
+	ToMemberKey   string
+	Status        string
+	Summary       string
+	PayloadJSON   string
+	ArtifactRef   string
+	CreatedAt     time.Time
+}
+
+type AgentTeamRunEvent struct {
+	ID            uint64    `json:"id"`
+	TenantID      uint64    `json:"tenant_id"`
+	TeamRunID     string    `json:"team_run_id"`
+	SequenceNo    uint64    `json:"sequence_no"`
+	EventType     string    `json:"event_type"`
+	MemberKey     string    `json:"member_key,omitempty"`
+	FromMemberKey string    `json:"from_member_key,omitempty"`
+	ToMemberKey   string    `json:"to_member_key,omitempty"`
+	Status        string    `json:"status,omitempty"`
+	Summary       string    `json:"summary,omitempty"`
+	PayloadJSON   string    `json:"payload_json,omitempty"`
+	ArtifactRef   string    `json:"artifact_ref,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 type AgentTeamMailbox struct {

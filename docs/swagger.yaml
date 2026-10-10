@@ -1022,8 +1022,25 @@ definitions:
       name:
         type: string
     type: object
+  github_com_konglong87_go-e2e_internal_query.ComputerObservationReference:
+    properties:
+      asset_id:
+        type: string
+      media_type:
+        type: string
+      name:
+        type: string
+      observation_id:
+        type: string
+      sha256:
+        type: string
+      size_bytes:
+        type: integer
+    type: object
   github_com_konglong87_go-e2e_internal_query.ToolTrace:
     properties:
+      computer_observation:
+        $ref: '#/definitions/github_com_konglong87_go-e2e_internal_query.ComputerObservationReference'
       file_changes:
         items:
           $ref: '#/definitions/github_com_konglong87_go-e2e_internal_tools.FileChange'
@@ -8685,6 +8702,41 @@ paths:
       security:
       - ApiKeyAuth: []
       summary: Cancel agent team run
+      tags:
+      - Agent Teams
+  /tenant/agent-teams/{key}/runs/{run_id}/events:
+    get:
+      parameters:
+      - description: Team key
+        in: path
+        name: key
+        required: true
+        type: string
+      - description: Team run id
+        in: path
+        name: run_id
+        required: true
+        type: string
+      - description: Pinned team version
+        in: query
+        name: version
+        required: true
+        type: integer
+      - description: Limit
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Get member events and mailbox timeline for an agent team run
       tags:
       - Agent Teams
   /tenant/agent-teams/{key}/validate:

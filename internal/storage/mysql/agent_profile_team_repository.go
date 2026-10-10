@@ -174,6 +174,24 @@ type gormAgentTeamMailbox struct {
 
 func (gormAgentTeamMailbox) TableName() string { return "agent_team_mailbox" }
 
+type gormAgentTeamRunEvent struct {
+	ID            uint64    `gorm:"column:id;primaryKey"`
+	TenantID      uint64    `gorm:"column:tenant_id"`
+	TeamRunID     string    `gorm:"column:team_run_id"`
+	SequenceNo    uint64    `gorm:"column:sequence_no"`
+	EventType     string    `gorm:"column:event_type"`
+	MemberKey     string    `gorm:"column:member_key"`
+	FromMemberKey string    `gorm:"column:from_member_key"`
+	ToMemberKey   string    `gorm:"column:to_member_key"`
+	Status        string    `gorm:"column:status"`
+	Summary       string    `gorm:"column:summary"`
+	PayloadJSON   *string   `gorm:"column:payload_json"`
+	ArtifactRef   *string   `gorm:"column:artifact_ref"`
+	CreatedAt     time.Time `gorm:"column:created_at"`
+}
+
+func (gormAgentTeamRunEvent) TableName() string { return "agent_team_run_events" }
+
 func (r *GormRepository) CreateAgentProfile(ctx context.Context, input AgentProfileInput) (AgentProfile, error) {
 	if input.TenantID == 0 || strings.TrimSpace(input.ProfileKey) == "" || input.ProfileVersion == 0 || strings.TrimSpace(input.OwnerKey) == "" || input.CreatedByUserID == 0 || input.UpdatedByUserID == 0 {
 		return AgentProfile{}, ErrInvalidInput
@@ -589,6 +607,41 @@ func (r *GormRepository) ListAgentTeamMailbox(ctx context.Context, tenantID uint
 	return result, nil
 }
 
+func (r *GormRepository) AppendAgentTeamRunEvent(ctx context.Context, input AgentTeamRunEventInput) (AgentTeamRunEvent, error) {
+	if input.TenantID == 0 || strings.TrimSpace(input.TeamRunID) == "" || input.SequenceNo == 0 || strings.TrimSpace(input.EventType) == "" {
+		return AgentTeamRunEvent{}, ErrInvalidInput
+	}
+	row := gormAgentTeamRunEvent{
+		TenantID: input.TenantID, TeamRunID: strings.TrimSpace(input.TeamRunID), SequenceNo: input.SequenceNo,
+		EventType: strings.TrimSpace(input.EventType), MemberKey: strings.TrimSpace(input.MemberKey),
+		FromMemberKey: strings.TrimSpace(input.FromMemberKey), ToMemberKey: strings.TrimSpace(input.ToMemberKey),
+		Status: strings.TrimSpace(input.Status), Summary: input.Summary,
+		PayloadJSON: nullableStringPtr(input.PayloadJSON), ArtifactRef: nullableStringPtr(input.ArtifactRef),
+	}
+	if !input.CreatedAt.IsZero() {
+		row.CreatedAt = input.CreatedAt
+	}
+	if err := r.with(ctx).Create(&row).Error; err != nil {
+		return AgentTeamRunEvent{}, err
+	}
+	return agentTeamRunEventFromRow(row), nil
+}
+
+func (r *GormRepository) ListAgentTeamRunEvents(ctx context.Context, tenantID uint64, runID string, limit int) ([]AgentTeamRunEvent, error) {
+	if tenantID == 0 || strings.TrimSpace(runID) == "" {
+		return nil, ErrInvalidInput
+	}
+	var rows []gormAgentTeamRunEvent
+	if err := r.with(ctx).Where("tenant_id = ? AND team_run_id = ?", tenantID, strings.TrimSpace(runID)).Order("sequence_no ASC, id ASC").Limit(normalizeLimit(limit)).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	result := make([]AgentTeamRunEvent, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, agentTeamRunEventFromRow(row))
+	}
+	return result, nil
+}
+
 func (r *GormRepository) MarkAgentTeamMailboxConsumed(ctx context.Context, tenantID, mailboxID uint64) error {
 	if tenantID == 0 || mailboxID == 0 {
 		return ErrInvalidInput
@@ -658,11 +711,19 @@ func agentTeamBindingFromRow(row gormAgentTeamBinding) AgentTeamBinding {
 }
 
 func agentTeamRunFromRow(row gormAgentTeamRun) AgentTeamRun {
-	return AgentTeamRun{ID: row.ID, TenantID: row.TenantID, TeamID: row.TeamID, InboxEventID: row.InboxEventID, SourceAccountID: row.SourceAccountID, ConversationID: valueUint64Ptr(row.ConversationID), CoordinatorMemberKey: row.CoordinatorMemberKey, Status: row.Status, TeamEffectiveHash: row.TeamEffectiveHash, MemberCount: row.MemberCount, MaxRounds: row.MaxRounds, MaxParallelMembers: row.MaxParallelMembers, MaxTotalTokens: row.MaxTotalTokens, UsedTokens: row.UsedTokens, UsedTurns: row.UsedTurns, HeartbeatAt: valueTimePtr(row.HeartbeatAt), CancelRequestedAt: valueTimePtr(row.CancelRequestedAt), StartedAt: valueTimePtr(row.StartedAt), FinishedAt: valueTimePtr(row.FinishedAt), ResultJSON: valueStringPtr(row.ResultJSON), ErrorCode: valueStringPtr(row.ErrorCode), ErrorMessage: valueStringPtr(row.ErrorMessage), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}
+	sourceKind := "desktop"
+	if row.SourceAccountID != 0 {
+		sourceKind = "feishu"
+	}
+	return AgentTeamRun{ID: row.ID, TenantID: row.TenantID, TeamID: row.TeamID, InboxEventID: row.InboxEventID, SourceAccountID: row.SourceAccountID, SourceKind: sourceKind, ConversationID: valueUint64Ptr(row.ConversationID), CoordinatorMemberKey: row.CoordinatorMemberKey, Status: row.Status, TeamEffectiveHash: row.TeamEffectiveHash, MemberCount: row.MemberCount, MaxRounds: row.MaxRounds, MaxParallelMembers: row.MaxParallelMembers, MaxTotalTokens: row.MaxTotalTokens, UsedTokens: row.UsedTokens, UsedTurns: row.UsedTurns, HeartbeatAt: valueTimePtr(row.HeartbeatAt), CancelRequestedAt: valueTimePtr(row.CancelRequestedAt), StartedAt: valueTimePtr(row.StartedAt), FinishedAt: valueTimePtr(row.FinishedAt), ResultJSON: valueStringPtr(row.ResultJSON), ErrorCode: valueStringPtr(row.ErrorCode), ErrorMessage: valueStringPtr(row.ErrorMessage), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}
 }
 
 func agentTeamMailboxFromRow(row gormAgentTeamMailbox) AgentTeamMailbox {
 	return AgentTeamMailbox{ID: row.ID, TenantID: row.TenantID, TeamRunID: row.TeamRunID, FromMemberKey: row.FromMemberKey, ToMemberKey: row.ToMemberKey, MessageKind: row.MessageKind, SequenceNo: row.SequenceNo, IdempotencyKey: row.IdempotencyKey, PayloadRef: valueStringPtr(row.PayloadRef), PayloadCiphertext: row.PayloadCiphertext, EvidenceRef: valueStringPtr(row.EvidenceRef), Status: row.Status, LeaseOwner: valueStringPtr(row.LeaseOwner), LeaseUntil: valueTimePtr(row.LeaseUntil), ConsumedAt: valueTimePtr(row.ConsumedAt), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}
+}
+
+func agentTeamRunEventFromRow(row gormAgentTeamRunEvent) AgentTeamRunEvent {
+	return AgentTeamRunEvent{ID: row.ID, TenantID: row.TenantID, TeamRunID: row.TeamRunID, SequenceNo: row.SequenceNo, EventType: row.EventType, MemberKey: row.MemberKey, FromMemberKey: row.FromMemberKey, ToMemberKey: row.ToMemberKey, Status: row.Status, Summary: row.Summary, PayloadJSON: valueStringPtr(row.PayloadJSON), ArtifactRef: valueStringPtr(row.ArtifactRef), CreatedAt: row.CreatedAt}
 }
 
 func valueStringPtr(value *string) string {

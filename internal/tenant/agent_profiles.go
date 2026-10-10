@@ -40,6 +40,8 @@ type agentProfileRepository interface {
 	ListAgentTeamBindings(context.Context, uint64, uint64, int) ([]mysqlstore.AgentTeamBinding, error)
 	ListAgentTeamRuns(context.Context, uint64, uint64, int) ([]mysqlstore.AgentTeamRun, error)
 	GetAgentTeamRun(context.Context, uint64, string) (mysqlstore.AgentTeamRun, error)
+	ListAgentTeamRunEvents(context.Context, uint64, string, int) ([]mysqlstore.AgentTeamRunEvent, error)
+	ListAgentTeamMailbox(context.Context, uint64, string, int) ([]mysqlstore.AgentTeamMailbox, error)
 	UpdateAgentTeamRun(context.Context, mysqlstore.AgentTeamRunUpdate) error
 	ListChannelAccounts(context.Context, uint64, mysqlstore.ListOptions) ([]mysqlstore.ChannelAccount, error)
 	ListAgentProfileConversationSummaries(context.Context, uint64, uint64, int) ([]mysqlstore.AgentProfileConversationSummary, error)
@@ -642,6 +644,52 @@ func (s *Service) GetAgentTeamRun(ctx context.Context, runID string) (mysqlstore
 	}
 	return repo.GetAgentTeamRun(ctx, resolved.TenantID, runID)
 }
+func (s *Service) ListAgentTeamRunEvents(ctx context.Context, key string, version uint, runID string, limit int) ([]mysqlstore.AgentTeamRunEvent, error) {
+	resolved, err := s.ResolveContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	repo, err := s.profileRepo()
+	if err != nil {
+		return nil, err
+	}
+	team, err := s.GetAgentTeam(ctx, key, version)
+	if err != nil {
+		return nil, err
+	}
+	run, err := repo.GetAgentTeamRun(ctx, resolved.TenantID, runID)
+	if err != nil {
+		return nil, err
+	}
+	if run.TeamID != team.ID {
+		return nil, mysqlstore.ErrNotFound
+	}
+	return repo.ListAgentTeamRunEvents(ctx, resolved.TenantID, runID, limit)
+}
+
+func (s *Service) ListAgentTeamMailbox(ctx context.Context, key string, version uint, runID string, limit int) ([]mysqlstore.AgentTeamMailbox, error) {
+	resolved, err := s.ResolveContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	repo, err := s.profileRepo()
+	if err != nil {
+		return nil, err
+	}
+	team, err := s.GetAgentTeam(ctx, key, version)
+	if err != nil {
+		return nil, err
+	}
+	run, err := repo.GetAgentTeamRun(ctx, resolved.TenantID, runID)
+	if err != nil {
+		return nil, err
+	}
+	if run.TeamID != team.ID {
+		return nil, mysqlstore.ErrNotFound
+	}
+	return repo.ListAgentTeamMailbox(ctx, resolved.TenantID, runID, limit)
+}
+
 func (s *Service) CancelAgentTeamRun(ctx context.Context, runID string) error {
 	resolved, err := s.ResolveContext(ctx)
 	if err != nil {

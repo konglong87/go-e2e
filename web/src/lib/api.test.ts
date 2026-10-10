@@ -75,6 +75,7 @@ import {
   ,listAgentTeams
   ,saveAgentTeamMembers
   ,listChannelAccounts
+  ,getAgentTeamRunTimeline
 } from "./api";
 import type { IdentityConfig } from "./types";
 
@@ -164,6 +165,16 @@ describe("api helpers", () => {
       "/api/tenant/agent-teams/launch/members?version=1",
       "/api/tenant/channel-accounts?limit=100"
     ]);
+  });
+
+  it("loads the unified TeamRun event and mailbox timeline", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ run_id: "run-1", events: [{ id: 1, sequence_no: 1, event_type: "member_started", created_at: "2026-10-10T00:00:00Z" }], mailbox: [] }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const timeline = await getAgentTeamRunTimeline(identity, "launch", 2, "run-1");
+
+    expect(timeline.events).toHaveLength(1);
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/tenant/agent-teams/launch/runs/run-1/events?version=2&limit=500");
   });
 
   it("parses mobile sse frames", () => {

@@ -4897,6 +4897,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tenant/agent-teams/{key}/runs/{run_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get member events and mailbox timeline for an agent team run */
+        get: {
+            parameters: {
+                query: {
+                    /** @description Limit */
+                    limit?: number;
+                    /** @description Pinned team version */
+                    version: number;
+                };
+                header?: never;
+                path: {
+                    /** @description Team key */
+                    key: string;
+                    /** @description Team run id */
+                    run_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenant/agent-teams/{key}/validate": {
         parameters: {
             query?: never;
@@ -5326,6 +5374,151 @@ export interface paths {
         };
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenant/feishu/onboarding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a Feishu bot through device authorization
+         * @description Starts the shared Feishu onboarding flow, exposes a redacted QR session, and persists the protected credentials after approval.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: never;
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenant/feishu/onboarding/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Create a Feishu bot through device authorization
+         * @description Starts the shared Feishu onboarding flow, exposes a redacted QR session, and persists the protected credentials after approval.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: never;
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenant/feishu/onboarding/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a Feishu bot through device authorization
+         * @description Starts the shared Feishu onboarding flow, exposes a redacted QR session, and persists the protected credentials after approval.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: never;
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenant/feishu/onboarding/cli": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Create a Feishu bot through device authorization
+         * @description Starts the shared Feishu onboarding flow, exposes a redacted QR session, and persists the protected credentials after approval.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: never;
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenant/feishu/onboarding/cli/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a Feishu bot through device authorization
+         * @description Starts the shared Feishu onboarding flow, exposes a redacted QR session, and persists the protected credentials after approval.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: never;
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -11002,7 +11195,16 @@ export interface components {
             input_schema_hash?: string;
             name?: string;
         };
+        "github_com_konglong87_go-e2e_internal_query.ComputerObservationReference": {
+            asset_id?: string;
+            media_type?: string;
+            name?: string;
+            observation_id?: string;
+            sha256?: string;
+            size_bytes?: number;
+        };
         "github_com_konglong87_go-e2e_internal_query.ToolTrace": {
+            computer_observation?: components["schemas"]["github_com_konglong87_go-e2e_internal_query.ComputerObservationReference"];
             file_changes?: components["schemas"]["github_com_konglong87_go-e2e_internal_tools.FileChange"][];
             id?: string;
             input?: string;
@@ -11049,6 +11251,10 @@ export interface components {
         "github_com_konglong87_go-e2e_internal_sessioncontrol.HandoffCandidateRemoval": {
             category?: string;
             estimated_tokens?: number;
+        };
+        "github_com_konglong87_go-e2e_internal_sessioncontrol.SessionChannel": {
+            account_key?: string;
+            provider?: string;
         };
         /** @enum {string} */
         "github_com_konglong87_go-e2e_internal_sessioncontrol.SessionStatus": "idle" | "queued" | "running" | "waiting_permission" | "waiting_input" | "blocked" | "completed" | "failed" | "stopped" | "archived";
@@ -11749,6 +11955,7 @@ export interface components {
         };
         "internal_server.sessionControlSessionDTO": {
             active_run_id?: number;
+            channel?: components["schemas"]["github_com_konglong87_go-e2e_internal_sessioncontrol.SessionChannel"];
             cwd?: string;
             effort?: string;
             id?: number;

@@ -5008,6 +5008,60 @@
                 }
             }
         },
+        "/tenant/agent-teams/{key}/runs/{run_id}/events": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Agent Teams"
+                ],
+                "summary": "Get member events and mailbox timeline for an agent team run",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Team key",
+                        "name": "key",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Team run id",
+                        "name": "run_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Pinned team version",
+                        "name": "version",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Limit",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/tenant/agent-teams/{key}/validate": {
             "post": {
                 "security": [
@@ -12721,9 +12775,35 @@
                 }
             }
         },
+        "github_com_konglong87_go-e2e_internal_query.ComputerObservationReference": {
+            "type": "object",
+            "properties": {
+                "asset_id": {
+                    "type": "string"
+                },
+                "media_type": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "observation_id": {
+                    "type": "string"
+                },
+                "sha256": {
+                    "type": "string"
+                },
+                "size_bytes": {
+                    "type": "integer"
+                }
+            }
+        },
         "github_com_konglong87_go-e2e_internal_query.ToolTrace": {
             "type": "object",
             "properties": {
+                "computer_observation": {
+                    "$ref": "#/definitions/github_com_konglong87_go-e2e_internal_query.ComputerObservationReference"
+                },
                 "file_changes": {
                     "type": "array",
                     "items": {

@@ -84,6 +84,43 @@ func (r *recordingRunRecorder) Finish(_ context.Context, record RunRecord) error
 	return nil
 }
 
+type recordingRunEvents struct {
+	mu     sync.Mutex
+	events []RunEvent
+}
+
+func (r *recordingRunEvents) Append(_ context.Context, event RunEvent) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.events = append(r.events, event)
+	return nil
+}
+
+func TestOrchestratorPersistsMemberAndMailboxEvents(t *testing.T) {
+	recorder := &recordingRunRecorder{}
+	events := &recordingRunEvents{}
+	orchestrator := NewOrchestratorWithRecorder(&fakeMemberRunner{}, NewMemoryMailbox(), recorder, events)
+	team := Team{TenantID: 7, ID: 9, Key: "events", Version: 1, Status: StatusPublished, Policy: TeamPolicy{Mode: ModeParallelReview, CoordinatorMember: "editor", MaxRounds: 2, MaxParallelMembers: 2, MaxTotalTokens: 1000}, Members: []Member{{TenantID: 7, Key: "editor", Role: RoleCoordinator}, {TenantID: 7, Key: "researcher", Role: RoleResearcher}, {TenantID: 7, Key: "reviewer", Role: RoleReviewer}}}
+	result, err := orchestrator.RunWithOptions(context.Background(), team, RunOptions{InboxEventID: 11, SourceAccountID: 12}, "event brief")
+	if err != nil || result.Status != StatusCompleted {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+	seen := map[string]bool{}
+	for _, event := range events.events {
+		seen[event.EventType] = true
+	}
+	for _, eventType := range []string{RunEventRunStarted, RunEventMemberStarted, RunEventMemberCompleted, RunEventMailboxMessage, RunEventCoordinatorStarted, RunEventCoordinatorDone, RunEventRunFinished} {
+		if !seen[eventType] {
+			t.Fatalf("missing event type %q in %+v", eventType, events.events)
+		}
+	}
+	for index := 1; index < len(events.events); index++ {
+		if events.events[index].Sequence <= events.events[index-1].Sequence {
+			t.Fatalf("event sequence is not monotonic: %+v", events.events)
+		}
+	}
+}
+
 func TestOrchestratorMarksCoordinatorFailureTerminal(t *testing.T) {
 	recorder := &recordingRunRecorder{}
 	orchestrator := NewOrchestratorWithRecorder(&fakeMemberRunner{Failures: map[string]bool{"editor": true}}, NewMemoryMailbox(), recorder)

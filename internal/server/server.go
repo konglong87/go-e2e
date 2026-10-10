@@ -527,6 +527,7 @@ func newRouter(opts Options, queryFn QueryFunc) *gin.Engine {
 	router.Any("/tenant/agent-teams/:key/members", gin.WrapF(tenantAgentTeamMembersHandler(opts)))
 	router.Any("/tenant/agent-teams/:key/bindings", gin.WrapF(tenantAgentTeamBindingsHandler(opts)))
 	router.Any("/tenant/agent-teams/:key/runs", gin.WrapF(tenantAgentTeamRunsHandler(opts)))
+	router.Any("/tenant/agent-teams/:key/runs/:run_id/events", gin.WrapF(tenantAgentTeamRunTimelineHandler(opts)))
 	router.Any("/tenant/agent-teams/:key/runs/:run_id", gin.WrapF(tenantAgentTeamRunHandler(opts)))
 	router.Any("/tenant/agent-teams/:key/runs/:run_id/cancel", gin.WrapF(tenantAgentTeamRunHandler(opts)))
 	router.Any("/tenant/channel-accounts", gin.WrapF(tenantChannelAccountsHandler(opts)))
