@@ -229,3 +229,15 @@
   .webui2-settings-center .observability-list time { text-align: left; }
   .webui2-settings-center .visual-settings-footer { align-items: flex-start; flex-direction: column; }
 }
+
+/* DesktopV2 keeps Team navigation in a narrow rail and gives the active
+   workspace the remaining room. Profile settings use their own workarea. */
+.webui2-settings-center .agent-team-panel .agent-workbench-body { grid-template-columns: 144px minmax(0, 1fr); min-height: 0; overflow: hidden; }
+.webui2-settings-center .agent-team-panel .agent-workbench-tabs { background: var(--webui2-bg); border-right-color: var(--webui2-border); padding: 14px 8px; }
+.webui2-settings-center .agent-team-panel .agent-workbench-tabs-label { color: var(--webui2-text-muted); }
+.webui2-settings-center .agent-team-panel .agent-workbench-tabs button { border: 0; border-left: 2px solid transparent; border-radius: 5px; color: var(--webui2-text-muted); font-size: 12px; font-weight: 500; justify-content: flex-start; padding: 9px 8px; }
+.webui2-settings-center .agent-team-panel .agent-workbench-tabs button:hover { background: var(--webui2-surface-muted); color: var(--webui2-text); }
+.webui2-settings-center .agent-team-panel .agent-workbench-tabs button.active { background: var(--webui2-surface-muted); border-left-color: var(--webui2-accent); color: var(--webui2-text); }
+.webui2-settings-center .agent-workbench-main { background: var(--webui2-surface); min-width: 0; overflow: auto; }
+.webui2-settings-center .agent-team-panel,
+.webui2-settings-center .agent-profile-panel { min-width: 0; }

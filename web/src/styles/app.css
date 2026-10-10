@@ -1839,9 +1839,14 @@ select:focus {
   white-space: nowrap;
 }
 
-.profile-app-shell .agent-workbench-body,
-.team-app-shell .agent-workbench-body {
+.profile-app-shell .agent-workbench-body {
   grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.team-app-shell .agent-workbench-body {
+  grid-template-columns: 144px minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
 }
@@ -1864,33 +1869,53 @@ select:focus {
 }
 
 .agent-workbench-tabs {
-  display: flex;
-  gap: 4px;
-  overflow-x: auto;
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
+  display: grid;
+  align-content: start;
+  gap: 3px;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
   background: #f8fafc;
-  padding: 7px 14px;
+  padding: 14px 8px;
+}
+
+.agent-workbench-tabs-label {
+  padding: 1px 9px 8px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
 }
 
 .agent-workbench-tabs button {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 6px;
-  min-height: 32px;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
   border: 1px solid transparent;
-  border-radius: var(--radius);
+  border-left: 2px solid transparent;
+  border-radius: 7px;
   background: transparent;
   color: var(--muted-strong);
-  padding: 6px 10px;
+  padding: 7px 8px;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 750;
+  text-align: left;
   white-space: nowrap;
 }
 
-.agent-workbench-tabs button:hover,
+.agent-workbench-tabs button svg {
+  flex: 0 0 auto;
+}
+
+.agent-workbench-tabs button:hover {
+  background: #eef2f7;
+  color: var(--text);
+}
+
 .agent-workbench-tabs button.active {
-  border-color: #bfdbfe;
+  border-left-color: #2563eb;
   background: #eff6ff;
   color: #1d4ed8;
 }
@@ -5353,7 +5378,6 @@ select:focus {
     width: 100%;
   }
 
-  .agent-workbench-body,
   .preview-columns,
   .profile-form-grid {
     grid-template-columns: 1fr;
@@ -5388,9 +5412,13 @@ select:focus {
     white-space: normal;
   }
 
-  .profile-app-shell .agent-workbench-body,
-  .team-app-shell .agent-workbench-body {
+  .profile-app-shell .agent-workbench-body {
     grid-template-columns: 1fr;
+    overflow: visible;
+  }
+
+  .team-app-shell .agent-workbench-body {
+    grid-template-columns: 132px minmax(0, 1fr);
     overflow: visible;
   }
 

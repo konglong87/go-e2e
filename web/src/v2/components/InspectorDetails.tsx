@@ -14,6 +14,7 @@ const copy = {
   en: { subAgents: "Subtasks", permissions: "Permission history", pending: "Pending", allowed: "Allowed", denied: "Denied", changed: "Changed files", read: "Read files", lineDelta: "Net line change", unknown: "Unknown", diffUnavailable: "Diff was not saved for this change.", before: "Before", after: "After", lines: "lines", diff: "Tool diff", usage: "Usage", context: "Context", total: "Total tokens", input: "Input tokens", output: "Output tokens", cacheRead: "Cache read tokens", cacheCreate: "Cache creation tokens", cache5m: "5-minute cache tokens", cache1h: "1-hour cache tokens", serviceTier: "Service tier", inferenceGeo: "Inference region", speed: "Speed", stopReason: "Stop reason", initialMessages: "Initial messages", toolCalls: "Tool calls", duration: "Duration", provider: "Provider", model: "Model", mode: "Permission mode", stage: "Stage", completed: "Completed", openItems: "Open items", risks: "Risks", nextActions: "Next actions", snapshot: "Context snapshot", captured: "Captured", tokens: "Estimated tokens", turn: "Turn", source: "Source", created: "Created", modified: "Modified", deleted: "Deleted" },
   zh: { subAgents: "子任务", permissions: "权限历史", pending: "待确认", allowed: "已允许", denied: "已拒绝", changed: "修改文件", read: "读取文件", lineDelta: "净行数变化", unknown: "未知", diffUnavailable: "此变更未保存 diff。", before: "修改前", after: "修改后", lines: "行", diff: "工具 diff", usage: "用量", context: "上下文", total: "总 tokens", input: "输入 tokens", output: "输出 tokens", cacheRead: "缓存读取 tokens", cacheCreate: "缓存创建 tokens", cache5m: "5 分钟缓存 tokens", cache1h: "1 小时缓存 tokens", serviceTier: "服务层级", inferenceGeo: "推理区域", speed: "速度", stopReason: "停止原因", initialMessages: "初始消息数", toolCalls: "工具调用", duration: "耗时", provider: "供应商", model: "模型", mode: "权限模式", stage: "阶段", completed: "已完成", openItems: "未完成事项", risks: "风险", nextActions: "下一步", snapshot: "上下文快照", captured: "捕获时间", tokens: "估算 tokens", turn: "轮次", source: "来源", created: "已创建", modified: "已修改", deleted: "已删除" }
 } as const;
+type InspectorCopy = { [Key in keyof typeof copy.en]: string };
 
 type Inspection = ReturnType<typeof buildConversationInspection>;
 type InspectorDetailsProps = { detail: SessionDetail; tab: InspectorTab; runtimeDetails?: WebAgentConversationDetail; identity?: IdentityConfig };
@@ -36,12 +37,7 @@ function ActivityDetails({ detail, inspection, identity }: Omit<InspectorDetails
     {detail.status === "waiting_input" ? <p className="webui2-inspector-permission-status">{t("webui2.status.waiting_input")}</p> : null}
     <TraceLink identity={identity} detail={detail} />
     {latestRun?.hasUsage ? <details className="webui2-run-usage"><summary>{labels.usage}<span>{latestRun.usage.totalTokens.toLocaleString()} tokens</span></summary><UsageDetails run={latestRun} /></details> : null}
-    {inspection.subAgents.length ? <section><h3><GitBranch size={14} />{labels.subAgents}</h3><ul className="webui2-inspector-list">{inspection.subAgents.map((sub) => <li key={sub.taskID}>
-      <strong>{sub.agent || sub.description || `Task ${sub.taskID}`}</strong>
-      <span>{sub.status === "done" ? labels.completed : sub.status === "error" ? t("webui2.status.failed") : sub.status === "cancelled" ? t("webui2.status.stopped") : t("webui2.status.running")}{sub.model ? ` · ${sub.model}` : ""}</span>
-      <span>{[sub.turn ? `${labels.turn} ${sub.turn}` : "", sub.lastTool, sub.toolCalls ? `${sub.toolCalls} ${labels.toolCalls}` : "", sub.durationMS ? formatDuration(sub.durationMS) : ""].filter(Boolean).join(" · ")}</span>
-      {sub.tokens ? <small>{sub.tokens}</small> : null}{sub.detail ? <p>{sub.detail}</p> : null}
-    </li>)}</ul></section> : null}
+    {inspection.subAgents.length ? <CollaborationActivitySummary language={language} labels={labels} subAgents={inspection.subAgents} /> : null}
     {inspection.permissions.length ? <section><h3><ShieldCheck size={14} />{labels.permissions}</h3><ul className="webui2-inspector-list">{inspection.permissions.map((permission) => <li key={`${permission.taskID}:${permission.requestID}`}><details>
       <summary><strong>{permission.toolName || labels.permissions}</strong><span data-permission-status={permission.status}>{permission.status === "pending" && !permission.active ? t("webui2.status.stopped") : labels[permission.status]}</span></summary>
       <small>Task {permission.taskID} · {permission.requestID}</small>
@@ -52,6 +48,17 @@ function ActivityDetails({ detail, inspection, identity }: Omit<InspectorDetails
     {detail.activity.length ? <TextList items={detail.activity} /> : null}
     {!hasActivity ? <Empty>{t("webui2.inspector.empty.activity")}</Empty> : null}
   </div>;
+}
+
+function CollaborationActivitySummary({ language, labels, subAgents }: { language: string; labels: InspectorCopy; subAgents: Inspection["subAgents"] }): JSX.Element {
+  const running = subAgents.filter((sub) => sub.status === "running").length;
+  const completed = subAgents.filter((sub) => sub.status === "done").length;
+  const attention = subAgents.filter((sub) => sub.status === "error" || sub.status === "cancelled").length;
+  const stateLabel = (status: string): string => status === "done" ? labels.completed : status === "error" ? (language === "zh" ? "失败" : "Failed") : status === "cancelled" ? (language === "zh" ? "已停止" : "Stopped") : (language === "zh" ? "运行中" : "Running");
+  return <section className="webui2-collaboration-summary" aria-label={labels.subAgents}>
+    <div className="webui2-collaboration-summary-head"><div><h3><GitBranch size={14} />{language === "zh" ? "协作概览" : "Collaboration overview"}</h3><p>{language === "zh" ? "当前会话中的 Agent 协作节点。" : "Agent nodes participating in this session."}</p></div><div className="webui2-collaboration-summary-counts"><span><strong>{running}</strong>{language === "zh" ? "运行" : "running"}</span><span><strong>{completed}</strong>{language === "zh" ? "完成" : "done"}</span><span><strong>{attention}</strong>{language === "zh" ? "关注" : "attention"}</span></div></div>
+    <div className="webui2-collaboration-node-list">{subAgents.map((sub) => <article className={`webui2-collaboration-node webui2-collaboration-node--${sub.status}`} key={sub.taskID}><span className="webui2-collaboration-node-dot" /><div><strong>{sub.agent || sub.description || `Task ${sub.taskID}`}</strong><span>{stateLabel(sub.status)}{sub.model ? ` · ${sub.model}` : ""}</span><small>{[sub.turn ? `${labels.turn} ${sub.turn}` : "", sub.lastTool, sub.toolCalls ? `${sub.toolCalls} ${labels.toolCalls}` : "", sub.durationMS ? formatDuration(sub.durationMS) : ""].filter(Boolean).join(" · ") || (language === "zh" ? "等待活动" : "Waiting for activity")}</small>{sub.tokens ? <small>{sub.tokens}</small> : null}{sub.detail ? <p>{sub.detail}</p> : null}</div></article>)}</div>
+  </section>;
 }
 
 function ContextDetails({ detail, inspection }: { detail: SessionDetail; inspection: Inspection }): JSX.Element {
