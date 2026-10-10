@@ -14,6 +14,12 @@ const (
 	EventFailed          EventKind = "computer_failed"
 )
 
+// TurnPublisher receives the same authoritative ComputerTurnResult that is
+// returned to the provider. Implementations must not mutate or reconstruct it.
+type TurnPublisher interface {
+	PublishTurn(ComputerTurnResult)
+}
+
 type Event struct {
 	Kind          EventKind      `json:"kind"`
 	SessionID     string         `json:"session_id"`

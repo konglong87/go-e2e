@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/konglong87/go-e2e/internal/computerdiag"
 )
 
@@ -31,6 +32,7 @@ type Controller struct {
 	cancel         context.CancelFunc
 	targetRegistry TargetRegistry
 	runner         *Runner
+	turnPublisher  TurnPublisher
 	pausing        int
 	pauseVersion   uint64
 }
@@ -61,6 +63,23 @@ func NewControllerWithBudget(s *ComputerSession, b Backend, registry TargetRegis
 	return &Controller{session: s, backend: b, targetRegistry: registry, runner: runner, serial: make(chan struct{}, 1), control: make(chan struct{}, 1), stopping: make(chan struct{}, 1)}, nil
 }
 func (c *Controller) Session() *ComputerSession { return c.session }
+
+// SetTurnPublisher attaches an optional runtime event sink. The sink receives
+// only committed turn results and is never used as an execution authority.
+func (c *Controller) SetTurnPublisher(publisher TurnPublisher) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.turnPublisher = publisher
+}
+
+func (c *Controller) publishTurn(result ComputerTurnResult) {
+	c.mu.Lock()
+	publisher := c.turnPublisher
+	c.mu.Unlock()
+	if publisher != nil {
+		publisher.PublishTurn(result)
+	}
+}
 func (c *Controller) authorize(owner SessionOwner, id string) error {
 	if c.session.ID() != id || !c.session.Owns(owner) {
 		return errors.New("computer session ownership mismatch")
@@ -450,6 +469,309 @@ func (c *Controller) Execute(ctx context.Context, owner SessionOwner, a Action) 
 
 	return receipt, nil
 }
+
+// ExecuteTurn performs one provider turn and returns the complete authoritative
+// result. Receipt persistence intentionally happens before post-action observe
+// or image work, so evidence failures cannot erase an input fact.
+func (c *Controller) ExecuteTurn(ctx context.Context, owner SessionOwner, a Action) (ComputerTurnResult, error) {
+	if err := c.authorize(owner, a.SessionID); err != nil {
+		return ComputerTurnResult{}, err
+	}
+	op, release, err := c.acquire(ctx, ActionExecutionTimeout(a, time.Duration(MaxActionDurationMS)*time.Millisecond))
+	if err != nil {
+		return ComputerTurnResult{}, err
+	}
+	defer release()
+
+	before, _ := c.session.CurrentObservation()
+	if before.WindowID != "" && a.WindowID == "" {
+		a.WindowID = before.WindowID
+	}
+	sequence := c.session.NextTurnSequence()
+	turnID := uuid.NewString()
+	started := time.Now()
+
+	if err = c.session.BeginAction(a); err != nil {
+		result := rejectedTurnResult(turnID, sequence, started, a, before, err)
+		_ = c.session.RecordTurnResult(result)
+		return result, err
+	}
+	if err = c.syncObservedRun(); err != nil {
+		receipt := rejectedReceipt(a, before, ErrorCodeInactive, started)
+		_ = c.session.RecordReceipt(receipt)
+		result := turnResultFromReceipt(turnID, sequence, started, a, receipt)
+		_ = c.session.RecordTurnResult(result)
+		return result, err
+	}
+	if c.runner != nil {
+		kind := BudgetInput
+		if a.Kind == ActionWait {
+			kind = BudgetWait
+		}
+		if err = c.runner.Consume(Consumption{Kind: kind}); err != nil {
+			c.failRun()
+			receipt := rejectedReceipt(a, before, ErrorCodeTimeout, started)
+			_ = c.session.RecordReceipt(receipt)
+			result := turnResultFromReceipt(turnID, sequence, started, a, receipt)
+			_ = c.session.RecordTurnResult(result)
+			return result, err
+		}
+		if err = c.runner.Transition(Transition{From: RunStateObserved, To: RunStateExecuting}); err != nil {
+			c.failRun()
+			receipt := rejectedReceipt(a, before, ErrorCodeInactive, started)
+			_ = c.session.RecordReceipt(receipt)
+			result := turnResultFromReceipt(turnID, sequence, started, a, receipt)
+			_ = c.session.RecordTurnResult(result)
+			return result, err
+		}
+	}
+
+	actionStarted := time.Now()
+	rawReceipt, backendErr := c.backend.Execute(op, a)
+	receipt := normalizeTurnReceipt(a, before, rawReceipt, backendErr, actionStarted)
+	if err = c.session.RecordReceipt(receipt); err != nil {
+		c.failRun()
+		return turnResultFromReceipt(turnID, sequence, started, a, receipt), err
+	}
+	if c.runner != nil {
+		switch {
+		case c.session.State() == SessionPaused:
+			// Pause/Stop owns the control boundary. A late native result is
+			// already recorded but cannot reopen authority.
+		case receipt.Outcome == OutcomeUnknown:
+			c.failRun()
+		case receipt.Outcome == OutcomeRejected && receipt.DispatchState == DispatchNotStarted:
+			c.pauseForRecovery()
+		default:
+			if transitionErr := c.runner.Transition(Transition{From: RunStateExecuting, To: RunStateVerifying}); transitionErr != nil {
+				err = transitionErr
+				c.failRun()
+			}
+		}
+	}
+
+	result := turnResultFromReceipt(turnID, sequence, started, a, receipt)
+	var turnErr error
+	if backendErr != nil {
+		turnErr = errors.New("computer backend failed; inspect the turn receipt before continuing")
+	}
+	if receipt.Outcome == OutcomeExecuted && receipt.DispatchState == DispatchComplete {
+		result.ObservationState = ObservationUnavailable
+		result.ScreenshotState = ScreenshotUnavailable
+		result.RetryPolicy = RetryObserveOnly
+
+		next, observeErr := c.backend.Observe(op, ObserveRequest{SessionID: a.SessionID, DisplayID: a.DisplayID, WindowID: a.WindowID})
+		if observeErr != nil {
+			result.ErrorCode = publicErrorCode(observeErr)
+			turnErr = observeErr
+		} else {
+			imageRef, imageErr := c.readTurnScreenshot(op, next)
+			if imageErr != nil {
+				result.ErrorCode = ErrorCodeScreenshotFailed
+				turnErr = imageErr
+			} else {
+				next.Screenshot = imageRef
+				result.Screenshot = &imageRef
+				result.ScreenshotState = ScreenshotReady
+			}
+			if setErr := c.session.SetObservation(next); setErr != nil {
+				result.ErrorCode = publicErrorCode(setErr)
+				turnErr = setErr
+				result.ObservationState = ObservationUnavailable
+				result.Screenshot = nil
+				result.ScreenshotState = ScreenshotUnavailable
+			} else {
+				stored, _ := c.session.CurrentObservation()
+				result.Observation = &stored
+				result.ObservationState = ObservationReady
+			}
+		}
+		if result.ObservationState == ObservationReady && result.ScreenshotState == ScreenshotReady && turnErr == nil {
+			result.RetryPolicy = RetryNever
+		}
+	} else if receipt.Outcome == OutcomeUnknown {
+		result.ObservationState = ObservationInvalidated
+		result.ScreenshotState = ScreenshotNotRequested
+		result.RetryPolicy = RetryNever
+	} else {
+		result.RetryPolicy = RetryObserveOnly
+	}
+	if result.ErrorCode == "" {
+		result.ErrorCode = receipt.ErrorCode
+	}
+	result.CompletedAt = time.Now()
+	result.Duration = time.Since(started)
+	if err = result.Validate(); err != nil {
+		c.failRun()
+		return result, err
+	}
+	if err = c.session.RecordTurnResult(result); err != nil {
+		c.failRun()
+		return result, err
+	}
+	c.publishTurn(result)
+	if turnErr != nil {
+		return result, turnErr
+	}
+	return result, nil
+}
+
+func rejectedTurnResult(turnID string, sequence uint64, started time.Time, action Action, before Observation, cause error) ComputerTurnResult {
+	receipt := rejectedReceipt(action, before, ErrorCodeInvalidAction, started)
+	result := turnResultFromReceipt(turnID, sequence, started, action, receipt)
+	result.ErrorCode = ErrorCodeInvalidAction
+	result.RetryPolicy = RetryObserveOnly
+	if cause != nil {
+		result.ErrorCode = publicErrorCode(cause)
+		receipt.ErrorCode = result.ErrorCode
+		result.Receipt = receipt
+	}
+	result.CompletedAt = time.Now()
+	result.Duration = time.Since(started)
+	return result
+}
+
+func rejectedReceipt(action Action, before Observation, code string, started time.Time) ActionReceipt {
+	return ActionReceipt{
+		ActionID:              action.ID,
+		SessionID:             action.SessionID,
+		BeforeObservationID:   before.ID,
+		Before:                mediaRefPointer(before.Screenshot),
+		Outcome:               OutcomeRejected,
+		DispatchState:         DispatchNotStarted,
+		Verification:          VerificationNotChecked,
+		RedactedActionSummary: action.RedactedSummary(),
+		ErrorCode:             code,
+		CompletedAt:           time.Now(),
+		Duration:              time.Since(started),
+	}
+}
+
+func turnResultFromReceipt(turnID string, sequence uint64, started time.Time, action Action, receipt ActionReceipt) ComputerTurnResult {
+	verification := receipt.Verification
+	if verification == "" {
+		verification = VerificationNotChecked
+	}
+	return ComputerTurnResult{
+		ProtocolVersion:  ProtocolVersion,
+		TurnID:           turnID,
+		SessionID:        receipt.SessionID,
+		ActionID:         receipt.ActionID,
+		ActionKind:       action.Kind,
+		DispatchState:    receipt.DispatchState,
+		Outcome:          receipt.Outcome,
+		Verification:     verification,
+		Receipt:          receipt,
+		ObservationState: ObservationNotRequested,
+		ScreenshotState:  ScreenshotNotRequested,
+		ErrorCode:        receipt.ErrorCode,
+		RetryPolicy:      RetryNever,
+		Sequence:         sequence,
+		StartedAt:        started,
+		CompletedAt:      receipt.CompletedAt,
+		Duration:         time.Since(started),
+	}
+}
+
+func normalizeTurnReceipt(action Action, before Observation, raw ActionReceipt, backendErr error, started time.Time) ActionReceipt {
+	if raw.ActionID != action.ID || raw.SessionID != action.SessionID || !raw.IsTerminal() {
+		raw = ActionReceipt{Outcome: OutcomeUnknown, DispatchState: DispatchUnknown, Verification: VerificationUnknown, ErrorCode: ErrorCodeInputUncertain}
+	}
+	raw.ActionID = action.ID
+	raw.SessionID = action.SessionID
+	if raw.DispatchState == "" {
+		switch raw.Outcome {
+		case OutcomeExecuted:
+			raw.DispatchState = DispatchComplete
+		case OutcomeRejected, OutcomeNotStarted:
+			raw.DispatchState = DispatchNotStarted
+		default:
+			raw.DispatchState = DispatchUnknown
+		}
+	}
+	if raw.DispatchState == DispatchPartial || raw.DispatchState == DispatchUnknown {
+		raw.Outcome = OutcomeUnknown
+		raw.Verification = VerificationUnknown
+		if raw.ErrorCode == "" {
+			raw.ErrorCode = ErrorCodeInputUncertain
+		}
+	}
+	if raw.Outcome == OutcomeUnknown {
+		raw.DispatchState = raw.DispatchStateOrUnknown()
+		raw.Verification = VerificationUnknown
+		if raw.ErrorCode == "" {
+			raw.ErrorCode = ErrorCodeInputUncertain
+		}
+	} else if raw.Verification == "" {
+		raw.Verification = VerificationNotChecked
+	}
+	if raw.ErrorCode != "" {
+		raw.ErrorCode = PublicErrorCode(raw.ErrorCode)
+	}
+	if raw.ErrorCode == "" && backendErr != nil {
+		if raw.Outcome == OutcomeUnknown {
+			raw.ErrorCode = ErrorCodeInputUncertain
+		} else {
+			raw.ErrorCode = ErrorCodeActionFailed
+		}
+	}
+	caps := before.Capabilities
+	raw.Platform = caps.Platform
+	raw.Backend = caps.Backend
+	raw.BeforeObservationID = before.ID
+	raw.Before = mediaRefPointer(before.Screenshot)
+	raw.RedactedActionSummary = action.RedactedSummary()
+	raw.ErrorMessage = ""
+	raw.CompletedAt = time.Now()
+	raw.Duration = time.Since(started)
+	return raw
+}
+
+func (r ActionReceipt) DispatchStateOrUnknown() DispatchState {
+	if r.DispatchState == "" {
+		return DispatchUnknown
+	}
+	return r.DispatchState
+}
+
+func (c *Controller) readTurnScreenshot(ctx context.Context, observation Observation) (MediaRef, error) {
+	reader, ok := c.backend.(ImageReader)
+	if !ok {
+		return MediaRef{}, errors.New("computer image reader is unavailable")
+	}
+	data, mediaType, err := reader.ObservationImage(ctx, observation.ID)
+	if err != nil {
+		return MediaRef{}, err
+	}
+	if len(data) == 0 || mediaType != "image/png" {
+		return MediaRef{}, errors.New("computer screenshot is unavailable")
+	}
+	mediaID := observation.Screenshot.ID
+	if mediaID == "" {
+		mediaID = observation.ID + "-screenshot"
+	}
+	return NewMediaRef(mediaID, mediaType, data, observation.Width, observation.Height), nil
+}
+
+func mediaRefPointer(ref MediaRef) *MediaRef {
+	if ref.ID == "" && ref.URL == "" && ref.SHA256 == "" && ref.SizeBytes == 0 {
+		return nil
+	}
+	copy := ref
+	return &copy
+}
+
+func publicErrorCode(err error) string {
+	if err == nil {
+		return ""
+	}
+	var coded interface{ Code() string }
+	if errors.As(err, &coded) {
+		return PublicErrorCode(coded.Code())
+	}
+	return ErrorCodeActionFailed
+}
+
 func (c *Controller) ObservationImage(ctx context.Context, owner SessionOwner, id, observationID string) ([]byte, string, error) {
 	if err := c.authorize(owner, id); err != nil {
 		return nil, "", err
