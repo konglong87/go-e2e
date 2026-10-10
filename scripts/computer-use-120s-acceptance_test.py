@@ -68,6 +68,27 @@ class WrapperUnitTests(unittest.TestCase):
         ])
         self.assertNotIn("SECRET", json.dumps(heartbeat))
 
+    def test_failed_tool_zero_receipt_is_not_treated_as_native_receipt(self):
+        events = [
+            {"event_type": "tool_call", "created_at": "2026-10-02T00:00:00Z", "payload_json": json.dumps({
+                "tool_id": "wait-1", "tool_name": "ComputerUse",
+                "input": json.dumps({"redacted": True, "action": "wait", "input_bytes": 132}),
+            })},
+            {"event_type": "tool_result", "created_at": "2026-10-02T00:00:01Z", "payload_json": json.dumps({
+                "tool_id": "wait-1", "tool_name": "ComputerUse", "is_error": True,
+                "output": json.dumps({
+                    "error_code": "action_failed",
+                    "receipt": {
+                        "action_id": "", "session_id": "", "completed_at": "0001-01-01T00:00:00Z",
+                    },
+                }),
+            })},
+        ]
+        actions = MODULE.tool_events(events)
+        self.assertEqual(len(actions), 1)
+        self.assertNotIn("receipt", actions[0])
+        MODULE.validate_run_actions(actions, "2026-10-02T00:00:00Z", "2026-10-02T00:00:02Z")
+
     def test_desktop_health_snapshot_records_connection_failure_without_raw_error(self):
         server = MODULE.LocalServer(101, 202, 54321, "SECRET-TOKEN")
         client = mock.Mock()

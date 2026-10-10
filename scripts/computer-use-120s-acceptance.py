@@ -481,6 +481,17 @@ def compact_receipt(value: Any, launch: bool = False) -> dict[str, Any]:
     """Retain public receipt metadata only, never titles, text, errors or media URIs."""
     if not isinstance(value, dict):
         return {}
+    # Failed tool results may carry a zero-value receipt placeholder so the
+    # caller can inspect a stable schema. It is not a native action receipt and
+    # must not participate in timestamp/session validation.
+    if not launch:
+        action_id = value.get("action_id")
+        session_id = value.get("session_id")
+        completed_at = value.get("completed_at")
+        if not isinstance(action_id, str) or not action_id or not isinstance(session_id, str) or not session_id:
+            return {}
+        if not isinstance(completed_at, str) or not completed_at or completed_at.startswith("0001-"):
+            return {}
     fields = ("target_id", "display_name", "bundle_id", "outcome", "error_code", "completed_at") if launch else (
         "action_id", "session_id", "platform", "backend", "before_observation_id", "after_observation_id",
         "outcome", "dispatch_state", "verification", "focus_before", "focus_after", "error_code", "completed_at")
