@@ -258,6 +258,12 @@ func (s *ComputerSession) validateActionLocked(a Action) error {
 	if s.actionCount >= s.maxActions {
 		return errors.New("computer action budget exceeded")
 	}
+	if a.Kind == ActionLaunchApp {
+		// Launch is the one provider action that may establish the first
+		// observation. The trusted target registry is resolved by Controller;
+		// the session only reserves the action ID before dispatch.
+		return a.Validate(s.now(), Observation{})
+	}
 	if !a.Kind.IsInput() && a.Kind != ActionWait {
 		return errors.New("action must use the control plane")
 	}
@@ -440,6 +446,11 @@ func cloneTurnResult(result ComputerTurnResult) ComputerTurnResult {
 	// snapshots retain the MediaRef and never persist pixels.
 	result.ScreenshotData = nil
 	result.Receipt = cloneReceipt(result.Receipt)
+	if result.LaunchReceipt != nil {
+		launch := *result.LaunchReceipt
+		launch.Window = cloneWindowRef(launch.Window)
+		result.LaunchReceipt = &launch
+	}
 	if result.Observation != nil {
 		observation := cloneObservation(*result.Observation)
 		result.Observation = &observation

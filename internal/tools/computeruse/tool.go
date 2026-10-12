@@ -57,6 +57,18 @@ type Tool struct{}
 
 func New() Tool { return Tool{} }
 
+// atomicTurnService selects the authoritative provider path. Query wrappers may
+// expose a method-shaped compatibility adapter while their underlying bridge
+// is still legacy; those adapters explicitly opt out instead of causing the
+// tool to attempt a fake atomic call or silently stitch fallback evidence.
+func resolveAtomicTurnService(service cu.Service) (cu.TurnService, bool) {
+	if gate, ok := service.(interface{ AtomicTurnAvailable() bool }); ok && !gate.AtomicTurnAvailable() {
+		return nil, false
+	}
+	turnService, ok := service.(cu.TurnService)
+	return turnService, ok
+}
+
 func (Tool) Name() string { return ToolName }
 
 func (Tool) Description() string {
@@ -150,14 +162,14 @@ func (t Tool) Run(ctx context.Context, input json.RawMessage, tc tools.Context) 
 	case cu.ActionObserve:
 		return t.observe(ctx, service, owner, params, tc)
 	case cu.ActionLaunchApp:
-		return t.launchApp(ctx, service, owner, params)
+		return t.launchApp(ctx, service, owner, params, tc)
 	case cu.ActionPause:
 		return t.control(ctx, owner, params, func() error { return service.Pause(ctx, owner, params.SessionID) })
 	case cu.ActionStop:
 		return t.control(ctx, owner, params, func() error { return service.Stop(ctx, owner, params.SessionID) })
 	case cu.ActionClick, cu.ActionDoubleClick, cu.ActionRightClick, cu.ActionMove, cu.ActionDrag, cu.ActionType, cu.ActionKey, cu.ActionHotkey, cu.ActionScroll, cu.ActionWait:
-		if _, ok := service.(cu.TurnService); ok {
-			return t.executeTurn(ctx, service.(cu.TurnService), owner, params, tc)
+		if turnService, ok := resolveAtomicTurnService(service); ok {
+			return t.executeTurn(ctx, turnService, owner, params, tc)
 		}
 		// Legacy adapters remain available only when they do not expose the new
 		// atomic capability. New provider/runtime paths never fall back after a
@@ -190,7 +202,12 @@ type request struct {
 	DurationMS    int      `json:"duration_ms"`
 }
 
-func (t Tool) launchApp(ctx context.Context, service cu.Service, owner cu.SessionOwner, params request) tools.Result {
+func (t Tool) launchApp(ctx context.Context, service cu.Service, owner cu.SessionOwner, params request, tc tools.Context) tools.Result {
+	// The atomic turn capability is authoritative. Legacy launch remains only
+	// for migration adapters that do not expose TurnService at all.
+	if turnService, ok := resolveAtomicTurnService(service); ok {
+		return t.executeTurn(ctx, turnService, owner, params, tc)
+	}
 	var receipt cu.LaunchReceipt
 	var err error
 	if launcher, ok := service.(cu.TargetLauncher); ok {
@@ -215,10 +232,8 @@ func (t Tool) launchApp(ctx context.Context, service cu.Service, owner cu.Sessio
 		payload["message"] = "computer target launch failed; inspect the launch receipt and stop"
 		return tools.Result{Content: marshal(payload), IsError: true}
 	}
-	// Launch and the first bound observation are one provider turn. A launch
-	// receipt without a screenshot creates a race in which the target can lose
-	// AX/window readiness before the next model turn. Capture failure preserves
-	// the executed launch receipt and never retries the launch.
+	// Legacy adapters may still need a follow-up observation during migration.
+	// This path is intentionally unreachable for the new provider/runtime route.
 	params.WindowID = receipt.Window.ID
 	_, result := t.captureObservation(ctx, service, owner, params)
 	var boundPayload map[string]any
@@ -259,6 +274,16 @@ func (t Tool) observe(ctx context.Context, service cu.Service, owner cu.SessionO
 			}
 		}
 
+	}
+	if tc.ComputerUseFastPath && strings.TrimSpace(params.TargetID) != "" {
+		if turnService, ok := resolveAtomicTurnService(service); ok {
+			// The first target observe is an atomic launch turn. It must not
+			// observe the wrong frontmost app, then launch, then stitch a second
+			// observation/image response in the tool layer.
+			launchParams := params
+			launchParams.Action = string(cu.ActionLaunchApp)
+			return t.executeTurn(ctx, turnService, owner, launchParams, tc)
+		}
 	}
 	_, result := t.captureObservation(ctx, service, owner, params)
 	if result.IsError || !tc.ComputerUseFastPath {
@@ -412,6 +437,9 @@ func (t Tool) executeTurn(ctx context.Context, service cu.TurnService, owner cu.
 		"error_code":     result.ErrorCode,
 	}
 	out := tools.Result{IsError: turnErr != nil || result.Outcome != cu.OutcomeExecuted}
+	if result.LaunchReceipt != nil {
+		payload["launch_receipt"] = result.LaunchReceipt
+	}
 	if result.ObservationState == cu.ObservationReady && result.Observation != nil {
 		payload["observation"] = result.Observation
 	}
@@ -455,7 +483,7 @@ func actionFromRequest(params request, tc tools.Context) (cu.Action, error) {
 		return cu.Action{}, err
 	}
 	action := cu.Action{
-		ID: id, SessionID: params.SessionID, ObservationID: params.ObservationID, Kind: cu.ActionKind(params.Action),
+		ID: id, SessionID: params.SessionID, ObservationID: params.ObservationID, TargetID: cu.TargetID(params.TargetID), Kind: cu.ActionKind(params.Action),
 		DisplayID: params.DisplayID, WindowID: params.WindowID, Text: params.Text, Key: params.Key,
 		Keys: params.Keys, DeltaX: params.DeltaX, DeltaY: params.DeltaY, DurationMS: params.DurationMS, Button: params.Button,
 	}

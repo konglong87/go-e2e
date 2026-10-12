@@ -69,8 +69,17 @@ func validRequest(r Request) bool {
 // The client can check shape and bounds but cannot validate freshness, approval,
 // coordinates against the actual screenshot, or action budgets: the host must.
 func validAction(a cu.Action) bool {
-	if !validID(a.ID) || !validID(a.SessionID) || !validID(a.ObservationID) ||
-		!optionalID(a.DisplayID) || !optionalID(a.WindowID) || (!a.Kind.IsInput() && a.Kind != cu.ActionWait) {
+	if !validID(a.ID) || !validID(a.SessionID) || !optionalID(a.ObservationID) ||
+		!optionalID(string(a.TargetID)) || !optionalID(a.DisplayID) || !optionalID(a.WindowID) {
+		return false
+	}
+	if a.Kind == cu.ActionLaunchApp {
+		return a.TargetID != "" && a.ObservationID == "" && validID(string(a.TargetID))
+	}
+	if !a.Kind.IsInput() && a.Kind != cu.ActionWait {
+		return false
+	}
+	if a.ObservationID == "" {
 		return false
 	}
 	if len(a.Text) > cu.MaxInputBytes || !utf8.ValidString(a.Text) || len(a.Key) > cu.MaxKeyBytes || !utf8.ValidString(a.Key) ||
@@ -148,6 +157,9 @@ func validLaunchReceipt(r cu.LaunchReceipt, sessionID, targetID, application str
 
 func validTurnResultForAction(result cu.ComputerTurnResult, action cu.Action) bool {
 	if result.Validate() != nil || result.SessionID != action.SessionID || result.ActionID != action.ID || result.ActionKind != action.Kind {
+		return false
+	}
+	if action.Kind == cu.ActionLaunchApp && (result.LaunchReceipt == nil || result.LaunchReceipt.TargetID != action.TargetID) {
 		return false
 	}
 	return result.Receipt.BeforeObservationID == "" || result.Receipt.BeforeObservationID == action.ObservationID

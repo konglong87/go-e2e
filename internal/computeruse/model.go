@@ -277,6 +277,7 @@ type Action struct {
 	ID            string         `json:"id"`
 	SessionID     string         `json:"session_id"`
 	ObservationID string         `json:"observation_id,omitempty"`
+	TargetID      TargetID       `json:"target_id,omitempty"`
 	Kind          ActionKind     `json:"kind"`
 	DisplayID     string         `json:"display_id,omitempty"`
 	WindowID      string         `json:"window_id,omitempty"`
@@ -302,8 +303,17 @@ func (a Action) Validate(now time.Time, observation Observation) error {
 	if observation.SessionID != "" && a.SessionID != observation.SessionID {
 		return errors.New("action session does not match observation session")
 	}
-	if !a.Kind.IsInput() && !a.Kind.IsControl() {
+	if !a.Kind.IsInput() && !a.Kind.IsControl() && a.Kind != ActionLaunchApp {
 		return errors.New("action kind is required")
+	}
+	if a.Kind == ActionLaunchApp {
+		if !a.TargetID.valid() {
+			return errors.New("launch requires a registered target")
+		}
+		if a.ObservationID != "" {
+			return errors.New("launch must not reference an observation")
+		}
+		return nil
 	}
 	if a.Kind.IsInput() || a.Kind == ActionWait {
 		if a.ObservationID == "" {

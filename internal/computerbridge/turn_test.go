@@ -202,3 +202,64 @@ func TestClientExecuteTurnRejectsExpiredScreenshotTTL(t *testing.T) {
 		t.Fatalf("expired TTL result=%+v err=%v", actual, err)
 	}
 }
+
+func TestClientExecuteTurnLaunchUsesAtomicRPCAndTargetBinding(t *testing.T) {
+	result, data := testTurnResult(t)
+	result.ActionKind = cu.ActionLaunchApp
+	result.ActionID = "launch-action"
+	result.Receipt.ActionID = result.ActionID
+	result.Receipt.BeforeObservationID = ""
+	result.LaunchReceipt = &cu.LaunchReceipt{
+		TargetID:    cu.TargetID("workbuddy"),
+		DisplayName: "WorkBuddy",
+		BundleID:    cu.WorkBuddyBundleID,
+		Window:      cu.WindowRef{ID: "workbuddy-window", OwnerPID: 84, BundleID: cu.WorkBuddyBundleID, IsVisible: true, IsFrontmost: true},
+		Outcome:     cu.OutcomeExecuted,
+		CompletedAt: result.CompletedAt,
+	}
+	action := testAction()
+	action.ID = result.ActionID
+	action.ObservationID = ""
+	action.Kind = cu.ActionLaunchApp
+	action.TargetID = cu.TargetID("workbuddy")
+	result.SessionID = action.SessionID
+	result.Receipt.SessionID = action.SessionID
+	result.ActionKind = action.Kind
+	result.Receipt.Outcome = cu.OutcomeExecuted
+	result.Receipt.DispatchState = cu.DispatchComplete
+
+	client := newUnixClient(t, 0, func(w http.ResponseWriter, r *http.Request) {
+		req := readRequest(t, r)
+		if req.Op != OpExecuteTurn || req.Action == nil || req.Action.Kind != cu.ActionLaunchApp || req.Action.TargetID != action.TargetID || req.TargetID != "" {
+			t.Fatalf("launch did not use atomic execute_turn: %+v", req)
+		}
+		writeData(t, w, ExecuteTurnResponse{
+			Result:              result,
+			ScreenshotData:      base64.StdEncoding.EncodeToString(data),
+			ScreenshotMediaType: pngMediaType,
+			ScreenshotExpiresAt: result.Observation.ExpiresAt,
+		})
+	})
+
+	actual, err := client.ExecuteTurn(context.Background(), testOwner(), action)
+	if err != nil {
+		t.Fatalf("ExecuteTurn() error = %v", err)
+	}
+	if actual.LaunchReceipt == nil || actual.LaunchReceipt.TargetID != action.TargetID || actual.Receipt.ActionID != action.ID {
+		t.Fatalf("launch turn binding lost: %+v", actual)
+	}
+}
+
+func TestValidRequestExecuteTurnAcceptsLaunchWithoutObservation(t *testing.T) {
+	action := testAction()
+	action.Kind = cu.ActionLaunchApp
+	action.ObservationID = ""
+	action.TargetID = cu.TargetID("workbuddy")
+	if !validRequest(Request{Op: OpExecuteTurn, Owner: testOwner(), SessionID: action.SessionID, Action: &action}) {
+		t.Fatal("atomic launch request was rejected")
+	}
+	action.TargetID = ""
+	if validRequest(Request{Op: OpExecuteTurn, Owner: testOwner(), SessionID: action.SessionID, Action: &action}) {
+		t.Fatal("launch request without target was accepted")
+	}
+}

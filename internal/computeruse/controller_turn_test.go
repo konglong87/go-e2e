@@ -215,3 +215,72 @@ func TestControllerExecuteTurnPublishesCommittedResultWithoutReconstruction(t *t
 		t.Fatalf("published result was not committed before event: stored=%+v ok=%v", stored, ok)
 	}
 }
+
+type atomicLaunchBackend struct {
+	*turnImageBackend
+	launchReceipt LaunchReceipt
+	launchCalls   int
+	executeCalls  int
+}
+
+func (b *atomicLaunchBackend) LaunchApp(_ context.Context, sessionID, providerKey string) (LaunchReceipt, error) {
+	b.launchCalls++
+	if sessionID == "" || providerKey == "" {
+		return LaunchReceipt{Outcome: OutcomeUnknown, ErrorCode: ErrorCodeInputUncertain, CompletedAt: time.Now()}, errors.New("invalid launch binding")
+	}
+	return b.launchReceipt, nil
+}
+
+func (b *atomicLaunchBackend) Execute(ctx context.Context, action Action) (ActionReceipt, error) {
+	b.executeCalls++
+	return b.FakeBackend.Execute(ctx, action)
+}
+
+func TestControllerExecuteTurnLaunchIsAtomicAndBindsFirstObservation(t *testing.T) {
+	session, owner, now := newTestSession(t, false)
+	registry, err := NewStaticTargetRegistry(ApplicationTarget{
+		ID: "workbuddy", DisplayName: "WorkBuddy",
+		Launch: LaunchPolicy{ProviderKey: "trusted-workbuddy"},
+		Window: WindowPolicy{BundleID: WorkBuddyBundleID, RequireVisible: true, RequireFrontmost: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := &atomicLaunchBackend{
+		turnImageBackend: &turnImageBackend{
+			FakeBackend: &FakeBackend{
+				ObservationValue: readyObservation(session.ID(), now),
+			},
+			imageData: []byte("png-bytes"), mediaType: "image/png",
+		},
+		launchReceipt: LaunchReceipt{
+			BundleID: WorkBuddyBundleID,
+			Window:   WindowRef{ID: "workbuddy-window", OwnerPID: 84, BundleID: WorkBuddyBundleID, IsVisible: true, IsFrontmost: true},
+			Outcome:  OutcomeExecuted, CompletedAt: now.Add(time.Millisecond),
+		},
+	}
+	backend.ObservationValue.ID = "obs-after-launch"
+	controller, err := NewControllerWithRegistry(session, backend, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	action := Action{ID: "launch-turn-1", SessionID: session.ID(), TargetID: TargetID("workbuddy"), Kind: ActionLaunchApp}
+	result, err := controller.ExecuteTurn(context.Background(), owner, action)
+	if err != nil {
+		t.Fatalf("ExecuteTurn() error = %v", err)
+	}
+	if backend.launchCalls != 1 || backend.executeCalls != 0 {
+		t.Fatalf("launch dispatch was not atomic: launch=%d execute=%d", backend.launchCalls, backend.executeCalls)
+	}
+	if result.Outcome != OutcomeExecuted || result.DispatchState != DispatchComplete || result.LaunchReceipt == nil {
+		t.Fatalf("launch turn result = %+v", result)
+	}
+	if result.LaunchReceipt.Window.ID != "workbuddy-window" || result.ObservationState != ObservationReady || result.ScreenshotState != ScreenshotReady {
+		t.Fatalf("launch evidence = launch=%+v observation=%s screenshot=%s", result.LaunchReceipt, result.ObservationState, result.ScreenshotState)
+	}
+	stored, ok := session.CurrentTurnResult()
+	if !ok || stored.TurnID != result.TurnID || stored.LaunchReceipt == nil {
+		t.Fatalf("authoritative launch turn not committed: stored=%+v ok=%v", stored, ok)
+	}
+}

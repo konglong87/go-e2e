@@ -80,7 +80,10 @@ type ComputerTurnResult struct {
 	Outcome         Outcome            `json:"outcome"`
 	Verification    VerificationStatus `json:"verification"`
 
-	Receipt          ActionReceipt    `json:"receipt"`
+	Receipt ActionReceipt `json:"receipt"`
+	// LaunchReceipt carries the trusted target/window binding produced by an
+	// atomic launch turn. Receipt remains the common authoritative action fact.
+	LaunchReceipt    *LaunchReceipt   `json:"launch_receipt,omitempty"`
 	Observation      *Observation     `json:"observation,omitempty"`
 	ObservationState ObservationState `json:"observation_state"`
 	Screenshot       *MediaRef        `json:"screenshot,omitempty"`
@@ -159,6 +162,14 @@ func (r ComputerTurnResult) Validate() error {
 	}
 	if r.Receipt.Verification != r.Verification {
 		return fmt.Errorf("%w: receipt verification does not match turn", errInvalidComputerTurnResult)
+	}
+	if r.ActionKind == ActionLaunchApp {
+		if r.LaunchReceipt == nil || !r.LaunchReceipt.TargetID.valid() {
+			return fmt.Errorf("%w: launch receipt binding is required for launch turn", errInvalidComputerTurnResult)
+		}
+		if r.LaunchReceipt.Outcome != r.Outcome {
+			return fmt.Errorf("%w: launch receipt outcome does not match turn", errInvalidComputerTurnResult)
+		}
 	}
 	if err := validateTurnState(r); err != nil {
 		return err

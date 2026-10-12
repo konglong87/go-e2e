@@ -116,3 +116,90 @@ func TestToolUnknownAtomicTurnTellsModelDispatchStateAndNeverReplays(t *testing.
 		t.Fatalf("unknown dispatch guidance missing: %s", result.Content)
 	}
 }
+
+type atomicLaunchService struct {
+	*atomicTurnService
+	legacyLaunchCalls     int
+	sessionID             string
+	forceEmptyObservation bool
+}
+
+func (s *atomicLaunchService) EnsureComputerSession(context.Context, cu.SessionOwner) (string, error) {
+	return s.sessionID, nil
+}
+
+func (s *atomicLaunchService) CurrentComputerSession(context.Context, cu.SessionOwner) (string, error) {
+	return s.sessionID, nil
+}
+
+func (s *atomicLaunchService) CurrentComputerObservation(context.Context, cu.SessionOwner) (string, error) {
+	if s.forceEmptyObservation {
+		return "", nil
+	}
+	return s.observation.ID, nil
+}
+
+func (s *atomicLaunchService) LaunchTarget(context.Context, cu.SessionOwner, string, cu.TargetID) (cu.LaunchReceipt, error) {
+	s.legacyLaunchCalls++
+	return cu.LaunchReceipt{Outcome: cu.OutcomeExecuted, ErrorCode: "legacy_launch_should_not_run", CompletedAt: time.Now()}, nil
+}
+
+func atomicExecutedLaunchTurn(t *testing.T, service *atomicLaunchService) {
+	t.Helper()
+	atomicExecutedTurn(t, service.atomicTurnService)
+	service.turn.ActionKind = cu.ActionLaunchApp
+	service.turn.Receipt.BeforeObservationID = ""
+	service.turn.Receipt.RedactedActionSummary = string(cu.ActionLaunchApp)
+	service.turn.LaunchReceipt = &cu.LaunchReceipt{
+		TargetID:    cu.TargetID("workbuddy"),
+		DisplayName: "WorkBuddy",
+		BundleID:    cu.WorkBuddyBundleID,
+		Window:      cu.WindowRef{ID: "workbuddy-window", OwnerPID: 84, BundleID: cu.WorkBuddyBundleID, IsVisible: true, IsFrontmost: true},
+		Outcome:     cu.OutcomeExecuted,
+		CompletedAt: time.Now(),
+	}
+}
+
+func TestToolLaunchAppUsesOneAtomicTurnAndNeverCallsLegacyLaunch(t *testing.T) {
+	base := screenshotService(t)
+	service := &atomicLaunchService{atomicTurnService: &atomicTurnService{serviceStub: base}, sessionID: testComputerSession}
+	atomicExecutedLaunchTurn(t, service)
+
+	result := New().Run(context.Background(), json.RawMessage(`{"session_id":"computer-1","action":"launch_app","target_id":"workbuddy"}`), testContext(service))
+	if result.IsError {
+		t.Fatalf("atomic launch failed: %s", result.Content)
+	}
+	if service.legacyLaunchCalls != 0 || len(service.order) != 1 || service.order[0] != "execute_turn" {
+		t.Fatalf("launch path stitched or used legacy RPC: legacy=%d order=%v", service.legacyLaunchCalls, service.order)
+	}
+	payload := resultPayload(t, result)
+	if _, ok := payload["turn_result"]; !ok {
+		t.Fatalf("atomic launch result missing turn_result: %s", result.Content)
+	}
+	if _, ok := payload["launch_receipt"]; !ok {
+		t.Fatalf("atomic launch result missing launch_receipt: %s", result.Content)
+	}
+	if len(result.ContextMessages) != 1 {
+		t.Fatalf("atomic launch result missing screenshot: %+v", result)
+	}
+}
+
+func TestFastPathFirstObserveUsesAtomicLaunchTurnWithoutPreObserve(t *testing.T) {
+	base := screenshotService(t)
+	service := &atomicLaunchService{atomicTurnService: &atomicTurnService{serviceStub: base}, sessionID: testComputerSession}
+	service.forceEmptyObservation = true
+	atomicExecutedLaunchTurn(t, service)
+
+	tc := testContext(service)
+	tc.ComputerUseFastPath = true
+	result := New().Run(context.Background(), json.RawMessage(`{"action":"observe","target_id":"workbuddy"}`), tc)
+	if result.IsError {
+		t.Fatalf("atomic first observe failed: %s", result.Content)
+	}
+	if service.legacyLaunchCalls != 0 || len(service.order) != 1 || service.order[0] != "execute_turn" {
+		t.Fatalf("first observe used posthoc launch/observe: legacy=%d order=%v", service.legacyLaunchCalls, service.order)
+	}
+	if service.lastAction.Kind != cu.ActionLaunchApp || service.lastAction.TargetID != cu.TargetID("workbuddy") {
+		t.Fatalf("atomic launch action = %+v", service.lastAction)
+	}
+}

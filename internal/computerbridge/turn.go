@@ -82,7 +82,7 @@ func unknownTurnResult(action cu.Action) cu.ComputerTurnResult {
 		ErrorCode:             cu.ErrorCodeInputUncertain,
 		CompletedAt:           now,
 	}
-	return cu.ComputerTurnResult{
+	result := cu.ComputerTurnResult{
 		ProtocolVersion:  cu.ProtocolVersion,
 		TurnID:           uuid.NewString(),
 		SessionID:        action.SessionID,
@@ -100,6 +100,13 @@ func unknownTurnResult(action cu.Action) cu.ComputerTurnResult {
 		StartedAt:        now,
 		CompletedAt:      now,
 	}
+	if action.Kind == cu.ActionLaunchApp {
+		result.LaunchReceipt = &cu.LaunchReceipt{
+			TargetID: action.TargetID, Application: cu.ComputerApplication(action.TargetID),
+			Outcome: cu.OutcomeUnknown, ErrorCode: cu.ErrorCodeInputUncertain, CompletedAt: now,
+		}
+	}
+	return result
 }
 
 func joinTurnError(first, second error) error {

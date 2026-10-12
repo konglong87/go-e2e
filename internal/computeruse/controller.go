@@ -237,69 +237,26 @@ func (c *Controller) LaunchTarget(ctx context.Context, owner SessionOwner, id st
 	}
 	defer release()
 	started := time.Now()
-	receipt := LaunchReceipt{TargetID: targetID, Outcome: OutcomeRejected, CompletedAt: time.Now()}
-	if c.targetRegistry == nil {
-		receipt.ErrorCode = ErrorCodeUnsupportedTarget
-		return receipt, errors.New("computer target registry is unavailable")
-	}
-	target, err := c.targetRegistry.Resolve(targetID)
-	if err != nil {
-		receipt.ErrorCode = ErrorCodeUnsupportedTarget
-		return receipt, errors.New("computer target is not registered")
-	}
-	receipt.DisplayName = target.DisplayName
 	if !c.session.Approved() || c.session.State() == SessionStopped || c.session.State() == SessionFailed {
-		receipt.ErrorCode = ErrorCodeInactive
-		return receipt, errors.New("computer session is not ready")
+		return LaunchReceipt{TargetID: targetID, Outcome: OutcomeRejected, ErrorCode: ErrorCodeInactive, CompletedAt: time.Now()}, errors.New("computer session is not ready")
 	}
-	launcher, ok := c.backend.(BackendLauncher)
-	if !ok {
-		receipt.ErrorCode = ErrorCodeLaunchFailed
-		return receipt, errors.New("computer target launcher is unavailable")
+	receipt, err := c.launchRegisteredTarget(ctx, id, targetID)
+	if receipt.Outcome == OutcomeExecuted && c.runner != nil {
+		if budgetErr := c.runner.Consume(Consumption{Kind: BudgetLaunch, Duration: time.Since(started)}); budgetErr != nil {
+			c.failRun()
+			receipt.Outcome = OutcomeRejected
+			receipt.ErrorCode = ErrorCodeTimeout
+			return receipt, budgetErr
+		}
 	}
-	receipt, err = launcher.LaunchApp(ctx, id, target.Launch.ProviderKey)
-	receipt.TargetID = target.ID
-	receipt.DisplayName = target.DisplayName
-	if receipt.ErrorCode != "" {
-		receipt.ErrorCode = PublicErrorCode(receipt.ErrorCode)
-	}
-	if receipt.Outcome == OutcomeExecuted {
-		if c.runner != nil {
-			if budgetErr := c.runner.Consume(Consumption{Kind: BudgetLaunch, Duration: time.Since(started)}); budgetErr != nil {
+	if err == nil && receipt.Outcome == OutcomeExecuted && c.runner != nil {
+		from := c.runner.State()
+		if from == RunStateCreated || from == RunStateObserved {
+			err = c.runner.Transition(Transition{From: from, To: RunStateBound})
+			if err != nil {
 				c.failRun()
 				receipt.Outcome = OutcomeRejected
-				receipt.ErrorCode = ErrorCodeTimeout
-				return receipt, budgetErr
-			}
-		}
-		if target.Window.BundleID != "" && receipt.Window.BundleID != target.Window.BundleID {
-			receipt.Outcome = OutcomeRejected
-			receipt.ErrorCode = ErrorCodeTargetWindowMismatch
-			err = errors.New("computer target window does not match registry policy")
-		}
-		if target.Window.RequireVisible && !receipt.Window.IsVisible {
-			computerdiag.Append(computerdiag.GoMismatchPath, map[string]any{
-				"layer": "go_controller", "phase": "launch_require_visible", "target_id": target.ID,
-				"window_id": receipt.Window.ID, "owner_pid": receipt.Window.OwnerPID, "bundle_id": receipt.Window.BundleID,
-				"is_visible": receipt.Window.IsVisible, "is_frontmost": receipt.Window.IsFrontmost, "error_code": ErrorCodeTargetWindowMismatch,
-			})
-			receipt.Outcome = OutcomeRejected
-			receipt.ErrorCode = ErrorCodeTargetWindowMismatch
-			err = errors.New("computer target window is not visible")
-		}
-		if target.Window.RequireFrontmost && !receipt.Window.IsFrontmost {
-			receipt.Outcome = OutcomeRejected
-			receipt.ErrorCode = ErrorCodeTargetWindowMismatch
-			err = errors.New("computer target window is not frontmost")
-		}
-		if err == nil && c.runner != nil {
-			from := c.runner.State()
-			if from == RunStateCreated || from == RunStateObserved {
-				if err = c.runner.Transition(Transition{From: from, To: RunStateBound}); err != nil {
-					c.failRun()
-					receipt.Outcome = OutcomeRejected
-					receipt.ErrorCode = ErrorCodeTargetWindowMismatch
-				}
+				receipt.ErrorCode = ErrorCodeTargetWindowMismatch
 			}
 		}
 	}
@@ -496,7 +453,15 @@ func (c *Controller) ExecuteTurn(ctx context.Context, owner SessionOwner, a Acti
 		_ = c.session.RecordTurnResult(result)
 		return result, err
 	}
-	if err = c.syncObservedRun(); err != nil {
+	if a.Kind == ActionLaunchApp {
+		if err = c.ensureBoundRun(); err != nil {
+			receipt := rejectedReceipt(a, before, ErrorCodeInactive, started)
+			_ = c.session.RecordReceipt(receipt)
+			result := turnResultFromReceipt(turnID, sequence, started, a, receipt)
+			_ = c.session.RecordTurnResult(result)
+			return result, err
+		}
+	} else if err = c.syncObservedRun(); err != nil {
 		receipt := rejectedReceipt(a, before, ErrorCodeInactive, started)
 		_ = c.session.RecordReceipt(receipt)
 		result := turnResultFromReceipt(turnID, sequence, started, a, receipt)
@@ -507,6 +472,8 @@ func (c *Controller) ExecuteTurn(ctx context.Context, owner SessionOwner, a Acti
 		kind := BudgetInput
 		if a.Kind == ActionWait {
 			kind = BudgetWait
+		} else if a.Kind == ActionLaunchApp {
+			kind = BudgetLaunch
 		}
 		if err = c.runner.Consume(Consumption{Kind: kind}); err != nil {
 			c.failRun()
@@ -516,7 +483,13 @@ func (c *Controller) ExecuteTurn(ctx context.Context, owner SessionOwner, a Acti
 			_ = c.session.RecordTurnResult(result)
 			return result, err
 		}
-		if err = c.runner.Transition(Transition{From: RunStateObserved, To: RunStateExecuting}); err != nil {
+		from := c.runner.State()
+		if from != RunStateObserved && !(a.Kind == ActionLaunchApp && from == RunStateBound) {
+			err = errors.New("computer turn is not ready to execute")
+		} else {
+			err = c.runner.Transition(Transition{From: from, To: RunStateExecuting})
+		}
+		if err != nil {
 			c.failRun()
 			receipt := rejectedReceipt(a, before, ErrorCodeInactive, started)
 			_ = c.session.RecordReceipt(receipt)
@@ -527,7 +500,24 @@ func (c *Controller) ExecuteTurn(ctx context.Context, owner SessionOwner, a Acti
 	}
 
 	actionStarted := time.Now()
-	rawReceipt, backendErr := c.backend.Execute(op, a)
+	var launchReceipt *LaunchReceipt
+	var rawReceipt ActionReceipt
+	var backendErr error
+	if a.Kind == ActionLaunchApp {
+		var launch LaunchReceipt
+		launch, backendErr = c.launchRegisteredTarget(op, a.SessionID, a.TargetID)
+		if !launch.IsTerminal() {
+			launch.Outcome = OutcomeUnknown
+			launch.ErrorCode = ErrorCodeInputUncertain
+		}
+		if launch.CompletedAt.IsZero() {
+			launch.CompletedAt = time.Now()
+		}
+		launchReceipt = &launch
+		rawReceipt = actionReceiptFromLaunch(a, before, launch, backendErr, actionStarted)
+	} else {
+		rawReceipt, backendErr = c.backend.Execute(op, a)
+	}
 	receipt := normalizeTurnReceipt(a, before, rawReceipt, backendErr, actionStarted)
 	if err = c.session.RecordReceipt(receipt); err != nil {
 		c.failRun()
@@ -551,6 +541,10 @@ func (c *Controller) ExecuteTurn(ctx context.Context, owner SessionOwner, a Acti
 	}
 
 	result := turnResultFromReceipt(turnID, sequence, started, a, receipt)
+	if launchReceipt != nil {
+		launchCopy := *launchReceipt
+		result.LaunchReceipt = &launchCopy
+	}
 	var turnErr error
 	if backendErr != nil {
 		turnErr = errors.New("computer backend failed; inspect the turn receipt before continuing")
@@ -648,12 +642,101 @@ func rejectedReceipt(action Action, before Observation, code string, started tim
 	}
 }
 
+func (c *Controller) launchRegisteredTarget(ctx context.Context, sessionID string, targetID TargetID) (LaunchReceipt, error) {
+	receipt := LaunchReceipt{TargetID: targetID, Outcome: OutcomeRejected, ErrorCode: ErrorCodeLaunchFailed, CompletedAt: time.Now()}
+	if c.targetRegistry == nil {
+		receipt.ErrorCode = ErrorCodeUnsupportedTarget
+		return receipt, errors.New("computer target registry is unavailable")
+	}
+	target, err := c.targetRegistry.Resolve(targetID)
+	if err != nil {
+		receipt.ErrorCode = ErrorCodeUnsupportedTarget
+		return receipt, errors.New("computer target is not registered")
+	}
+	receipt.DisplayName = target.DisplayName
+	launcher, ok := c.backend.(BackendLauncher)
+	if !ok {
+		return receipt, errors.New("computer target launcher is unavailable")
+	}
+	receipt, err = launcher.LaunchApp(ctx, sessionID, target.Launch.ProviderKey)
+	receipt.TargetID = target.ID
+	receipt.DisplayName = target.DisplayName
+	if receipt.ErrorCode != "" {
+		receipt.ErrorCode = PublicErrorCode(receipt.ErrorCode)
+	}
+	if receipt.Outcome != OutcomeExecuted {
+		if receipt.ErrorCode == "" {
+			if receipt.Outcome == OutcomeUnknown {
+				receipt.ErrorCode = ErrorCodeInputUncertain
+			} else {
+				receipt.ErrorCode = publicErrorCode(err)
+				if receipt.ErrorCode == "" {
+					receipt.ErrorCode = ErrorCodeLaunchFailed
+				}
+			}
+		}
+		return receipt, err
+	}
+	if target.Window.BundleID != "" && receipt.Window.BundleID != target.Window.BundleID {
+		receipt.Outcome = OutcomeRejected
+		receipt.ErrorCode = ErrorCodeTargetWindowMismatch
+		err = errors.New("computer target window does not match registry policy")
+	}
+	if err == nil && target.Window.RequireVisible && !receipt.Window.IsVisible {
+		computerdiag.Append(computerdiag.GoMismatchPath, map[string]any{
+			"layer": "go_controller", "phase": "launch_require_visible", "target_id": target.ID,
+			"window_id": receipt.Window.ID, "owner_pid": receipt.Window.OwnerPID, "bundle_id": receipt.Window.BundleID,
+			"is_visible": receipt.Window.IsVisible, "is_frontmost": receipt.Window.IsFrontmost, "error_code": ErrorCodeTargetWindowMismatch,
+		})
+		receipt.Outcome = OutcomeRejected
+		receipt.ErrorCode = ErrorCodeTargetWindowMismatch
+		err = errors.New("computer target window is not visible")
+	}
+	if err == nil && target.Window.RequireFrontmost && !receipt.Window.IsFrontmost {
+		receipt.Outcome = OutcomeRejected
+		receipt.ErrorCode = ErrorCodeTargetWindowMismatch
+		err = errors.New("computer target window is not frontmost")
+	}
+	return receipt, err
+}
+
+func actionReceiptFromLaunch(action Action, before Observation, launch LaunchReceipt, backendErr error, started time.Time) ActionReceipt {
+	outcome := launch.Outcome
+	dispatch := DispatchNotStarted
+	verification := VerificationNotChecked
+	if outcome == OutcomeExecuted {
+		dispatch = DispatchComplete
+	} else if outcome == OutcomeUnknown {
+		dispatch = DispatchUnknown
+		verification = VerificationUnknown
+	}
+	if outcome == "" || !launch.IsTerminal() {
+		outcome = OutcomeUnknown
+		dispatch = DispatchUnknown
+		verification = VerificationUnknown
+	}
+	code := PublicErrorCode(launch.ErrorCode)
+	if code == "" && backendErr != nil {
+		if outcome == OutcomeUnknown {
+			code = ErrorCodeInputUncertain
+		} else {
+			code = ErrorCodeLaunchFailed
+		}
+	}
+	return ActionReceipt{
+		ActionID: action.ID, SessionID: action.SessionID, BeforeObservationID: before.ID,
+		Outcome: outcome, DispatchState: dispatch, Verification: verification,
+		RedactedActionSummary: action.RedactedSummary(), ErrorCode: code,
+		CompletedAt: time.Now(), Duration: time.Since(started),
+	}
+}
+
 func turnResultFromReceipt(turnID string, sequence uint64, started time.Time, action Action, receipt ActionReceipt) ComputerTurnResult {
 	verification := receipt.Verification
 	if verification == "" {
 		verification = VerificationNotChecked
 	}
-	return ComputerTurnResult{
+	result := ComputerTurnResult{
 		ProtocolVersion:  ProtocolVersion,
 		TurnID:           turnID,
 		SessionID:        receipt.SessionID,
@@ -672,6 +755,17 @@ func turnResultFromReceipt(turnID string, sequence uint64, started time.Time, ac
 		CompletedAt:      receipt.CompletedAt,
 		Duration:         time.Since(started),
 	}
+	if action.Kind == ActionLaunchApp {
+		result.LaunchReceipt = &LaunchReceipt{
+			TargetID:    action.TargetID,
+			Application: ComputerApplication(action.TargetID),
+			Outcome:     receipt.Outcome,
+			ErrorCode:   receipt.ErrorCode,
+			Duration:    receipt.Duration,
+			CompletedAt: receipt.CompletedAt,
+		}
+	}
+	return result
 }
 
 func normalizeTurnReceipt(action Action, before Observation, raw ActionReceipt, backendErr error, started time.Time) ActionReceipt {

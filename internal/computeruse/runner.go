@@ -330,7 +330,7 @@ func allowedTransition(from, to RunState) bool {
 	case RunStateCreated:
 		return to == RunStateBound
 	case RunStateBound:
-		return to == RunStateObserved
+		return to == RunStateObserved || to == RunStateExecuting
 	case RunStateObserved:
 		return to == RunStateBound || to == RunStateExecuting || to == RunStateCompleted
 	case RunStateExecuting:
@@ -346,7 +346,7 @@ func (r *Runner) checkPhaseStateLocked(kind BudgetKind) error {
 	allowed := false
 	switch kind {
 	case BudgetLaunch:
-		allowed = r.state == RunStateCreated || r.state == RunStateObserved
+		allowed = r.state == RunStateCreated || r.state == RunStateBound || r.state == RunStateObserved
 	case BudgetBind:
 		allowed = r.state == RunStateCreated || r.state == RunStateObserved || r.state == RunStateBound
 	case BudgetObserve:

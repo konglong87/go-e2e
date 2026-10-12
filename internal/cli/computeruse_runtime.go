@@ -181,6 +181,45 @@ func (s *trackedDesktopComputerService) bind(id string) {
 	s.mu.Unlock()
 }
 
+func (s *trackedDesktopComputerService) AtomicTurnAvailable() bool {
+	_, ok := s.desktopComputerBridge.(computeruse.TurnService)
+	return ok
+}
+
+func (s *trackedDesktopComputerService) ExecuteTurn(ctx context.Context, owner computeruse.SessionOwner, action computeruse.Action) (computeruse.ComputerTurnResult, error) {
+	s.mu.Lock()
+	if err := s.validateCaller(ctx, owner); err != nil {
+		s.mu.Unlock()
+		return computeruse.ComputerTurnResult{}, err
+	}
+	if s.closed || s.sessionID == "" || action.SessionID != s.sessionID {
+		s.mu.Unlock()
+		return computeruse.ComputerTurnResult{}, computerbridge.ErrInvalidRequest
+	}
+	s.mu.Unlock()
+	turnService, ok := s.desktopComputerBridge.(computeruse.TurnService)
+	if !ok {
+		// Never degrade an atomic provider path to Execute plus image/observe.
+		return computeruse.ComputerTurnResult{}, computerbridge.ErrRemote
+	}
+	result, err := turnService.ExecuteTurn(ctx, owner, action)
+	if result.Validate() != nil {
+		return result, computerbridge.ErrInvalidResponse
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.validateCaller(ctx, owner); err != nil {
+		return result, err
+	}
+	if result.SessionID != s.sessionID || result.ActionID != action.ID {
+		return result, computerbridge.ErrInvalidResponse
+	}
+	if result.ObservationState == computeruse.ObservationReady && result.Observation != nil {
+		s.observationID = result.Observation.ID
+	}
+	return result, err
+}
+
 func (s *trackedDesktopComputerService) Observe(ctx context.Context, owner computeruse.SessionOwner, request computeruse.ObserveRequest) (computeruse.Observation, error) {
 	s.mu.Lock()
 	err := s.validateObservation(ctx, owner, request.SessionID)
