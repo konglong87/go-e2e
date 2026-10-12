@@ -129,3 +129,24 @@ func TestHostHandlerDisallowsOtherMethodsHostsAndPaths(t *testing.T) {
 		t.Fatal("reached service")
 	}
 }
+
+type codedServerError struct{ code string }
+
+func (e codedServerError) Error() string { return "secret host detail" }
+func (e codedServerError) Code() string  { return e.code }
+
+func TestHostHandlerPreservesSanitizedControlledErrorCode(t *testing.T) {
+	s := &serverSpy{err: codedServerError{code: cu.ErrorCodeFocusChanged}}
+	h, err := NewHandler(serverTestToken, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := serverCall(h, serverLookupJSON, serverTestToken, "")
+	var out Response
+	if err := json.Unmarshal(response.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.ErrorCode != cu.ErrorCodeFocusChanged || strings.Contains(response.Body.String(), "secret host detail") {
+		t.Fatalf("response=%s", response.Body.String())
+	}
+}

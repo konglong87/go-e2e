@@ -114,8 +114,9 @@ type Request struct {
 // return both data and error, to preserve a validated, bound failure receipt.
 // Error text is untrusted and is never propagated to callers.
 type Response struct {
-	Data  json.RawMessage `json:"data,omitempty"`
-	Error string          `json:"error,omitempty"`
+	Data      json.RawMessage `json:"data,omitempty"`
+	Error     string          `json:"error,omitempty"`
+	ErrorCode string          `json:"error_code,omitempty"`
 }
 
 // SessionResponse acknowledges controls or returns a host-owned session ID.

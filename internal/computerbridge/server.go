@@ -4,6 +4,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 
@@ -58,6 +59,10 @@ func NewHandler(token string, host Host) (http.Handler, error) {
 		out := Response{}
 		if err != nil {
 			out.Error = "host operation failed"
+			var coded interface{ Code() string }
+			if errors.As(err, &coded) {
+				out.ErrorCode = cu.PublicErrorCode(coded.Code())
+			}
 		}
 		// Only a bound Execute receipt survives errors. Never return arbitrary
 		// backend strings, images from a failing reader, or partial capabilities.

@@ -613,3 +613,18 @@ func TestClientExecutePreservesControlledHostErrorCode(t *testing.T) {
 		t.Fatalf("receipt=%+v err=%v", receipt, err)
 	}
 }
+
+func TestClientObservePreservesControlledHostErrorCode(t *testing.T) {
+	client := newUnixClient(t, 0, func(w http.ResponseWriter, r *http.Request) {
+		_ = readRequest(t, r)
+		_ = json.NewEncoder(w).Encode(Response{Error: "host operation failed", ErrorCode: cu.ErrorCodeFocusChanged})
+	})
+	_, err := client.Observe(context.Background(), testOwner(), cu.ObserveRequest{SessionID: "host-session", WindowID: "window"})
+	if err == nil || !errors.Is(err, ErrRemote) {
+		t.Fatalf("observe error = %v, want remote error", err)
+	}
+	var coded interface{ Code() string }
+	if !errors.As(err, &coded) || coded.Code() != cu.ErrorCodeFocusChanged {
+		t.Fatalf("observe error = %v, want controlled code %q", err, cu.ErrorCodeFocusChanged)
+	}
+}

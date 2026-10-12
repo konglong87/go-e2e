@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	cu "github.com/konglong87/go-e2e/internal/computeruse"
 )
 
 const (
@@ -32,6 +34,21 @@ type Config struct {
 type Client struct {
 	http  *http.Client
 	token string
+}
+
+// remoteOperationError keeps a stable, public host error code across the IPC
+// boundary without exposing host error text. It unwraps to ErrRemote so legacy
+// callers retain their existing transport classification.
+type remoteOperationError struct {
+	code string
+}
+
+func (e remoteOperationError) Error() string { return "remote computer operation failed" }
+func (e remoteOperationError) Unwrap() error { return ErrRemote }
+func (e remoteOperationError) Code() string  { return e.code }
+
+func newRemoteOperationError(code string) error {
+	return remoteOperationError{code: cu.PublicErrorCode(code)}
 }
 
 var _ Service = (*Client)(nil)
@@ -126,7 +143,7 @@ func (c *Client) call(ctx context.Context, in Request) (Response, bool, error) {
 		return Response{}, true, err
 	}
 	if out.Error != "" {
-		return out, true, ErrRemote
+		return out, true, newRemoteOperationError(out.ErrorCode)
 	}
 	if len(out.Data) == 0 || string(out.Data) == "null" {
 		return Response{}, true, ErrInvalidResponse
