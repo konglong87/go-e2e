@@ -215,9 +215,22 @@ func (t Tool) launchApp(ctx context.Context, service cu.Service, owner cu.Sessio
 		payload["message"] = "computer target launch failed; inspect the launch receipt and stop"
 		return tools.Result{Content: marshal(payload), IsError: true}
 	}
-	payload["window_id"] = receipt.Window.ID
-	payload["bundle_id"] = receipt.BundleID
-	return tools.Result{Content: marshal(payload)}
+	// Launch and the first bound observation are one provider turn. A launch
+	// receipt without a screenshot creates a race in which the target can lose
+	// AX/window readiness before the next model turn. Capture failure preserves
+	// the executed launch receipt and never retries the launch.
+	params.WindowID = receipt.Window.ID
+	_, result := t.captureObservation(ctx, service, owner, params)
+	var boundPayload map[string]any
+	if err := json.Unmarshal([]byte(result.Content), &boundPayload); err != nil || boundPayload == nil {
+		boundPayload = map[string]any{"error_code": cu.ErrorCodeActionFailed, "message": "invalid launch observation result"}
+		result.IsError = true
+	}
+	boundPayload["launch_receipt"] = receipt
+	boundPayload["window_id"] = receipt.Window.ID
+	boundPayload["bundle_id"] = receipt.BundleID
+	result.Content = marshal(boundPayload)
+	return result
 }
 
 func (t Tool) observe(ctx context.Context, service cu.Service, owner cu.SessionOwner, params request, tc tools.Context) tools.Result {

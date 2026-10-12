@@ -957,6 +957,11 @@ func TestLaunchAppUsesCoordinatorAndReturnsBoundWindowReceipt(t *testing.T) {
 	if service.starts != 0 || service.launchCalls != 1 || payload.Receipt.Window.ID != "workbuddy-window" || payload.Window != "workbuddy-window" {
 		t.Fatalf("starts=%d launchCalls=%d payload=%+v", service.starts, service.launchCalls, payload)
 	}
+	if _, ok := resultPayload(t, result)["observation"]; !ok {
+		t.Fatalf("launch result did not include the authoritative observation: %s", result.Content)
+	}
+	assertImage(t, result, service.image)
+	assertServiceOrder(t, service.serviceStub, callObserve, callImagePrefix+testFreshImageID)
 }
 
 func TestLaunchAppRejectsUnknownApplicationBeforeService(t *testing.T) {
