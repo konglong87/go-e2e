@@ -86,7 +86,7 @@ enum JSONValue: Codable {
 
 enum SafetyError: String, Error {
     case invalidAction = "invalid_action", invalidEnvelope = "invalid_envelope", inactive, expired, staleObservation = "stale_observation"
-    case permissionRequired = "permission_required", focusChanged = "focus_changed", unsupportedDisplay = "unsupported_display", targetWindowMismatch = "target_window_mismatch"
+    case permissionRequired = "permission_required", focusChanged = "focus_changed", unsupportedDisplay = "unsupported_display", targetWindowMismatch = "target_window_mismatch", targetExitedAfterLaunch = "target_exited_after_launch"
     case unsupportedApplication = "unsupported_application", launchFailed = "launch_failed", launchTimeout = "launch_timeout"
     case screenshotFailed = "screenshot_failed", inputUnavailable = "input_unavailable", inputUncertain = "input_uncertain", duplicate, capacity
 }

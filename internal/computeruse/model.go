@@ -419,25 +419,26 @@ const (
 )
 
 const (
-	ErrorCodeActionFailed           = "action_failed"
-	ErrorCodeScreenshotFailed       = "screenshot_failed"
-	ErrorCodeInputUncertain         = "input_uncertain"
-	ErrorCodeSelfTarget             = "self_target"
-	ErrorCodeTargetWindowMismatch   = "target_window_mismatch"
-	ErrorCodeUnsupportedApplication = "unsupported_application" // deprecated compatibility code
-	ErrorCodeUnsupportedTarget      = "unsupported_target"
-	ErrorCodeLaunchFailed           = "launch_failed"
-	ErrorCodeLaunchTimeout          = "launch_timeout"
-	ErrorCodePermissionRequired     = "permission_required"
-	ErrorCodeFocusChanged           = "focus_changed"
-	ErrorCodeUnsupportedDisplay     = "unsupported_display"
-	ErrorCodeInvalidAction          = "invalid_action"
-	ErrorCodeInvalidBinding         = "invalid_action_binding"
-	ErrorCodeInactive               = "inactive"
-	ErrorCodeClosed                 = "closed"
-	ErrorCodeInputUnavailable       = "input_unavailable"
-	ErrorCodeTimeout                = "timeout"
-	ErrorCodeCanceled               = "canceled"
+	ErrorCodeActionFailed            = "action_failed"
+	ErrorCodeScreenshotFailed        = "screenshot_failed"
+	ErrorCodeInputUncertain          = "input_uncertain"
+	ErrorCodeSelfTarget              = "self_target"
+	ErrorCodeTargetWindowMismatch    = "target_window_mismatch"
+	ErrorCodeTargetExitedAfterLaunch = "target_exited_after_launch"
+	ErrorCodeUnsupportedApplication  = "unsupported_application" // deprecated compatibility code
+	ErrorCodeUnsupportedTarget       = "unsupported_target"
+	ErrorCodeLaunchFailed            = "launch_failed"
+	ErrorCodeLaunchTimeout           = "launch_timeout"
+	ErrorCodePermissionRequired      = "permission_required"
+	ErrorCodeFocusChanged            = "focus_changed"
+	ErrorCodeUnsupportedDisplay      = "unsupported_display"
+	ErrorCodeInvalidAction           = "invalid_action"
+	ErrorCodeInvalidBinding          = "invalid_action_binding"
+	ErrorCodeInactive                = "inactive"
+	ErrorCodeClosed                  = "closed"
+	ErrorCodeInputUnavailable        = "input_unavailable"
+	ErrorCodeTimeout                 = "timeout"
+	ErrorCodeCanceled                = "canceled"
 )
 
 // PublicErrorCode preserves only stable, non-sensitive diagnostics across the
@@ -445,7 +446,7 @@ const (
 // collapsed so private host details never reach a model or UI.
 func PublicErrorCode(code string) string {
 	switch strings.TrimSpace(code) {
-	case ErrorCodeScreenshotFailed, ErrorCodeInputUncertain, ErrorCodeSelfTarget, ErrorCodeTargetWindowMismatch, ErrorCodePermissionRequired, ErrorCodeFocusChanged,
+	case ErrorCodeScreenshotFailed, ErrorCodeInputUncertain, ErrorCodeSelfTarget, ErrorCodeTargetWindowMismatch, ErrorCodeTargetExitedAfterLaunch, ErrorCodePermissionRequired, ErrorCodeFocusChanged,
 		ErrorCodeUnsupportedDisplay, ErrorCodeInvalidAction, ErrorCodeInvalidBinding,
 		ErrorCodeInactive, ErrorCodeClosed, ErrorCodeInputUnavailable,
 		ErrorCodeUnsupportedApplication, ErrorCodeUnsupportedTarget, ErrorCodeLaunchFailed, ErrorCodeLaunchTimeout,

@@ -734,6 +734,25 @@ do {
     expect(desktop.activationCalls == 0, "lifecycle probe cannot reactivate a missing window")
 }
 
+// A bound target whose application has exited is a distinct terminal target
+// lifecycle failure. It must not be collapsed into a transient focus/window
+// mismatch, because the caller must never replay launch automatically.
+do {
+    let desktop = FakeDesktop()
+    let engine = Engine(platform: desktop)
+    let window = launchWindow()
+    desktop.launchResult = window
+    _ = engine.launchApp(request("launch_app", payload: ["target_id": .string("fixture"),
+        "display_name": .string("Fixture"), "bundle_id": .string(window.bundleID)]))
+    desktop.lifecycle = ["inventory_available": true, "window_present": false,
+        "application_running": false, "window_on_screen": false]
+    desktop.targetWindow = nil
+    let result = engine.observe(request("observe", payload: ["window_id": .string(window.id),
+        "observation_id": .string("target-exited")]))
+    expect(result.outcome == .rejected && result.error?.rawValue == "target_exited_after_launch",
+           "exited target must have a non-replayable lifecycle error")
+}
+
 // A bound target may temporarily leave the on-screen inventory while the
 // app/Space is being restored. Authorization must use the full inventory, but
 // the target identity remains exact and no alternate window is accepted.

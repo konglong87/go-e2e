@@ -45,7 +45,8 @@ final class Engine {
     }
 
     private func recordWindowMismatch(_ request: Envelope, phase: String, reason: String,
-                                      expected: NativeWindow? = nil, actual: NativeWindow? = nil) {
+                                      expected: NativeWindow? = nil, actual: NativeWindow? = nil,
+                                      error: SafetyError = .targetWindowMismatch) {
         var fields: [String: Any] = ["reason": reason]
         if let expected {
             fields["expected_window"] = expected.diagnosticFields
@@ -53,7 +54,7 @@ final class Engine {
         }
         if let actual { fields["actual_window"] = actual.diagnosticFields }
         if let expected, let actual { fields["identity_diffs"] = expected.identityDiffs(actual) }
-        record(request, phase: phase, error: .targetWindowMismatch, fields: fields)
+        record(request, phase: phase, error: error, fields: fields)
     }
 
     func requestPermissions() -> JSONValue {
@@ -154,6 +155,14 @@ final class Engine {
             return current
         } catch let error as SafetyError {
             if error == .unsupportedDisplay {
+                let lifecycle = platform.windowDiagnostics(bound)
+                let applicationRunning = lifecycle["application_running"] as? Bool
+                let windowPresent = lifecycle["window_present"] as? Bool
+                if applicationRunning == false && windowPresent == false {
+                    recordWindowMismatch(request, phase: "authorized_window", reason: "target_exited_after_launch",
+                                          expected: bound, error: .targetExitedAfterLaunch)
+                    throw SafetyError.targetExitedAfterLaunch
+                }
                 recordWindowMismatch(request, phase: "authorized_window", reason: "window_unavailable", expected: bound)
             }
             throw error == .unsupportedDisplay ? SafetyError.targetWindowMismatch : error
