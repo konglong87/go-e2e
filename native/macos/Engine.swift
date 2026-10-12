@@ -105,6 +105,13 @@ final class Engine {
                 recordWindowMismatch(request, phase: "launch_bundle_validation", reason: "bundle_id_mismatch", actual: window)
                 throw SafetyError.targetWindowMismatch
             }
+            let accessibility = platform.validateWindowAccessibility(window) { self.state.permitted(request) }
+            guard accessibility.success else {
+                record(request, phase: "launch_readiness", error: .launchFailed,
+                       fields: accessibility.diagnosticFields.merging(["reason": accessibility.reason,
+                                                                        "window": window.diagnosticFields]) { _, new in new })
+                throw SafetyError.launchFailed
+            }
             try state.bindTarget(window, expectedBundleID: target.bundleID, for: request)
             record(request, phase: "launch_result", fields: ["result": "success", "window": window.diagnosticFields])
             return ActionResult(outcome: .executed, payload: .object([

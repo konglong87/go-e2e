@@ -11,6 +11,7 @@ protocol DesktopPlatform {
     func windows() throws -> [NativeWindow]
     func allWindows() throws -> [NativeWindow]
     func windowDiagnostics(_ target: NativeWindow) -> [String: Any]
+    func validateWindowAccessibility(_ target: NativeWindow, permitted: () -> Bool) -> AccessibilityWindowActivationResult
     func windowGeometry(_ id: String) throws -> DisplayGeometry
     func launchApplication(bundleID: String, permitted: () -> Bool) throws -> NativeWindow
     func activateWindow(_ id: String, permitted: () -> Bool) -> Bool
@@ -35,6 +36,9 @@ extension DesktopPlatform {
     func windows() throws -> [NativeWindow] { [] }
     func allWindows() throws -> [NativeWindow] { try windows() }
     func windowDiagnostics(_ target: NativeWindow) -> [String: Any] { [:] }
+    func validateWindowAccessibility(_ target: NativeWindow, permitted: () -> Bool) -> AccessibilityWindowActivationResult {
+        AccessibilityWindowActivationResult(success: true, reason: "", axTrusted: true, axWindowCount: 0, geometryMatchCount: 0)
+    }
     func windowGeometry(_ id: String) throws -> DisplayGeometry { throw SafetyError.unsupportedDisplay }
     func launchApplication(bundleID: String, permitted: () -> Bool) throws -> NativeWindow { throw SafetyError.launchFailed }
     func activateWindow(_ id: String, permitted: () -> Bool) -> Bool { false }
@@ -48,6 +52,11 @@ struct MacDesktop: DesktopPlatform {
     init(mouseBroker: MouseButtonClient? = nil, diagnostic: @escaping ([String: Any]) -> Void = { _ in }) {
         self.mouseBroker = mouseBroker
         self.diagnostic = diagnostic
+    }
+    func validateWindowAccessibility(_ target: NativeWindow, permitted: () -> Bool) -> AccessibilityWindowActivationResult {
+        AccessibilityWindowActivator.validate(target, permitted: permitted) {
+            self.activeWindowID() == target.id
+        }
     }
     func supportsDrag() -> Bool { mouseBroker != nil }
 

@@ -33,7 +33,14 @@ final class FakeDesktop: DesktopPlatform {
     var focusHook: (() -> Void)?
     var lifecycle: [String: Any] = [:]
     var lifecycleReads = 0
+    var accessibilityReady = true
     func windowDiagnostics(_ target: NativeWindow) -> [String: Any] { lifecycleReads += 1; return lifecycle }
+    func validateWindowAccessibility(_ target: NativeWindow, permitted: () -> Bool) -> AccessibilityWindowActivationResult {
+        if accessibilityReady {
+            return AccessibilityWindowActivationResult(success: true, reason: "", axTrusted: true, axWindowCount: 1, geometryMatchCount: 1)
+        }
+        return AccessibilityWindowActivationResult(success: false, reason: "ax_window_inventory_failed", axTrusted: true, axWindowCount: 0, geometryMatchCount: 0)
+    }
     func geometry() throws -> DisplayGeometry { if failGeometry { throw SafetyError.unsupportedDisplay }; return display }
     func geometries() throws -> [DisplayGeometry] { if failGeometry { throw SafetyError.unsupportedDisplay }; return [display] + extraDisplays }
     func windows() throws -> [NativeWindow] { onScreenWindows ? (targetWindow.map { [$0] } ?? []) : [] }
@@ -119,6 +126,19 @@ do {
     ]))
     expect(malformed.outcome == .rejected && malformed.error == .unsupportedApplication, "launch rejects incomplete trusted target descriptor")
     expect(desktop.launchCalls == 0, "model bundle override never reaches platform launcher")
+}
+
+// A visible, pixel-ready window is not enough to authorize a launch. The
+// target AX window inventory must also be readable before launch is reported
+// executed; otherwise the next provider turn would receive a false receipt.
+do {
+    let desktop = FakeDesktop()
+    desktop.accessibilityReady = false
+    desktop.launchResult = launchWindow()
+    let engine = Engine(platform: desktop)
+    let launched = engine.launchApp(request("launch_app", payload: ["target_id": .string("workbuddy"), "display_name": .string(workBuddyAppName), "bundle_id": .string(workBuddyBundleID), "generation": .number(0)]))
+    expect(launched.outcome == .rejected && launched.error == .launchFailed,
+           "launch rejects a window whose AX inventory is unavailable")
 }
 
 // A successful launch returns an independent receipt payload and stores the
