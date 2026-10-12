@@ -1003,9 +1003,10 @@ def validate_actions(
         raise AcceptanceError("window binding", "launch receipt did not include a window_id")
 
     post_launch = actions[launch_index + 1 :]
-    if not implicit_launch and not any(item.get("action") == "observe" for item in post_launch):
+    atomic_launch = bool(launch.get("computer_observation"))
+    if not implicit_launch and not atomic_launch and not any(item.get("action") == "observe" for item in post_launch):
         raise AcceptanceError("content readiness", "no target-window observation followed launch_app")
-    if implicit_launch and not launch.get("computer_observation"):
+    if (implicit_launch or atomic_launch) and not launch.get("computer_observation"):
         raise AcceptanceError("content readiness", "atomic launch/bind result had no target observation")
     type_items = [item for item in post_launch if item.get("action") == "type"]
     if len(type_items) != 1:
@@ -1050,7 +1051,7 @@ def validate_actions(
         raise AcceptanceError("reply wait", f"wait did not produce a saved reply observation screenshot{invalid_detail}")
     return {
         "target_id": launch_target,
-        "launch_mode": "atomic_observe" if implicit_launch else "launch_app",
+        "launch_mode": "atomic_observe" if implicit_launch else ("atomic_launch" if atomic_launch else "launch_app"),
         "bundle_id": launch_bundle or TARGET_BUNDLE_ID,
         "window_id": launch_window,
         "action_count": len(actions),
@@ -1178,7 +1179,7 @@ def run_acceptance(
     prompt = (
         "请只使用 ComputerUse 完成这个真实桌面闭环，并在 120 秒内结束：目标应用使用通用 target_id=workbuddy，"
         "WorkBuddy 当前未启动。第一步必须直接使用 action=launch_app、target_id=workbuddy 启动目标，禁止先 observe 当前前台应用；"
-        "launch_app 必须返回 WorkBuddy 的 launch_receipt 和绑定窗口，然后只 observe 这个绑定的 target/window。必须等待内容 ready，不能只因为窗口出现就操作；"
+        "launch_app 会在同一个 ComputerUse 调用中完成绑定并尽量返回 authoritative observation+screenshot；如果返回了 observation，就不要重复 observe，直接使用它。只有 launch_app 没有返回 observation 时，才 observe 这个绑定的 target/window。必须等待内容 ready，不能只因为窗口出现就操作；"
         "如果白屏，最多等待 12 秒并重新 observe，仍白屏就 stop。内容 ready 后点击目标应用的新建会话或新建任务（如果已经在新建页面则跳过），"
         "使用每个成功输入动作返回的最新 observation，不要无理由重复 observe；定位输入框。"
         "注意：fixture 可能恢复上一次运行的旧草稿，甚至已经显示 1+1=2；任何 click 前已有文字都不算本次输入，"

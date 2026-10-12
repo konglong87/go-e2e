@@ -242,6 +242,23 @@ class WrapperUnitTests(unittest.TestCase):
         self.assertEqual(result["launch_mode"], "launch_app")
         self.assertEqual(result["window_id"], "19988")
 
+    def test_action_validation_accepts_atomic_launch_observation_without_followup_observe(self):
+        actions = [
+            {"action": "launch_app", "is_error": False, "outcome": "executed",
+             "target_id": "workbuddy", "bundle_id": MODULE.TARGET_BUNDLE_ID, "window_id": "19988",
+             "computer_observation": {"observation_id": "launch-observation", "media_type": "image/png"}},
+            {"action": "click", "is_error": False, "bundle_id": MODULE.TARGET_BUNDLE_ID, "window_id": "19988"},
+            {"action": "hotkey", "is_error": False, "bundle_id": MODULE.TARGET_BUNDLE_ID, "window_id": "19988"},
+            {"action": "type", "is_error": False, "bundle_id": MODULE.TARGET_BUNDLE_ID, "window_id": "19988", "text_length": 5},
+            {"action": "click", "is_error": False, "bundle_id": MODULE.TARGET_BUNDLE_ID, "window_id": "19988"},
+            {"action": "wait", "is_error": False, "bundle_id": MODULE.TARGET_BUNDLE_ID, "window_id": "19988",
+             "computer_observation": {"observation_id": "reply-observation", "media_type": "image/png"}},
+            {"action": "stop", "is_error": False, "bundle_id": MODULE.TARGET_BUNDLE_ID, "window_id": "19988"},
+        ]
+        result = MODULE.validate_actions(actions, {"reply-observation": "reply.png"}, "stopped")
+        self.assertEqual(result["launch_mode"], "atomic_launch")
+        self.assertEqual(result["window_id"], "19988")
+
     def test_action_validation_rejects_control_window(self):
         actions = [
             {"tool_id": "1", "action": "observe", "is_error": False, "computer_observation": {"observation_id": "o1"}},
