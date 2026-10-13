@@ -21,6 +21,11 @@
 - 实际结果、期望结果和相关日志；
 - 如果是 UI 或安装问题，附上脱敏截图和完整错误文本。
 
+## 当前公开讨论
+
+- [中文公开发布文章与讨论](https://github.com/konglong87/go-e2e/discussions/6)
+- [Show and Tell：英文发布与首次运行反馈](https://github.com/konglong87/go-e2e/discussions/5)
+
 ## 第一次运行反馈
 
 如果你刚完成安装或第一次任务，欢迎提交 [First-run feedback](https://github.com/konglong87/go-e2e/issues/new?template=first_run_feedback.md)，或在 [Show and Tell Discussions](https://github.com/konglong87/go-e2e/discussions/categories/show-and-tell) 分享：
