@@ -809,3 +809,19 @@ func TestBackendAmbiguousLaunchNeverBecomesNotDispatched(t *testing.T) {
 		})
 	}
 }
+
+func TestBackendStopAcknowledgesQuarantinedHelperTermination(t *testing.T) {
+	backend := newTestBackend(t, "launch-unknown", time.Second, "")
+	if _, err := backend.LaunchApp(context.Background(), "session-1", cu.WorkBuddyBundleID); err == nil {
+		t.Fatal("fixture did not quarantine uncertain launch")
+	}
+	if err := backend.Stop(context.Background()); err != nil {
+		t.Fatalf("Stop lost legal acknowledgement after known helper quarantine: %v", err)
+	}
+	if err := backend.process.Wait(context.Background()); err != nil {
+		t.Fatal("quarantined helper survived acknowledged Stop")
+	}
+	if err := backend.Resume(context.Background()); err == nil {
+		t.Fatal("Stop restored failed input authority")
+	}
+}

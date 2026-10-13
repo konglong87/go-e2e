@@ -910,6 +910,7 @@ func (b *Backend) control(ctx context.Context, command string) error {
 		b.mu.Unlock()
 		return nil
 	}
+	quarantined := b.failed
 	b.mouseBroker.revoke()
 	b.epoch++
 	epoch := b.epoch
@@ -924,6 +925,12 @@ func (b *Backend) control(ctx context.Context, command string) error {
 	b.mu.Unlock()
 	ctx, cancel := context.WithTimeout(ctx, native.ShutdownGrace)
 	defer cancel()
+	if command == commandStop && quarantined {
+		// Quarantine already revoked/released host input and aborted this
+		// exact helper. A dead transport cannot ACK another Stop; confirm
+		// termination instead, never restore authority or replay anything.
+		return b.process.Wait(ctx)
+	}
 	_, err := b.request(ctx, command, "", "", map[string]any{"generation": epoch})
 	b.mu.Lock()
 	if command == commandResume && err == nil && b.epoch == epoch && !b.stopped && !b.closed {
