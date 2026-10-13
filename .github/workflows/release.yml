@@ -472,6 +472,14 @@ jobs:
             Start-Sleep -Seconds 5
             if ($app.HasExited) { throw "Published desktop app exited during launch acceptance" }
             Stop-Process -Id $app.Id -Force
+            Start-Sleep -Seconds 2
+            # The desktop host may leave the bundled sidecar alive after the
+            # parent window exits. Stop only the test-owned process before the
+            # uninstaller runs so Windows does not leave a locked payload behind.
+            $sidecarPath = (Resolve-Path (Join-Path $installDir "go-e2e.exe")).Path
+            Get-CimInstance Win32_Process |
+              Where-Object { $_.ExecutablePath -eq $sidecarPath } |
+              ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
           }
           finally {
             $uninstaller = Join-Path $installDir "uninstall.exe"

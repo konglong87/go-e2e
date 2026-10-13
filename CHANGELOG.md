@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.3.4 — 2026-10-13
+
+### Public release reliability
+
+- 发布验收在卸载前清理由桌面 Host 启动的测试进程，避免 Windows 锁定 sidecar 导致卸载残留。
+
 ## v0.3.3 — 2026-10-13
 
 ### Public release reliability
