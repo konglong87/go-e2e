@@ -313,3 +313,22 @@ func TestAcceptanceReturnsAtomicWaitWithSameTurnPNG(t *testing.T) {
 		t.Fatal("acceptance replayed completed wait")
 	}
 }
+
+func TestAcceptanceAtomicLaunchUsesControllerRegistryGate(t *testing.T) {
+	m, _ := testComputerManager()
+	defer func() { _ = m.close(context.Background()) }()
+	ctx := context.Background()
+	out, err := dispatchAcceptance(ctx, ctx, m, acceptanceRequest{Op: "start", Approved: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionID := out.(ComputerSessionDTO).ID
+	// This backend cannot launch, but the controller must return an authoritative
+	// rejected launch turn, not silently route to legacy launch/observe calls.
+	out, _ = dispatchAcceptance(ctx, ctx, m, acceptanceRequest{Op: computerbridge.OpExecuteTurn, SessionID: sessionID,
+		Action: &cu.Action{ID: "atomic-launch", SessionID: sessionID, Kind: cu.ActionLaunchApp, TargetID: cu.TargetID("workbuddy")}})
+	response, ok := out.(computerbridge.ExecuteTurnResponse)
+	if !ok || response.Result.Validate() != nil || response.Result.LaunchReceipt == nil || response.Result.Outcome != cu.OutcomeRejected {
+		t.Fatal("tagged observer rejected atomic launch before the authoritative registry/turn gate")
+	}
+}

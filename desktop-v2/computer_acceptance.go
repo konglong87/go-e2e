@@ -223,8 +223,9 @@ func dispatchAcceptance(hostCtx, ctx context.Context, m *computerManager, r acce
 			if r.Action == nil || r.Action.SessionID != r.SessionID {
 				return nil, errors.New("action/session binding required")
 			}
-			if !r.Action.Kind.IsInput() && r.Action.Kind != cu.ActionWait {
-				return nil, errors.New("input or wait action required")
+			atomicLaunch := r.Op == computerbridge.OpExecuteTurn && r.Action.Kind == cu.ActionLaunchApp
+			if !r.Action.Kind.IsInput() && r.Action.Kind != cu.ActionWait && !atomicLaunch {
+				return nil, errors.New("input, wait, or atomic launch action required")
 			}
 			if r.Op == computerbridge.OpExecuteTurn {
 				// The observer gets the committed atomic result and its already
