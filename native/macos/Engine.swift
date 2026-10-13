@@ -97,10 +97,12 @@ final class Engine {
         return (id, displayName, bundleID)
     }
     func launchApp(_ request: Envelope) -> ActionResult {
+        var launchAcknowledged = false
         do {
             let target = try requestedTarget(request.payload)
             try state.beginControl(request)
             let window = try platform.launchApplication(bundleID: target.bundleID) { self.state.permitted(request) }
+            launchAcknowledged = true
             guard window.bundleID == target.bundleID else {
                 recordWindowMismatch(request, phase: "launch_bundle_validation", reason: "bundle_id_mismatch", actual: window)
                 throw SafetyError.targetWindowMismatch
@@ -122,9 +124,11 @@ final class Engine {
                 "window": window.json
             ]), error: nil)
         } catch {
-            let safetyError = error as? SafetyError ?? .launchFailed
+            let operationError = error as? LaunchOperationError
+            let safetyError = operationError?.origin ?? (error as? SafetyError ?? .launchFailed)
             record(request, phase: "launch_result", error: safetyError, fields: ["result": "error"])
-            if safetyError == .inputUncertain {
+            if launchAcknowledged || operationError != nil || safetyError == .inputUncertain {
+                state.end()
                 return ActionResult(outcome: .unknown, payload: .object([:]), error: safetyError, dispatchState: .unknown)
             }
             return ActionResult(outcome: .rejected, payload: .object([:]), error: safetyError)

@@ -498,6 +498,9 @@ func (b *Backend) LaunchApp(ctx context.Context, sessionID, providerKey string) 
 			// acknowledgement is never proof the application was not started.
 			receipt.Outcome = cu.OutcomeUnknown
 			receipt.ErrorCode = cu.ErrorCodeInputUncertain
+			if response.ErrorCode != "" {
+				receipt.ErrorCode = cu.PublicErrorCode(response.ErrorCode)
+			}
 			b.invalidate()
 		} else if knownRejection {
 			receipt.ErrorCode = cu.PublicErrorCode(rejected.Code())

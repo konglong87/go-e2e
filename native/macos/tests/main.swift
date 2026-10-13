@@ -14,6 +14,7 @@ final class FakeDesktop: DesktopPlatform {
     var selectedWindowID: String?
     var launchResult: NativeWindow?
     var launchError: SafetyError?
+    var launchErrorMayHaveRun = false
     var launchCalls = 0
     var activationCalls = 0
     var activationFailuresRemaining = 0
@@ -57,7 +58,10 @@ final class FakeDesktop: DesktopPlatform {
         launchCalls += 1
         guard permitted() else { throw SafetyError.inactive }
         guard bundleID.split(separator: ".").count >= 2 else { throw SafetyError.unsupportedApplication }
-        if let launchError { throw launchError }
+        if let launchError {
+            if launchErrorMayHaveRun { throw LaunchOperationError(origin: launchError) }
+            throw launchError
+        }
         guard let launchResult else { throw SafetyError.launchTimeout }
         targetWindow = launchResult
         selectedWindowID = launchResult.id
@@ -158,8 +162,8 @@ do {
     desktop.launchResult = launchWindow()
     let engine = Engine(platform: desktop)
     let launched = engine.launchApp(request("launch_app", payload: ["target_id": .string("workbuddy"), "display_name": .string(workBuddyAppName), "bundle_id": .string(workBuddyBundleID), "generation": .number(0)]))
-    expect(launched.outcome == .rejected && launched.error == .launchFailed,
-           "launch rejects a window whose AX inventory is unavailable")
+    expect(launched.outcome == .unknown && launched.dispatchState == .unknown && launched.error == .launchFailed,
+           "launched app with unavailable AX binding remains unknown")
 }
 
 // A successful launch returns an independent receipt payload and stores the
@@ -212,6 +216,19 @@ do {
         "display_name": .string(workBuddyAppName), "bundle_id": .string(workBuddyBundleID), "generation": .number(0)]))
     expect(result.outcome == .unknown && result.dispatchState == .unknown && result.error == .inputUncertain,
            "ambiguous native launch never becomes not dispatched")
+}
+
+// A launch callback/binding failure after the application-open dispatch is
+// uncertain, even if the originating error is launch_timeout.
+do {
+    let desktop = FakeDesktop()
+    desktop.launchError = .launchTimeout
+    desktop.launchErrorMayHaveRun = true
+    let engine = Engine(platform: desktop)
+    let result = engine.launchApp(request("launch_app", payload: ["target_id": .string("workbuddy"),
+        "display_name": .string(workBuddyAppName), "bundle_id": .string(workBuddyBundleID), "generation": .number(0)]))
+    expect(result.outcome == .unknown && result.error == .launchTimeout,
+           "post-dispatch launch timeout must remain unknown with its origin code")
 }
 
 // A launch that never produces a visible Window Server target is a controlled

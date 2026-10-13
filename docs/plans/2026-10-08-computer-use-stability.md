@@ -842,3 +842,16 @@ It does not call legacy execute/image or add posthoc observe. A failing tagged
 regression pins receipt/observation/PNG consistency and duplicate rejection.
 This enables a no-model passive-wait native smoke before any further model gate.
 Focused Go, tagged desktop/race, native safety and Python acceptance tests pass.
+
+### Phase update — application-open dispatch precedes window binding — 2026-10-13
+
+A launch callback timeout or AX/window binding failure can occur after AppKit
+already opened or activated the application. Platform launch now marks that
+side-effect boundary and propagates a structured LaunchOperationError with its
+original public error. Engine returns unknown/unknown and ends authority for
+these late failures; errors before dispatch still reject. The Go launch adapter
+preserves the origin code (for example launch_timeout) while retaining unknown
+outcome and preventing a second dispatch. Native fake regression distinguishes
+pre-dispatch controlled timeout from post-dispatch timeout, and existing
+unavailable-AX coverage now correctly checks unknown rather than not_started.
+This is contract hardening, not a newly repeated model acceptance.

@@ -198,10 +198,21 @@ struct MacDesktop: DesktopPlatform {
     }
 
     func launchApplication(bundleID: String, permitted: () -> Bool) throws -> NativeWindow {
+        var dispatched = false
+        do {
+            return try launchApplicationAndBind(bundleID: bundleID, permitted: permitted) { dispatched = true }
+        } catch {
+            if dispatched { throw LaunchOperationError(origin: error as? SafetyError ?? .launchFailed) }
+            throw error
+        }
+    }
+
+    private func launchApplicationAndBind(bundleID: String, permitted: () -> Bool, willDispatch: () -> Void) throws -> NativeWindow {
         guard permitted() else { throw SafetyError.inactive }
 
         do {
             if let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first {
+                willDispatch()
                 _ = running.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
             } else {
                 guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
@@ -214,6 +225,7 @@ struct MacDesktop: DesktopPlatform {
                 configuration.hides = false
                 let completion = DispatchSemaphore(value: 0)
                 var launchError: Error?
+                willDispatch()
                 NSWorkspace.shared.openApplication(at: url, configuration: configuration) { _, error in
                     launchError = error
                     completion.signal()

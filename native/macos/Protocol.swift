@@ -91,6 +91,12 @@ enum SafetyError: String, Error {
     case screenshotFailed = "screenshot_failed", inputUnavailable = "input_unavailable", inputUncertain = "input_uncertain", duplicate, capacity
 }
 
+// Origin is retained separately from the fact that application-open/activation
+// dispatch already occurred. A late timeout must never mean not_started.
+struct LaunchOperationError: Error {
+    let origin: SafetyError
+}
+
 // FileHandle reads may be short; prefix and body both require read-exactly.
 func readExactly(_ count: Int, from handle: FileHandle) -> Data? {
     var result = Data()
