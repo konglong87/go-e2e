@@ -2,6 +2,13 @@
 
 这里是 go-e2e 的文档入口。根目录只保留稳定入口和生成文件；专题文档按域放在子目录中，避免顶层 `docs/` 继续堆积。
 
+## 公告与传播
+
+| 内容 | 入口 |
+| --- | --- |
+| go-e2e 公开发布文章 | [2026-10-13 Public Release](announcements/2026-10-13-public-release.md) |
+| Show HN / Reddit 发帖草稿 | [Launch draft](announcements/2026-10-13-show-hn.md) |
+
 ## 面向新用户的入口
 
 | 我想做什么 | 推荐阅读 |

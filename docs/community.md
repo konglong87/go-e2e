@@ -21,6 +21,18 @@
 - 实际结果、期望结果和相关日志；
 - 如果是 UI 或安装问题，附上脱敏截图和完整错误文本。
 
+## 第一次运行反馈
+
+如果你刚完成安装或第一次任务，欢迎提交 [First-run feedback](https://github.com/konglong87/go-e2e/issues/new?template=first_run_feedback.md)，或在 [Show and Tell Discussions](https://github.com/konglong87/go-e2e/discussions/categories/show-and-tell) 分享：
+
+- 使用的平台和入口；
+- 使用的 Provider 协议；
+- 从下载到第一个有效结果用了多久；
+- 第一个令人困惑或阻塞的步骤；
+- 你希望下一版优先改进什么。
+
+不要提交 API Key、Cookie、内部 URL、私人路径或真实用户数据。
+
 ## 第一次贡献从哪里开始？
 
 优先查看带有 `good first issue`、`help wanted`、`documentation` 和 `provider` 标签的 Issue。
