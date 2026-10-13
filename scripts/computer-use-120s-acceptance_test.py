@@ -581,5 +581,18 @@ class AsyncDeadlineTests(unittest.TestCase):
             self.assertNotIn("auth-token", (Path(directory) / "conversation-trace.json").read_text())
 
 
+class DesktopBuildCodeSignatureTests(unittest.TestCase):
+    def test_macos_embedded_executables_are_unlinked_before_replacement(self):
+        build_script = (ROOT / "scripts/build-desktop-v2.sh").read_text(encoding="utf-8")
+        helper_script = (ROOT / "scripts/build-computer-helper-macos.sh").read_text(encoding="utf-8")
+        service_rm = 'rm -f "${APP_BIN}/go-e2e"'
+        service_cp = 'cp "${DESKTOP_DIR}/go-e2e" "${APP_BIN}/go-e2e"'
+        helper_rm = 'rm -f "$OUTPUT"'
+        helper_compile = ' -o "$OUTPUT"'
+        self.assertIn(service_rm, build_script)
+        self.assertLess(build_script.index(service_rm), build_script.index(service_cp))
+        self.assertIn(helper_rm, helper_script)
+        self.assertLess(helper_script.index(helper_rm), helper_script.index(helper_compile))
+
 if __name__ == "__main__":
     unittest.main()

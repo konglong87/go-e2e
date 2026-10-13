@@ -4,6 +4,9 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUTPUT="${1:-$ROOT_DIR/desktop-v2/build/bin/computer-helper-macos}"
 mkdir -p "$(dirname "$OUTPUT")"
+# Compile to a fresh inode; replacing a signed Mach-O in place can preserve a
+# stale macOS code-signature pager and trigger CODESIGNING/Invalid Page later.
+rm -f "$OUTPUT"
 case "${MACOS_ARCH:-$(uname -m)}" in
   amd64) SWIFT_ARCH="x86_64" ;;
   arm64) SWIFT_ARCH="arm64" ;;

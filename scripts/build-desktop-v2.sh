@@ -37,6 +37,10 @@ macos_codesign() {
   codesign --force --identifier "com.wails.go-e2e" --sign - --requirements "${MACOS_ADHOC_DESIGNATED_REQUIREMENT}" --timestamp=none "${target}"
 }
 if [[ -d "${APP_BIN}" ]]; then
+  # Unlink before replacing embedded executables. Reusing an inode can leave
+  # macOS's code-signature pager with stale page hashes and later kill the
+  # long-lived local server with CODESIGNING/Invalid Page.
+  rm -f "${APP_BIN}/go-e2e"
   cp "${DESKTOP_DIR}/go-e2e" "${APP_BIN}/go-e2e"
   rm -f "${APP_BIN}/golang-cc"
 
