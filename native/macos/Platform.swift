@@ -14,7 +14,7 @@ protocol DesktopPlatform {
     func validateWindowAccessibility(_ target: NativeWindow, permitted: () -> Bool) -> AccessibilityWindowActivationResult
     func windowGeometry(_ id: String) throws -> DisplayGeometry
     func launchApplication(bundleID: String, permitted: () -> Bool) throws -> NativeWindow
-    func activateWindow(_ id: String, permitted: () -> Bool) -> Bool
+    func activateWindow(_ target: NativeWindow, permitted: () -> Bool) -> AccessibilityWindowActivationResult
     func activeWindowID() -> String?
     func captureAllowed() -> Bool
     func inputAllowed() -> Bool
@@ -41,7 +41,9 @@ extension DesktopPlatform {
     }
     func windowGeometry(_ id: String) throws -> DisplayGeometry { throw SafetyError.unsupportedDisplay }
     func launchApplication(bundleID: String, permitted: () -> Bool) throws -> NativeWindow { throw SafetyError.launchFailed }
-    func activateWindow(_ id: String, permitted: () -> Bool) -> Bool { false }
+    func activateWindow(_ target: NativeWindow, permitted: () -> Bool) -> AccessibilityWindowActivationResult {
+        AccessibilityWindowActivationResult(success: false, reason: "activation_unavailable", axTrusted: false, axWindowCount: 0, geometryMatchCount: 0)
+    }
     func activeWindowID() -> String? { nil }
 }
 
@@ -228,6 +230,7 @@ struct MacDesktop: DesktopPlatform {
         let deadline = ProcessInfo.processInfo.systemUptime + appLaunchTimeoutSeconds
         var lastInventory = ""
         var stability = LaunchWindowStability()
+        var activationDispatched = Set<String>()
         var ambiguous = false
         while ProcessInfo.processInfo.systemUptime < deadline {
             guard permitted() else { throw SafetyError.inactive }
@@ -251,9 +254,12 @@ struct MacDesktop: DesktopPlatform {
                 // A temporary frontmost splash can cover a rendered main
                 // window. Select only an unambiguous ready window and raise it
                 // during launch, never while authorizing input/evidence.
-                if let candidate, !candidate.isFrontmost {
+                if let candidate, !candidate.isFrontmost, !activationDispatched.contains(candidate.id) {
                     activationAttempted = true
-                    activationSucceeded = activateWindow(candidate.id, permitted: permitted)
+                    let activation = activateWindow(candidate, permitted: permitted)
+                    activationSucceeded = activation.success
+                    if activation.actionMayHaveRun { activationDispatched.insert(candidate.id) }
+                    if !activation.success && activation.actionMayHaveRun { throw SafetyError.inputUncertain }
                 }
                 let confirmed = candidate?.isFrontmost == true ? candidate : nil
                 let failureReason = LaunchBindingFailureReason.classify(
@@ -287,7 +293,7 @@ struct MacDesktop: DesktopPlatform {
                 }
                 ambiguous = candidate == nil && readyCandidates.count > 1
             } catch let error as SafetyError {
-                if error == .targetWindowMismatch { throw error }
+                if error == .targetWindowMismatch || error == .inputUncertain { throw error }
             } catch {
                 // Window Server inventory can be briefly unavailable during launch.
             }
@@ -296,11 +302,15 @@ struct MacDesktop: DesktopPlatform {
         throw ambiguous ? SafetyError.targetWindowMismatch : SafetyError.launchTimeout
     }
 
-    func activateWindow(_ id: String, permitted: () -> Bool) -> Bool {
-        guard permitted() else { return false }
+    func activateWindow(_ target: NativeWindow, permitted: () -> Bool) -> AccessibilityWindowActivationResult {
+        let id = target.id
+        func beforeDispatchFailure(_ reason: String) -> AccessibilityWindowActivationResult {
+            AccessibilityWindowActivationResult(success: false, reason: reason, axTrusted: AXIsProcessTrusted(), axWindowCount: 0, geometryMatchCount: 0)
+        }
+        guard permitted() else { return beforeDispatchFailure("activation_not_permitted") }
         let list: [NativeWindow]
-        do { list = try allWindows() } catch { return false }
-        guard let window = list.first(where: { $0.id == id }), window.ownerPID > 0 else { return false }
+        do { list = try allWindows() } catch { return beforeDispatchFailure("window_inventory_unavailable") }
+        guard let window = list.first(where: { $0.id == id }), window.ownerPID > 0, window.matchesIdentity(target) else { return beforeDispatchFailure("target_window_unavailable") }
         if focus() == window.ownerPID && (window.isFrontmost || activeWindowID() == id) {
             diagnostic([
                 "phase": "window_activation",
@@ -309,7 +319,7 @@ struct MacDesktop: DesktopPlatform {
                 "activation_succeeded": true,
                 "activation_failure_reason": "already_frontmost",
             ])
-            return true
+            return AccessibilityWindowActivationResult(success: true, reason: "already_frontmost", axTrusted: AXIsProcessTrusted(), axWindowCount: 0, geometryMatchCount: 0)
         }
         let result = AccessibilityWindowActivator.raiseDetailed(window, permitted: permitted) {
             guard let current = try? self.allWindows().first(where: { $0.id == id }) else { return false }
@@ -322,7 +332,7 @@ struct MacDesktop: DesktopPlatform {
         ]
         for (key, value) in result.diagnosticFields { fields[key] = value }
         diagnostic(fields)
-        return result.success
+        return result
     }
 
     func activeWindowID() -> String? {

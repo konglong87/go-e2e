@@ -805,3 +805,23 @@ These are deterministic short-term P0-E boundary fixes, not proof of survival
 across an OS process exit or full headless-runtime extraction. Active native
 panel/window-close acceptance and that process architecture remain open. No new
 model attempt was made after the known wait failure.
+
+### Phase update — no-replay activation and launch ambiguity — 2026-10-13
+
+Audit of the earlier bounded activation retry found it treated every false Bool
+as a safe pre-dispatch failure, although NSRunningApplication.activate or AXRaise
+could already have run. A failing native regression proved ambiguous activation
+was attempted three times. Activation now returns existing structured metadata
+with actionMayHaveRun; only read-only pre-dispatch failures may retry. Launch
+polling also never repeats a dispatched raise, and ambiguous raises fail closed.
+The original NativeWindow identity is passed through activation and rechecked
+between attempts; a second failing regression covered a recycled ID/owner change.
+
+Further failing Swift/Go regressions showed native input_uncertain and launch
+lost ACK were downgraded to rejected/launch_failed. Native launch now retains
+unknown dispatch; the Go backend preserves unknown receipt/completion time and
+quarantines the helper, so a second launch cannot dispatch. Known pre-dispatch
+rejection and the existing controlled launch-timeout fixture remain unchanged.
+These are safety hardening, not attribution of the previous run's wait failure
+to an AX issue. Focused Go/race, 303 native safety assertions and 469 platform
+assertions pass; no new model retry was performed.

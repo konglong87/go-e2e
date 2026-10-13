@@ -124,6 +124,9 @@ final class Engine {
         } catch {
             let safetyError = error as? SafetyError ?? .launchFailed
             record(request, phase: "launch_result", error: safetyError, fields: ["result": "error"])
+            if safetyError == .inputUncertain {
+                return ActionResult(outcome: .unknown, payload: .object([:]), error: safetyError, dispatchState: .unknown)
+            }
             return ActionResult(outcome: .rejected, payload: .object([:]), error: safetyError)
         }
     }
@@ -295,10 +298,15 @@ final class Engine {
         var activated = false
         for attempt in 0..<Self.activationAttempts {
             try state.gate(request)
-            activated = platform.activateWindow(window.id, permitted: {
+            guard let current = try platform.allWindows().first(where: { $0.id == window.id }),
+                  current.matchesIdentity(window), current.isVisible else { throw SafetyError.targetWindowMismatch }
+            let activation = platform.activateWindow(window, permitted: {
                 do { try self.state.gate(request); return true } catch { return false }
             })
-            if activated { break }
+            activated = activation.success
+            // Only read-only, pre-dispatch failures may be retried. A missing
+            // AX acknowledgement must never automatically raise the window again.
+            if activated || activation.actionMayHaveRun { break }
             if attempt + 1 < Self.activationAttempts {
                 try wait(Self.activationRetryDelayMS, request: request)
             }

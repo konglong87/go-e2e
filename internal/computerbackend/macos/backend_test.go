@@ -80,6 +80,17 @@ func TestHelperProcess(t *testing.T) {
 				brokerErrorCode = cu.ErrorCodeUnsupportedApplication
 				break
 			}
+			if mode == "launch-unknown" || mode == "launch-lost-ack" {
+				if marker != "" {
+					_ = os.WriteFile(marker, append(readMarker(t, marker), []byte("launch\n")...), 0600)
+				}
+				if mode == "launch-lost-ack" {
+					return
+				}
+				outcome = cu.OutcomeUnknown
+				brokerErrorCode = cu.ErrorCodeInputUncertain
+				break
+			}
 			if mode == "launch-timeout" {
 				outcome = cu.OutcomeRejected
 				result = map[string]any{}
@@ -770,5 +781,24 @@ func TestBackendMaximumWaitReservesEvidenceTime(t *testing.T) {
 	receipt, err := b.Execute(context.Background(), action)
 	if err != nil || receipt.Outcome != cu.OutcomeExecuted {
 		t.Fatalf("receipt=%+v err=%v", receipt, err)
+	}
+}
+
+func TestBackendAmbiguousLaunchNeverBecomesNotDispatched(t *testing.T) {
+	for _, mode := range []string{"launch-unknown", "launch-lost-ack"} {
+		t.Run(mode, func(t *testing.T) {
+			marker := filepath.Join(t.TempDir(), "launch-count")
+			backend := newTestBackend(t, mode, time.Second, marker)
+			receipt, err := backend.LaunchApp(context.Background(), "session-1", cu.WorkBuddyBundleID)
+			if err == nil || receipt.Outcome != cu.OutcomeUnknown || receipt.ErrorCode != cu.ErrorCodeInputUncertain || receipt.CompletedAt.IsZero() {
+				t.Fatalf("ambiguous launch lost dispatch uncertainty: receipt=%+v err=%v", receipt, err)
+			}
+			if _, err := backend.LaunchApp(context.Background(), "session-1", cu.WorkBuddyBundleID); err == nil {
+				t.Fatal("ambiguous helper allowed a second launch")
+			}
+			if count := strings.Count(string(readMarker(t, marker)), "launch\n"); count != 1 {
+				t.Fatalf("native launch count=%d, want exactly one", count)
+			}
+		})
 	}
 }

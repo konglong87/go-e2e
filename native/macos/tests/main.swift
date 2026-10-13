@@ -17,6 +17,8 @@ final class FakeDesktop: DesktopPlatform {
     var launchCalls = 0
     var activationCalls = 0
     var activationFailuresRemaining = 0
+    var activationFailureMayHaveRun = false
+    var activationFailureHook: (() -> Void)?
     var activationHook: (() -> Void)?
     var activeWindowHook: (() -> Void)?
     var windowGeometryHook: (() -> Void)?
@@ -62,17 +64,24 @@ final class FakeDesktop: DesktopPlatform {
         focused = launchResult.ownerPID
         return launchResult
     }
-    func activateWindow(_ id: String, permitted: () -> Bool) -> Bool {
+    func activateWindow(_ target: NativeWindow, permitted: () -> Bool) -> AccessibilityWindowActivationResult {
         activationCalls += 1
-        guard permitted(), targetWindow?.id == id else { return false }
+        func result(_ success: Bool, mayHaveRun: Bool = false) -> AccessibilityWindowActivationResult {
+            AccessibilityWindowActivationResult(success: success, reason: success ? "" : "fake_failure",
+                                                axTrusted: true, axWindowCount: 1, geometryMatchCount: 1,
+                                                actionMayHaveRun: mayHaveRun)
+        }
+        let id = target.id
+        guard permitted(), let current = targetWindow, current.matchesIdentity(target) else { return result(false) }
         if activationFailuresRemaining > 0 {
             activationFailuresRemaining -= 1
-            return false
+            activationFailureHook?()
+            return result(false, mayHaveRun: activationFailureMayHaveRun)
         }
         selectedWindowID = id
         focused = targetWindow?.ownerPID
         activationHook?()
-        return true
+        return result(true, mayHaveRun: true)
     }
     func activeWindowID() -> String? { activeWindowHook?(); return selectedWindowID }
     func captureAllowed() -> Bool { capturePermission }
@@ -193,6 +202,18 @@ do {
            "bound window bundle change is rejected")
 }
 
+// Lost activation acknowledgements during launch must stay unknown at the
+// native protocol boundary, rather than pretend the app was never launched.
+do {
+    let desktop = FakeDesktop()
+    desktop.launchError = .inputUncertain
+    let engine = Engine(platform: desktop)
+    let result = engine.launchApp(request("launch_app", payload: ["target_id": .string("workbuddy"),
+        "display_name": .string(workBuddyAppName), "bundle_id": .string(workBuddyBundleID), "generation": .number(0)]))
+    expect(result.outcome == .unknown && result.dispatchState == .unknown && result.error == .inputUncertain,
+           "ambiguous native launch never becomes not dispatched")
+}
+
 // A launch that never produces a visible Window Server target is a controlled
 // timeout, not an opaque helper error.
 do {
@@ -294,6 +315,45 @@ for change in ["title", "owner", "bundle", "frame", "closed", "focus-during-geom
     expect(result.outcome == expected, "target outcome: \(change)")
     expect(desktop.posts.count == (change == "title" || change == "focus-after-input" ? 1 : 0), "target input count: \(change)")
     expect(desktop.activationCalls == activations, "Execute never activates window: \(change)")
+}
+
+// A false AX activation result is not proof that NSRunningApplication/AXRaise
+// had no effects. Never automatically re-dispatch an ambiguous activation.
+do {
+    let desktop = FakeDesktop()
+    desktop.targetWindow = NativeWindow(id: "ambiguous-activation", title: "Fixture", ownerPID: 77,
+        bundleID: "fixture.app", frame: desktop.display.bounds, displayID: desktop.display.id,
+        isVisible: true, isFrontmost: false)
+    desktop.activationFailuresRemaining = 3
+    desktop.activationFailureMayHaveRun = true
+    let engine = Engine(platform: desktop)
+    let result = engine.observe(request("observe", payload: ["observation_id": .string("ambiguous-frame"),
+                                                             "window_id": .string("ambiguous-activation")]))
+    expect(result.outcome == .rejected && result.error == .focusChanged, "ambiguous activation fails closed")
+    expect(desktop.activationCalls == 1, "unknown AX activation is never automatically replayed")
+    expect(desktop.posts.isEmpty && result.payload["data"] == nil, "ambiguous activation authorizes no input or screenshot")
+}
+
+// Even a safe pre-dispatch retry must not follow a recycled Window Server ID
+// to another owner while waiting. The original exact identity is immutable.
+do {
+    let desktop = FakeDesktop()
+    let original = NativeWindow(id: "recycled-window", title: "Fixture", ownerPID: 77,
+        bundleID: "fixture.app", frame: desktop.display.bounds, displayID: desktop.display.id,
+        isVisible: true, isFrontmost: false)
+    desktop.targetWindow = original
+    desktop.activationFailuresRemaining = 1
+    desktop.activationFailureHook = {
+        desktop.targetWindow = NativeWindow(id: original.id, title: original.title, ownerPID: 88,
+            bundleID: "other.app", frame: original.frame, displayID: original.displayID,
+            isVisible: true, isFrontmost: false)
+    }
+    let engine = Engine(platform: desktop)
+    let result = engine.observe(request("observe", payload: ["observation_id": .string("recycled-frame"),
+                                                             "window_id": .string(original.id)]))
+    expect(result.outcome == .rejected && desktop.activationCalls == 1,
+           "activation retry never follows a window ID to another owner")
+    expect(desktop.posts.isEmpty && result.payload["data"] == nil, "recycled activation identity authorizes no input")
 }
 
 // Two same-title windows must be selected by geometry, never inventory order.

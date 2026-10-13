@@ -44,6 +44,9 @@ struct AccessibilityWindowActivationResult {
     let axTrusted: Bool
     let axWindowCount: Int
     let geometryMatchCount: Int
+    // A false return after activate/AXRaise is ambiguous, not permission to
+    // replay. Read-only inspection failures leave this false.
+    var actionMayHaveRun = false
 
     var diagnosticFields: [String: Any] {
         [
@@ -52,6 +55,7 @@ struct AccessibilityWindowActivationResult {
             "ax_trusted": axTrusted,
             "ax_window_count": axWindowCount,
             "ax_geometry_match_count": geometryMatchCount,
+            "activation_may_have_run": actionMayHaveRun,
         ]
     }
 }
@@ -84,18 +88,20 @@ enum AccessibilityWindowActivator {
     static func raiseDetailed(_ target: NativeWindow, permitted: () -> Bool, stillCurrent: () -> Bool) -> AccessibilityWindowActivationResult {
         let inspection = inspect(target, permitted: permitted)
         guard inspection.result.success, let element = inspection.element else { return inspection.result }
-        let metadata = inspection.result
+        var metadata = inspection.result
         func failure(_ reason: String) -> AccessibilityWindowActivationResult {
             AccessibilityWindowActivationResult(success: false, reason: reason,
                                                 axTrusted: metadata.axTrusted,
                                                 axWindowCount: metadata.axWindowCount,
-                                                geometryMatchCount: metadata.geometryMatchCount)
+                                                geometryMatchCount: metadata.geometryMatchCount,
+                                                actionMayHaveRun: metadata.actionMayHaveRun)
         }
         guard permitted(), stillCurrent(), permitted(), let app = NSRunningApplication(processIdentifier: target.ownerPID) else {
             return failure("binding_changed_before_raise")
         }
         // Bring the same application window back to the active Space before
         // AXRaise. This is a same-PID/window recovery, not a target rebind.
+        metadata.actionMayHaveRun = true
         _ = app.activate(options: [.activateAllWindows])
         // Do not retry AX actions after timeout/unknown effects. The Engine will
         // require the requested ID to become frontmost before capture/input.

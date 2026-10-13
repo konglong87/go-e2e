@@ -489,7 +489,17 @@ func (b *Backend) LaunchApp(ctx context.Context, sessionID, providerKey string) 
 	})
 	if err != nil {
 		var rejected *rejection
-		if errors.As(err, &rejected) {
+		var call *native.CallError
+		knownRejection := errors.As(err, &rejected) && response.ErrorCode != cu.ErrorCodeInputUncertain &&
+			response.DispatchState != cu.DispatchUnknown && response.DispatchState != cu.DispatchPartial
+		knownUnsent := errors.As(err, &call) && !call.MayHaveRun
+		if !knownRejection && !knownUnsent {
+			// Once launch dispatch may have happened, a missing or ambiguous
+			// acknowledgement is never proof the application was not started.
+			receipt.Outcome = cu.OutcomeUnknown
+			receipt.ErrorCode = cu.ErrorCodeInputUncertain
+			b.invalidate()
+		} else if knownRejection {
 			receipt.ErrorCode = cu.PublicErrorCode(rejected.Code())
 		}
 		if receipt.ErrorCode == "" && (errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded)) {
@@ -502,7 +512,9 @@ func (b *Backend) LaunchApp(ctx context.Context, sessionID, providerKey string) 
 	}
 	window, ok := decodeWindowRef(response.Result["window"])
 	if !ok || receipt.BundleID == "" || window.BundleID != receipt.BundleID || window.OwnerPID <= 0 {
+		receipt.Outcome = cu.OutcomeUnknown
 		receipt.ErrorCode = cu.ErrorCodeLaunchFailed
+		b.invalidate()
 		return finish(errors.New("invalid launch metadata"))
 	}
 	b.mu.Lock()
