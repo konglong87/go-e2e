@@ -518,6 +518,14 @@ func (c *Controller) ExecuteTurn(ctx context.Context, owner SessionOwner, a Acti
 	} else {
 		rawReceipt, backendErr = c.backend.Execute(op, a)
 	}
+	// A terminal complete receipt is the authoritative dispatch fact. A backend
+	// may still return a non-nil diagnostic after that fact (for example, a
+	// launch helper warning); do not invent action_failed or turn the executed
+	// action into a provider error. Post-action observation/image failures are
+	// classified separately below.
+	if rawReceipt.Outcome == OutcomeExecuted && rawReceipt.DispatchState == DispatchComplete {
+		backendErr = nil
+	}
 	receipt := normalizeTurnReceipt(a, before, rawReceipt, backendErr, actionStarted)
 	if err = c.session.RecordReceipt(receipt); err != nil {
 		c.failRun()
@@ -721,8 +729,11 @@ func actionReceiptFromLaunch(action Action, before Observation, launch LaunchRec
 		dispatch = DispatchUnknown
 		verification = VerificationUnknown
 	}
-	code := PublicErrorCode(launch.ErrorCode)
-	if code == "" && backendErr != nil {
+	code := ""
+	if launch.ErrorCode != "" {
+		code = PublicErrorCode(launch.ErrorCode)
+	}
+	if code == "" && backendErr != nil && outcome != OutcomeExecuted {
 		if outcome == OutcomeUnknown {
 			code = ErrorCodeInputUncertain
 		} else {

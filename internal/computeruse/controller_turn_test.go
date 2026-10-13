@@ -219,6 +219,7 @@ func TestControllerExecuteTurnPublishesCommittedResultWithoutReconstruction(t *t
 type atomicLaunchBackend struct {
 	*turnImageBackend
 	launchReceipt LaunchReceipt
+	launchErr     error
 	launchCalls   int
 	executeCalls  int
 }
@@ -228,7 +229,7 @@ func (b *atomicLaunchBackend) LaunchApp(_ context.Context, sessionID, providerKe
 	if sessionID == "" || providerKey == "" {
 		return LaunchReceipt{Outcome: OutcomeUnknown, ErrorCode: ErrorCodeInputUncertain, CompletedAt: time.Now()}, errors.New("invalid launch binding")
 	}
-	return b.launchReceipt, nil
+	return b.launchReceipt, b.launchErr
 }
 
 func (b *atomicLaunchBackend) Execute(ctx context.Context, action Action) (ActionReceipt, error) {
@@ -282,6 +283,42 @@ func TestControllerExecuteTurnLaunchIsAtomicAndBindsFirstObservation(t *testing.
 	stored, ok := session.CurrentTurnResult()
 	if !ok || stored.TurnID != result.TurnID || stored.LaunchReceipt == nil {
 		t.Fatalf("authoritative launch turn not committed: stored=%+v ok=%v", stored, ok)
+	}
+}
+
+func TestControllerExecuteTurnExecutedLaunchDoesNotInventFailureCode(t *testing.T) {
+	session, owner, now := newTestSession(t, false)
+	registry, err := NewStaticTargetRegistry(ApplicationTarget{
+		ID: "workbuddy", DisplayName: "WorkBuddy",
+		Launch: LaunchPolicy{ProviderKey: "trusted-workbuddy"},
+		Window: WindowPolicy{BundleID: WorkBuddyBundleID, RequireVisible: true, RequireFrontmost: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := &atomicLaunchBackend{
+		turnImageBackend: &turnImageBackend{
+			FakeBackend: &FakeBackend{ObservationValue: readyObservation(session.ID(), now)},
+			imageData:   []byte("png-bytes"), mediaType: "image/png",
+		},
+		launchReceipt: LaunchReceipt{
+			BundleID: WorkBuddyBundleID,
+			Window:   WindowRef{ID: "workbuddy-window", OwnerPID: 84, BundleID: WorkBuddyBundleID, IsVisible: true, IsFrontmost: true},
+			Outcome:  OutcomeExecuted, CompletedAt: now.Add(time.Millisecond),
+		},
+		launchErr: errors.New("post-dispatch diagnostic"),
+	}
+	backend.ObservationValue.ID = "obs-after-launch-error"
+	controller, err := NewControllerWithRegistry(session, backend, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := controller.ExecuteTurn(context.Background(), owner, Action{ID: "launch-error-1", SessionID: session.ID(), TargetID: "workbuddy", Kind: ActionLaunchApp})
+	if err != nil {
+		t.Fatalf("executed launch returned an error: %v", err)
+	}
+	if result.Outcome != OutcomeExecuted || result.Receipt.Outcome != OutcomeExecuted || result.ErrorCode != "" || result.Receipt.ErrorCode != "" {
+		t.Fatalf("executed launch invented failure metadata: result=%+v receipt=%+v", result, result.Receipt)
 	}
 }
 
