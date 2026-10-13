@@ -3,6 +3,7 @@ package computeruse
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 	"time"
 
@@ -55,11 +56,12 @@ type ComputerSession struct {
 	observation    Observation
 	hasObservation bool
 	observations   map[string]struct{}
-	actions        map[string]struct{}
+	actions        map[string]ActionKind
 	receipts       map[string]ActionReceipt
 	lastReceipt    *ActionReceipt
 	turnSequence   uint64
 	currentTurn    *ComputerTurnResult
+	committedTurns map[string]ComputerTurnResult // bounded consumed actions; no PNG bytes
 	inFlight       string
 	uncertain      bool
 }
@@ -84,7 +86,7 @@ func NewComputerSession(o SessionOptions) (*ComputerSession, error) {
 		return nil, err
 	}
 	return &ComputerSession{id: o.ID, owner: o.Owner, capabilities: cloneCapabilities(o.Capabilities), state: SessionPendingApproval,
-		maxActions: o.MaxActions, observationTTL: o.ObservationTTL, now: o.Now, observations: map[string]struct{}{}, actions: map[string]struct{}{}, receipts: map[string]ActionReceipt{}}, nil
+		maxActions: o.MaxActions, observationTTL: o.ObservationTTL, now: o.Now, observations: map[string]struct{}{}, actions: map[string]ActionKind{}, receipts: map[string]ActionReceipt{}}, nil
 }
 func (s *ComputerSession) ID() string               { return s.id }
 func (s *ComputerSession) Owner() SessionOwner      { return s.owner }
@@ -284,7 +286,7 @@ func (s *ComputerSession) BeginAction(a Action) error {
 	if err := s.validateActionLocked(a); err != nil {
 		return err
 	}
-	s.actions[a.ID] = struct{}{}
+	s.actions[a.ID] = a.Kind
 	s.actionCount++
 	s.inFlight = a.ID
 	s.hasObservation = false
@@ -343,6 +345,12 @@ func (s *ComputerSession) RecordTurnResult(result ComputerTurnResult) error {
 	if result.SessionID != s.id {
 		return errors.New("turn result session mismatch")
 	}
+	if _, exists := s.committedTurns[result.ActionID]; exists {
+		return errors.New("action turn is already committed; do not replay")
+	}
+	if receipt, exists := s.receipts[result.ActionID]; exists && !reflect.DeepEqual(receipt, result.Receipt) {
+		return errors.New("committed action receipt is immutable")
+	}
 	if s.currentTurn != nil && result.Sequence <= s.currentTurn.Sequence {
 		return errors.New("turn result sequence is not increasing")
 	}
@@ -351,10 +359,34 @@ func (s *ComputerSession) RecordTurnResult(result ComputerTurnResult) error {
 	}
 	copy := cloneTurnResult(result)
 	s.currentTurn = &copy
+	if _, consumed := s.actions[result.ActionID]; consumed {
+		if s.committedTurns == nil {
+			s.committedTurns = make(map[string]ComputerTurnResult)
+		}
+		// Keep authoritative metadata for duplicate/lost-ACK reads, not a
+		// screenshot history. At most maxActions can ever enter this map.
+		metadata := result
+		metadata.ScreenshotData = nil
+		s.committedTurns[result.ActionID] = cloneTurnResult(metadata)
+	}
 	receipt := cloneReceipt(result.Receipt)
 	s.lastReceipt = &receipt
 	s.receipts[receipt.ActionID] = receipt
 	return nil
+}
+
+func (s *ComputerSession) committedTurn(id string) (ComputerTurnResult, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	result, ok := s.committedTurns[id]
+	return cloneTurnResult(result), ok
+}
+
+func (s *ComputerSession) consumedActionKind(id string) (ActionKind, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	kind, ok := s.actions[id]
+	return kind, ok
 }
 
 func (s *ComputerSession) CurrentTurnResult() (ComputerTurnResult, bool) {

@@ -434,11 +434,23 @@ func (c *Controller) ExecuteTurn(ctx context.Context, owner SessionOwner, a Acti
 	if err := c.authorize(owner, a.SessionID); err != nil {
 		return ComputerTurnResult{}, err
 	}
+	if prior, ok := c.previousActionResult(a); ok {
+		return prior, errors.New("computer action id already consumed; inspect original receipt, do not replay")
+	}
 	op, release, err := c.acquire(ctx, ActionExecutionTimeout(a, time.Duration(MaxActionDurationMS)*time.Millisecond))
 	if err != nil {
+		if prior, ok := c.previousActionResult(a); ok {
+			return prior, err
+		}
+		if pending, ok := c.pendingActionResult(a); ok {
+			return pending, err
+		}
 		return ComputerTurnResult{}, err
 	}
 	defer release()
+	if prior, ok := c.previousActionResult(a); ok {
+		return prior, errors.New("computer action id already consumed; inspect original receipt, do not replay")
+	}
 
 	before, _ := c.session.CurrentObservation()
 	if before.WindowID != "" && a.WindowID == "" {
@@ -783,6 +795,50 @@ func turnResultFromReceipt(turnID string, sequence uint64, started time.Time, ac
 		}
 	}
 	return result
+}
+
+// previousActionResult is a read-only recovery of an already-consumed action.
+// It never executes, observes, changes authority, or replaces a native receipt.
+func (c *Controller) previousActionResult(action Action) (ComputerTurnResult, bool) {
+	if result, ok := c.session.committedTurn(action.ID); ok {
+		return result, true
+	}
+	kind, consumed := c.session.consumedActionKind(action.ID)
+	receipt, recorded := c.session.Receipt(action.ID)
+	if !consumed || !recorded {
+		return ComputerTurnResult{}, false
+	}
+	// Receipt-first may have completed while optional media work is pending.
+	// Preserve that dispatch fact without inventing observation authority.
+	action.Kind = kind
+	now := time.Now()
+	result := turnResultFromReceipt(uuid.NewString(), c.session.NextTurnSequence(), now, action, receipt)
+	result.RetryPolicy = RetryNever
+	if receipt.Outcome == OutcomeUnknown {
+		result.ObservationState = ObservationInvalidated
+	}
+	return result, true
+}
+
+// A canceled duplicate may arrive while the original backend call is still
+// in flight. It cannot claim not_started or erase that action's identity. This
+// read-only ambiguity response is never committed over the original result.
+func (c *Controller) pendingActionResult(action Action) (ComputerTurnResult, bool) {
+	kind, consumed := c.session.consumedActionKind(action.ID)
+	if !consumed {
+		return ComputerTurnResult{}, false
+	}
+	action.Kind = kind
+	before, _ := c.session.CurrentObservation()
+	now := time.Now()
+	receipt := normalizeTurnReceipt(action, before, ActionReceipt{
+		ActionID: action.ID, SessionID: action.SessionID, Outcome: OutcomeUnknown,
+		DispatchState: DispatchUnknown, Verification: VerificationUnknown, ErrorCode: ErrorCodeInputUncertain,
+	}, nil, now)
+	result := turnResultFromReceipt(uuid.NewString(), c.session.NextTurnSequence(), now, action, receipt)
+	result.ObservationState = ObservationInvalidated
+	result.RetryPolicy = RetryNever
+	return result, true
 }
 
 func normalizeTurnReceipt(action Action, before Observation, raw ActionReceipt, backendErr error, started time.Time) ActionReceipt {

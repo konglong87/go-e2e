@@ -3,8 +3,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"image"
+	"image/png"
 	"io"
 	"net"
 	"net/http"
@@ -15,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/konglong87/go-e2e/internal/computerbridge"
 	cu "github.com/konglong87/go-e2e/internal/computeruse"
 )
 
@@ -232,5 +238,78 @@ func TestAcceptanceTargetLaunchRequiresCurrentSessionAndRegisteredTarget(t *test
 	receipt, ok := out.(cu.LaunchReceipt)
 	if err == nil || !ok || receipt.Outcome != cu.OutcomeRejected || receipt.ErrorCode != cu.ErrorCodeUnsupportedTarget {
 		t.Fatalf("out=%+v err=%v", out, err)
+	}
+}
+
+type acceptanceTurnBackend struct {
+	cu.FakeBackend
+	data         []byte
+	observations int
+	imageReads   int
+}
+
+func (b *acceptanceTurnBackend) Observe(ctx context.Context, request cu.ObserveRequest) (cu.Observation, error) {
+	b.observations++
+	observation, err := b.FakeBackend.Observe(ctx, request)
+	observation.ID = fmt.Sprintf("acceptance-frame-%d", b.observations)
+	observation.Width, observation.Height = 2, 2
+	observation.ObservedAt = time.Now()
+	observation.ExpiresAt = observation.ObservedAt.Add(cu.DefaultObservationTTL)
+	observation.Screenshot = cu.NewMediaRef(observation.ID, "image/png", b.data, 2, 2)
+	return observation, err
+}
+func (b *acceptanceTurnBackend) ObservationImage(context.Context, string) ([]byte, string, error) {
+	b.imageReads++
+	return b.data, "image/png", nil
+}
+
+func TestAcceptanceReturnsAtomicWaitWithSameTurnPNG(t *testing.T) {
+	m, _ := testComputerManager()
+	defer func() { _ = m.close(context.Background()) }()
+	factory := m.factory
+	var backend *acceptanceTurnBackend
+	m.factory = func(ctx context.Context) (cu.Backend, error) {
+		base, err := factory(ctx)
+		if err != nil {
+			return nil, err
+		}
+		var buffer bytes.Buffer
+		if err := png.Encode(&buffer, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {
+			return nil, err
+		}
+		backend = &acceptanceTurnBackend{FakeBackend: *base.(*cu.FakeBackend), data: buffer.Bytes()}
+		backend.CapabilitiesValue.Actions = []cu.ActionKind{cu.ActionWait}
+		backend.CapabilitiesValue.ImageSupported = true
+		backend.ReceiptValue = cu.ActionReceipt{Outcome: cu.OutcomeExecuted, DispatchState: cu.DispatchComplete}
+		backend.ObservationValue = cu.Observation{Capabilities: backend.CapabilitiesValue}
+		return backend, nil
+	}
+	ctx := context.Background()
+	out, err := dispatchAcceptance(ctx, ctx, m, acceptanceRequest{Op: "start", Approved: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionID := out.(ComputerSessionDTO).ID
+	observation, err := m.controller.Observe(ctx, m.owner, cu.ObserveRequest{SessionID: sessionID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	action := &cu.Action{ID: "acceptance-wait", SessionID: sessionID, ObservationID: observation.ID, Kind: cu.ActionWait, DurationMS: 1}
+	out, err = dispatchAcceptance(ctx, ctx, m, acceptanceRequest{Op: computerbridge.OpExecuteTurn, SessionID: sessionID, Action: action})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, ok := out.(computerbridge.ExecuteTurnResponse)
+	if !ok || response.Result.Validate() != nil || response.Result.Outcome != cu.OutcomeExecuted || response.Result.DispatchState != cu.DispatchComplete {
+		t.Fatalf("invalid authoritative wait turn: %+v", out)
+	}
+	if response.Result.ObservationState != cu.ObservationReady || response.Result.ScreenshotState != cu.ScreenshotReady || response.ScreenshotMediaType != "image/png" || response.ScreenshotData != base64.StdEncoding.EncodeToString(backend.data) || !response.ScreenshotExpiresAt.Equal(response.Result.Observation.ExpiresAt) {
+		t.Fatal("atomic wait lost or stitched same-turn screenshot metadata")
+	}
+	if backend.observations != 2 || backend.imageReads != 1 {
+		t.Fatal("acceptance added posthoc observe/image calls")
+	}
+	if _, err := dispatchAcceptance(ctx, ctx, m, acceptanceRequest{Op: computerbridge.OpExecuteTurn, SessionID: sessionID, Action: action}); err == nil {
+		t.Fatal("acceptance replayed completed wait")
 	}
 }

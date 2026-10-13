@@ -825,3 +825,20 @@ rejection and the existing controlled launch-timeout fixture remain unchanged.
 These are safety hardening, not attribution of the previous run's wait failure
 to an AX issue. Focused Go/race, 303 native safety assertions and 469 platform
 assertions pass; no new model retry was performed.
+
+### Phase update — immutable duplicate receipts and atomic native observer — 2026-10-13
+
+A failing duplicate-turn regression found that a second call with the same
+consumed action ID returned rejected/not_started and RecordTurnResult overwrote
+the original executed/unknown receipt. The session now stores immutable consumed
+turn metadata (bounded by the action budget, excluding PNG bytes); duplicate
+reads return the original fact and cannot change current authority. A canceled
+in-flight duplicate returns a bound unknown receipt, without canceling/replaying
+the original. Tests cover executed, unknown, older-turn, and concurrent cases.
+
+The tagged acceptance observer now exposes execute_turn through the same shared
+Controller, transferring only the committed result's same-turn PNG and expiry.
+It does not call legacy execute/image or add posthoc observe. A failing tagged
+regression pins receipt/observation/PNG consistency and duplicate rejection.
+This enables a no-model passive-wait native smoke before any further model gate.
+Focused Go, tagged desktop/race, native safety and Python acceptance tests pass.

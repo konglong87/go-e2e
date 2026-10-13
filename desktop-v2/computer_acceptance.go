@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/konglong87/go-e2e/internal/computerbridge"
 	cu "github.com/konglong87/go-e2e/internal/computeruse"
 )
 
@@ -210,7 +211,7 @@ func dispatchAcceptance(hostCtx, ctx context.Context, m *computerManager, r acce
 		return m.control(ctx, r.SessionID, cu.ActionResume)
 	case "stop":
 		return m.control(ctx, r.SessionID, cu.ActionStop)
-	case "snapshot", "execute", "image":
+	case "snapshot", "execute", computerbridge.OpExecuteTurn, "image":
 		c, err := m.active(r.SessionID)
 		if err != nil {
 			return nil, err
@@ -218,12 +219,24 @@ func dispatchAcceptance(hostCtx, ctx context.Context, m *computerManager, r acce
 		switch r.Op {
 		case "snapshot":
 			return computerSnapshot(c.Session()), nil
-		case "execute":
+		case "execute", computerbridge.OpExecuteTurn:
 			if r.Action == nil || r.Action.SessionID != r.SessionID {
 				return nil, errors.New("action/session binding required")
 			}
 			if !r.Action.Kind.IsInput() && r.Action.Kind != cu.ActionWait {
 				return nil, errors.New("input or wait action required")
+			}
+			if r.Op == computerbridge.OpExecuteTurn {
+				// The observer gets the committed atomic result and its already
+				// associated PNG, never legacy execute/image/posthoc reconstruction.
+				result, err := c.ExecuteTurn(ctx, m.owner, *r.Action)
+				response := computerbridge.ExecuteTurnResponse{Result: result}
+				if result.ScreenshotState == cu.ScreenshotReady && result.Observation != nil && result.Screenshot != nil {
+					response.ScreenshotData = base64.StdEncoding.EncodeToString(result.ScreenshotData)
+					response.ScreenshotMediaType = result.Screenshot.MediaType
+					response.ScreenshotExpiresAt = result.Observation.ExpiresAt
+				}
+				return response, err
 			}
 			return c.Execute(ctx, m.owner, *r.Action)
 		default:

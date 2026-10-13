@@ -359,3 +359,110 @@ func TestControllerExecuteTurnLaunchReopensObservedRunnerPhase(t *testing.T) {
 		t.Fatalf("runner state after committed launch = %s, want %s", got, RunStateObserved)
 	}
 }
+
+func TestDuplicateTurnKeepsOriginalDispatchFact(t *testing.T) {
+	for _, outcome := range []Outcome{OutcomeExecuted, OutcomeUnknown} {
+		t.Run(string(outcome), func(t *testing.T) {
+			dispatch := DispatchComplete
+			var backendErr error
+			if outcome == OutcomeUnknown {
+				dispatch, backendErr = DispatchUnknown, errors.New("lost acknowledgement")
+			}
+			backend := &turnImageBackend{FakeBackend: &FakeBackend{
+				ObservationValue: readyObservation("", initialTestTime()),
+				ReceiptValue:     ActionReceipt{Outcome: outcome, DispatchState: dispatch}, ExecuteError: backendErr,
+			}, imageData: []byte("png"), mediaType: "image/png"}
+			backend.ObservationValue.ID = "duplicate-next"
+			controller, session, owner, initial := prepareTurnController(t, backend)
+			action := Action{ID: "duplicate-turn", SessionID: session.ID(), ObservationID: initial.ID, Kind: ActionWait}
+			first, _ := controller.ExecuteTurn(context.Background(), owner, action)
+			duplicate, err := controller.ExecuteTurn(context.Background(), owner, action)
+			if err == nil || duplicate.Validate() != nil || duplicate.Outcome != first.Outcome || duplicate.DispatchState != first.DispatchState || duplicate.Receipt.CompletedAt != first.Receipt.CompletedAt {
+				t.Fatalf("duplicate rewrote original dispatch: first=%+v duplicate=%+v err=%v", first.Receipt, duplicate.Receipt, err)
+			}
+			stored, _ := session.Receipt(action.ID)
+			current, _ := session.CurrentTurnResult()
+			if stored.Outcome != first.Outcome || stored.DispatchState != first.DispatchState || current.TurnID != first.TurnID || len(backend.Executed) != 1 {
+				t.Fatal("duplicate poisoned committed receipt/result or re-dispatched")
+			}
+		})
+	}
+}
+
+func TestDuplicateOlderTurnKeepsReceiptWithoutRetainingPNGHistory(t *testing.T) {
+	backend := &turnImageBackend{FakeBackend: &FakeBackend{
+		ObservationValue: readyObservation("", initialTestTime()),
+		ReceiptValue:     ActionReceipt{Outcome: OutcomeExecuted, DispatchState: DispatchComplete},
+	}, imageData: []byte("png"), mediaType: "image/png"}
+	backend.ObservationValue.ID = "after-first"
+	controller, session, owner, initial := prepareTurnController(t, backend)
+	firstAction := Action{ID: "first", SessionID: session.ID(), ObservationID: initial.ID, Kind: ActionWait}
+	first, err := controller.ExecuteTurn(context.Background(), owner, firstAction)
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend.ObservationValue.ID = "after-second"
+	secondAction := Action{ID: "second", SessionID: session.ID(), ObservationID: first.Observation.ID, Kind: ActionWait}
+	second, err := controller.ExecuteTurn(context.Background(), owner, secondAction)
+	if err != nil {
+		t.Fatal(err)
+	}
+	duplicate, err := controller.ExecuteTurn(context.Background(), owner, firstAction)
+	if err == nil || duplicate.TurnID != first.TurnID || duplicate.DispatchState != DispatchComplete || len(backend.Executed) != 2 {
+		t.Fatal("older action was replayed or its authoritative turn was replaced")
+	}
+	current, _ := session.CurrentTurnResult()
+	if current.TurnID != second.TurnID {
+		t.Fatal("duplicate replaced current authority")
+	}
+	if len(session.committedTurns) != 2 {
+		t.Fatal("consumed action metadata was not retained")
+	}
+	for _, metadata := range session.committedTurns {
+		if len(metadata.ScreenshotData) != 0 {
+			t.Fatal("receipt recovery retained private PNG history")
+		}
+	}
+}
+
+type inflightTurnBackend struct {
+	*turnImageBackend
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (b *inflightTurnBackend) Execute(ctx context.Context, action Action) (ActionReceipt, error) {
+	close(b.entered)
+	select {
+	case <-b.release:
+		return b.FakeBackend.Execute(ctx, action)
+	case <-ctx.Done():
+		return ActionReceipt{ActionID: action.ID, SessionID: action.SessionID, Outcome: OutcomeUnknown, DispatchState: DispatchUnknown}, ctx.Err()
+	}
+}
+
+func TestCancelledDuplicateOfInflightTurnNeverReturnsZeroReceipt(t *testing.T) {
+	backend := &inflightTurnBackend{turnImageBackend: &turnImageBackend{FakeBackend: &FakeBackend{
+		ObservationValue: readyObservation("", initialTestTime()),
+		ReceiptValue:     ActionReceipt{Outcome: OutcomeExecuted, DispatchState: DispatchComplete},
+	}, imageData: []byte("png"), mediaType: "image/png"}, entered: make(chan struct{}), release: make(chan struct{})}
+	backend.ObservationValue.ID = "inflight-next"
+	controller, session, owner, initial := prepareTurnController(t, backend)
+	originalCtx, cancelOriginal := context.WithCancel(context.Background())
+	defer cancelOriginal()
+	action := Action{ID: "inflight", SessionID: session.ID(), ObservationID: initial.ID, Kind: ActionWait}
+	originalDone := make(chan ComputerTurnResult, 1)
+	go func() { result, _ := controller.ExecuteTurn(originalCtx, owner, action); originalDone <- result }()
+	<-backend.entered
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	duplicate, err := controller.ExecuteTurn(ctx, owner, action)
+	close(backend.release)
+	original := <-originalDone
+	if err == nil || duplicate.Validate() != nil || duplicate.Receipt.ActionID != action.ID || duplicate.DispatchState != DispatchUnknown || duplicate.RetryPolicy != RetryNever {
+		t.Fatal("in-flight dispatch ambiguity returned zero/not_started receipt")
+	}
+	if original.Outcome != OutcomeExecuted || len(backend.Executed) != 1 {
+		t.Fatal("duplicate canceled or replayed original turn")
+	}
+}
