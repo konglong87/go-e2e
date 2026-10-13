@@ -1,8 +1,20 @@
 # 贡献指南
 
-感谢你帮助改进 golang-cc。项目强调运行时稳定性、安全边界、可测试性和文档同步；请保持变更聚焦，并诚实说明尚未覆盖的能力边界。
+感谢你帮助改进 go-e2e。项目强调运行时稳定性、安全边界、可测试性和文档同步；请保持变更聚焦，并诚实说明尚未覆盖的能力边界。
 
 参与社区前，请阅读 [行为准则](CODE_OF_CONDUCT.md)。安全漏洞不要公开提交，请遵循 [安全策略](SECURITY.md)。
+
+## 10 分钟首次贡献
+
+不需要先修改 Runtime Core 才能贡献。第一次参与可以从以下任务开始：
+
+- 修正文档、断链、平台安装说明或英文表达；
+- 增加一个脱敏的 Provider、MCP 或 Skills 配置示例；
+- 补充一个真实使用场景、截图或测试说明；
+- 复现并整理一个跨平台安装或 Provider 兼容性问题。
+
+先查看带有 `good first issue`、`help wanted`、`documentation` 或 `provider` 标签的 Issue。
+提交前请说明改动范围、验证命令和未覆盖边界。
 
 ## 开始之前
 
@@ -39,7 +51,7 @@ go run ./scripts/runtime-topology-check --base HEAD --working-tree \
 
 ```bash
 go test ./internal/server -count=1
-swag init -g cmd/golang-cc/main.go --parseInternal --parseDependency
+swag init -g cmd/go-e2e/main.go --parseInternal --parseDependency
 ```
 
 ## Pull Request 要求

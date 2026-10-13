@@ -1,6 +1,18 @@
-# golang-cc 文档中心
+# go-e2e 文档中心
 
-这里是 golang-cc 的文档入口。根目录只保留稳定入口和生成文件；专题文档按域放在子目录中，避免顶层 `docs/` 继续堆积。
+这里是 go-e2e 的文档入口。根目录只保留稳定入口和生成文件；专题文档按域放在子目录中，避免顶层 `docs/` 继续堆积。
+
+## 面向新用户的入口
+
+| 我想做什么 | 推荐阅读 |
+| --- | --- |
+| 第一次安装并跑通一个任务 | [5 分钟上手](getting-started.md) |
+| 找一个可以直接复制的任务 | [使用场景](use-cases.md) |
+| 配置兼容 API 或多模型 | [Provider 配置](providers.md) |
+| 连接外部工具和服务 | [MCP 扩展](mcp.md) |
+| 查看常见问题 | [FAQ](faq.md) |
+| 参与讨论或贡献 | [社区与贡献入口](community.md) |
+| 了解公开方向 | [Roadmap](roadmap.md) |
 
 ## 快速路径
 
@@ -57,11 +69,9 @@
 | [observability/](observability/) | Trace Viewer、端到端性能与质量可观测方案、telemetry/trace 可视化说明、system prompt 快照设计。 |
 | [optimization/](optimization/) | prompt engineering 优化方案（v1/v2）。 |
 | [prompt_logic/](prompt_logic/) | prompt 加载、session prompt 拼装、memory/cache，以及 [Claude Code 原版 vs golang-cc 深度差异诊断](prompt_logic/claude_code_vs_go_claude_deep_diagnosis.md)、[Claude Code 差距证据采集与修复进度](prompt_logic/prompt_gap_recovery_progress.md) 和 [Agent 修复一次成功率提升技术方案](prompt_logic/agent_repair_first_pass_success_plan.md)。 |
-| [pending-fixes/](pending-fixes/) | 待修复问题的根因分析与反思（git conflict、transcript locating）。 |
 | [session_recap/](session_recap/) | TUI session recap 方案。 |
 | [skills/](skills/) | skills/plugins 加载、运行时 frontmatter 和渐进式加载。 |
 | [subagent_multiagent/](subagent_multiagent/) | subagent authoring 与 multi-agent parity。 |
-| [superpowers/](superpowers/) | checkpoint rewind、git rebase、session provider 诊断等修复计划（plans/）。 |
 | [tenant/](tenant/) | 多租户、tenant security、AI Study 接入、quota 和 tenant skill 后续专题。 |
 | [tenant_runtime/](tenant_runtime/) | tenant skill package runtime、structured routing、热加载和 E2E 证据。 |
 | [testing/](testing/) | MySQL E2E、agent eval harness、Agent 拉练平台评分体系。 |

@@ -7,21 +7,28 @@
 </p>
 
 <p align="center">
-  go-e2e 是基于 Go 开发的开源全功能 Coding Agent，覆盖桌面Desktop、TUI、CLI 和网页端WebUI，集成代码编辑、命令执行、任务规划、记忆与多智能体协作。支持 Skills、MCP 和多模型接入，本地优先、灵活扩展，可连接飞书渠道，always on，适合日常开发，也适合学习和实践 Agent 开发。
+  用 Go 构建的本地优先开源 Coding Agent，支持 Desktop、CLI、TUI、WebUI，连接 MCP、Skills 和多种模型 Provider。
 </p>
 
 <p align="center">
-  本地部署 · 开放扩展 · 自主可控 · 端到端交付
+  一句话输入 · 持续执行 · 结果验证 · 自主可控
 </p>
 
 <p align="center">
-  <a href="https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=55aq8d1d-7586-46cf-8635-a8c321ad284d">加入飞书社群</a> ·
-  <a href="docs/README.md">文档</a> ·
-  <a href="https://github.com/konglong87/go-e2e/issues">问题反馈</a> ·
+  <a href="https://github.com/konglong87/go-e2e/releases/latest">下载桌面端</a> ·
+  <a href="docs/getting-started.md">5 分钟上手</a> ·
+  <a href="docs/use-cases.md">使用场景</a> ·
+  <a href="https://github.com/konglong87/go-e2e/discussions">社区讨论</a> ·
   <a href="README.en.md">English</a>
 </p>
 
 <p align="center">
+  <a href="https://github.com/konglong87/go-e2e/releases/latest">
+    <img src="https://img.shields.io/github/v/release/konglong87/go-e2e?display_name=tag&sort=semver" alt="Latest release">
+  </a>
+  <a href="https://github.com/konglong87/go-e2e/releases">
+    <img src="https://img.shields.io/github/downloads/konglong87/go-e2e/total" alt="Downloads">
+  </a>
   <a href="https://github.com/konglong87/go-e2e/actions/workflows/ci.yml">
     <img src="https://github.com/konglong87/go-e2e/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI">
   </a>
@@ -35,33 +42,45 @@
 </p>
 
 <p align="center">
-  Desktop · TUI · CLI · WebUI · Feishu
+  <img src="docs/web_agent/images/go-e2e-desktop-v2.png" alt="go-e2e desktop coding agent workspace" width="900">
 </p>
 
-<p align="center">
-  <img src="docs/web_agent/images/go-e2e-desktop-v2.png" alt="go-e2e desktop-v2 最新桌面端界面" width="900">
-</p>
+## go-e2e 是什么？
 
-## 六大核心
+go-e2e 是一个本地优先的开源 Coding Agent 工作台：你可以用自然语言描述任务，
+让它理解项目、规划步骤、调用工具、修改代码、执行命令并报告验证结果。
+它用 Go 编写，既可以作为个人桌面应用使用，也可以通过 CLI、TUI 或 WebUI 接入你的开发流程。
 
-- **四端覆盖**：Desktop / TUI / CLI / WebUI / 飞书，个人、开发与团队部署都能覆盖
-- **本地优先，部署自由**：SQLite 默认、本地运行，也支持私有化部署和 MySQL
-- **开放源码，便于二开**：Provider、工具链、工作流、权限、界面和业务逻辑均可扩展
-- **从一句话到结果交付**：理解需求、拆解任务、调用工具、持续执行、结果验证
-- **Provider 自由接入**：自定义 Provider、兼容 API、多模态扩展，不绑定单一模型厂商
-- **Go 内核，轻量高效**：启动快、依赖少，适合长期运行
+它不是只返回一段聊天文本的助手，而是围绕“任务执行和结果交付”设计的 Agent runtime。
 
-## 快速开始
+## 适合哪些场景？
 
-源码最低要求 Go 1.25+（CI/release 默认使用 Go 1.26.6，`.tool-versions` 是可复现构建 pin，不是源码最低版本）。
+- **日常开发**：分析仓库、实现功能、修复 Bug、运行测试并总结变更。
+- **终端自动化**：通过 CLI / TUI 执行一次性任务、持续会话和脚本化工作流。
+- **本地优先工作台**：在自己的电脑或私有环境中保存会话、配置模型和管理权限。
+- **Agent 二次开发**：通过 Provider、Skills、MCP、Tools、Profile 和 Web/API 扩展能力。
+- **团队与渠道协作**：使用 WebUI、MySQL、飞书渠道和多 Agent 能力组织长期任务。
+
+更多可复制的任务示例见 [使用场景](docs/use-cases.md)。
+
+## 30 秒快速开始
+
+### 方式一：下载桌面端
+
+从 [GitHub Releases](https://github.com/konglong87/go-e2e/releases/latest) 下载对应平台的安装包。
+打开应用后，在设置中填写模型 Provider、API 协议、模型、地址和凭据，然后输入第一条任务。
+
+### 方式二：从源码运行 CLI
 
 ```bash
 git clone https://github.com/konglong87/go-e2e.git
 cd go-e2e
 go run ./cmd/go-e2e --version
+go run ./cmd/go-e2e -p "检查当前项目结构，告诉我最值得先改进的地方"
 ```
 
-在设置页面填写 provider、API 协议、模型、地址和凭据，或直接编辑 `~/.golang-cc/settings.json`：
+最低源码要求为 Go 1.25+。配置文件默认位于 `~/.golang-cc/settings.json`，最小的
+OpenAI-compatible 配置示例：
 
 ```json
 {
@@ -73,38 +92,35 @@ go run ./cmd/go-e2e --version
 }
 ```
 
-开始一次任务：
+完整安装、配置和排障路径见 [5 分钟上手](docs/getting-started.md)。
 
-```bash
-go run ./cmd/go-e2e -p "检查当前项目结构"
-```
+## 为什么选择 go-e2e？
 
-继续同一会话：
+| 关注点 | go-e2e 的做法 |
+| --- | --- |
+| **本地优先** | 默认使用 SQLite，可在本机运行，也支持私有化部署和 MySQL。 |
+| **真正执行任务** | 从需求理解、规划、工具调用到代码修改、命令执行和结果验证形成闭环。 |
+| **入口自由** | Desktop、CLI、TUI、WebUI 和飞书渠道共享同一套 Runtime Core。 |
+| **模型不锁定** | 支持自定义 Provider、兼容 API、多模型和多模态扩展。 |
+| **便于扩展** | Skills、MCP、Tools、Profile、权限和工作流都有明确扩展边界。 |
+| **Go 内核** | 启动和部署链路简单，适合本地工具、服务端和长期运行任务。 |
 
-```bash
-go run ./cmd/go-e2e --session-id 11111111-1111-4111-8111-111111111111 -p "记住刚才的结论，并继续检查测试"
-```
+## 入口怎么选？
 
-> 其他运行入口见[运行入口](#运行入口)；飞书 Worker 见[飞书渠道文档](docs/README.md)。
-
-## 下载桌面端
-
-前往 GitHub [Releases 页面](https://github.com/konglong87/go-e2e/releases/latest) 下载最新桌面端安装包。
-
-| 平台 | 安装包 | 说明 |
+| 入口 | 适合你在什么时候使用 | 快速入口 |
 | --- | --- | --- |
-| macOS Apple Silicon | `go-e2e-<版本>-macos-arm64.dmg` | 适用于 Apple Silicon（M1/M2/M3/M4）|
-| macOS Intel | `go-e2e-<版本>-macos-amd64.dmg` | 适用于 Intel Mac |
-| Windows | `go-e2e-setup.exe` | Windows 安装程序 |
-| Linux x86_64 | `go-e2e-desktop_<版本>_linux_amd64.tar.gz` | Linux 桌面端压缩包 |
+| **Desktop** | 需要模型设置、会话管理和可视化工作台 | [下载桌面端](https://github.com/konglong87/go-e2e/releases/latest) |
+| **CLI** | 一次性任务、脚本、自动化和 CI 场景 | `go run ./cmd/go-e2e -p "..."` |
+| **TUI** | 希望在终端内交互式使用 Agent | `go run ./cmd/go-e2e` |
+| **WebUI** | 浏览器工作台、服务端部署和团队使用 | [WebUI 文档](docs/usage/webui.md) |
+| **飞书** | 把 Agent 接入渠道消息和长期 Worker | [飞书渠道文档](docs/usage/feishu.md) |
 
-下载后可使用同一页面中的 `SHA256SUMS` 校验文件完整性。macOS 首次打开如果提示无法验证开发者，表示当前版本未使用 Apple Developer ID 签名和 notarization。请先将 `go-e2e.app` 拖入“应用程序”，然后打开：
+## 公开发布边界
 
-```text
-系统设置 → 隐私与安全性 → 安全性 → 仍要打开
-```
-
-确认后重新打开应用即可。配置了 Apple Developer Secrets 的版本会自动签名并完成 notarization，通常不需要这一步。
+项目当前仍处于 `0.x` 快速迭代阶段。桌面端、Computer Use、部分多 Agent 和渠道能力会继续演进，
+请在升级前阅读 [CHANGELOG](CHANGELOG.md) 和 [路线图](docs/roadmap.md)。
+未配置 Apple Developer Secrets 的 macOS 构建可能需要在“系统设置 → 隐私与安全性”中手动允许打开；
+运行 Agent 需要你自行配置可用的模型服务和 API 凭据。
 
 ## 产品闭环
 

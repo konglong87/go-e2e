@@ -7,21 +7,28 @@
 </p>
 
 <p align="center">
-  Open-source desktop AI Agent for Desktop / TUI / CLI / WebUI
+  An open-source, local-first coding agent written in Go — Desktop, CLI, TUI, WebUI, MCP, Skills, and flexible model Providers.
 </p>
 
 <p align="center">
-  Local-first · Open to extension · One sentence to execution · End-to-end delivery
+  One sentence in · Continuous execution · Verified delivery · You stay in control
 </p>
 
 <p align="center">
-  <a href="https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=55aq8d1d-7586-46cf-8635-a8c321ad284d">Join the Feishu community</a> ·
-  <a href="docs/README.md">Documentation</a> ·
-  <a href="https://github.com/konglong87/go-e2e/issues">Report an issue</a> ·
-  English | <a href="README.md">简体中文</a>
+  <a href="https://github.com/konglong87/go-e2e/releases/latest">Download</a> ·
+  <a href="docs/getting-started.md">Get started in 5 minutes</a> ·
+  <a href="docs/use-cases.md">Use cases</a> ·
+  <a href="https://github.com/konglong87/go-e2e/discussions">Community</a> ·
+  <a href="README.md">简体中文</a>
 </p>
 
 <p align="center">
+  <a href="https://github.com/konglong87/go-e2e/releases/latest">
+    <img src="https://img.shields.io/github/v/release/konglong87/go-e2e?display_name=tag&sort=semver" alt="Latest release">
+  </a>
+  <a href="https://github.com/konglong87/go-e2e/releases">
+    <img src="https://img.shields.io/github/downloads/konglong87/go-e2e/total" alt="Downloads">
+  </a>
   <a href="https://github.com/konglong87/go-e2e/actions/workflows/ci.yml">
     <img src="https://github.com/konglong87/go-e2e/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI">
   </a>
@@ -35,55 +42,84 @@
 </p>
 
 <p align="center">
-  Desktop · TUI · CLI · WebUI · Feishu
+  <img src="docs/web_agent/images/go-e2e-desktop-v2.png" alt="go-e2e desktop coding agent workspace" width="900">
 </p>
 
-<p align="center">
-  <img src="docs/web_agent/images/go-e2e-desktop-v2.png" alt="Latest go-e2e desktop-v2 interface" width="900">
-</p>
+## What is go-e2e?
 
-## Start Here
+go-e2e is a local-first, open-source coding agent workbench. Describe a task in natural language and it can
+inspect a project, plan the work, use tools, edit code, run commands, and report verified results.
+It is written in Go and can be used as a desktop application or integrated through the CLI, TUI, WebUI, and Feishu channel.
 
-go-e2e is an open-source Agent workbench that can execute tasks, connect external tools,
-preserve context, and deliver results continuously. Choose an entry point based on your
-workflow:
+It is designed around task execution and delivery, not only chat responses.
 
-| Entry point | Best for | Quick entry |
+## What can you use it for?
+
+- **Daily development**: inspect repositories, implement features, fix bugs, run tests, and summarize changes.
+- **Terminal automation**: run one-shot tasks, persistent sessions, and scriptable workflows through CLI / TUI.
+- **Local-first workspaces**: keep sessions, model settings, and permission boundaries in your own environment.
+- **Agent extension**: add Providers, Skills, MCP servers, Tools, Profiles, workflows, and Web/API integrations.
+- **Team and channel workflows**: use WebUI, MySQL, Feishu channels, and multi-agent capabilities for longer-running tasks.
+
+See [Use cases](docs/use-cases.md) for copyable task examples.
+
+## Get started in 30 seconds
+
+### Option 1: Download the desktop app
+
+Download an installer for your platform from [GitHub Releases](https://github.com/konglong87/go-e2e/releases/latest).
+Open the app, configure a model Provider, protocol, model, endpoint, and credentials, then enter your first task.
+
+### Option 2: Run the CLI from source
+
+```bash
+git clone https://github.com/konglong87/go-e2e.git
+cd go-e2e
+go run ./cmd/go-e2e --version
+go run ./cmd/go-e2e -p "Inspect the current project and identify the highest-value improvements"
+```
+
+The source minimum is Go 1.25+. The default settings file is `~/.golang-cc/settings.json`. A minimal
+OpenAI-compatible configuration looks like this:
+
+```json
+{
+  "provider": "custom",
+  "providerProtocol": "openai-chat-completions",
+  "baseURL": "https://model.example.com/v1",
+  "apiKey": "replace-me",
+  "model": "model-id"
+}
+```
+
+See [Get started in 5 minutes](docs/getting-started.md) for installation, configuration, and troubleshooting.
+
+## Why go-e2e?
+
+| Concern | How go-e2e approaches it |
+| --- | --- |
+| **Local first** | SQLite by default, with local execution, private deployment, and MySQL support. |
+| **Task execution** | A loop from task understanding and planning to tool use, code changes, commands, and verification. |
+| **Flexible entry points** | Desktop, CLI, TUI, WebUI, and Feishu share one Runtime Core. |
+| **Provider flexibility** | Custom Providers, compatible APIs, multiple models, and multimodal extensions. |
+| **Designed to extend** | Explicit extension boundaries for Skills, MCP, Tools, Profiles, permissions, and workflows. |
+| **Go runtime** | A straightforward runtime and deployment path for local tools and long-running services. |
+
+## Which entry point should you choose?
+
+| Entry point | Best when you need | Quick path |
 | --- | --- | --- |
-| **Desktop** | Daily use, model configuration, sessions, and settings | `scripts/build-desktop-v2.sh` |
-| **TUI / CLI** | Terminal interaction, scripts, and one-shot tasks | `go run ./cmd/go-e2e` |
-| **WebUI** | Browser workspace, server deployments, and team usage | `scripts/webui-dev.sh` |
-| **Feishu** | Feishu bots, channel sessions, and long-running workers | See the [Feishu channel documentation](docs/README.md) |
+| **Desktop** | Model settings, session management, and a visual workspace | [Download](https://github.com/konglong87/go-e2e/releases/latest) |
+| **CLI** | One-shot tasks, scripts, automation, and CI workflows | `go run ./cmd/go-e2e -p "..."` |
+| **TUI** | Interactive Agent work directly in a terminal | `go run ./cmd/go-e2e` |
+| **WebUI** | A browser workspace, server deployment, or team usage | [WebUI docs](docs/usage/webui.md) |
+| **Feishu** | Channel messages and long-running workers | [Feishu channel docs](docs/usage/feishu.md) |
 
-## Download the desktop app
+## Public release boundaries
 
-Visit the GitHub [Releases page](https://github.com/konglong87/go-e2e/releases/latest) to download the latest desktop installer.
-
-| Platform | Package | Notes |
-| --- | --- | --- |
-| macOS Apple Silicon | `go-e2e-<version>-macos-arm64.dmg` | For Apple Silicon (M1/M2/M3/M4) |
-| macOS Intel | `go-e2e-<version>-macos-amd64.dmg` | For Intel Mac |
-| Windows | `go-e2e-setup.exe` | Windows installer |
-| Linux x86_64 | `go-e2e-desktop_<version>_linux_amd64.tar.gz` | Linux desktop archive |
-
-Use the `SHA256SUMS` file on the same page to verify downloaded assets.
-
-## Core Highlights
-
-| Highlight | Capabilities | User value |
-| --- | --- | --- |
-| **Open-source desktop Agent with four surfaces** | Desktop / TUI / CLI / WebUI | Covers personal use, development, and team deployment |
-| **Local-first with flexible deployment** | SQLite, local execution, private deployment, and MySQL | You control the data boundary and deployment environment |
-| **Designed for extension** | Providers, tools, workflows, permissions, UI, and business logic | Customize the Agent for your own projects |
-| **From one sentence to a delivered result** | Understand, plan, use tools, execute continuously, and verify | Supports complex tasks that need sustained execution |
-| **Flexible providers and multiple models** | Custom providers, compatible APIs, multimodal and image extensions | Avoids lock-in to a single model vendor |
-| **Go runtime with low deployment overhead** | Go runtime, local sidecar, and few external dependencies | Fast startup and straightforward deployment |
-
-## In Short
-
-go-e2e is a local-first, open-source desktop AI Agent covering Desktop, TUI, CLI, and WebUI.
-It supports private deployment, executes tasks from natural-language requests, delivers verified
-results, and connects to different model services through custom Providers.
+The project is still in fast-moving `0.x` development. Desktop, Computer Use, parts of multi-agent execution, and
+channel integrations will continue to evolve; read the [CHANGELOG](CHANGELOG.md) and [roadmap](docs/roadmap.md) before upgrading.
+Unsigned macOS builds may require manual approval in System Settings, and running an Agent requires a model service and API credentials that you configure yourself.
 
 ## Product Loop
 
@@ -124,69 +160,6 @@ which entry point uses which Profile, **Feishu** identifies the Feishu bot and c
 and **Worker** keeps that bot online. They are separate, reusable concepts. See the
 [product architecture overview](docs/architecture/agent_platform_architecture.md) for the
 complete diagram, layers, and configuration boundaries.
-
-## Quick Start
-
-### Toolchain
-
-- The source code requires Go 1.25 or newer. Current `x/crypto`, `x/net`, and `x/sys` dependencies require Go 1.25.
-- CI and release builds use Go 1.26.6 as the recommended toolchain with current security fixes; this does not raise the source minimum to Go 1.26.
-- `.tool-versions` pins the reproducible build toolchain.
-
-```bash
-git clone https://github.com/konglong87/go-e2e.git
-cd go-e2e
-go run ./cmd/go-e2e --version
-```
-
-Configure the provider, API protocol, model, endpoint, and credentials in the settings page,
-or edit:
-
-```text
-~/.golang-cc/settings.json
-```
-
-Minimal provider-neutral example:
-
-```json
-{
-  "provider": "custom",
-  "providerProtocol": "openai-chat-completions",
-  "baseURL": "https://model.example.com/v1",
-  "apiKey": "replace-me",
-  "model": "model-id"
-}
-```
-
-Start a task:
-
-```bash
-go run ./cmd/go-e2e -p "Inspect the current project structure"
-```
-
-Continue the same session:
-
-```bash
-go run ./cmd/go-e2e --session-id 11111111-1111-4111-8111-111111111111 -p "Remember the previous conclusion and continue checking tests"
-go run ./cmd/go-e2e --sessionId 11111111-1111-4111-8111-111111111111 -p "Based on the previous result, suggest fixes"
-```
-
-## Desktop Downloads
-
-Desktop installers are published through GitHub Releases. macOS provides Apple Silicon
-(`arm64`) and Intel (`amd64`) DMGs, Windows provides an amd64 installer, and Linux desktop
-packages and CLI archives are released alongside them. Verify downloaded files with the
-`SHA256SUMS` file on the corresponding Release page.
-
-If macOS says that the developer cannot be verified, the current build was not signed and
-notarized with an Apple Developer ID. Move `go-e2e.app` to Applications, then open:
-
-```text
-System Settings -> Privacy & Security -> Security -> Open Anyway
-```
-
-After confirmation, launch the application again. Builds with Apple Developer secrets are
-signed and notarized and normally do not require this step.
 
 ## Entry Points
 

@@ -2,6 +2,20 @@
 
 本文件汇总 golang-cc 的重要改动；每项的详细设计与验收见对应 `docs/**` 方案文档。
 
+## v0.3.0 — 2026-10-13
+
+### Public release
+
+- 发布当前主线的 Desktop、CLI、TUI 和 WebUI 使用入口，补充首次安装、Provider、MCP、FAQ 和使用场景文档。
+- 增加社区入口、Issue 模板、Discussion 引导和低门槛首次贡献路径。
+- 延续 v0.2.0 之后的 Computer Use、桌面端、Agent Team 和运行时可靠性改进。
+
+### Known limitations
+
+- 项目仍处于 `0.x` 快速迭代阶段；具体平台能力和兼容性以 Release Notes、文档和实际验证为准。
+- 未配置 Apple Developer Secrets 的 macOS 构建可能需要手动允许打开。
+- 运行 Agent 需要用户自行配置可用的模型服务、协议和 API 凭据。
+
 ## v0.2.0 — 2026-09-30
 
 ### 新功能与修复
