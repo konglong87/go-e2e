@@ -230,6 +230,29 @@ func TestComputerUseFastPathPropagatesToToolContext(t *testing.T) {
 	}
 }
 
+func TestComputerUseFastPathCapsProviderOutputBudget(t *testing.T) {
+	streamer := &systemStreamer{}
+	session := New(streamer, tools.NewRegistry(), Options{
+		Model: "test", MaxTurns: 1, MaxTokens: defaults.CodeMaxTokens, Effort: "high",
+		CWD: t.TempDir(), ComputerUseFastPath: true,
+	})
+	if _, err := session.Run(context.Background(), "probe", io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if session.options.MaxTokens >= defaults.CodeMaxTokens {
+		t.Fatalf("fast path max_tokens=%d, want a bounded ComputerUse budget", session.options.MaxTokens)
+	}
+	if len(streamer.maxTokens) != 1 || streamer.maxTokens[0] != session.options.MaxTokens {
+		t.Fatalf("provider max_tokens=%v session=%d", streamer.maxTokens, session.options.MaxTokens)
+	}
+	if len(streamer.thinking) != 1 || streamer.thinking[0] == nil || streamer.thinking[0].Effort != "high" {
+		t.Fatalf("fast path changed requested effort: thinking=%+v", streamer.thinking)
+	}
+	if streamer.thinking[0].BudgetTokens >= defaults.CodeMaxTokens {
+		t.Fatalf("fast path thinking budget=%d, want bounded budget", streamer.thinking[0].BudgetTokens)
+	}
+}
+
 func TestComputerUseFastPathBoundsTurnsWithoutProductDeadline(t *testing.T) {
 	fast := New(&deadlineProbeStreamer{}, tools.NewRegistry(), Options{
 		Model: "test", MaxTurns: 20, CWD: t.TempDir(), ComputerUseFastPath: true,

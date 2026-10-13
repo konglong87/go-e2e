@@ -56,7 +56,10 @@ import (
 	"github.com/konglong87/go-e2e/internal/tools/todowrite"
 )
 
-const computerUseFastPathMaxTurns = 16
+const (
+	computerUseFastPathMaxTurns  = 16
+	computerUseFastPathMaxTokens = 2048
+)
 
 type Options struct {
 	Model     string
@@ -505,6 +508,9 @@ func New(client MessageStreamer, registry *tools.Registry, options Options) *Ses
 	}
 	if options.MaxTokens <= 0 {
 		options.MaxTokens = defaultMaxTokens(options)
+	}
+	if options.ComputerUseFastPath && options.MaxTokens > computerUseFastPathMaxTokens {
+		options.MaxTokens = computerUseFastPathMaxTokens
 	}
 	if options.ToolResultLimit <= 0 {
 		options.ToolResultLimit = toolresult.DefaultLimit
@@ -1343,6 +1349,9 @@ func (s *Session) run(ctx context.Context, prompt string, cb runCallbacks) (resu
 		s.options.RuntimeProfile = runtimeprofile.ProfileBare
 		if s.options.MaxTurns > computerUseFastPathMaxTurns {
 			s.options.MaxTurns = computerUseFastPathMaxTurns
+		}
+		if s.options.MaxTokens > computerUseFastPathMaxTokens {
+			s.options.MaxTokens = computerUseFastPathMaxTokens
 		}
 	}
 	// Fast path narrows the tool/context surface for simple GUI work, but it
