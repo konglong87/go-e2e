@@ -127,7 +127,7 @@ function global:Invoke-FixtureTool {
         "go" {
             if ($env:GOOS -ne "windows" -or $env:GOARCH -ne "amd64") { throw "Wrong sidecar target" }
             if ($env:PACKAGING_CASE -ne "missing-sidecar") {
-                Set-Content $ToolArgs[2] "fixture sidecar"
+                Set-Content $ToolArgs[5] "fixture sidecar"
             }
         }
         "wails" {
