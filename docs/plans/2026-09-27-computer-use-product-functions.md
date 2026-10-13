@@ -25,6 +25,25 @@ is historical, not asserted as the current blocker. Current one-shot input probe
 was blocked before dispatch by an after-capture geometry change. No new model
 pass is claimed.
 
+### Phase update — deterministic model-deadline root cause — 2026-10-13
+
+- The latest fresh run `model-f574e81-final-01` executed native `launch_app`,
+  `click`, `command+a`, and `type` successfully; native work took 7.441s.
+  The run stopped at the 110s operational boundary before the required send.
+- The acceptance prompt is 1428 Unicode characters. The Computer Use fast-path
+  classifier previously rejected it at the 1200-character limit and also treated
+  the safety phrase `不要使用 Bash` as positive shell intent. Consequently the
+  run retained the full code context and grew from 19412 to 39092 input tokens.
+- Commit `cc9e806` raises the bounded classifier ceiling to 2000 Unicode
+  characters and ignores blocked terms only when they occur in a negated safety
+  clause; positive coding/shell intent remains excluded. Exact acceptance-prompt
+  regression coverage, normal-code non-regression, focused Go/race tests, and
+  native fake safety assertions pass. A new tagged desktop build from this commit
+  passes deep strict codesign verification.
+- This is a deterministic performance-path fix, not a model-closure pass. The
+  next gate is one fresh run on the attested `cc9e806` build; no prior action or
+  screenshot may be replayed or mixed into that evidence.
+
 Second physical display and formal signing/distribution remain explicitly
 user-deferred. Optional GitHub binary release remains externally blocked.
 

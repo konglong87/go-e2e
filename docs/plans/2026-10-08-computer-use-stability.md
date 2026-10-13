@@ -64,6 +64,20 @@ commit konglong <konglong@com>, push origin/main. Desktop build exclusively via
 bash scripts/build-desktop-v2.sh. GUI target operations through project
 ComputerUse only. Use unique dated evidence directories, bind every receipt and
 image to current session/run/build, inspect actual images, preserve failed
+### Phase update — deterministic Computer Use prompt fast-path fix — 2026-10-13
+
+The last fresh model run reached four valid native actions but missed send because
+model turns consumed the 110s operational boundary. The exact 1428-rune acceptance
+prompt was rejected by the 1200-rune fast-path classifier and its safety wording
+contained a negated `Bash` mention that the classifier treated as coding intent.
+Commit `cc9e806` raises the classifier ceiling to 2000 runes and distinguishes
+negated safety mentions from positive blocked intent. Exact prompt auto-fast-path
+regression coverage passes with bounded turns/tokens and bare runtime profile;
+`go test ./internal/query`, `go test -race ./internal/query`, focused CLI/race
+tests, native fake safety assertions, tagged desktop build, and strict deep
+codesign verification pass. This does not claim the final model closure; only a
+fresh run on the attested build can close that gate.
+
 screenshots. Readiness is not proved by non-white pixels alone. At most 12 s
 passive blank-screen waiting in the complete 120 s loop, no blind input.
 
