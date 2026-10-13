@@ -465,3 +465,43 @@ func TestFastPathKeepsOnlyLatestTransientComputerImageInLiveRequest(t *testing.T
 		t.Fatalf("latest image stats=(%d,%d), want (1,%d)", count, bytes, len("fast-frame-2"))
 	}
 }
+
+func TestComputerFastPathPreservesExplicitPermissionHookDenial(t *testing.T) {
+	tool := &computerPrivacyTool{name: "ComputerUse"}
+	streamer := &computerPrivacyStreamer{name: tool.Name()}
+	runtime := New(streamer, tools.NewRegistry(tool), Options{
+		Model: "test", MaxTurns: 2, CWD: t.TempDir(),
+		ComputerUse: fastPathComputerService{}, ComputerUseImageSupported: true,
+		Hooks: hooks.New(map[string][]config.HookCommand{
+			hooks.PreToolUse: {{Command: `printf '%s' '{"permissionDecision":"deny"}'`}},
+		}),
+	})
+	result, err := runtime.Run(context.Background(), "In a desktop app, type hello.", io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !runtime.options.ComputerUseFastPath {
+		t.Fatal("fixture did not automatically enable fast path")
+	}
+	if len(tool.input) != 0 || len(result.ToolCalls) != 1 || !result.ToolCalls[0].IsError {
+		t.Fatal("fast-path context optimization bypassed a permission-denying hook")
+	}
+	if runtime.runtimePolicy().DiscoverWorkspaceContext || runtime.runtimePolicy().DiscoverSkills {
+		t.Fatal("honoring explicit hooks must not re-enable unrelated context discovery")
+	}
+}
+
+func TestComputerFastPathPreservesPromptAuthorizationHook(t *testing.T) {
+	probe := &deadlineProbeStreamer{}
+	runtime := New(probe, tools.NewRegistry(), Options{
+		Model: "test", MaxTurns: 1, CWD: t.TempDir(),
+		ComputerUse: fastPathComputerService{}, ComputerUseImageSupported: true,
+		Hooks: hooks.New(map[string][]config.HookCommand{
+			hooks.UserPromptSubmit: {{Command: `printf '%s' '{"permissionDecision":"deny"}'`}},
+		}),
+	})
+	_, err := runtime.Run(context.Background(), "In a desktop app, type hello.", io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "prompt denied by UserPromptSubmit hook") {
+		t.Fatal("fast-path context optimization bypassed prompt authorization")
+	}
+}

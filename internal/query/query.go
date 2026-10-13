@@ -4992,7 +4992,13 @@ func (s *Session) runtimeProfile() runtimeprofile.Profile {
 }
 
 func (s *Session) runtimePolicy() runtimeprofile.Policy {
-	return resolveRuntimePolicy(s.options.RuntimeProfile)
+	policy := resolveRuntimePolicy(s.options.RuntimeProfile)
+	if s.options.ComputerUseFastPath && s.options.ComputerUse != nil && s.options.ComputerUseImageSupported && !s.options.DisableTools {
+		// Bare desktop context removes discovery/enrichment, not explicitly
+		// supplied authorization hooks. Optimization must never bypass a deny.
+		policy.RunHooks = true
+	}
+	return policy
 }
 
 func resolveRuntimePolicy(profile runtimeprofile.Profile) runtimeprofile.Policy {

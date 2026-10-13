@@ -188,7 +188,14 @@ func (m *computerManager) ensureBackendLocked(ctx context.Context) (cu.Backend, 
 	if m.backend != nil {
 		return m.backend, nil
 	}
-	b, err := m.factory(ctx)
+	// Request cancellation may deny this client, but only the supervisor owns
+	// the helper process lifetime. A UI capabilities probe can be the first
+	// caller and must not attach a reused helper to its window context.
+	lifetime := m.runtimeContext()
+	if err := lifetime.Err(); err != nil {
+		return nil, err
+	}
+	b, err := m.factory(lifetime)
 	if err != nil {
 		return nil, err
 	}
@@ -443,7 +450,7 @@ func (a *app) StartComputerSession(in ComputerSessionStartInput) (ComputerSessio
 	if err != nil {
 		return ComputerSessionDTO{}, err
 	}
-	return a.computer().startOwnedWithLifetime(ctx, ctx, in, owner)
+	return a.computer().startOwned(ctx, in, owner)
 }
 
 // GetComputerSession reads the same controller used by the model runtime. It

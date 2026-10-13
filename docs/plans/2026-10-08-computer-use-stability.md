@@ -784,3 +784,24 @@ exact max_output_tokens=2048, only ComputerUse advertised, no workspace context,
 latest-only PNG over three observations, and preservation of all tool-result
 protocol records. It does not invoke an external model or native input and does
 not prove that the remaining real-run token growth is old images.
+
+### Phase update — helper lifetime and explicit authorization boundaries — 2026-10-13
+
+Failing desktop regressions exposed two surviving UI lifetime entry paths:
+capabilities-first created a helper with the window context, and approved
+conversation UI start passed that same context as helper lifetime. Backend
+creation now always uses the manager's supervisor-owned runtime context;
+caller cancellation still denies approval and does not confer authority.
+RuntimeSupervisor Stop performs bounded independent Stop/drain before cancelling
+helper lifetime; app shutdown now drains before disconnecting the bridge.
+
+A separate failing query regression showed auto fast-path bare context skipped
+a supplied UserPromptSubmit authorization hook. The runtime policy now retains
+explicit hooks while still disabling workspace/skills discovery. PreToolUse deny
+was already honored and is pinned by another non-regression test. Permission,
+focus, window and screenshot safety guards are not relaxed.
+
+These are deterministic short-term P0-E boundary fixes, not proof of survival
+across an OS process exit or full headless-runtime extraction. Active native
+panel/window-close acceptance and that process architecture remain open. No new
+model attempt was made after the known wait failure.

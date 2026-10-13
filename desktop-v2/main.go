@@ -314,9 +314,8 @@ func (a *app) shutdown(ctx context.Context) {
 	a.computerManager = nil
 	a.computerRuntime = nil
 	a.mu.Unlock()
-	if bridge != nil {
-		_ = bridge.Close()
-	}
+	// Revoke/drain authoritative sessions before disconnecting provider clients.
+	// Closing the bridge first can discard an in-flight executed receipt.
 	if runtime != nil {
 		if err := runtime.Stop(ctx); err != nil {
 			wailsruntime.LogErrorf(ctx, "stop computer runtime: %v", err)
@@ -325,6 +324,9 @@ func (a *app) shutdown(ctx context.Context) {
 		if err := computer.close(ctx); err != nil {
 			wailsruntime.LogErrorf(ctx, "stop computer helper: %v", err)
 		}
+	}
+	if bridge != nil {
+		_ = bridge.Close()
 	}
 	if service != nil {
 		if err := service.stop(ctx); err != nil {

@@ -50,7 +50,8 @@ func (r *RuntimeSupervisor) EventBus() *cu.EventBus {
 }
 
 // Stop is the only normal runtime termination path. It revokes the active
-// session and closes the helper after canceling the runtime context.
+// session and drains the helper before canceling its lifetime context. Client
+// disconnect cannot interrupt this bounded, explicit shutdown.
 func (r *RuntimeSupervisor) Stop(ctx context.Context) error {
 	if r == nil {
 		return nil
@@ -64,9 +65,11 @@ func (r *RuntimeSupervisor) Stop(ctx context.Context) error {
 	cancel := r.cancel
 	manager := r.manager
 	r.mu.Unlock()
-	cancel()
+	defer cancel()
 	if manager == nil {
 		return nil
 	}
-	return manager.close(ctx)
+	stopCtx, stopCancel := context.WithTimeout(context.WithoutCancel(ctx), computerRequestTimeout)
+	defer stopCancel()
+	return manager.close(stopCtx)
 }
