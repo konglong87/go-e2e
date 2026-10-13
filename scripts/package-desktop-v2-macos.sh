@@ -20,7 +20,7 @@ case "${ARCH}" in
 esac
 
 mkdir -p "${DIST_DIR}"
-MACOS_VERIFY_SIGNATURE="${REQUIRE_NOTARIZATION}" bash "${ROOT}/scripts/build-desktop-v2.sh" -platform "${PLATFORM}"
+MACOS_ADHOC_SIGN="${REQUIRE_NOTARIZATION}" MACOS_VERIFY_SIGNATURE="${REQUIRE_NOTARIZATION}" bash "${ROOT}/scripts/build-desktop-v2.sh" -platform "${PLATFORM}"
 
 if [[ ! -d "${APP_PATH}" ]]; then
   echo "package-desktop-v2-macos.sh: missing app bundle: ${APP_PATH}" >&2

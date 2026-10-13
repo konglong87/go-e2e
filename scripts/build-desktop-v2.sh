@@ -32,6 +32,7 @@ APP_PATH="${DESKTOP_DIR}/build/bin/go-e2e.app"
 # keeps the local development identity consistent until a real Apple identity
 # is supplied for release signing.
 MACOS_ADHOC_DESIGNATED_REQUIREMENT="${MACOS_ADHOC_DESIGNATED_REQUIREMENT:-=designated => identifier \"com.wails.go-e2e\"}"
+MACOS_ADHOC_SIGN="${MACOS_ADHOC_SIGN:-1}"
 MACOS_VERIFY_SIGNATURE="${MACOS_VERIFY_SIGNATURE:-1}"
 macos_codesign() {
   local target="$1"
@@ -61,10 +62,16 @@ if [[ -d "${APP_BIN}" ]]; then
     MACOS_ARCH="${helper_arch}" bash "${ROOT}/scripts/build-computer-helper-macos.sh" "${helper_app}/Contents/MacOS/computer-helper-macos" >/dev/null
     # The service/helper binaries are embedded after Wails creates its app signature.
     # Sign every executable/bundle with the same stable local requirement, then
-    # seal only the outer app (without --deep re-signing nested bundles).
-    macos_codesign "${APP_BIN}/go-e2e-desktop"
-    macos_codesign "${APP_BIN}/go-e2e"
-    macos_codesign "${helper_app}"
+    # seal only the outer app (without --deep re-signing nested bundles). Unsigned
+    # release packaging skips this step so a missing Apple identity remains an
+    # honest unsigned DMG instead of failing while trying to seal nested code.
+    if [[ "${MACOS_ADHOC_SIGN}" == "1" ]]; then
+      macos_codesign "${APP_BIN}/go-e2e-desktop"
+      macos_codesign "${APP_BIN}/go-e2e"
+      macos_codesign "${helper_app}"
+    else
+      echo "Skipping ad-hoc macOS code signing for unsigned packaging."
+    fi
     # Attest the exact committed source and executable bytes before sealing.
     python3 - "${APP_PATH}" "${ROOT}" <<'PYBUILD'
 import datetime, hashlib, json, pathlib, subprocess, sys
@@ -101,11 +108,15 @@ resources.mkdir(exist_ok=True)
     "service_sha256": digest(app / "Contents/MacOS/go-e2e"),
 }, indent=2) + "\n")
 PYBUILD
-    codesign --force --sign - --requirements "${MACOS_ADHOC_DESIGNATED_REQUIREMENT}" --timestamp=none "${APP_PATH}"
-    if [[ "${MACOS_VERIFY_SIGNATURE}" == "1" ]]; then
-      codesign --verify --deep --strict --verbose=2 "${APP_PATH}"
+    if [[ "${MACOS_ADHOC_SIGN}" == "1" ]]; then
+      codesign --force --sign - --requirements "${MACOS_ADHOC_DESIGNATED_REQUIREMENT}" --timestamp=none "${APP_PATH}"
+      if [[ "${MACOS_VERIFY_SIGNATURE}" == "1" ]]; then
+        codesign --verify --deep --strict --verbose=2 "${APP_PATH}"
+      else
+        echo "Skipping macOS nested signature verification for unsigned/unnotarized packaging."
+      fi
     else
-      echo "Skipping macOS nested signature verification for unsigned/unnotarized packaging."
+      echo "Skipping outer macOS code signing for unsigned packaging."
     fi
   fi
   # Keep Finder's package modification time aligned with the actual build.
