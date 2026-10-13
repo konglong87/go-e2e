@@ -3,6 +3,8 @@
 Unicode true
 !define PRODUCT_EXECUTABLE "go-e2e-desktop.exe"
 !define SIDECAR_EXECUTABLE "go-e2e.exe"
+# Keep the uninstall registry key stable and aligned with the release acceptance checks.
+!define UNINST_KEY_NAME "go-e2e"
 !include "wails_tools.nsh"
 
 # The sidecar build is currently amd64 only. Never silently ship it for ARM64.

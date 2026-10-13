@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.3.2 — 2026-10-13
+
+### Public release reliability
+
+- 修复 Windows 安装程序卸载注册表键名与发布验收脚本不一致的问题。
+- 允许未配置 Apple Developer ID 时发布未签名 macOS 安装包，并在对应验收路径中明确跳过签名校验。
+
 本文件汇总 golang-cc 的重要改动；每项的详细设计与验收见对应 `docs/**` 方案文档。
 
 ## v0.3.0 — 2026-10-13
