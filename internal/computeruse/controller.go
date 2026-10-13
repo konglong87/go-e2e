@@ -579,6 +579,12 @@ func (c *Controller) ExecuteTurn(ctx context.Context, owner SessionOwner, a Acti
 				stored, _ := c.session.CurrentObservation()
 				result.Observation = &stored
 				result.ObservationState = ObservationReady
+				if c.runner != nil && c.runner.State() == RunStateVerifying {
+					if transitionErr := c.runner.Transition(Transition{From: RunStateVerifying, To: RunStateObserved}); transitionErr != nil {
+						turnErr = transitionErr
+						c.failRun()
+					}
+				}
 			}
 		}
 		if result.ObservationState == ObservationReady && result.ScreenshotState == ScreenshotReady && turnErr == nil {

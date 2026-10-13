@@ -284,3 +284,41 @@ func TestControllerExecuteTurnLaunchIsAtomicAndBindsFirstObservation(t *testing.
 		t.Fatalf("authoritative launch turn not committed: stored=%+v ok=%v", stored, ok)
 	}
 }
+
+func TestControllerExecuteTurnLaunchReopensObservedRunnerPhase(t *testing.T) {
+	session, owner, now := newTestSession(t, false)
+	registry, err := NewStaticTargetRegistry(ApplicationTarget{
+		ID: "workbuddy", DisplayName: "WorkBuddy",
+		Launch: LaunchPolicy{ProviderKey: "trusted-workbuddy"},
+		Window: WindowPolicy{BundleID: WorkBuddyBundleID, RequireVisible: true, RequireFrontmost: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := &atomicLaunchBackend{
+		turnImageBackend: &turnImageBackend{
+			FakeBackend: &FakeBackend{ObservationValue: readyObservation(session.ID(), now)},
+			imageData:   []byte("png-bytes"), mediaType: "image/png",
+		},
+		launchReceipt: LaunchReceipt{
+			BundleID: WorkBuddyBundleID,
+			Window:   WindowRef{ID: "workbuddy-window", OwnerPID: 84, BundleID: WorkBuddyBundleID, IsVisible: true, IsFrontmost: true},
+			Outcome:  OutcomeExecuted, CompletedAt: now.Add(time.Millisecond),
+		},
+	}
+	backend.ObservationValue.ID = "obs-after-launch-runner"
+	controller, err := NewControllerWithRegistry(session, backend, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := controller.ExecuteTurn(context.Background(), owner, Action{ID: "launch-runner-1", SessionID: session.ID(), TargetID: "workbuddy", Kind: ActionLaunchApp})
+	if err != nil {
+		t.Fatalf("ExecuteTurn() error = %v", err)
+	}
+	if result.ObservationState != ObservationReady {
+		t.Fatalf("launch observation state = %s", result.ObservationState)
+	}
+	if got := controller.RunSnapshot().State; got != RunStateObserved {
+		t.Fatalf("runner state after committed launch = %s, want %s", got, RunStateObserved)
+	}
+}
