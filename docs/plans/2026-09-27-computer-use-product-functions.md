@@ -1,29 +1,27 @@
 # Computer Use functional parity — implementation ledger
 
-## Current ordered queue — 2026-10-08
+## Current ordered queue — 2026-10-13
 
-The current stability/closure work is tracked in
-`docs/plans/2026-10-08-computer-use-stability.md`. Ordered remaining gates:
+The runtime contract is specified in
+`docs/plans/2026-10-10-computer-use-runtime-rearchitecture.md`; the stability
+history is in `docs/plans/2026-10-08-computer-use-stability.md`.
 
-1. P0: isolate target lifecycle and focus with read-only native diagnostics;
-   current-build 30s passive run reproduced loss from on-screen inventory.
-2. P0: repair bounded observation recovery for position-only motion, retaining
-   exact identity/dimension/topology and Pause/Stop/permission checks.
-3. P0: fixed one-shot input probe (no model, no send, no replay), inspected
-   current-run screenshots; **passed** on `input-1e1c343-02`: click,
-   command+a, one type, visible `1+1=2`.
-4. P0: same-window focus/Space recovery and model prompt/validator contract;
-   native same-target recovery is committed, explicit launch contract is now
-   accepted by the validator, and model closure remains open.
-5. P0: actual gpt-6-sol/high desktop ComputerUse launch/type/send once/reply/Stop.
-6. P1: outstanding native control/display regression from the historical queue.
+| Priority | Remaining gate / dependency | Status |
+|---|---|---|
+| P0 | Consistent native passive-wait acknowledgement across atomic turn/bridge/tool | Regression reproduced: native returned executed/not_started, incompatible with turn validation; native timer-completion fix under verification. No validation relaxation. |
+| P0 | Production request/context contract and first-action guidance | Exact acceptance prompt now enters fast path. Audit actual wire image count and metadata size; remove launch-vs-observe guidance conflict before another model run. |
+| P0 | Runtime lifecycle/control audit | Confirm UI/panel/window cancellation cannot terminate runtime; permission revoke, Stop, and terminal faults still win. Historical tests are not full P0-E closure. |
+| P0 | Current-build automated/native gates | Focused Go/race, Python acceptance, native safety/platform, helper and tagged official build, strict codesign. |
+| P0 | Fresh gpt-6-sol/high closure after all deterministic gates | Same build/session/run launch → click → command+a → type → send once → wait once → actual reply screenshot → model Stop. Remains open; no replay or further model retry while deterministic work is unfinished. |
+| P1 | Historical native control/display follow-ups | Unchanged; do not promote old screenshots to current evidence. |
 
-Earlier cold-launch and native Pause/Resume/Stop batches passed as recorded in
-that stability ledger. They do not prove current model closure. The evening
-continuation starts at 942ed52 with permissions ready; the earlier Mac-lock report
-is historical, not asserted as the current blocker. Current one-shot input probe
-was blocked before dispatch by an after-capture geometry change. No new model
-pass is claimed.
+`model-ca023a7-final-01` completed click/hotkey/type/send once/wait once and model
+Stop on the requested route. Native wait completed with a screenshot, but its
+executed/not_started reply failed atomic contract validation and became unknown;
+no reply screenshot was delivered to the model. The saved send screenshot was
+visually inspected and shows the target preparing execution, **not a reply**.
+This run is a failure, not a closure pass. Concurrent community/documentation
+work is outside this task's write set and must never be included in its commits.
 
 ### Phase update — deterministic model-deadline root cause — 2026-10-13
 
@@ -31,18 +29,21 @@ pass is claimed.
   `click`, `command+a`, and `type` successfully; native work took 7.441s.
   The run stopped at the 110s operational boundary before the required send.
 - The acceptance prompt is 1428 Unicode characters. The Computer Use fast-path
-  classifier previously rejected it at the 1200-character limit and also treated
-  the safety phrase `不要使用 Bash` as positive shell intent. Consequently the
-  run retained the full code context and grew from 19412 to 39092 input tokens.
+  classifier deterministically rejected it at the 1200-character limit. The
+  phrase `不要使用 Bash` also motivated a negated-term regression, but has not
+  been established as a second rejection cause for the exact punctuated prompt.
+  The run retained code context and grew from 19412 to 39092 input tokens;
+  reduced-context run `model-ca023a7-final-01` started at 3626 input tokens.
 - Commit `cc9e806` raises the bounded classifier ceiling to 2000 Unicode
   characters and ignores blocked terms only when they occur in a negated safety
   clause; positive coding/shell intent remains excluded. Exact acceptance-prompt
   regression coverage, normal-code non-regression, focused Go/race tests, and
   native fake safety assertions pass. A new tagged desktop build from this commit
   passes deep strict codesign verification.
-- This is a deterministic performance-path fix, not a model-closure pass. The
-  next gate is one fresh run on the attested `cc9e806` build; no prior action or
-  screenshot may be replayed or mixed into that evidence.
+- This is a deterministic context-path fix, not proof that all provider latency
+  is solved. The subsequent `ca023a7` run exposed the native wait contract defect
+  described above. Finish the deterministic queue before another model gate;
+  no prior input or screenshot may be replayed or mixed into fresh evidence.
 
 Second physical display and formal signing/distribution remain explicitly
 user-deferred. Optional GitHub binary release remains externally blocked.

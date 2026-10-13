@@ -64,12 +64,16 @@ commit konglong <konglong@com>, push origin/main. Desktop build exclusively via
 bash scripts/build-desktop-v2.sh. GUI target operations through project
 ComputerUse only. Use unique dated evidence directories, bind every receipt and
 image to current session/run/build, inspect actual images, preserve failed
+screenshots. Readiness is not proved by non-white pixels alone. At most 12 s
+passive blank-screen waiting in the complete 120 s loop, no blind input.
+
 ### Phase update — deterministic Computer Use prompt fast-path fix — 2026-10-13
 
 The last fresh model run reached four valid native actions but missed send because
 model turns consumed the 110s operational boundary. The exact 1428-rune acceptance
-prompt was rejected by the 1200-rune fast-path classifier and its safety wording
-contained a negated `Bash` mention that the classifier treated as coding intent.
+prompt was rejected by the 1200-rune fast-path classifier. A separate regression
+covers a negated `Bash` safety mention; it is not proven to be a second rejection
+cause for this exact prompt's punctuation.
 Commit `cc9e806` raises the classifier ceiling to 2000 runes and distinguishes
 negated safety mentions from positive blocked intent. Exact prompt auto-fast-path
 regression coverage passes with bounded turns/tokens and bare runtime profile;
@@ -77,9 +81,6 @@ regression coverage passes with bounded turns/tokens and bare runtime profile;
 tests, native fake safety assertions, tagged desktop build, and strict deep
 codesign verification pass. This does not claim the final model closure; only a
 fresh run on the attested build can close that gate.
-
-screenshots. Readiness is not proved by non-white pixels alone. At most 12 s
-passive blank-screen waiting in the complete 120 s loop, no blind input.
 
 Keep requested diagnostic logs and validation evidence locally and out of Git;
 clean only task-created unrequested temporaries. Final gate: diff --check,
@@ -741,3 +742,26 @@ logs retained. Pre-existing scripts/__pycache__/ left untouched and uncommitted.
   valid post-send reply observation and issue the final ComputerUse Stop within
   the existing 120-second/110-second contract. Do not replay the already
   executed input or send action; use a fresh cold run and fresh evidence.
+
+### Phase update — passive wait completion is not input posting — 2026-10-13
+
+Fresh `model-ca023a7-final-01` on the requested provider/gpt-6-sol/high route
+issued observe (implicit atomic launch), click, command+a, type, one send click,
+one wait, and model Stop. Native request-24 returned executed/not_started with
+no error after ~7.2s; the bridge substituted input_uncertain/unknown because the
+atomic contract requires executed/complete. This is a deterministic protocol
+mismatch, not evidence of launch failure or uncertain keyboard/mouse dispatch.
+The saved send image shows preparing execution, not a reply; no reply pass.
+
+The native fix tracks passive action completion separately from input posting:
+only successful completion of the cancellable timer acknowledges complete;
+Pause/Stop/deadline before completion stays rejected/not_started. After-image
+failure retains completed wait while rejecting inconsistent image evidence.
+Tests first failed on executed/not_started and now cover success, after-capture
+focus loss, screenshot failure, consumed observation, and Stop interruption.
+Contract validators and focus/window/permission guards are unchanged.
+
+Change ledger: task source is Engine.swift and native fake tests plus these two
+ledgers; concurrently-created community/docs files are external work, excluded.
+Further model attempts are deferred until production request/guidance and runtime
+lifecycle audits plus current-build deterministic gates are closed.

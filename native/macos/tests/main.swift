@@ -607,7 +607,7 @@ do {
     let (engine, desktop) = setup()
     desktop.focused = 84
     let result = engine.execute(action("wait", ["duration_ms": .number(1)]))
-    expect(result.outcome == .executed, "passive wait captures new focus after app launch")
+    expect(result.outcome == .executed && result.dispatchState == .complete, "completed passive wait acknowledges action without input")
     expect(desktop.posts.isEmpty, "passive wait never posts native input")
 }
 
@@ -615,9 +615,22 @@ do {
     let (engine, desktop) = setup()
     desktop.captureHook = { desktop.focused = 84 }
     let result = engine.execute(action("wait", ["duration_ms": .number(1)]))
-    expect(result.outcome == .rejected && result.error == .focusChanged,
-           "passive wait still rejects focus changes during screenshot capture")
+    expect(result.outcome == .executed && result.dispatchState == .complete && result.error == .focusChanged && result.payload["data"] == nil,
+           "completed wait keeps acknowledgement but rejects inconsistent screenshot")
     expect(desktop.posts.isEmpty, "failed wait capture never posts input")
+}
+
+// The passive timer completed even when only the after-image fails. No input
+// was posted, no wait is replayed, and a fresh observation is still required.
+do {
+    let (engine, desktop) = setup()
+    desktop.failCapture = true
+    let result = engine.execute(action("wait", ["duration_ms": .number(1)]))
+    expect(result.outcome == .executed && result.dispatchState == .complete && result.error == .screenshotFailed,
+           "wait screenshot failure preserves completed action")
+    expect(desktop.posts.isEmpty && result.payload["data"] == nil, "wait evidence failure never posts input or publishes a bad image")
+    expect(engine.execute(action("wait", ["duration_ms": .number(1)])).outcome == .rejected,
+           "completed wait cannot reuse consumed observation")
 }
 
 // A stop on the reader thread can interrupt a long wait on the worker.
@@ -628,7 +641,7 @@ do {
     DispatchQueue.global().async {
         began.signal()
         let result = engine.execute(action("wait",["duration_ms":.number(5000)]))
-        expect(result.outcome == .rejected, "interrupted wait never posted input")
+        expect(result.outcome == .rejected && result.dispatchState == .notStarted, "interrupted wait never completed or posted input")
         done.signal()
     }
     began.wait(); Thread.sleep(forTimeInterval:0.03)

@@ -413,6 +413,7 @@ final class Engine {
     func execute(_ request: Envelope) -> ActionResult {
         var posted = false
         var inputComplete = false
+        var actionComplete = false
         var pressedButton: CGMouseButton?
         defer { if let pressedButton { platform.releasePressedButton(pressedButton) } }
         do {
@@ -442,25 +443,32 @@ final class Engine {
             }
             inputComplete = !plan.operations.isEmpty
             try wait(plan.waitMS, request: request)
+            // Dispatch state acknowledges completion of the structured action,
+            // not the existence of keyboard/mouse events. A passive wait is
+            // complete only after its cancellable timer succeeds. Keep posted
+            // separately for partial-input safety and never replay either one.
+            actionComplete = true
             // The final atomic operation may legitimately activate another app.
             // Capture requires stable current focus, not the consumed binding;
             // subsequent input still needs a fresh observe. This is not visual
             // verification that the action achieved its intended result.
             let payload = try captureAfterInput(request, geometry: snapshot.geometry, expectedWindow: snapshot.window)
             return ActionResult(outcome: .executed, payload: payload, error: nil,
-                                dispatchState: inputComplete ? .complete : .notStarted)
+                                dispatchState: .complete)
         } catch {
             // Explicit Pause/Stop already invalidated the generation. Preserve
             // that state so Pause can Resume with a fresh observation; do not
             // turn cooperative interruption into an irreversible helper stop.
             if (error as? SafetyError) == .inputUncertain { posted = true }
             let safetyError = error as? SafetyError ?? .inputUnavailable
+            let acknowledged = inputComplete || actionComplete
             record(request, phase: "execute_result", error: safetyError,
-                   fields: ["result": inputComplete ? "executed" : (posted ? "unknown" : "rejected"),
-                            "dispatch_state": inputComplete ? "complete" : (posted ? "unknown" : "not_started"), "input_posted": posted])
-            if inputComplete && safetyError != .inputUncertain {
-                // All planned pairs were acknowledged. Losing only evidence
-                // must not turn confirmed dispatch into partial/unknown input.
+                   fields: ["result": acknowledged ? "executed" : (posted ? "unknown" : "rejected"),
+                            "dispatch_state": acknowledged ? "complete" : (posted ? "unknown" : "not_started"), "input_posted": posted])
+            if acknowledged && safetyError != .inputUncertain {
+                // All input pairs or the passive timer were acknowledged.
+                // Losing only evidence must not erase action completion or
+                // invent partial/unknown input for an action that posted none.
                 return ActionResult(outcome: .executed, payload: .object([:]), error: safetyError, dispatchState: .complete)
             }
             if posted && safetyError != .inactive { state.end() }
