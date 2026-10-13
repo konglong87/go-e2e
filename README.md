@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  用 Go 构建的本地优先开源 Coding Agent，支持 Desktop、CLI、TUI、WebUI，连接 MCP、Skills 和多种模型 Provider。
+  用 Go 构建的本地优先开源 AI Coding Agent，支持 Desktop、CLI、TUI、WebUI、MCP、Skills、多智能体协作与多模型 Provider。
 </p>
 
 <p align="center">

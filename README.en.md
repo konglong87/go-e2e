@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  An open-source, local-first coding agent written in Go — Desktop, CLI, TUI, WebUI, MCP, Skills, and flexible model Providers.
+  An open-source, local-first AI coding agent built with Go — Desktop, CLI, TUI, WebUI, MCP, Skills, multi-agent workflows, and flexible model providers.
 </p>
 
 <p align="center">

@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-labelledby="title desc">
+  <title id="title">go-e2e — Local-first AI coding agent built with Go</title>
+  <desc id="desc">本地优先开源 AI Coding Agent，支持 Desktop、CLI、TUI、WebUI、MCP 和 Skills。</desc>
+  <defs>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6366f1"/>
+      <stop offset="1" stop-color="#06b6d4"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#6366f1" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#06b6d4" stop-opacity="0"/>
+    </linearGradient>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M48 0H0V48" fill="none" stroke="#94a3b8" stroke-opacity="0.08" stroke-width="1"/>
+    </pattern>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="18" stdDeviation="24" flood-color="#020617" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="640" fill="#0b1220"/>
+  <rect width="1280" height="640" fill="url(#grid)"/>
+  <ellipse cx="180" cy="120" rx="430" ry="260" fill="url(#glow)"/>
+  <circle cx="1170" cy="90" r="190" fill="#06b6d4" fill-opacity="0.05"/>
+  <circle cx="1120" cy="560" r="240" fill="#6366f1" fill-opacity="0.06"/>
+
+  <g transform="translate(118 154) scale(1.66)" filter="url(#shadow)">
+    <rect width="200" height="200" rx="40" fill="#0f172a"/>
+    <polygon points="60,40 140,100 60,160" fill="url(#accent)"/>
+    <circle cx="140" cy="60" r="16" fill="#06b6d4" opacity="0.8"/>
+    <circle cx="140" cy="140" r="10" fill="#6366f1" opacity="0.6"/>
+  </g>
+
+  <g transform="translate(500 168)" fill="#f8fafc" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'PingFang SC', 'Helvetica Neue', sans-serif">
+    <text x="0" y="82" font-size="88" font-weight="700" letter-spacing="-2">go-e2e</text>
+    <rect x="2" y="112" width="112" height="6" rx="3" fill="url(#accent)"/>
+    <text x="0" y="178" font-size="34" font-weight="600">Local-first AI coding agent built with Go</text>
+    <text x="0" y="228" font-size="28" fill="#cbd5e1">本地优先开源 AI Coding Agent</text>
+    <text x="0" y="300" font-size="22" fill="#94a3b8">Desktop · CLI · TUI · WebUI · MCP · Skills · Multi-Agent</text>
+  </g>
+
+  <path d="M500 530H1150" stroke="url(#accent)" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+  <text x="500" y="570" fill="#64748b" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'PingFang SC', 'Helvetica Neue', sans-serif" font-size="18" letter-spacing="2">OPEN SOURCE · GO · DEVELOPER TOOLS</text>
+</svg>
