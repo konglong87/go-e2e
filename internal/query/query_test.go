@@ -159,6 +159,7 @@ func TestSimpleComputerUsePromptAutoEnablesOnlyForWorkBuddyGUIIntent(t *testing.
 		{name: "simple Chinese WorkBuddy GUI flow", prompt: "帮我在WorkBuddy中新建会话，输入1+1=2并点击发送。", want: true},
 		{name: "normal code query", prompt: "Fix the WorkBuddy integration code in the repository and add a test.", want: false},
 		{name: "generic GUI prompt", prompt: "Click Send in another desktop app.", want: true},
+		{name: "positive Bash automation request", prompt: "In WorkBuddy, use Bash to automate a click and send the message.", want: false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if got := isSimpleComputerUsePrompt(test.prompt); got != test.want {
@@ -169,7 +170,7 @@ func TestSimpleComputerUsePromptAutoEnablesOnlyForWorkBuddyGUIIntent(t *testing.
 }
 
 func TestSimpleComputerUsePromptCountsUnicodeCharactersForFastPath(t *testing.T) {
-	prompt := strings.Repeat("请只使用 ComputerUse 在 WorkBuddy 中完成操作。", 21) + " 输入 1+1=2，然后点击发送。"
+	prompt := strings.Repeat("请只使用 ComputerUse 在 WorkBuddy 中完成操作。", 40) + " 输入 1+1=2，然后点击发送。"
 	if len(prompt) <= computerUseSimplePromptRuneLimit || utf8.RuneCountInString(prompt) > computerUseSimplePromptRuneLimit {
 		t.Fatalf("test prompt does not exercise UTF-8 byte boundary: bytes=%d runes=%d", len(prompt), utf8.RuneCountInString(prompt))
 	}
@@ -185,6 +186,30 @@ func TestSimpleComputerUsePromptAllowsTrustedAcceptancePreamble(t *testing.T) {
 	}
 	if !isSimpleComputerUsePrompt(prompt) {
 		t.Fatal("trusted desktop acceptance preamble should use the fast path")
+	}
+}
+
+func TestSimpleComputerUsePromptAcceptsFullAcceptanceHarnessPreamble(t *testing.T) {
+	prompt := "请只使用 ComputerUse 完成这个真实桌面闭环，并在 120 秒内结束：目标应用使用通用 target_id=workbuddy，WorkBuddy 当前未启动。第一步必须直接使用 action=launch_app、target_id=workbuddy 启动目标，禁止先 observe 当前前台应用；launch_app 会在同一个 ComputerUse 调用中完成绑定并尽量返回 authoritative observation+screenshot；如果返回了 observation，就不要重复 observe，直接使用它。只有 launch_app 没有返回 observation 时，才 observe 这个绑定的 target/window。必须等待内容 ready，不能只因为窗口出现就操作；如果白屏，最多等待 12 秒并重新 observe，仍白屏就 stop。内容 ready 后点击目标应用的新建会话或新建任务（如果已经在新建页面则跳过），使用每个成功输入动作返回的最新 observation，不要无理由重复 observe；定位输入框。注意：fixture 可能恢复上一次运行的旧草稿，甚至已经显示 1+1=2；任何 click 前已有文字都不算本次输入，绝不能因为看到 1+1=2 就停止或发送。点击输入框后必须立刻执行且仅执行一次 hotkey command+a，收到 hotkey 回执后必须立刻执行且仅执行一次 type 输入 1+1=2；click → command+a → type 是不可跳过的固定序列。在目标 observe 成功后，下一次 ComputerUse 调用必须是 click；click 成功后下一次必须是 command+a；hotkey 成功后下一次必须是 type。在 type 之前不要发送、不要 stop、不要用已有截图证明成功。不要在 type 回执后重放 type；直接检查 type 返回的最新截图，真实点击发送/提交按钮，等待一次回复；使用 wait 返回的最新截图确认真实回复，最后使用 ComputerUse stop。所有后续 click/type/key/send 必须使用绑定的 window_id；如果目标窗口变成 go-e2e、Chrome、Edge 或其他应用，立即 stop。若 click/type/key/hotkey 在尚未 dispatch 时因 target_window_mismatch、window_unavailable 或 focus_changed 被拒绝，禁止重试原动作、禁止更换 action_id 重放；先用同一个 target_id 和 window_id 做一次 fresh observe，让 ComputerUse 恢复同一目标窗口。只有 fresh observe 成功且 window_id、owner_pid、bundle_id 仍完全一致时，才继续下一步；恢复观察失败或身份变化立即 stop。只使用 ComputerUse，不要使用 Bash、脚本、osascript、System Events、screencapture、open 或其他工具；不要操作 go-e2e 自己；每个输入前必须使用最新 observe；任何未知或已 dispatch 的动作立即 stop，不要重放或重复点击发送。"
+	if got := utf8.RuneCountInString(prompt); got <= 1200 {
+		t.Fatalf("acceptance prompt fixture must exercise the previous limit: runes=%d previous_limit=%d", got, 1200)
+	}
+	if !isSimpleComputerUsePrompt(prompt) {
+		t.Fatal("full acceptance harness prompt must use the Computer Use fast path")
+	}
+	probe := &deadlineProbeStreamer{}
+	session := New(probe, tools.NewRegistry(), Options{
+		Model: "test", MaxTurns: 20, CWD: t.TempDir(),
+		ComputerUse: cu.Service(fastPathComputerService{}), ComputerUseImageSupported: true,
+	})
+	if _, err := session.Run(context.Background(), prompt, io.Discard); err == nil || err.Error() != "deadline probe" {
+		t.Fatalf("full acceptance prompt Run error=%v, want deadline probe", err)
+	}
+	if !session.options.ComputerUseFastPath || session.options.MaxTurns != computerUseFastPathMaxTurns || session.options.MaxTokens != computerUseFastPathMaxTokens {
+		t.Fatalf("full acceptance prompt fast path state: enabled=%v max_turns=%d max_tokens=%d", session.options.ComputerUseFastPath, session.options.MaxTurns, session.options.MaxTokens)
+	}
+	if session.options.RuntimeProfile != runtimeprofile.ProfileBare || probe.hasDeadline {
+		t.Fatalf("full acceptance prompt runtime state: profile=%q deadline=%v", session.options.RuntimeProfile, probe.hasDeadline)
 	}
 }
 

@@ -6946,7 +6946,7 @@ const defaultQuerySource = "repl_main_thread"
 // ComputerUse prompts include a trusted safety/targeting preamble before the
 // user's short GUI request. Keep the classifier limit in user-visible Unicode
 // characters and leave room for that bounded preamble.
-const computerUseSimplePromptRuneLimit = 1200
+const computerUseSimplePromptRuneLimit = 2000
 
 func isSimpleComputerUsePrompt(prompt string) bool {
 	prompt = strings.ToLower(strings.TrimSpace(prompt))
@@ -6975,7 +6975,7 @@ func isSimpleComputerUsePrompt(prompt string) bool {
 		return false
 	}
 	for _, blocked := range []string{"code", "coding", "repo", "repository", "file", "function", "git", "bash", "shell", "implement", "debug"} {
-		if _, ok := words[blocked]; ok {
+		if _, ok := words[blocked]; ok && hasPositiveComputerUseBlockedTerm(prompt, blocked) {
 			return false
 		}
 	}
@@ -6993,6 +6993,46 @@ func isSimpleComputerUsePrompt(prompt string) bool {
 		if strings.Contains(prompt, action) {
 			return true
 		}
+	}
+	return false
+}
+
+// hasPositiveComputerUseBlockedTerm keeps the fast-path classifier from
+// rejecting a GUI request merely because its safety instructions mention a
+// forbidden shell/code tool (for example, "不要使用 Bash"). A positive
+// occurrence still blocks the fast path; the classifier is only an optimization
+// and must remain conservative for actual coding requests.
+func hasPositiveComputerUseBlockedTerm(prompt, term string) bool {
+	for offset := 0; offset < len(prompt); {
+		index := strings.Index(prompt[offset:], term)
+		if index < 0 {
+			return false
+		}
+		index += offset
+		prefix := prompt[:index]
+		lastBoundary := -1
+		for _, boundary := range []string{".", "!", "?", ";", "。", "！", "？", "；", "\n"} {
+			if boundaryIndex := strings.LastIndex(prefix, boundary); boundaryIndex > lastBoundary {
+				lastBoundary = boundaryIndex
+			}
+		}
+		clause := prefix[lastBoundary+1:]
+		lastNegative := -1
+		for _, marker := range []string{"do not", "don't", "never", "without", "禁止", "不要", "不得", "不能", "不可以", "请勿", "不使用", "不操作"} {
+			if markerIndex := strings.LastIndex(clause, marker); markerIndex > lastNegative {
+				lastNegative = markerIndex
+			}
+		}
+		lastPositiveConnector := -1
+		for _, connector := range []string{"but", "however", "except", "但是", "不过", "而是"} {
+			if connectorIndex := strings.LastIndex(clause, connector); connectorIndex > lastPositiveConnector {
+				lastPositiveConnector = connectorIndex
+			}
+		}
+		if lastNegative < 0 || lastNegative < lastPositiveConnector {
+			return true
+		}
+		offset = index + len(term)
 	}
 	return false
 }
