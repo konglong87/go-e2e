@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.3.3 — 2026-10-13
+
+### Public release reliability
+
+- 未配置 Apple Developer ID 时，macOS 发布流程跳过 ad-hoc nested code signing，生成并明确标注为未签名 DMG。
+- 保留正式签名和 notarization 路径；配置完整 Apple Secrets 后仍执行完整签名校验。
+
 ## v0.3.2 — 2026-10-13
 
 ### Public release reliability
