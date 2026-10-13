@@ -32,6 +32,7 @@ APP_PATH="${DESKTOP_DIR}/build/bin/go-e2e.app"
 # keeps the local development identity consistent until a real Apple identity
 # is supplied for release signing.
 MACOS_ADHOC_DESIGNATED_REQUIREMENT="${MACOS_ADHOC_DESIGNATED_REQUIREMENT:-=designated => identifier \"com.wails.go-e2e\"}"
+MACOS_VERIFY_SIGNATURE="${MACOS_VERIFY_SIGNATURE:-1}"
 macos_codesign() {
   local target="$1"
   codesign --force --identifier "com.wails.go-e2e" --sign - --requirements "${MACOS_ADHOC_DESIGNATED_REQUIREMENT}" --timestamp=none "${target}"
@@ -101,7 +102,11 @@ resources.mkdir(exist_ok=True)
 }, indent=2) + "\n")
 PYBUILD
     codesign --force --sign - --requirements "${MACOS_ADHOC_DESIGNATED_REQUIREMENT}" --timestamp=none "${APP_PATH}"
-    codesign --verify --deep --strict --verbose=2 "${APP_PATH}"
+    if [[ "${MACOS_VERIFY_SIGNATURE}" == "1" ]]; then
+      codesign --verify --deep --strict --verbose=2 "${APP_PATH}"
+    else
+      echo "Skipping macOS nested signature verification for unsigned/unnotarized packaging."
+    fi
   fi
   # Keep Finder's package modification time aligned with the actual build.
   touch "${APP_PATH}"

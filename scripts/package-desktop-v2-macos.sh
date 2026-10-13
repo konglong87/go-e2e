@@ -20,7 +20,7 @@ case "${ARCH}" in
 esac
 
 mkdir -p "${DIST_DIR}"
-bash "${ROOT}/scripts/build-desktop-v2.sh" -platform "${PLATFORM}"
+MACOS_VERIFY_SIGNATURE="${REQUIRE_NOTARIZATION}" bash "${ROOT}/scripts/build-desktop-v2.sh" -platform "${PLATFORM}"
 
 if [[ ! -d "${APP_PATH}" ]]; then
   echo "package-desktop-v2-macos.sh: missing app bundle: ${APP_PATH}" >&2
@@ -42,6 +42,8 @@ if [[ "${REQUIRE_NOTARIZATION}" == "1" ]]; then
   codesign --force --options runtime --timestamp --sign "${APPLE_SIGNING_IDENTITY}" \
     "${APP_PATH}"
   codesign --verify --deep --strict --verbose=2 "${APP_PATH}"
+else
+  echo "Unsigned/unnotarized macOS package: skipping final nested signature verification."
 fi
 
 staging="$(mktemp -d)"

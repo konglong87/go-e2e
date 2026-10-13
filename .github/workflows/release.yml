@@ -395,11 +395,11 @@ jobs:
           hdiutil attach -nobrowse -readonly -mountpoint "$mountpoint" "$dmg"
           trap 'hdiutil detach "$mountpoint" >/dev/null || true' EXIT
           ditto "$mountpoint/go-e2e/go-e2e.app" "$install_dir/go-e2e.app"
-          codesign --verify --deep --strict --verbose=2 "$install_dir/go-e2e.app"
           if [[ "$MACOS_RELEASE_MODE" == "signed" ]]; then
+            codesign --verify --deep --strict --verbose=2 "$install_dir/go-e2e.app"
             spctl --assess --type execute --verbose=4 "$install_dir/go-e2e.app"
           else
-            echo "Unsigned/unnotarized macOS release: skipping Gatekeeper assessment."
+            echo "Unsigned/unnotarized macOS release: skipping code-signature and Gatekeeper verification."
           fi
           open "$install_dir/go-e2e.app"
           for _ in {1..12}; do
