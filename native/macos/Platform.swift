@@ -57,7 +57,10 @@ struct MacDesktop: DesktopPlatform {
     }
     func validateWindowAccessibility(_ target: NativeWindow, permitted: () -> Bool) -> AccessibilityWindowActivationResult {
         AccessibilityWindowActivator.validate(target, permitted: permitted) {
-            self.activeWindowID() == target.id
+            guard permitted(), self.focus() == target.ownerPID, self.activeWindowID() == target.id,
+                  let current = try? self.allWindows().first(where: { $0.id == target.id }),
+                  current.matchesIdentity(target), current.isVisible, current.isFrontmost else { return false }
+            return true
         }
     }
     func supportsDrag() -> Bool { mouseBroker != nil }

@@ -88,6 +88,26 @@ struct AccessibilityWindowActivationResult {
     }
 }
 
+enum AccessibilityWindowFallbackPolicy {
+    // These stages indicate that AX exposed the application/window object but
+    // could not provide geometry metadata. The exact Window Server identity is
+    // already selected by MacDesktop; fallback remains safe only when the
+    // caller rechecks that same ID/PID/bundle is frontmost before use.
+    private static let exactWindowServerStages: Set<String> = [
+        "application.windows.count",
+        "window.position.read", "window.position.type", "window.position.value",
+        "window.size.read", "window.size.type", "window.size.value",
+        "window.minimized.read",
+    ]
+
+    static func allowsExactWindowServerFallback(_ result: AccessibilityWindowActivationResult) -> Bool {
+        guard !result.success, !result.actionMayHaveRun,
+              result.reason == "ax_window_unreadable", result.axTrusted,
+              let stage = result.failureStage else { return false }
+        return exactWindowServerStages.contains(stage)
+    }
+}
+
 enum AccessibilityWindowActivator {
     static let messagingTimeout: Float = 0.1
     static let maxWindows = 128
@@ -99,7 +119,17 @@ enum AccessibilityWindowActivator {
 
     static func validate(_ target: NativeWindow, permitted: () -> Bool, stillCurrent: () -> Bool) -> AccessibilityWindowActivationResult {
         let inspection = inspect(target, permitted: permitted)
-        guard inspection.result.success else { return inspection.result }
+        if !inspection.result.success {
+            // Validation never activates or raises. When only AX geometry is
+            // unavailable, the caller may prove the exact Window Server
+            // identity/frontmost state through stillCurrent instead.
+            guard AccessibilityWindowFallbackPolicy.allowsExactWindowServerFallback(inspection.result),
+                  permitted(), stillCurrent() else { return inspection.result }
+            return AccessibilityWindowActivationResult(success: true, reason: "window_server_validation",
+                                                       axTrusted: inspection.result.axTrusted,
+                                                       axWindowCount: inspection.result.axWindowCount,
+                                                       geometryMatchCount: 1)
+        }
         guard permitted(), stillCurrent() else {
             return AccessibilityWindowActivationResult(success: false, reason: "binding_changed_before_validate",
                                                        axTrusted: inspection.result.axTrusted,
@@ -115,7 +145,46 @@ enum AccessibilityWindowActivator {
 
     static func raiseDetailed(_ target: NativeWindow, permitted: () -> Bool, stillCurrent: () -> Bool) -> AccessibilityWindowActivationResult {
         let inspection = inspect(target, permitted: permitted)
-        guard inspection.result.success, let element = inspection.element else { return inspection.result }
+        if !inspection.result.success {
+            guard AccessibilityWindowFallbackPolicy.allowsExactWindowServerFallback(inspection.result),
+                  permitted(), stillCurrent(), let app = NSRunningApplication(processIdentifier: target.ownerPID) else {
+                return inspection.result
+            }
+            // AppKit activation is itself a dispatched side effect. It is
+            // intentionally the only fallback; Engine must confirm the exact
+            // Window Server ID before any input/capture and never retry it.
+            var metadata = inspection.result
+            metadata.actionMayHaveRun = true
+            let activated = app.activate(options: [.activateAllWindows])
+            guard permitted() else {
+                return AccessibilityWindowActivationResult(success: false, reason: "permission_revoked_after_app_activation",
+                                                           axTrusted: metadata.axTrusted,
+                                                           axWindowCount: metadata.axWindowCount,
+                                                           geometryMatchCount: metadata.geometryMatchCount,
+                                                           failureStage: metadata.failureStage,
+                                                           failureAttribute: metadata.failureAttribute,
+                                                           axErrorCode: metadata.axErrorCode,
+                                                           axValueTypeID: metadata.axValueTypeID,
+                                                           actionMayHaveRun: true)
+            }
+            guard activated else {
+                return AccessibilityWindowActivationResult(success: false, reason: "app_activation_failed",
+                                                           axTrusted: metadata.axTrusted,
+                                                           axWindowCount: metadata.axWindowCount,
+                                                           geometryMatchCount: metadata.geometryMatchCount,
+                                                           failureStage: metadata.failureStage,
+                                                           failureAttribute: metadata.failureAttribute,
+                                                           axErrorCode: metadata.axErrorCode,
+                                                           axValueTypeID: metadata.axValueTypeID,
+                                                           actionMayHaveRun: true)
+            }
+            return AccessibilityWindowActivationResult(success: true, reason: "window_server_activation_fallback",
+                                                       axTrusted: metadata.axTrusted,
+                                                       axWindowCount: metadata.axWindowCount,
+                                                       geometryMatchCount: 1,
+                                                       actionMayHaveRun: true)
+        }
+        guard let element = inspection.element else { return inspection.result }
         var metadata = inspection.result
         func failure(_ reason: String) -> AccessibilityWindowActivationResult {
             AccessibilityWindowActivationResult(success: false, reason: reason,

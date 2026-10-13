@@ -994,4 +994,24 @@ do {
            "AX diagnostics preserve the CF type ID only")
 }
 
+// Exact Window Server identity/frontmost state may be used only for the
+// narrowly identified AX geometry-read incompatibility. Permission, unknown
+// stages, and already-dispatched effects must remain fail-closed.
+do {
+    let geometryReadFailure = AccessibilityWindowActivationResult(success: false, reason: "ax_window_unreadable",
+        axTrusted: true, axWindowCount: 1, geometryMatchCount: 0,
+        failureStage: "window.position.read", failureAttribute: "AXPosition", axErrorCode: -25205)
+    expect(AccessibilityWindowFallbackPolicy.allowsExactWindowServerFallback(geometryReadFailure),
+           "AX geometry-read incompatibility permits exact Window Server fallback")
+    let permissionFailure = AccessibilityWindowActivationResult(success: false, reason: "ax_not_trusted",
+        axTrusted: false, axWindowCount: 0, geometryMatchCount: 0)
+    expect(!AccessibilityWindowFallbackPolicy.allowsExactWindowServerFallback(permissionFailure),
+           "untrusted accessibility never falls back")
+    let unknownFailure = AccessibilityWindowActivationResult(success: false, reason: "ax_window_unreadable",
+        axTrusted: true, axWindowCount: 1, geometryMatchCount: 0,
+        failureStage: "application.windows.values", failureAttribute: "AXWindows", actionMayHaveRun: true)
+    expect(!AccessibilityWindowFallbackPolicy.allowsExactWindowServerFallback(unknownFailure),
+           "already-dispatched AX uncertainty never falls back or replays")
+}
+
 print("PASS: \(assertions) native safety assertions (fake platform; no real input/capture)")
