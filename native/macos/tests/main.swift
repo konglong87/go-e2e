@@ -16,6 +16,7 @@ final class FakeDesktop: DesktopPlatform {
     var launchError: SafetyError?
     var launchCalls = 0
     var activationCalls = 0
+    var activationFailuresRemaining = 0
     var activationHook: (() -> Void)?
     var activeWindowHook: (() -> Void)?
     var windowGeometryHook: (() -> Void)?
@@ -61,7 +62,18 @@ final class FakeDesktop: DesktopPlatform {
         focused = launchResult.ownerPID
         return launchResult
     }
-    func activateWindow(_ id: String, permitted: () -> Bool) -> Bool { activationCalls += 1; guard permitted(), targetWindow?.id == id else { return false }; selectedWindowID = id; focused = targetWindow?.ownerPID; activationHook?(); return true }
+    func activateWindow(_ id: String, permitted: () -> Bool) -> Bool {
+        activationCalls += 1
+        guard permitted(), targetWindow?.id == id else { return false }
+        if activationFailuresRemaining > 0 {
+            activationFailuresRemaining -= 1
+            return false
+        }
+        selectedWindowID = id
+        focused = targetWindow?.ownerPID
+        activationHook?()
+        return true
+    }
     func activeWindowID() -> String? { activeWindowHook?(); return selectedWindowID }
     func captureAllowed() -> Bool { capturePermission }
     func inputAllowed() -> Bool { inputPermission }
@@ -319,6 +331,20 @@ for canceled in [false, true] {
     let result = engine.observe(request("observe", payload: ["observation_id":.string("settling"), "window_id":.string(window.id)]))
     expect(result.outcome == (canceled ? .rejected : .executed), "activation settle observes exact window/cancellation")
     expect(desktop.activationCalls == 1 && desktop.posts.isEmpty, "activation does not retry raise or post input")
+}
+
+// Same-window activation may transiently lose the Window Server race. The
+// bounded recovery retries only activation, never input dispatch, and keeps
+// the exact target identity/generation checks in the helper.
+do {
+    let desktop = FakeDesktop()
+    let window = NativeWindow(id: "retry-target", title: "Fixture", ownerPID: 78, bundleID: "fixture.app", frame: desktop.display.bounds, displayID: desktop.display.id, isVisible: true, isFrontmost: false)
+    desktop.targetWindow = window
+    desktop.activationFailuresRemaining = 1
+    let engine = Engine(platform: desktop)
+    let result = engine.observe(request("observe", payload: ["observation_id":.string("retry-observation"), "window_id":.string(window.id)]))
+    expect(result.outcome == .executed && desktop.activationCalls == 2 && desktop.posts.isEmpty,
+           "same-window activation recovers without dispatching input")
 }
 
 // Safe integer conversion, overflow, bounds, NaN, infinity, fractions.

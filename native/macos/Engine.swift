@@ -286,13 +286,23 @@ final class Engine {
     }
     private static let activationTimeout = 1.0
     private static let activationPollMS = 20
+    private static let activationAttempts = 3
+    private static let activationRetryDelayMS = 100
 
     private func activateTarget(_ window: NativeWindow, request: Envelope) throws {
         guard platform.captureAllowed(), platform.inputAllowed() else { throw SafetyError.permissionRequired }
         guard window.isVisible else { throw SafetyError.unsupportedDisplay }
-        let activated = platform.activateWindow(window.id, permitted: {
-            do { try self.state.gate(request); return true } catch { return false }
-        })
+        var activated = false
+        for attempt in 0..<Self.activationAttempts {
+            try state.gate(request)
+            activated = platform.activateWindow(window.id, permitted: {
+                do { try self.state.gate(request); return true } catch { return false }
+            })
+            if activated { break }
+            if attempt + 1 < Self.activationAttempts {
+                try wait(Self.activationRetryDelayMS, request: request)
+            }
+        }
         try state.gate(request)
         guard activated else { throw SafetyError.focusChanged }
         // Activation/AXRaise acknowledgements are asynchronous. Confirm the
