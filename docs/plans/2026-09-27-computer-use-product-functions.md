@@ -82,6 +82,19 @@ Focused Go/race, 311 native fake assertions, and 469 platform assertions pass.
 A fresh official no-model launch smoke is still required; the old unknown
 launch is not replayed.
 
+### Phase update — official build preflight blocked by locked macOS session — 2026-10-13
+
+The official tagged build `16b005e` was built and passed deep strict codesign.
+A fresh no-model acceptance host reached the helper preflight, but readiness
+reported no active displays, `image_supported=false`, and helper-side capture
+permission required, so the approved session was not created and **no launch
+was dispatched**. Native CUA inspection independently reported that the Mac
+session was locked and could not be automatically unlocked. This is an
+external desktop/TCC precondition, not a new runtime launch result and not a
+reason to replay the previous unknown action. After the user unlocks the Mac,
+run exactly one fresh deterministic launch/stop smoke on this build before any
+model closure.
+
 ## Historical ordered queue — 2026-09-30
 
 This queue is authoritative; older phase notes below are historical and must not
