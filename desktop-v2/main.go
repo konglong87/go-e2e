@@ -82,6 +82,9 @@ func desktopWailsOptions(application *app, config desktopConfig, target *url.URL
 		MinWidth:         minWindowWidth,
 		MinHeight:        minWindowHeight,
 		WindowStartState: windowStartState(config),
+		// Closing a view disconnects/hides a client, not the signed runtime
+		// host. Explicit app Quit still runs the bounded shutdown/Stop path.
+		HideWindowOnClose: true,
 		// Wails disables macOS's native Zoom button when Mac options are nil.
 		// Keep it enabled so the green button exposes the system fullscreen menu.
 		Mac:           &macoptions.Options{DisableZoom: false},

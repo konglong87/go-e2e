@@ -124,3 +124,13 @@ func TestWindowStartStatePrefersFullscreen(t *testing.T) {
 		t.Fatalf("fullscreen start state = %v", got)
 	}
 }
+
+func TestDesktopWindowCloseDoesNotQuitRuntimeHost(t *testing.T) {
+	appOptions := desktopWailsOptions(&app{}, desktopConfig{}, &url.URL{})
+	if !appOptions.HideWindowOnClose {
+		t.Fatal("closing the UI window still shuts down the Computer Use runtime host")
+	}
+	if appOptions.OnShutdown == nil {
+		t.Fatal("explicit app/runtime shutdown must still drain sessions")
+	}
+}

@@ -855,3 +855,13 @@ outcome and preventing a second dispatch. Native fake regression distinguishes
 pre-dispatch controlled timeout from post-dispatch timeout, and existing
 unavailable-AX coverage now correctly checks unknown rather than not_started.
 This is contract hardening, not a newly repeated model acceptance.
+
+### Phase update — window close is a UI client operation — 2026-10-13
+
+The Wails default still quit the entire signed host when its main window was
+closed, despite independent helper contexts. A failing options regression now
+requires HideWindowOnClose. Window close therefore hides the client; explicit
+app Quit still invokes the existing bounded runtime Stop/drain and bridge close.
+No focus/window/permission/screenshot guard is changed. The remaining native
+gate is an active-turn window-close/passive-wait/screenshot/Stop run on the
+fresh official tagged build; this is not another model input/send attempt.
