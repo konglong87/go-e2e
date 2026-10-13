@@ -12,7 +12,7 @@ history is in `docs/plans/2026-10-08-computer-use-stability.md`.
 | P0 | Consistent native passive-wait acknowledgement across atomic turn/bridge/tool | Committed/pushed 714cf13; 297 native safety assertions plus focused Go/race and 469 platform assertions pass. Real current-build passive-wait smoke still pending. No validation relaxation. |
 | P0 | Production request/context contract and first-action guidance | Offline production Responses HTTP regression proves requested model/high, exact 2048-token cap, latest-only PNG and preserved tool receipts. Shared prompt fixture prevents test/harness drift. Closed targets now use first-call atomic launch in both guidance surfaces; metadata duplication and lifecycle audit remain before another model run. |
 | P0 | Runtime lifecycle/control audit | Failing UI capabilities-first/conversation-start tests now pass with supervisor-owned helper context. Stop/drain precedes runtime cancellation and bridge close. Prompt-authorization deny remains effective in fast path. Active native panel/window-close acceptance and standalone runtime-process extraction remain open; no full P0-E closure claimed. |
-| P0 | Native activation/launch ambiguity audit | Typed activation now distinguishes read-only failure from possible AX effects; no ambiguous raise is retried and original PID/bundle/window identity is carried across recovery. Native unknown/lost-ACK launch remains unknown and quarantines the helper. Focused Go/race and 304 native safety + 469 platform assertions pass; current-build native smoke remains pending. |
+| P0 | Native activation/launch ambiguity audit | Typed activation now distinguishes read-only failure from possible AX effects; no ambiguous raise is retried and original PID/bundle/window identity is carried across recovery. Native unknown/lost-ACK launch remains unknown and quarantines the helper. AX inspection now records only the exact read stage, raw AXError, attribute name, and CF type ID; current-build read-only probe and native smoke remain pending. |
 | P0 | Current-build automated/native gates | Focused Go/race, Python acceptance, native safety/platform, helper and tagged official build, strict codesign. |
 | P0 | Fresh gpt-6-sol/high closure after all deterministic gates | Same build/session/run launch → click → command+a → type → send once → wait once → actual reply screenshot → model Stop. Remains open; no replay or further model retry while deterministic work is unfinished. |
 | P1 | Historical native control/display follow-ups | Unchanged; do not promote old screenshots to current evidence. |
@@ -49,6 +49,18 @@ work is outside this task's write set and must never be included in its commits.
 
 Second physical display and formal signing/distribution remain explicitly
 user-deferred. Optional GitHub binary release remains externally blocked.
+
+### Phase update — granular AX read-stage diagnostics — 2026-10-13
+
+The current native launch blocker is still `ax_window_unreadable`, but that
+label previously merged application/window inventory, messaging timeout,
+window PID, `AXPosition`, `AXSize`, `AXMinimized`, and AXValue conversion
+failures. A failing native regression now requires metadata-only diagnostics to
+identify the exact stage, raw AXError code, attribute, and CF type ID. The
+implementation records no title, text, image, or other window content and does
+not alter focus, activation, permission, screenshot, or replay policy. The
+next gate is a read-only probe against the current WorkBuddy candidate using a
+fresh helper build; no previous unknown launch may be replayed.
 
 ## Historical ordered queue — 2026-09-30
 

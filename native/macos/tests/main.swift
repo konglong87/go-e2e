@@ -977,4 +977,21 @@ do {
     expect(captures == 2 && desktop.posts.count == 1, "after-image retry cannot replay input")
 }
 
+// AX failures must identify the exact read stage without exposing window content.
+do {
+    let result = AccessibilityWindowActivationResult(success: false, reason: "ax_window_unreadable",
+        axTrusted: true, axWindowCount: 1, geometryMatchCount: 0,
+        failureStage: "window.position.read", failureAttribute: "AXPosition",
+        axErrorCode: -25205, axValueTypeID: 42)
+    let fields = result.diagnosticFields
+    expect(fields["ax_failure_stage"] as? String == "window.position.read",
+           "AX diagnostics preserve the exact failing stage")
+    expect(fields["ax_failure_attribute"] as? String == "AXPosition",
+           "AX diagnostics preserve the failing attribute name")
+    expect(fields["ax_error_code"] as? Int == -25205,
+           "AX diagnostics preserve the raw AXError code")
+    expect(fields["ax_value_type_id"] as? UInt64 == 42,
+           "AX diagnostics preserve the CF type ID only")
+}
+
 print("PASS: \(assertions) native safety assertions (fake platform; no real input/capture)")

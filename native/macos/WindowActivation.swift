@@ -44,12 +44,35 @@ struct AccessibilityWindowActivationResult {
     let axTrusted: Bool
     let axWindowCount: Int
     let geometryMatchCount: Int
+    // Read-stage metadata is deliberately limited to public AX identifiers
+    // and type IDs. It must never contain title, text, image, or other window
+    // content.
+    let failureStage: String?
+    let failureAttribute: String?
+    let axErrorCode: Int?
+    let axValueTypeID: UInt64?
     // A false return after activate/AXRaise is ambiguous, not permission to
     // replay. Read-only inspection failures leave this false.
     var actionMayHaveRun = false
 
+    init(success: Bool, reason: String, axTrusted: Bool, axWindowCount: Int, geometryMatchCount: Int,
+         failureStage: String? = nil, failureAttribute: String? = nil,
+         axErrorCode: Int? = nil, axValueTypeID: UInt64? = nil,
+         actionMayHaveRun: Bool = false) {
+        self.success = success
+        self.reason = reason
+        self.axTrusted = axTrusted
+        self.axWindowCount = axWindowCount
+        self.geometryMatchCount = geometryMatchCount
+        self.failureStage = failureStage
+        self.failureAttribute = failureAttribute
+        self.axErrorCode = axErrorCode
+        self.axValueTypeID = axValueTypeID
+        self.actionMayHaveRun = actionMayHaveRun
+    }
+
     var diagnosticFields: [String: Any] {
-        [
+        var fields: [String: Any] = [
             "activation_succeeded": success,
             "activation_failure_reason": reason,
             "ax_trusted": axTrusted,
@@ -57,6 +80,11 @@ struct AccessibilityWindowActivationResult {
             "ax_geometry_match_count": geometryMatchCount,
             "activation_may_have_run": actionMayHaveRun,
         ]
+        if let failureStage { fields["ax_failure_stage"] = failureStage }
+        if let failureAttribute { fields["ax_failure_attribute"] = failureAttribute }
+        if let axErrorCode { fields["ax_error_code"] = axErrorCode }
+        if let axValueTypeID { fields["ax_value_type_id"] = axValueTypeID }
+        return fields
     }
 }
 
@@ -112,42 +140,85 @@ enum AccessibilityWindowActivator {
         return metadata
     }
 
+    private struct ReadFailure: Error {
+        let stage: String
+        let attribute: String?
+        let errorCode: Int?
+        let valueTypeID: UInt64?
+    }
+
+    private struct AttributeRead {
+        let value: CFTypeRef?
+        let errorCode: Int?
+        let permissionRevoked: Bool
+    }
+
     private static func inspect(_ target: NativeWindow, permitted: () -> Bool) -> Inspection {
-        func failure(_ reason: String, axTrusted: Bool = false, axWindowCount: Int = 0, geometryMatchCount: Int = 0) -> Inspection {
-            Inspection(result: AccessibilityWindowActivationResult(success: false, reason: reason,
-                                                                  axTrusted: axTrusted,
-                                                                  axWindowCount: axWindowCount,
-                                                                  geometryMatchCount: geometryMatchCount), element: nil)
+        func failure(_ reason: String, axTrusted: Bool = false, axWindowCount: Int = 0,
+                     geometryMatchCount: Int = 0, read: ReadFailure? = nil) -> Inspection {
+            Inspection(result: AccessibilityWindowActivationResult(
+                success: false, reason: reason, axTrusted: axTrusted,
+                axWindowCount: axWindowCount, geometryMatchCount: geometryMatchCount,
+                failureStage: read?.stage, failureAttribute: read?.attribute,
+                axErrorCode: read?.errorCode, axValueTypeID: read?.valueTypeID), element: nil)
         }
         guard permitted() else { return failure("permission_revoked") }
         let axTrusted = AXIsProcessTrusted()
         guard axTrusted else { return failure("ax_not_trusted") }
         guard target.ownerPID > 0 else { return failure("target_pid_invalid", axTrusted: axTrusted) }
         let appElement = AXUIElementCreateApplication(target.ownerPID)
-        guard AXUIElementSetMessagingTimeout(appElement, messagingTimeout) == .success else {
-            return failure("ax_app_timeout_setup_failed", axTrusted: axTrusted)
+        let timeoutError = AXUIElementSetMessagingTimeout(appElement, messagingTimeout)
+        guard timeoutError == .success else {
+            return failure("ax_app_timeout_setup_failed", axTrusted: axTrusted,
+                           read: ReadFailure(stage: "application.timeout", attribute: nil,
+                                             errorCode: Int(timeoutError.rawValue), valueTypeID: nil))
         }
         var count: CFIndex = 0
-        guard permitted(), AXUIElementGetAttributeValueCount(appElement, kAXWindowsAttribute as CFString, &count) == .success,
-              count > 0, count <= maxWindows else {
-            return failure("ax_window_inventory_failed", axTrusted: axTrusted)
+        let countError = AXUIElementGetAttributeValueCount(appElement, kAXWindowsAttribute as CFString, &count)
+        guard permitted(), countError == .success, count > 0, count <= maxWindows else {
+            return failure("ax_window_inventory_failed", axTrusted: axTrusted,
+                           read: ReadFailure(stage: permitted() ? "application.windows.count" : "permission.gate",
+                                             attribute: "AXWindows", errorCode: countError == .success ? nil : Int(countError.rawValue),
+                                             valueTypeID: nil))
         }
         var value: CFArray?
-        guard permitted(), AXUIElementCopyAttributeValues(appElement, kAXWindowsAttribute as CFString, 0, count, &value) == .success,
-              let elements = value as? [AXUIElement] else {
-            return failure("ax_window_values_failed", axTrusted: axTrusted, axWindowCount: Int(count))
+        let valuesError = AXUIElementCopyAttributeValues(appElement, kAXWindowsAttribute as CFString, 0, count, &value)
+        guard permitted(), valuesError == .success, let elements = value as? [AXUIElement] else {
+            return failure("ax_window_values_failed", axTrusted: axTrusted, axWindowCount: Int(count),
+                           read: ReadFailure(stage: permitted() ? "application.windows.values" : "permission.gate",
+                                             attribute: "AXWindows", errorCode: valuesError == .success ? nil : Int(valuesError.rawValue),
+                                             valueTypeID: value.map { UInt64(CFGetTypeID($0)) }))
         }
         // Do not drop unreadable windows: that could hide an ambiguous match.
         // Timeout is per AX object (not inherited from its application).
         var candidates: [(AXUIElement, AccessibleWindowDescriptor)] = []
         for element in elements {
             var pid: pid_t = 0
-            guard permitted(), AXUIElementGetPid(element, &pid) == .success, pid == target.ownerPID,
-                  AXUIElementSetMessagingTimeout(element, messagingTimeout) == .success,
-                  let descriptor = descriptor(element, permitted: permitted) else {
-                return failure("ax_window_unreadable", axTrusted: axTrusted, axWindowCount: Int(count))
+            let pidError = AXUIElementGetPid(element, &pid)
+            guard permitted(), pidError == .success else {
+                return failure("ax_window_unreadable", axTrusted: axTrusted, axWindowCount: Int(count),
+                               read: ReadFailure(stage: permitted() ? "window.pid" : "permission.gate",
+                                                 attribute: nil, errorCode: pidError == .success ? nil : Int(pidError.rawValue),
+                                                 valueTypeID: nil))
             }
-            candidates.append((element, descriptor))
+            guard pid == target.ownerPID else {
+                return failure("ax_window_unreadable", axTrusted: axTrusted, axWindowCount: Int(count),
+                               read: ReadFailure(stage: "window.pid.mismatch", attribute: nil,
+                                                 errorCode: nil, valueTypeID: nil))
+            }
+            let windowTimeoutError = AXUIElementSetMessagingTimeout(element, messagingTimeout)
+            guard permitted(), windowTimeoutError == .success else {
+                return failure("ax_window_unreadable", axTrusted: axTrusted, axWindowCount: Int(count),
+                               read: ReadFailure(stage: permitted() ? "window.timeout" : "permission.gate",
+                                                 attribute: nil, errorCode: windowTimeoutError == .success ? nil : Int(windowTimeoutError.rawValue),
+                                                 valueTypeID: nil))
+            }
+            switch descriptor(element, permitted: permitted) {
+            case .success(let descriptor):
+                candidates.append((element, descriptor))
+            case .failure(let read):
+                return failure("ax_window_unreadable", axTrusted: axTrusted, axWindowCount: Int(count), read: read)
+            }
         }
         let matches = WindowTargetSelector.matchingIndices(for: target, candidates: candidates.map { $0.1 })
         guard matches.count == 1 else {
@@ -159,22 +230,63 @@ enum AccessibilityWindowActivator {
                           element: candidates[matches[0]].0)
     }
 
-    private static func attribute(_ element: AXUIElement, _ name: String, permitted: () -> Bool) -> CFTypeRef? {
+    private static func attribute(_ element: AXUIElement, _ name: String, permitted: () -> Bool) -> AttributeRead {
+        guard permitted() else { return AttributeRead(value: nil, errorCode: nil, permissionRevoked: true) }
         var value: CFTypeRef?
-        guard permitted(), AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success else { return nil }
-        return value
+        let error = AXUIElementCopyAttributeValue(element, name as CFString, &value)
+        return AttributeRead(value: value, errorCode: error == .success ? nil : Int(error.rawValue), permissionRevoked: false)
     }
 
-    private static func descriptor(_ element: AXUIElement, permitted: () -> Bool) -> AccessibleWindowDescriptor? {
-        guard let position = attribute(element, kAXPositionAttribute, permitted: permitted), CFGetTypeID(position) == AXValueGetTypeID(),
-              let size = attribute(element, kAXSizeAttribute, permitted: permitted), CFGetTypeID(size) == AXValueGetTypeID(),
-              let minimized = attribute(element, kAXMinimizedAttribute, permitted: permitted) as? Bool else { return nil }
+    private static func descriptor(_ element: AXUIElement, permitted: () -> Bool) -> Result<AccessibleWindowDescriptor, ReadFailure> {
+        let position = attribute(element, kAXPositionAttribute, permitted: permitted)
+        guard !position.permissionRevoked else {
+            return .failure(ReadFailure(stage: "window.position.permission", attribute: "AXPosition", errorCode: nil, valueTypeID: nil))
+        }
+        guard let positionValue = position.value, position.errorCode == nil else {
+            return .failure(ReadFailure(stage: "window.position.read", attribute: "AXPosition",
+                                         errorCode: position.errorCode, valueTypeID: position.value.map { UInt64(CFGetTypeID($0)) }))
+        }
+        guard CFGetTypeID(positionValue) == AXValueGetTypeID() else {
+            return .failure(ReadFailure(stage: "window.position.type", attribute: "AXPosition", errorCode: nil,
+                                         valueTypeID: UInt64(CFGetTypeID(positionValue))))
+        }
+
+        let size = attribute(element, kAXSizeAttribute, permitted: permitted)
+        guard !size.permissionRevoked else {
+            return .failure(ReadFailure(stage: "window.size.permission", attribute: "AXSize", errorCode: nil, valueTypeID: nil))
+        }
+        guard let sizeValue = size.value, size.errorCode == nil else {
+            return .failure(ReadFailure(stage: "window.size.read", attribute: "AXSize",
+                                         errorCode: size.errorCode, valueTypeID: size.value.map { UInt64(CFGetTypeID($0)) }))
+        }
+        guard CFGetTypeID(sizeValue) == AXValueGetTypeID() else {
+            return .failure(ReadFailure(stage: "window.size.type", attribute: "AXSize", errorCode: nil,
+                                         valueTypeID: UInt64(CFGetTypeID(sizeValue))))
+        }
+
+        let minimized = attribute(element, kAXMinimizedAttribute, permitted: permitted)
+        guard !minimized.permissionRevoked else {
+            return .failure(ReadFailure(stage: "window.minimized.permission", attribute: "AXMinimized", errorCode: nil, valueTypeID: nil))
+        }
+        guard let minimizedValue = minimized.value, minimized.errorCode == nil,
+              let minimizedBool = minimizedValue as? Bool else {
+            return .failure(ReadFailure(stage: "window.minimized.read", attribute: "AXMinimized",
+                                         errorCode: minimized.errorCode, valueTypeID: minimized.value.map { UInt64(CFGetTypeID($0)) }))
+        }
+
         var point = CGPoint.zero
         var dimensions = CGSize.zero
-        guard AXValueGetValue(position as! AXValue, .cgPoint, &point),
-              AXValueGetValue(size as! AXValue, .cgSize, &dimensions) else { return nil }
-        return AccessibleWindowDescriptor(frame: CGRect(origin: point, size: dimensions),
-                                          title: attribute(element, kAXTitleAttribute, permitted: permitted) as? String ?? "",
-                                          minimized: minimized)
+        guard AXValueGetValue(positionValue as! AXValue, .cgPoint, &point) else {
+            return .failure(ReadFailure(stage: "window.position.value", attribute: "AXPosition", errorCode: nil,
+                                         valueTypeID: UInt64(CFGetTypeID(positionValue))))
+        }
+        guard AXValueGetValue(sizeValue as! AXValue, .cgSize, &dimensions) else {
+            return .failure(ReadFailure(stage: "window.size.value", attribute: "AXSize", errorCode: nil,
+                                         valueTypeID: UInt64(CFGetTypeID(sizeValue))))
+        }
+        let title = attribute(element, kAXTitleAttribute, permitted: permitted).value as? String ?? ""
+        return .success(AccessibleWindowDescriptor(frame: CGRect(origin: point, size: dimensions),
+                                                    title: title, minimized: minimizedBool))
     }
+
 }
