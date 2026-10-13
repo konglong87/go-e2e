@@ -8,8 +8,8 @@ history is in `docs/plans/2026-10-08-computer-use-stability.md`.
 
 | Priority | Remaining gate / dependency | Status |
 |---|---|---|
-| P0 | Consistent native passive-wait acknowledgement across atomic turn/bridge/tool | Regression reproduced: native returned executed/not_started, incompatible with turn validation; native timer-completion fix under verification. No validation relaxation. |
-| P0 | Production request/context contract and first-action guidance | Exact acceptance prompt now enters fast path. Audit actual wire image count and metadata size; remove launch-vs-observe guidance conflict before another model run. |
+| P0 | Consistent native passive-wait acknowledgement across atomic turn/bridge/tool | Committed/pushed 714cf13; 297 native safety assertions plus focused Go/race and 469 platform assertions pass. Real current-build passive-wait smoke still pending. No validation relaxation. |
+| P0 | Production request/context contract and first-action guidance | Offline production Responses HTTP regression proves requested model/high, exact 2048-token cap, latest-only PNG and preserved tool receipts. Shared prompt fixture prevents test/harness drift. Closed targets now use first-call atomic launch in both guidance surfaces; metadata duplication and lifecycle audit remain before another model run. |
 | P0 | Runtime lifecycle/control audit | Confirm UI/panel/window cancellation cannot terminate runtime; permission revoke, Stop, and terminal faults still win. Historical tests are not full P0-E closure. |
 | P0 | Current-build automated/native gates | Focused Go/race, Python acceptance, native safety/platform, helper and tagged official build, strict codesign. |
 | P0 | Fresh gpt-6-sol/high closure after all deterministic gates | Same build/session/run launch → click → command+a → type → send once → wait once → actual reply screenshot → model Stop. Remains open; no replay or further model retry while deterministic work is unfinished. |

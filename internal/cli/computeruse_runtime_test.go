@@ -425,3 +425,16 @@ func TestDesktopComputerUseColdStartUsesLazyCoordinator(t *testing.T) {
 	}
 	cleanup()
 }
+
+func TestDesktopComputerGuidanceUsesAtomicLaunchForClosedTarget(t *testing.T) {
+	for _, want := range []string{"first call", "action=launch_app", "same turn", "without session_id", "Never retry"} {
+		if !strings.Contains(computerUseSystemGuidance, want) {
+			t.Errorf("ComputerUse guidance missing %q", want)
+		}
+	}
+	for _, obsolete := range []string{"On the first call, use action=observe", "use a separate launch_app only", "prefer the first observe"} {
+		if strings.Contains(computerUseSystemGuidance, obsolete) {
+			t.Errorf("ComputerUse guidance conflicts with atomic launch: %q", obsolete)
+		}
+	}
+}

@@ -878,15 +878,15 @@ func (s *launchingService) LaunchTarget(_ context.Context, _ cu.SessionOwner, se
 	return s.launchReceipt, s.launchErr
 }
 
-func TestDescriptionPrioritizesAtomicFirstObserve(t *testing.T) {
+func TestDescriptionPrioritizesAtomicLaunchForClosedTarget(t *testing.T) {
 	description := New().Description()
-	for _, want := range []string{"first call", "observe with the registered target_id", "atomically launches, binds", "new authoritative observation"} {
+	for _, want := range []string{"first call", "action=launch_app", "registered target_id", "atomically launches, binds", "new authoritative observation"} {
 		if !strings.Contains(description, want) {
 			t.Errorf("description missing %q", want)
 		}
 	}
-	if strings.Contains(description, "Use launch_app with a registered target_id to start and bind its window before observing") {
-		t.Fatal("description still instructs the model to spend a separate launch turn")
+	if strings.Contains(description, "prefer observe") || strings.Contains(description, "Use launch_app only") {
+		t.Fatal("description contradicts the explicit atomic launch contract")
 	}
 }
 

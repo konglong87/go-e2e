@@ -29,6 +29,11 @@ DARK_PNG = base64.b64decode(
 
 
 class WrapperUnitTests(unittest.TestCase):
+    def test_shared_model_prompt_preserves_exact_acceptance_contract(self):
+        prompt = (ROOT / "internal/computeracceptance/assets/model-closure-prompt.txt").read_text(encoding="utf-8")
+        self.assertEqual(len(prompt), 1428)
+        self.assertEqual(MODULE.sha256_text(prompt), "1a680db5a4a6dbf4947ae3d282339ad544cba0f2dacfbba71a030d5182a447a8")
+
     def test_desktop_health_snapshot_is_redacted_and_reachable(self):
         server = MODULE.LocalServer(101, 202, 54321, "SECRET-TOKEN")
         client = mock.Mock()

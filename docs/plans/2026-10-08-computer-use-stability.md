@@ -765,3 +765,22 @@ Change ledger: task source is Engine.swift and native fake tests plus these two
 ledgers; concurrently-created community/docs files are external work, excluded.
 Further model attempts are deferred until production request/guidance and runtime
 lifecycle audits plus current-build deterministic gates are closed.
+
+### Phase update — production request and atomic launch guidance — 2026-10-13
+
+The tool description and trusted system guidance still told the model to prefer
+first observe and use launch_app only as a fallback. That contradicted the
+acceptance prompt's explicit first-launch requirement. Failing guidance tests
+now require first-call atomic launch for a closed target, same-turn observation
+and screenshot, and lazy trusted session binding; already-running targets may
+still use observe. Safety, permission, no-replay and target registry rules remain.
+
+The 1428-rune model prompt is now a shared non-secret acceptance asset, read by
+both the Python harness and Go classifier/production-wire tests. Its SHA-256 is
+unchanged (1a680db5a4a6dbf4947ae3d282339ad544cba0f2dacfbba71a030d5182a447a8);
+no prompt compression or acceptance-condition relaxation was used. A localhost
+Responses HTTP test exercises automatic fast-path selection, gpt-6-sol/high,
+exact max_output_tokens=2048, only ComputerUse advertised, no workspace context,
+latest-only PNG over three observations, and preservation of all tool-result
+protocol records. It does not invoke an external model or native input and does
+not prove that the remaining real-run token growth is old images.
