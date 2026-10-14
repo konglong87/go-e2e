@@ -165,3 +165,19 @@ func TestVisualCueBusPublishesHiddenCueWithoutAActionPoint(t *testing.T) {
 		t.Fatal("hidden cue was not published")
 	}
 }
+
+func TestNewActionVisualCuePrefersNativeResolvedGlobalPoint(t *testing.T) {
+	now := time.Now()
+	before := readyObservation("session", now)
+	before.Capabilities.CoordinateSpace = CoordinateSpace{
+		Origin: OriginTopLeft, Unit: CoordinatePixels, Width: 800, Height: 600,
+		ScaleFactor: 2, Bounds: &WindowFrame{X: 100, Y: 200, Width: 400, Height: 300},
+	}
+	action := Action{ID: "action-native-point", SessionID: "session", Kind: ActionClick, Point: &Point{X: 10, Y: 20}}
+	receipt := ActionReceipt{ActionID: action.ID, SessionID: action.SessionID, Outcome: OutcomeExecuted, DispatchState: DispatchComplete,
+		ActualGlobalPoint: &ScreenPoint{X: 777.5, Y: -12.25}}
+	cue, ok := NewActionVisualCue("turn-native-point", 1, action, before, receipt, now)
+	if !ok || cue.GlobalPoint == nil || *cue.GlobalPoint != *receipt.ActualGlobalPoint {
+		t.Fatalf("cue global point = %+v, want native point %+v", cue.GlobalPoint, receipt.ActualGlobalPoint)
+	}
+}

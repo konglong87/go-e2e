@@ -539,6 +539,7 @@ type ActionReceipt struct {
 	Before                 *MediaRef          `json:"before,omitempty"`
 	After                  *MediaRef          `json:"after,omitempty"`
 	ActualPoint            *Point             `json:"actual_point,omitempty"`
+	ActualGlobalPoint      *ScreenPoint       `json:"actual_global_point,omitempty"`
 	ActiveWindowAfter      WindowRef          `json:"active_window_after,omitempty"`
 }
 

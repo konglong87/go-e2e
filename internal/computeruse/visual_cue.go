@@ -181,6 +181,23 @@ func visualCuePoint(action Action, receipt ActionReceipt) *Point {
 	return &point
 }
 
+func visualCueGlobalPoint(action Action, before Observation, receipt ActionReceipt) *ScreenPoint {
+	if receipt.ActualGlobalPoint != nil {
+		point := *receipt.ActualGlobalPoint
+		return &point
+	}
+	imagePoint := visualCuePoint(action, receipt)
+	if imagePoint == nil {
+		return nil
+	}
+	bounds := before.Capabilities.CoordinateSpace.Bounds
+	scale := before.Capabilities.CoordinateSpace.ScaleFactor
+	if bounds == nil || scale <= 0 {
+		return nil
+	}
+	return &ScreenPoint{X: bounds.X + float64(imagePoint.X)/scale, Y: bounds.Y + float64(imagePoint.Y)/scale}
+}
+
 // NewPreparingActionVisualCue creates a non-authoritative marker before the
 // backend dispatches. Native guards still decide whether input is sent; a
 // later hidden/unknown/dispatched cue corrects this hint.
@@ -238,14 +255,6 @@ func NewActionVisualCue(turnID string, sequence uint64, action Action, before Ob
 		CreatedAt:     now,
 		ExpiresAt:     now.Add(visualCueTTL),
 	}
-	if bounds := before.Capabilities.CoordinateSpace.Bounds; bounds != nil {
-		scale := before.Capabilities.CoordinateSpace.ScaleFactor
-		if scale > 0 {
-			cue.GlobalPoint = &ScreenPoint{
-				X: bounds.X + float64(imagePoint.X)/scale,
-				Y: bounds.Y + float64(imagePoint.Y)/scale,
-			}
-		}
-	}
+	cue.GlobalPoint = visualCueGlobalPoint(action, before, receipt)
 	return cue, cue.valid()
 }

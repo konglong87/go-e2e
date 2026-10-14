@@ -278,6 +278,14 @@ do {
     if case .mouse(_, let point, _) = desktop.posts.last! {
         expect(abs(point.x - (-140.6666666667)) < 0.01 && abs(point.y - 69.3333333333) < 0.01, "mixed-DPI point maps through selected display")
     } else { expect(false, "mixed-DPI click posted") }
+    expect(result.payload["actual_point"]?["x"]?.integer(in: 0...1000) == 149 &&
+           result.payload["actual_point"]?["y"]?.integer(in: 0...1000) == 74,
+           "native result retains validated image point")
+    if case .number(let globalX)? = result.payload["global_point"]?["x"],
+       case .number(let globalY)? = result.payload["global_point"]?["y"] {
+        expect(abs(globalX - (-140.6666666667)) < 0.01 && abs(globalY - 69.3333333333) < 0.01,
+               "native result retains resolved global point")
+    } else { expect(false, "native result includes resolved global point") }
 }
 
 do {

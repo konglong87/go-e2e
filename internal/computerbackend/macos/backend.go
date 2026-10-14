@@ -111,6 +111,32 @@ type imageData struct {
 	mediaType string
 }
 
+func decodeActualPoint(raw any) (cu.Point, bool) {
+	fields, ok := raw.(map[string]any)
+	if !ok || len(fields) != 2 {
+		return cu.Point{}, false
+	}
+	x, okX := integer(fields["x"], 0, maxImageDimension)
+	y, okY := integer(fields["y"], 0, maxImageDimension)
+	if !okX || !okY {
+		return cu.Point{}, false
+	}
+	return cu.Point{X: x, Y: y}, true
+}
+
+func decodeGlobalPoint(raw any) (cu.ScreenPoint, bool) {
+	fields, ok := raw.(map[string]any)
+	if !ok || len(fields) != 2 {
+		return cu.ScreenPoint{}, false
+	}
+	x, okX := fields["x"].(float64)
+	y, okY := fields["y"].(float64)
+	if !okX || !okY || math.IsNaN(x) || math.IsNaN(y) || math.IsInf(x, 0) || math.IsInf(y, 0) {
+		return cu.ScreenPoint{}, false
+	}
+	return cu.ScreenPoint{X: x, Y: y}, true
+}
+
 func decodeWindowRef(raw any) (cu.WindowRef, bool) {
 	data, err := json.Marshal(raw)
 	if err != nil {
@@ -805,6 +831,12 @@ func (b *Backend) Execute(ctx context.Context, action cu.Action) (receipt cu.Act
 	}
 
 	response, err := b.requestWithTimeout(ctx, executionTimeout, commandExecute, action.SessionID, action.ID, payload)
+	if point, ok := decodeActualPoint(response.Result["actual_point"]); ok {
+		receipt.ActualPoint = &point
+	}
+	if point, ok := decodeGlobalPoint(response.Result["global_point"]); ok {
+		receipt.ActualGlobalPoint = &point
+	}
 	receipt.DispatchState = response.DispatchState
 	if err != nil {
 		var rejected *rejection

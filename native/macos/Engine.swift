@@ -30,6 +30,21 @@ final class Engine {
         self.platform = platform; self.now = now; self.diagnostic = diagnostic; self.state = SafetyState(now: now)
     }
 
+    private func mergedPayload(_ payload: JSONValue, metadata: [String: JSONValue]) -> JSONValue {
+        guard !metadata.isEmpty else { return payload }
+        guard case .object(var fields) = payload else { return .object(metadata) }
+        for (key, value) in metadata { fields[key] = value }
+        return .object(fields)
+    }
+
+    private func makeVisualMetadata(for plan: ActionPlan) -> [String: JSONValue] {
+        guard let image = plan.imagePoint, let global = plan.globalPoint else { return [:] }
+        return [
+            "actual_point": .object(["x": .number(Double(image.x)), "y": .number(Double(image.y))]),
+            "global_point": .object(["x": .number(Double(global.x)), "y": .number(Double(global.y))])
+        ]
+    }
+
     private func record(_ request: Envelope, phase: String, error: SafetyError? = nil,
                         fields: [String: Any] = [:]) {
         var event: [String: Any] = [
@@ -427,10 +442,12 @@ final class Engine {
         var inputComplete = false
         var actionComplete = false
         var pressedButton: CGMouseButton?
+        var visualMetadata: [String: JSONValue] = [:]
         defer { if let pressedButton { platform.releasePressedButton(pressedButton) } }
         do {
             let snapshot = try state.begin(request); try target(request, geometry: snapshot.geometry)
             let plan = try ActionPlan(request.payload, geometry: snapshot.geometry)
+            visualMetadata = makeVisualMetadata(for: plan)
             // Passive wait posts no input: a legitimate app launch can change
             // focus after the preceding screenshot. Keep session/generation/
             // expiry binding above and stable-target capture below, but reserve
@@ -465,7 +482,7 @@ final class Engine {
             // subsequent input still needs a fresh observe. This is not visual
             // verification that the action achieved its intended result.
             let payload = try captureAfterInput(request, geometry: snapshot.geometry, expectedWindow: snapshot.window)
-            return ActionResult(outcome: .executed, payload: payload, error: nil,
+            return ActionResult(outcome: .executed, payload: mergedPayload(payload, metadata: visualMetadata), error: nil,
                                 dispatchState: .complete)
         } catch {
             // Explicit Pause/Stop already invalidated the generation. Preserve
@@ -481,10 +498,11 @@ final class Engine {
                 // All input pairs or the passive timer were acknowledged.
                 // Losing only evidence must not erase action completion or
                 // invent partial/unknown input for an action that posted none.
-                return ActionResult(outcome: .executed, payload: .object([:]), error: safetyError, dispatchState: .complete)
+                return ActionResult(outcome: .executed, payload: .object(visualMetadata), error: safetyError, dispatchState: .complete)
             }
             if posted && safetyError != .inactive { state.end() }
-            return ActionResult(outcome: posted ? .unknown : .rejected, payload: .object([:]), error: safetyError,
+            return ActionResult(outcome: posted ? .unknown : .rejected,
+                                payload: posted ? .object(visualMetadata) : .object([:]), error: safetyError,
                                 dispatchState: posted ? .unknown : .notStarted)
         }
     }

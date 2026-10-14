@@ -216,6 +216,10 @@ struct ActionPlan {
     let waitMS: Int
     let dragStepDelayMS: Int
     let doubleClick: Bool
+    // The point is resolved from the same validated DisplayGeometry used by
+    // CGEvent posting. It is metadata only and never drives input.
+    let imagePoint: (x: Int, y: Int)?
+    let globalPoint: CGPoint?
 
     private static func button(_ value: JSONValue?) throws -> CGMouseButton {
         switch value?.string?.lowercased() ?? "left" {
@@ -228,10 +232,14 @@ struct ActionPlan {
     init(_ payload: JSONValue, geometry: DisplayGeometry) throws {
         guard let raw = payload["kind"]?.string, let kind = ActionKind(rawValue: raw) else { throw SafetyError.invalidAction }
         var ops: [InputOperation] = []; var wait = 0; var dragDelay = 0
+        var imagePoint: (x: Int, y: Int)?
+        var globalPoint: CGPoint?
         switch kind {
         case .click, .doubleClick, .rightClick, .move:
             guard let x = payload["x"]?.integer(in: 0...maxImageDimension), let y = payload["y"]?.integer(in: 0...maxImageDimension) else { throw SafetyError.invalidAction }
             let p = try geometry.point(x: x, y: y)
+            imagePoint = (x: x, y: y)
+            globalPoint = p
             ops.append(.mouse(kind, p, 1)); if kind == .doubleClick { ops.append(.mouse(kind, p, 2)) }
         case .drag:
             guard let startX = payload["start_x"]?.integer(in: 0...maxImageDimension),
@@ -270,5 +278,6 @@ struct ActionPlan {
             guard let duration = payload["duration_ms"]?.integer(in: 0...maxWaitMS) else { throw SafetyError.invalidAction }; wait = duration
         }
         operations = ops; waitMS = wait; dragStepDelayMS = dragDelay; doubleClick = kind == .doubleClick
+        self.imagePoint = imagePoint; self.globalPoint = globalPoint
     }
 }
