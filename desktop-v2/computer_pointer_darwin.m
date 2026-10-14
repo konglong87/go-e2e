@@ -95,11 +95,11 @@ struct goe2e_computer_pointer {
 @end
 
 static void OnPointerMainThread(void (^block)(void)) {
-    if ([NSThread isMainThread]) {
-        block();
-    } else {
-        dispatch_sync(dispatch_get_main_queue(), block);
-    }
+    // Never synchronously hop from the Go/runtime worker to AppKit's main
+    // queue. The standalone runtime has no Wails main-loop ownership, and a
+    // sync hop there can deadlock the action/runtime process. Ordering is
+    // preserved by the serial main queue; lifecycle methods are idempotent.
+    dispatch_async(dispatch_get_main_queue(), block);
 }
 
 static NSString *PointerAppName(NSString *bundleID) {
@@ -244,13 +244,15 @@ void goe2e_computer_pointer_close(goe2e_computer_pointer *bridge) {
         return;
     }
     bridge->closed = true;
-    Goe2EComputerPointerController *controller = [bridge->controller retain];
-    bridge->controller = nil;
     pthread_mutex_unlock(&bridge->mutex);
     OnPointerMainThread(^{
+        pthread_mutex_lock(&bridge->mutex);
+        Goe2EComputerPointerController *controller = [bridge->controller retain];
+        bridge->controller = nil;
+        pthread_mutex_unlock(&bridge->mutex);
         [controller close];
         [controller release];
+        pthread_mutex_destroy(&bridge->mutex);
+        free(bridge);
     });
-    pthread_mutex_destroy(&bridge->mutex);
-    free(bridge);
 }
