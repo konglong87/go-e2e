@@ -644,3 +644,26 @@ func TestClientRuntimeStatusRoundTrip(t *testing.T) {
 		t.Fatalf("status=%+v calls=%d owner=%+v", status, service.calls, service.owner)
 	}
 }
+
+func TestClientStartLocalAndSnapshotRoundTrip(t *testing.T) {
+	service := &serverSpy{localSnapshot: testSessionSnapshot()}
+	listener := listenerTestStart(t, context.Background(), listenerTestRoot(t), service)
+	client, err := NewClient(listener.Config())
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, err := client.StartLocal(context.Background(), testOwner(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if started.SessionID != "local-session" || !service.startApproved {
+		t.Fatalf("started=%+v approved=%t", started, service.startApproved)
+	}
+	got, err := client.Snapshot(context.Background(), testOwner(), "local-session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SessionID != "local-session" || got.State != cu.SessionReady {
+		t.Fatalf("snapshot=%+v", got)
+	}
+}

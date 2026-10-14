@@ -34,6 +34,8 @@ const (
 	OpImage         = "image"
 	OpLaunchApp     = "launch_app"
 	OpRuntimeStatus = "runtime_status"
+	OpStartLocal    = "start_local"
+	OpSnapshot      = "snapshot"
 )
 
 // Errors never contain host error text, response bodies, tokens, or image data.
@@ -106,6 +108,7 @@ type Request struct {
 	ObserveRequest   *cu.ObserveRequest `json:"observe_request,omitempty"`
 	Action           *cu.Action         `json:"action,omitempty"`
 	ObservationID    string             `json:"observation_id,omitempty"`
+	Approved         bool               `json:"approved,omitempty"`
 	TargetID         string             `json:"target_id,omitempty"`
 	// Application is retained for the legacy adapter only. Generic launch uses TargetID.
 	Application string `json:"application,omitempty"`
@@ -129,7 +132,8 @@ type SessionResponse struct {
 // RuntimeStatusResponse is a read-only lifecycle probe for the UI client. It
 // carries no authority and intentionally exposes no model owner or action data.
 type RuntimeStatusResponse struct {
-	ActiveSession bool `json:"active_session"`
+	ActiveSession bool   `json:"active_session"`
+	SessionID     string `json:"session_id,omitempty"`
 }
 
 // RuntimeStatusService is implemented by the long-lived runtime process. The
@@ -137,6 +141,30 @@ type RuntimeStatusResponse struct {
 // accepted for this probe.
 type RuntimeStatusService interface {
 	RuntimeStatus(context.Context, cu.SessionOwner) (RuntimeStatusResponse, error)
+}
+
+// SessionSnapshotResponse is a read-only lifecycle snapshot. It contains no
+// raw image bytes; media remains a separately validated observation asset.
+type SessionSnapshotResponse struct {
+	SessionID    string            `json:"session_id"`
+	State        cu.SessionState   `json:"state"`
+	Owner        cu.SessionOwner   `json:"owner"`
+	Approved     bool              `json:"approved"`
+	Capabilities cu.Capabilities   `json:"capabilities"`
+	Observation  *cu.Observation   `json:"observation,omitempty"`
+	LastReceipt  *cu.ActionReceipt `json:"last_receipt,omitempty"`
+}
+
+// LocalSessionStarter is the narrow UI-client approval boundary. It is not a
+// model permission API; the host implementation must bind it to a dedicated
+// local UI owner.
+type LocalSessionStarter interface {
+	StartLocal(context.Context, cu.SessionOwner, bool) (SessionSnapshotResponse, error)
+}
+
+// SessionSnapshotReader provides an authoritative read-only session snapshot.
+type SessionSnapshotReader interface {
+	Snapshot(context.Context, cu.SessionOwner, string) (SessionSnapshotResponse, error)
 }
 
 // LookupResponse identifies an existing host-approved session.

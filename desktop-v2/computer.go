@@ -12,6 +12,7 @@ import (
 	"time"
 
 	macbackend "github.com/konglong87/go-e2e/internal/computerbackend/macos"
+	"github.com/konglong87/go-e2e/internal/computerbridge"
 	cu "github.com/konglong87/go-e2e/internal/computeruse"
 )
 
@@ -28,6 +29,11 @@ const (
 // This non-conversation owner is used only for the local, read-only lifecycle
 // probe between the Wails client and the standalone runtime process.
 var computerRuntimeSupervisionOwner = cu.SessionOwner{TenantID: 1, UserID: 1, SessionID: 1}
+
+// The UI bridge owner is not a conversation owner and is accepted only by the
+// standalone runtime's local control adapter. It never appears in model tool
+// requests or grants model authority.
+var computerUIBridgeOwner = cu.SessionOwner{TenantID: 1, UserID: 1, SessionID: 2}
 
 type ComputerSessionStartInput struct {
 	Approved        bool   `json:"approved"`
@@ -91,20 +97,32 @@ func desktopComputerTargets() *cu.StaticTargetRegistry {
 // Platform construction is injected; control/snapshot logic depends only on
 // the domain controller. Windows will supply a factory, not a second manager.
 type computerManager struct {
-	mu         sync.Mutex
-	backend    cu.Backend
-	controller *cu.Controller
-	owner      cu.SessionOwner
-	factory    computerBackendFactory
-	runtimeCtx context.Context
-	events     *cu.EventBus
-	attemptsMu sync.Mutex
-	attempts   map[computerStartAttemptKey]string
+	mu            sync.Mutex
+	backend       cu.Backend
+	controller    *cu.Controller
+	owner         cu.SessionOwner
+	factory       computerBackendFactory
+	runtimeCtx    context.Context
+	events        *cu.EventBus
+	remote        *computerbridge.Client
+	remoteOwner   cu.SessionOwner
+	remoteSession string
+	attemptsMu    sync.Mutex
+	attempts      map[computerStartAttemptKey]string
 }
 
 type computerStartAttemptKey struct {
 	owner     cu.SessionOwner
 	attemptID string
+}
+
+func newRemoteComputerManager(client *computerbridge.Client) *computerManager {
+	return &computerManager{
+		owner:       cu.SessionOwner{TenantID: localComputerTenantID, UserID: localComputerUserID},
+		remote:      client,
+		remoteOwner: computerUIBridgeOwner,
+		attempts:    make(map[computerStartAttemptKey]string),
+	}
 }
 
 func newComputerManager() *computerManager {
@@ -121,9 +139,41 @@ func newComputerManagerWithRuntime(runtimeCtx context.Context, events *cu.EventB
 	return &computerManager{owner: cu.SessionOwner{TenantID: localComputerTenantID, UserID: localComputerUserID}, factory: newComputerBackend, runtimeCtx: runtimeCtx, events: events, attempts: make(map[computerStartAttemptKey]string)}
 }
 
+func (m *computerManager) activeSessionID() string {
+	if m == nil {
+		return ""
+	}
+	if m.remote != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		status, err := m.remote.RuntimeStatus(ctx, computerRuntimeSupervisionOwner)
+		if err != nil || !status.ActiveSession {
+			return ""
+		}
+		return status.SessionID
+	}
+	m.mu.Lock()
+	controller := m.controller
+	m.mu.Unlock()
+	if controller == nil {
+		return ""
+	}
+	state := controller.Session().State()
+	if state == cu.SessionStopped || state == cu.SessionFailed {
+		return ""
+	}
+	return controller.Session().ID()
+}
+
 func (m *computerManager) hasActiveSession() bool {
 	if m == nil {
 		return false
+	}
+	if m.remote != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		status, err := m.remote.RuntimeStatus(ctx, computerRuntimeSupervisionOwner)
+		return err == nil && status.ActiveSession
 	}
 	m.mu.Lock()
 	controller := m.controller
@@ -221,6 +271,12 @@ func (m *computerManager) ensureBackendLocked(ctx context.Context) (cu.Backend, 
 	return b, nil
 }
 func (m *computerManager) capabilities(ctx context.Context) (cu.Capabilities, error) {
+	if m.remote != nil {
+		m.mu.Lock()
+		id := m.remoteSession
+		m.mu.Unlock()
+		return m.remote.Capabilities(ctx, m.remoteOwner, id)
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	caps, err := m.readCapabilitiesLocked(ctx)
@@ -253,6 +309,25 @@ func (m *computerManager) startWithLifetime(ctx, lifetime context.Context, in Co
 // Ownership is immutable for a controller. Never upgrade local preview approval
 // or silently move a still-live capability to a newly selected conversation.
 func (m *computerManager) startOwnedWithLifetime(ctx, lifetime context.Context, in ComputerSessionStartInput, owner cu.SessionOwner) (ComputerSessionDTO, error) {
+	if m.remote != nil {
+		if owner != m.owner {
+			return ComputerSessionDTO{}, errors.New("managed conversation sessions are provider-owned")
+		}
+		if err := ctx.Err(); err != nil {
+			return ComputerSessionDTO{}, err
+		}
+		if err := lifetime.Err(); err != nil {
+			return ComputerSessionDTO{}, err
+		}
+		snapshot, err := m.remote.StartLocal(ctx, m.remoteOwner, in.Approved)
+		if err != nil {
+			return ComputerSessionDTO{}, err
+		}
+		m.mu.Lock()
+		m.remoteSession = snapshot.SessionID
+		m.mu.Unlock()
+		return computerSnapshotFromBridge(snapshot), nil
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if err := ctx.Err(); err != nil {
@@ -382,6 +457,28 @@ func (m *computerManager) active(id string) (*cu.Controller, error) {
 	}
 	return m.controller, nil
 }
+func computerBridgeSnapshot(s *cu.ComputerSession) computerbridge.SessionSnapshotResponse {
+	if s == nil {
+		return computerbridge.SessionSnapshotResponse{}
+	}
+	result := computerbridge.SessionSnapshotResponse{SessionID: s.ID(), State: s.State(), Owner: s.Owner(), Approved: s.Approved(), Capabilities: s.Capabilities()}
+	if o, ok := s.CurrentObservation(); ok {
+		result.Observation = &o
+	}
+	if r, ok := s.LastReceipt(); ok {
+		result.LastReceipt = &r
+	}
+	return result
+}
+
+func computerSnapshotFromBridge(s computerbridge.SessionSnapshotResponse) ComputerSessionDTO {
+	ownerKind := "managed_conversation"
+	if s.Owner == (cu.SessionOwner{TenantID: localComputerTenantID, UserID: localComputerUserID}) {
+		ownerKind = "local_preview"
+	}
+	return ComputerSessionDTO{ID: s.SessionID, State: s.State, Owner: s.Owner, OwnerKind: ownerKind, Capabilities: s.Capabilities, Observation: s.Observation, LastReceipt: s.LastReceipt}
+}
+
 func computerSnapshot(s *cu.ComputerSession) ComputerSessionDTO {
 	owner := s.Owner()
 	ownerKind := "managed_conversation"
@@ -402,6 +499,19 @@ func (m *computerManager) observe(ctx context.Context, id string) (ComputerObser
 }
 
 func (m *computerManager) observeTarget(ctx context.Context, id string, request cu.ObserveRequest) (ComputerObservationDTO, error) {
+	if m.remote != nil {
+		request.SessionID = id
+		o, err := m.remote.Observe(ctx, m.remoteOwner, request)
+		if err != nil {
+			return ComputerObservationDTO{}, err
+		}
+		data, mediaType, err := m.remote.ObservationImage(ctx, m.remoteOwner, id, o.ID)
+		if err != nil {
+			_ = m.remote.Pause(ctx, m.remoteOwner, id)
+			return ComputerObservationDTO{}, err
+		}
+		return ComputerObservationDTO{Observation: o, ImageData: base64.StdEncoding.EncodeToString(data), MediaType: mediaType}, nil
+	}
 	c, err := m.active(id)
 	if err != nil {
 		return ComputerObservationDTO{}, err
@@ -418,7 +528,110 @@ func (m *computerManager) observeTarget(ctx context.Context, id string, request 
 	}
 	return ComputerObservationDTO{Observation: o, ImageData: base64.StdEncoding.EncodeToString(data), MediaType: mediaType}, nil
 }
+func (m *computerManager) launchTarget(ctx context.Context, id string, targetID cu.TargetID) (cu.LaunchReceipt, error) {
+	if m.remote != nil {
+		return m.remote.LaunchTarget(ctx, m.remoteOwner, id, targetID)
+	}
+	c, err := m.active(id)
+	if err != nil {
+		return cu.LaunchReceipt{TargetID: targetID, Outcome: cu.OutcomeRejected, ErrorCode: cu.ErrorCodeInactive}, err
+	}
+	return c.LaunchTarget(ctx, c.Session().Owner(), id, targetID)
+}
+
+func (m *computerManager) executeTurn(ctx context.Context, action cu.Action) (cu.ComputerTurnResult, error) {
+	if m.remote != nil {
+		return m.remote.ExecuteTurn(ctx, m.remoteOwner, action)
+	}
+	c, err := m.active(action.SessionID)
+	if err != nil {
+		return cu.ComputerTurnResult{}, err
+	}
+	return c.ExecuteTurn(ctx, c.Session().Owner(), action)
+}
+
+func (m *computerManager) execute(ctx context.Context, action cu.Action) (cu.ActionReceipt, error) {
+	if m.remote != nil {
+		return m.remote.Execute(ctx, m.remoteOwner, action)
+	}
+	c, err := m.active(action.SessionID)
+	if err != nil {
+		return cu.ActionReceipt{ActionID: action.ID, SessionID: action.SessionID, Outcome: cu.OutcomeRejected, Verification: cu.VerificationNotChecked}, err
+	}
+	return c.Execute(ctx, c.Session().Owner(), action)
+}
+
+func (m *computerManager) observationImage(ctx context.Context, id, observationID string) ([]byte, string, error) {
+	if m.remote != nil {
+		return m.remote.ObservationImage(ctx, m.remoteOwner, id, observationID)
+	}
+	c, err := m.active(id)
+	if err != nil {
+		return nil, "", err
+	}
+	return c.ObservationImage(ctx, c.Session().Owner(), id, observationID)
+}
+
+func (m *computerManager) snapshot(ctx context.Context, id string) (ComputerSessionDTO, error) {
+	if m.remote != nil {
+		snapshot, err := m.remote.Snapshot(ctx, m.remoteOwner, id)
+		if err != nil {
+			return ComputerSessionDTO{}, err
+		}
+		return computerSnapshotFromBridge(snapshot), nil
+	}
+	c, err := m.active(id)
+	if err != nil {
+		return ComputerSessionDTO{}, err
+	}
+	return computerSnapshot(c.Session()), nil
+}
+
+func (m *computerManager) activeSnapshot(ctx context.Context) (ComputerSessionDTO, error) {
+	if m.remote != nil {
+		status, err := m.remote.RuntimeStatus(ctx, computerRuntimeSupervisionOwner)
+		if err != nil || !status.ActiveSession || status.SessionID == "" {
+			if err != nil {
+				return ComputerSessionDTO{}, err
+			}
+			return ComputerSessionDTO{}, errors.New("computer session not found")
+		}
+		snapshot, err := m.remote.Snapshot(ctx, computerRuntimeSupervisionOwner, status.SessionID)
+		if err != nil {
+			return ComputerSessionDTO{}, err
+		}
+		return computerSnapshotFromBridge(snapshot), nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.controller == nil {
+		return ComputerSessionDTO{}, errors.New("computer session not found")
+	}
+	return computerSnapshot(m.controller.Session()), nil
+}
+
 func (m *computerManager) control(ctx context.Context, id string, kind cu.ActionKind) (ComputerSessionDTO, error) {
+	if m.remote != nil {
+		var err error
+		switch kind {
+		case cu.ActionPause:
+			err = m.remote.Pause(ctx, m.remoteOwner, id)
+		case cu.ActionResume:
+			err = m.remote.Resume(ctx, m.remoteOwner, id)
+		case cu.ActionStop:
+			err = m.remote.Stop(ctx, m.remoteOwner, id)
+		default:
+			err = errors.New("unsupported computer control")
+		}
+		snapshot, snapshotErr := m.remote.Snapshot(ctx, m.remoteOwner, id)
+		if err != nil {
+			return ComputerSessionDTO{}, err
+		}
+		if snapshotErr != nil {
+			return ComputerSessionDTO{}, snapshotErr
+		}
+		return computerSnapshotFromBridge(snapshot), nil
+	}
 	c, err := m.active(id)
 	if err != nil {
 		return ComputerSessionDTO{}, err
@@ -436,6 +649,9 @@ func (m *computerManager) control(ctx context.Context, id string, kind cu.Action
 	return computerSnapshot(c.Session()), err
 }
 func (m *computerManager) close(ctx context.Context) error {
+	if m.remote != nil {
+		return nil
+	}
 	m.mu.Lock()
 	c, b := m.controller, m.backend
 	m.controller = nil
@@ -475,24 +691,14 @@ func (a *app) StartComputerSession(in ComputerSessionStartInput) (ComputerSessio
 // must not capture, access image bytes, refresh observation freshness, or revoke
 // a grant. Stopped sessions remain readable until replaced by an approved start.
 func (a *app) GetComputerSession(id string) (ComputerSessionDTO, error) {
-	c, err := a.computer().active(id)
-	if err != nil {
-		return ComputerSessionDTO{}, err
-	}
-	return computerSnapshot(c.Session()), nil
+	return a.computer().snapshot(context.Background(), id)
 }
 
 // GetActiveComputerSession is read-only authoritative discovery for sessions
 // created by the model bridge. It never initializes a backend, captures a
 // screenshot, refreshes observation freshness, or guesses an owner.
 func (a *app) GetActiveComputerSession() (ComputerSessionDTO, error) {
-	m := a.computer()
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.controller == nil {
-		return ComputerSessionDTO{}, errors.New("computer session not found")
-	}
-	return computerSnapshot(m.controller.Session()), nil
+	return a.computer().activeSnapshot(context.Background())
 }
 func (a *app) ObserveComputerSession(id string) (ComputerObservationDTO, error) {
 	return a.computer().observe(a.windowContext(), id)
@@ -507,15 +713,14 @@ func (a *app) StopComputerSession(id string) (ComputerSessionDTO, error) {
 	return a.computer().control(a.windowContext(), id, cu.ActionStop)
 }
 func (a *app) GetComputerActionReceipt(id, actionID string) (cu.ActionReceipt, error) {
-	c, err := a.computer().active(id)
+	snapshot, err := a.computer().snapshot(context.Background(), id)
 	if err != nil {
 		return cu.ActionReceipt{}, err
 	}
-	r, ok := c.Session().Receipt(actionID)
-	if !ok {
+	if snapshot.LastReceipt == nil || snapshot.LastReceipt.ActionID != actionID {
 		return cu.ActionReceipt{}, errors.New("computer receipt not found")
 	}
-	return r, nil
+	return *snapshot.LastReceipt, nil
 }
 func (a *app) runtime() *RuntimeSupervisor {
 	a.mu.Lock()
@@ -530,6 +735,12 @@ func (a *app) computer() *computerManager {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.computerManager == nil {
+		if a.providerRuntime != nil {
+			if client := a.providerRuntime.BridgeClient(); client != nil {
+				a.computerManager = newRemoteComputerManager(client)
+				return a.computerManager
+			}
+		}
 		if a.computerRuntime == nil {
 			a.computerRuntime = newComputerRuntime(nil)
 		}

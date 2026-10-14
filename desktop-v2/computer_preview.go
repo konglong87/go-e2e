@@ -22,6 +22,9 @@ type computerPreviewEvidence struct {
 // preview reads only existing current/after-action images. It must not observe,
 // refresh capabilities/freshness, pause, or otherwise change model authority.
 func (m *computerManager) preview(ctx context.Context, id string) (ComputerObservationDTO, error) {
+	if m.remote != nil {
+		return m.remotePreview(ctx, id)
+	}
 	if ctx == nil {
 		return ComputerObservationDTO{}, errComputerPreviewUnavailable
 	}
@@ -63,6 +66,29 @@ func (m *computerManager) preview(ctx context.Context, id string) (ComputerObser
 		return ComputerObservationDTO{}, errComputerPreviewUnavailable
 	}
 	return result, nil
+}
+
+func (m *computerManager) remotePreview(ctx context.Context, id string) (ComputerObservationDTO, error) {
+	if ctx == nil {
+		return ComputerObservationDTO{}, errComputerPreviewUnavailable
+	}
+	if err := ctx.Err(); err != nil {
+		return ComputerObservationDTO{}, err
+	}
+	snapshot, err := m.remote.Snapshot(ctx, m.remoteOwner, id)
+	imageOwner := m.remoteOwner
+	if err != nil {
+		snapshot, err = m.remote.Snapshot(ctx, computerRuntimeSupervisionOwner, id)
+		imageOwner = computerRuntimeSupervisionOwner
+	}
+	if err != nil || snapshot.Observation == nil || snapshot.State == cu.SessionStopped || snapshot.State == cu.SessionFailed || !snapshot.Approved {
+		return ComputerObservationDTO{}, errComputerPreviewUnavailable
+	}
+	data, mediaType, err := m.remote.ObservationImage(ctx, imageOwner, id, snapshot.Observation.ID)
+	if err != nil || len(data) == 0 || mediaType == "" {
+		return ComputerObservationDTO{}, errComputerPreviewUnavailable
+	}
+	return ComputerObservationDTO{Observation: *snapshot.Observation, ImageData: base64.StdEncoding.EncodeToString(data), MediaType: mediaType}, nil
 }
 
 func computerPreviewEvidenceFor(c *cu.Controller, id string) (computerPreviewEvidence, bool) {

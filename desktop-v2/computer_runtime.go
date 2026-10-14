@@ -61,6 +61,18 @@ func (r *RuntimeSupervisor) Manager() *computerManager {
 
 // BridgeConfig returns the in-memory authenticated endpoint owned by a
 // standalone runtime process. The token is never written to disk or logged.
+// BridgeClient is the authenticated client for the standalone provider
+// runtime. It is exposed only to the Wails client adapter; callers cannot mint
+// or alter its token.
+func (r *RuntimeSupervisor) BridgeClient() *computerbridge.Client {
+	if r == nil {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.statusClient
+}
+
 func (r *RuntimeSupervisor) BridgeConfig() (computerbridge.Config, bool) {
 	if r == nil {
 		return computerbridge.Config{}, false

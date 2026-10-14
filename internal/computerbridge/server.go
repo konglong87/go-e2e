@@ -129,6 +129,18 @@ func dispatchHost(r *http.Request, host Host, q Request) (any, error) {
 			return nil, ErrRemote
 		}
 		return status.RuntimeStatus(ctx, q.Owner)
+	case OpStartLocal:
+		starter, ok := host.(LocalSessionStarter)
+		if !ok {
+			return nil, ErrRemote
+		}
+		return starter.StartLocal(ctx, q.Owner, q.Approved)
+	case OpSnapshot:
+		reader, ok := host.(SessionSnapshotReader)
+		if !ok {
+			return nil, ErrRemote
+		}
+		return reader.Snapshot(ctx, q.Owner, q.SessionID)
 	case OpCapabilities:
 		return host.Capabilities(ctx, q.Owner, q.SessionID)
 	case OpLaunchApp:

@@ -218,3 +218,28 @@ func (c *Client) RuntimeStatus(ctx context.Context, owner cu.SessionOwner) (Runt
 	}
 	return out, nil
 }
+
+func (c *Client) StartLocal(ctx context.Context, owner cu.SessionOwner, approved bool) (SessionSnapshotResponse, error) {
+	var out SessionSnapshotResponse
+	if err := c.data(ctx, Request{Op: OpStartLocal, Owner: owner, Approved: approved}, &out); err != nil {
+		return SessionSnapshotResponse{}, err
+	}
+	if err := validateSessionSnapshot(out, ""); err != nil {
+		return SessionSnapshotResponse{}, err
+	}
+	return out, nil
+}
+
+func (c *Client) Snapshot(ctx context.Context, owner cu.SessionOwner, id string) (SessionSnapshotResponse, error) {
+	if !validID(id) {
+		return SessionSnapshotResponse{}, ErrInvalidRequest
+	}
+	var out SessionSnapshotResponse
+	if err := c.data(ctx, Request{Op: OpSnapshot, Owner: owner, SessionID: id}, &out); err != nil {
+		return SessionSnapshotResponse{}, err
+	}
+	if err := validateSessionSnapshot(out, id); err != nil {
+		return SessionSnapshotResponse{}, err
+	}
+	return out, nil
+}

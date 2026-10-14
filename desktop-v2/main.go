@@ -114,13 +114,6 @@ func desktopWailsOptions(application *app, config desktopConfig, target *url.URL
 
 func (a *app) startup(ctx context.Context) {
 	a.setWindowContext(ctx)
-	a.startComputerPanelIfEnabled(ctx)
-	closeAcceptance, acceptanceErr := startComputerAcceptance(ctx, a.computer(), os.Args[1:])
-	if acceptanceErr != nil {
-		startupLog("computer acceptance: " + acceptanceErr.Error())
-	} else {
-		a.acceptanceClose = closeAcceptance
-	}
 	startupLog("startup begin")
 	config, err := loadDesktopConfig()
 	if err != nil {
@@ -170,6 +163,13 @@ func (a *app) startup(ctx context.Context) {
 			a.mu.Unlock()
 			bridgeConfig = &cfg
 		}
+	}
+	a.startComputerPanelIfEnabled(ctx)
+	closeAcceptance, acceptanceErr := startComputerAcceptance(ctx, a.computer(), os.Args[1:])
+	if acceptanceErr != nil {
+		startupLog("computer acceptance: " + acceptanceErr.Error())
+	} else {
+		a.acceptanceClose = closeAcceptance
 	}
 	service := newLocalServiceController(localServiceConfig{
 		executable:     executable,

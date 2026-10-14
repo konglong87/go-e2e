@@ -36,6 +36,9 @@ func validRequest(r Request) bool {
 	if !validOwner(r.Owner) {
 		return false
 	}
+	if r.Op == OpCapabilities {
+		return (r.SessionID == "" || validID(r.SessionID)) && r.StartupAttemptID == "" && r.ObserveRequest == nil && r.Action == nil && r.ObservationID == "" && !r.Approved
+	}
 	switch r.Op {
 	case OpLookup:
 		return r.SessionID == "" && r.StartupAttemptID == "" && r.ObserveRequest == nil && r.Action == nil && r.ObservationID == ""
@@ -43,15 +46,15 @@ func validRequest(r Request) bool {
 		return r.SessionID == "" && optionalID(r.StartupAttemptID) && r.ObserveRequest == nil && r.Action == nil && r.ObservationID == ""
 	case OpResolveEnsure:
 		return r.SessionID == "" && validID(r.StartupAttemptID) && r.ObserveRequest == nil && r.Action == nil && r.ObservationID == ""
-	case OpRuntimeStatus:
+	case OpRuntimeStatus, OpStartLocal:
 		return r.SessionID == "" && r.StartupAttemptID == "" && r.ObserveRequest == nil && r.Action == nil && r.ObservationID == ""
 	}
 	if !validID(r.SessionID) {
 		return false
 	}
 	switch r.Op {
-	case OpCapabilities, OpPause, OpResume, OpStop:
-		return r.StartupAttemptID == "" && r.ObserveRequest == nil && r.Action == nil && r.ObservationID == ""
+	case OpPause, OpResume, OpStop, OpSnapshot:
+		return r.StartupAttemptID == "" && r.ObserveRequest == nil && r.Action == nil && r.ObservationID == "" && !r.Approved
 	case OpLaunchApp:
 		validTargetLaunch := validID(r.TargetID) && r.Application == ""
 		validLegacyLaunch := r.TargetID == "" && validID(r.Application)
@@ -165,4 +168,22 @@ func validTurnResultForAction(result cu.ComputerTurnResult, action cu.Action) bo
 		return false
 	}
 	return result.Receipt.BeforeObservationID == "" || result.Receipt.BeforeObservationID == action.ObservationID
+}
+
+func validateSessionSnapshot(snapshot SessionSnapshotResponse, requestedID string) error {
+	if !validID(snapshot.SessionID) || (requestedID != "" && snapshot.SessionID != requestedID) || snapshot.Owner.TenantID == 0 || snapshot.Owner.UserID == 0 || snapshot.Capabilities.Validate() != nil {
+		return ErrInvalidResponse
+	}
+	switch snapshot.State {
+	case cu.SessionPendingApproval, cu.SessionReady, cu.SessionPaused, cu.SessionNeedsObservation, cu.SessionStopped, cu.SessionFailed:
+	default:
+		return ErrInvalidResponse
+	}
+	if snapshot.Observation != nil && (snapshot.Observation.SessionID != snapshot.SessionID || snapshot.Observation.Capabilities.Validate() != nil) {
+		return ErrInvalidResponse
+	}
+	if snapshot.LastReceipt != nil && snapshot.LastReceipt.SessionID != snapshot.SessionID {
+		return ErrInvalidResponse
+	}
+	return nil
 }

@@ -198,11 +198,7 @@ func dispatchAcceptance(hostCtx, ctx context.Context, m *computerManager, r acce
 		}
 		return m.startWithLifetime(ctx, hostCtx, ComputerSessionStartInput{Approved: true})
 	case "launch_target":
-		controller, err := m.active(r.SessionID)
-		if err != nil {
-			return nil, err
-		}
-		return controller.LaunchTarget(ctx, m.owner, r.SessionID, r.TargetID)
+		return m.launchTarget(ctx, r.SessionID, r.TargetID)
 	case "observe":
 		return m.observeTarget(ctx, r.SessionID, cu.ObserveRequest{SessionID: r.SessionID, DisplayID: r.DisplayID, WindowID: r.WindowID})
 	case "pause":
@@ -212,13 +208,9 @@ func dispatchAcceptance(hostCtx, ctx context.Context, m *computerManager, r acce
 	case "stop":
 		return m.control(ctx, r.SessionID, cu.ActionStop)
 	case "snapshot", "execute", computerbridge.OpExecuteTurn, "image":
-		c, err := m.active(r.SessionID)
-		if err != nil {
-			return nil, err
-		}
 		switch r.Op {
 		case "snapshot":
-			return computerSnapshot(c.Session()), nil
+			return m.snapshot(ctx, r.SessionID)
 		case "execute", computerbridge.OpExecuteTurn:
 			if r.Action == nil || r.Action.SessionID != r.SessionID {
 				return nil, errors.New("action/session binding required")
@@ -244,7 +236,7 @@ func dispatchAcceptance(hostCtx, ctx context.Context, m *computerManager, r acce
 			if strings.TrimSpace(r.ObservationID) == "" {
 				return nil, errors.New("observation id required")
 			}
-			data, media, err := c.ObservationImage(ctx, m.owner, r.SessionID, r.ObservationID)
+			data, media, err := m.observationImage(ctx, r.SessionID, r.ObservationID)
 			if err != nil {
 				return nil, err
 			}

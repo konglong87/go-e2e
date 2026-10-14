@@ -68,10 +68,18 @@ func (s computerAgentService) ResolveComputerSessionStart(ctx context.Context, o
 	return id, nil
 }
 
+func (s computerAgentService) effectiveOwner(owner cu.SessionOwner) cu.SessionOwner {
+	if owner == computerUIBridgeOwner && s.manager != nil {
+		return s.manager.owner
+	}
+	return owner
+}
+
 func (s computerAgentService) controller(ctx context.Context, owner cu.SessionOwner, id string, lookup bool) (*cu.Controller, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	owner = s.effectiveOwner(owner)
 	if s.manager == nil || owner.TenantID == 0 || owner.UserID == 0 || owner.SessionID == 0 {
 		return nil, errComputerAgentUnauthorized
 	}
@@ -96,18 +104,23 @@ func (s computerAgentService) Lookup(ctx context.Context, owner cu.SessionOwner)
 	return c.Session().ID(), nil
 }
 func (s computerAgentService) Capabilities(ctx context.Context, owner cu.SessionOwner, id string) (cu.Capabilities, error) {
+	if owner == computerUIBridgeOwner && id == "" && s.manager != nil {
+		return s.manager.capabilities(ctx)
+	}
+	effectiveOwner := s.effectiveOwner(owner)
 	c, err := s.controller(ctx, owner, id, false)
 	if err != nil {
 		return cu.Capabilities{}, err
 	}
-	return c.Capabilities(ctx, owner, id)
+	return c.Capabilities(ctx, effectiveOwner, id)
 }
 func (s computerAgentService) LaunchTarget(ctx context.Context, owner cu.SessionOwner, id string, targetID cu.TargetID) (cu.LaunchReceipt, error) {
+	effectiveOwner := s.effectiveOwner(owner)
 	c, err := s.controller(ctx, owner, id, false)
 	if err != nil {
 		return cu.LaunchReceipt{TargetID: targetID, Outcome: cu.OutcomeRejected, ErrorCode: cu.ErrorCodeInactive}, err
 	}
-	return c.LaunchTarget(ctx, owner, id, targetID)
+	return c.LaunchTarget(ctx, effectiveOwner, id, targetID)
 }
 
 // LaunchApp remains a compatibility adapter for pre-target clients. New model
@@ -116,53 +129,59 @@ func (s computerAgentService) LaunchApp(ctx context.Context, owner cu.SessionOwn
 	return s.LaunchTarget(ctx, owner, id, cu.TargetID(application))
 }
 func (s computerAgentService) Observe(ctx context.Context, owner cu.SessionOwner, r cu.ObserveRequest) (cu.Observation, error) {
+	effectiveOwner := s.effectiveOwner(owner)
 	c, err := s.controller(ctx, owner, r.SessionID, false)
 	if err != nil {
 		return cu.Observation{}, err
 	}
-	return c.Observe(ctx, owner, r)
+	return c.Observe(ctx, effectiveOwner, r)
 }
 func (s computerAgentService) ExecuteTurn(ctx context.Context, owner cu.SessionOwner, a cu.Action) (cu.ComputerTurnResult, error) {
+	effectiveOwner := s.effectiveOwner(owner)
 	c, err := s.controller(ctx, owner, a.SessionID, false)
 	if err != nil {
 		return cu.ComputerTurnResult{}, err
 	}
-	return c.ExecuteTurn(ctx, owner, a)
+	return c.ExecuteTurn(ctx, effectiveOwner, a)
 }
 
 func (s computerAgentService) Execute(ctx context.Context, owner cu.SessionOwner, a cu.Action) (cu.ActionReceipt, error) {
+	effectiveOwner := s.effectiveOwner(owner)
 	c, err := s.controller(ctx, owner, a.SessionID, false)
 	if err != nil {
 		return cu.ActionReceipt{ActionID: a.ID, SessionID: a.SessionID, Outcome: cu.OutcomeRejected, Verification: cu.VerificationNotChecked}, err
 	}
-	return c.Execute(ctx, owner, a)
+	return c.Execute(ctx, effectiveOwner, a)
 }
 func (s computerAgentService) Pause(ctx context.Context, owner cu.SessionOwner, id string) error {
+	effectiveOwner := s.effectiveOwner(owner)
 	c, err := s.controller(ctx, owner, id, false)
 	if err != nil {
 		return err
 	}
-	return c.Pause(ctx, owner, id)
+	return c.Pause(ctx, effectiveOwner, id)
 }
 func (s computerAgentService) Resume(ctx context.Context, owner cu.SessionOwner, id string) error {
+	effectiveOwner := s.effectiveOwner(owner)
 	c, err := s.controller(ctx, owner, id, false)
 	if err != nil {
 		return err
 	}
-	return c.Resume(ctx, owner, id)
+	return c.Resume(ctx, effectiveOwner, id)
 }
 func (s computerAgentService) Stop(ctx context.Context, owner cu.SessionOwner, id string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if s.manager == nil || !validComputerConversationOwner(owner) {
+	effectiveOwner := s.effectiveOwner(owner)
+	if s.manager == nil || (owner != computerUIBridgeOwner && !validComputerConversationOwner(owner)) {
 		return errComputerAgentUnauthorized
 	}
 	s.manager.mu.Lock()
 	c := s.manager.controller
 	// Revocation clears Approved. The exact old owner may repeat Stop, but must
 	// never discover/use that stopped grant or affect a replacement controller.
-	if c == nil || c.Session().ID() != id || !c.Session().Owns(owner) {
+	if c == nil || c.Session().ID() != id || !c.Session().Owns(effectiveOwner) {
 		s.manager.mu.Unlock()
 		return errComputerAgentUnauthorized
 	}
@@ -172,23 +191,84 @@ func (s computerAgentService) Stop(ctx context.Context, owner cu.SessionOwner, i
 	if !allowed {
 		return errComputerAgentUnauthorized
 	}
-	return c.Stop(ctx, owner, id)
+	return c.Stop(ctx, effectiveOwner, id)
 }
 
 func (s computerAgentService) TurnScreenshot(ctx context.Context, owner cu.SessionOwner, result cu.ComputerTurnResult) ([]byte, string, error) {
+	effectiveOwner := s.effectiveOwner(owner)
 	c, err := s.controller(ctx, owner, result.SessionID, false)
 	if err != nil {
 		return nil, "", err
 	}
-	return c.TurnScreenshot(ctx, owner, result)
+	return c.TurnScreenshot(ctx, effectiveOwner, result)
 }
 
 func (s computerAgentService) ObservationImage(ctx context.Context, owner cu.SessionOwner, id, observationID string) ([]byte, string, error) {
-	c, err := s.controller(ctx, owner, id, false)
+	c, effectiveOwner, err := s.readOnlyController(ctx, owner, id)
 	if err != nil {
 		return nil, "", err
 	}
-	return c.ObservationImage(ctx, owner, id, observationID)
+	return c.ObservationImage(ctx, effectiveOwner, id, observationID)
+}
+
+func (s computerAgentService) readOnlyController(ctx context.Context, owner cu.SessionOwner, id string) (*cu.Controller, cu.SessionOwner, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, cu.SessionOwner{}, err
+	}
+	if owner != computerRuntimeSupervisionOwner {
+		effectiveOwner := s.effectiveOwner(owner)
+		c, err := s.controller(ctx, owner, id, false)
+		return c, effectiveOwner, err
+	}
+	if s.manager == nil {
+		return nil, cu.SessionOwner{}, errComputerAgentUnauthorized
+	}
+	s.manager.mu.Lock()
+	c := s.manager.controller
+	s.manager.mu.Unlock()
+	if c == nil || c.Session().ID() != id || !c.Session().Approved() || c.Session().State() == cu.SessionStopped || c.Session().State() == cu.SessionFailed {
+		return nil, cu.SessionOwner{}, errComputerAgentUnauthorized
+	}
+	return c, c.Session().Owner(), nil
+}
+
+func (s computerAgentService) StartLocal(ctx context.Context, owner cu.SessionOwner, approved bool) (computerbridge.SessionSnapshotResponse, error) {
+	if err := ctx.Err(); err != nil {
+		return computerbridge.SessionSnapshotResponse{}, err
+	}
+	if owner != computerUIBridgeOwner || s.manager == nil || !approved {
+		return computerbridge.SessionSnapshotResponse{}, errComputerAgentUnauthorized
+	}
+	snapshot, err := s.manager.startOwned(ctx, ComputerSessionStartInput{Approved: true}, s.manager.owner)
+	if err != nil {
+		return computerbridge.SessionSnapshotResponse{}, err
+	}
+	s.manager.mu.Lock()
+	c := s.manager.controller
+	s.manager.mu.Unlock()
+	if c == nil || c.Session().ID() != snapshot.ID {
+		return computerbridge.SessionSnapshotResponse{}, errComputerAgentUnauthorized
+	}
+	return computerBridgeSnapshot(c.Session()), nil
+}
+
+func (s computerAgentService) Snapshot(ctx context.Context, owner cu.SessionOwner, id string) (computerbridge.SessionSnapshotResponse, error) {
+	if err := ctx.Err(); err != nil {
+		return computerbridge.SessionSnapshotResponse{}, err
+	}
+	if s.manager == nil || (owner != computerUIBridgeOwner && owner != computerRuntimeSupervisionOwner) {
+		return computerbridge.SessionSnapshotResponse{}, errComputerAgentUnauthorized
+	}
+	s.manager.mu.Lock()
+	c := s.manager.controller
+	s.manager.mu.Unlock()
+	if c == nil || c.Session().ID() != id {
+		return computerbridge.SessionSnapshotResponse{}, errComputerAgentUnauthorized
+	}
+	if owner == computerUIBridgeOwner && !c.Session().Owns(s.manager.owner) {
+		return computerbridge.SessionSnapshotResponse{}, errComputerAgentUnauthorized
+	}
+	return computerBridgeSnapshot(c.Session()), nil
 }
 
 func (s computerAgentService) RuntimeStatus(ctx context.Context, owner cu.SessionOwner) (computerbridge.RuntimeStatusResponse, error) {
@@ -198,5 +278,5 @@ func (s computerAgentService) RuntimeStatus(ctx context.Context, owner cu.Sessio
 	if owner != computerRuntimeSupervisionOwner || s.manager == nil {
 		return computerbridge.RuntimeStatusResponse{}, errComputerAgentUnauthorized
 	}
-	return computerbridge.RuntimeStatusResponse{ActiveSession: s.manager.hasActiveSession()}, nil
+	return computerbridge.RuntimeStatusResponse{ActiveSession: s.manager.hasActiveSession(), SessionID: s.manager.activeSessionID()}, nil
 }

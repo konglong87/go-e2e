@@ -68,3 +68,48 @@ func TestDesktopBridgeBindsApprovedConversationAndCleansSocket(t *testing.T) {
 		t.Fatal("closed bridge accepted request")
 	}
 }
+
+func TestRemoteDesktopManagerUsesBridgeForLocalSession(t *testing.T) {
+	relative, err := os.MkdirTemp("..", ".cb-remote-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(relative) })
+	root, err := filepath.Abs(relative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err = filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	backendManager, _ := testComputerManager()
+	ctx := context.Background()
+	listener, err := startDesktopComputerBridge(ctx, root, backendManager)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	client, err := computerbridge.NewClient(listener.Config())
+	if err != nil {
+		t.Fatal(err)
+	}
+	remote := newRemoteComputerManager(client)
+	started, err := remote.start(ctx, ComputerSessionStartInput{Approved: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if started.ID == "" || started.State != cu.SessionReady || !started.Capabilities.Ready() {
+		t.Fatalf("remote start = %+v", started)
+	}
+	if got, err := remote.snapshot(ctx, started.ID); err != nil || got.ID != started.ID || got.State != cu.SessionReady {
+		t.Fatalf("remote snapshot = %+v err=%v", got, err)
+	}
+	stopped, err := remote.control(ctx, started.ID, cu.ActionStop)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stopped.State != cu.SessionStopped {
+		t.Fatalf("remote stop = %+v", stopped)
+	}
+}

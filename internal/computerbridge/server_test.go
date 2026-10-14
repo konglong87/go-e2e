@@ -19,6 +19,8 @@ type serverSpy struct {
 	receipt       cu.ActionReceipt
 	err           error
 	runtimeActive bool
+	localSnapshot SessionSnapshotResponse
+	startApproved bool
 }
 
 func (s *serverSpy) Lookup(_ context.Context, owner cu.SessionOwner) (string, error) {
@@ -156,4 +158,20 @@ func (s *serverSpy) RuntimeStatus(_ context.Context, owner cu.SessionOwner) (Run
 	s.calls++
 	s.owner = owner
 	return RuntimeStatusResponse{ActiveSession: s.runtimeActive}, nil
+}
+
+func testSessionSnapshot() SessionSnapshotResponse {
+	return SessionSnapshotResponse{SessionID: "local-session", State: cu.SessionReady,
+		Owner: cu.SessionOwner{TenantID: 1, UserID: 1}, Approved: true, Capabilities: testCapabilities()}
+}
+
+func (s *serverSpy) StartLocal(_ context.Context, _ cu.SessionOwner, approved bool) (SessionSnapshotResponse, error) {
+	s.calls++
+	s.startApproved = approved
+	return s.localSnapshot, s.err
+}
+
+func (s *serverSpy) Snapshot(_ context.Context, _ cu.SessionOwner, _ string) (SessionSnapshotResponse, error) {
+	s.calls++
+	return s.localSnapshot, s.err
 }
