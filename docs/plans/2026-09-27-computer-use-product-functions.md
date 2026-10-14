@@ -12,8 +12,8 @@ history is in `docs/plans/2026-10-08-computer-use-stability.md`.
 | P0 | Consistent native passive-wait acknowledgement across atomic turn/bridge/tool | Committed/pushed 714cf13; 297 native safety assertions plus focused Go/race and 469 platform assertions pass. Real current-build passive-wait smoke still pending. No validation relaxation. |
 | P0 | Production request/context contract and first-action guidance | Offline production Responses HTTP regression proves requested model/high, exact 2048-token cap, latest-only PNG and preserved tool receipts. Shared prompt fixture prevents test/harness drift. Closed targets now use first-call atomic launch in both guidance surfaces; metadata duplication and lifecycle audit remain before another model run. |
 | P0 | Runtime lifecycle/control audit | Failing UI capabilities-first/conversation-start tests now pass with supervisor-owned helper context. Stop/drain precedes runtime cancellation and bridge close. Prompt-authorization deny remains effective in fast path. Active native panel/window-close acceptance and standalone runtime-process extraction remain open; no full P0-E closure claimed. |
-| P0 | Native activation/launch ambiguity audit | Typed activation now distinguishes read-only failure from possible AX effects; no ambiguous raise is retried and original PID/bundle/window identity is carried across recovery. Native unknown/lost-ACK launch remains unknown and quarantines the helper. AX inspection records only the exact read stage, raw AXError, attribute name, and CF type ID; the WorkBuddy AX-geometry incompatibility now has a strict exact-Window-Server fallback with no replay. Current-build no-model launch smoke remains pending. |
-| P0 | Current-build automated/native gates | Focused Go/race, Python acceptance, native safety/platform, helper and tagged official build, strict codesign. |
+| P0 | Native activation/launch ambiguity audit | Typed activation now distinguishes read-only failure from possible AX effects; no ambiguous raise is retried and original PID/bundle/window identity is carried across recovery. Native unknown/lost-ACK launch remains unknown and quarantines the helper. AX inspection records only the exact read stage, raw AXError, attribute name, and CF type ID; the WorkBuddy AX-geometry incompatibility now has a strict exact-Window-Server fallback with no replay. Current official build deterministic launch/observation/PNG/Stop smoke passed; no input was sent. |
+| P0 | Current-build automated/native gates | Focused Go/race, Python acceptance, native safety/platform, helper and tagged official build, strict codesign. The 2026-10-14 official build and one deterministic native launch/Stop smoke now pass; final model closure remains separate and unrun. |
 | P0 | Fresh gpt-6-sol/high closure after all deterministic gates | Same build/session/run launch → click → command+a → type → send once → wait once → actual reply screenshot → model Stop. Remains open; no replay or further model retry while deterministic work is unfinished. |
 | P1 | Historical native control/display follow-ups | Unchanged; do not promote old screenshots to current evidence. |
 
@@ -94,6 +94,22 @@ external desktop/TCC precondition, not a new runtime launch result and not a
 reason to replay the previous unknown action. After the user unlocks the Mac,
 run exactly one fresh deterministic launch/stop smoke on this build before any
 model closure.
+
+### Phase update — unlocked official deterministic launch smoke passed — 2026-10-14
+
+After the Mac was manually unlocked, the official tagged build was rebuilt from
+`c39a6a6eb27f35bed75c664a1e3376ee235b40f4`, with `source_dirty=false` and
+`web_source_dirty=false`; deep strict codesign passed. One fresh acceptance
+session `3cbc3cd0-a4ee-4eef-8628-af52850851c3` executed exactly one new
+`launch_app` action `native-c39a6a6-launch-01`. The committed result was
+`outcome=executed`, `dispatch_state=complete`, and the same turn carried the
+observation plus PNG. The PNG was visually inspected at
+`desktop-v2/build/validation/20261014/native-c39a6a6-launch-01/launch-screenshot.png`:
+it is a real WorkBuddy window, not a placeholder or stale prior screenshot.
+The same session then returned a legal `Stop` with state `stopped`. No click,
+type, hotkey, send, wait, or model request was issued. This proves the guarded
+native launch fallback and same-turn launch evidence path; it does not claim
+the autonomous model closure, which remains intentionally unrun.
 
 ## Historical ordered queue — 2026-09-30
 
