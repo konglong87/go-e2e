@@ -150,3 +150,18 @@ func TestVisualCueBusClonesAndClosesSlowSubscribers(t *testing.T) {
 		t.Fatal("slow visual cue subscriber remained open after overflow")
 	}
 }
+
+func TestVisualCueBusPublishesHiddenCueWithoutAActionPoint(t *testing.T) {
+	bus := NewVisualCueBus()
+	updates, cancel := bus.SubscribeVisualCues(1)
+	defer cancel()
+	bus.HideVisualCue("session", "runtime", "")
+	select {
+	case cue := <-updates:
+		if cue.Phase != VisualCueHidden || cue.ImagePoint != nil || cue.GlobalPoint != nil {
+			t.Fatalf("hidden cue = %+v", cue)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("hidden cue was not published")
+	}
+}
