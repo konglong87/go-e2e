@@ -23,18 +23,19 @@ type ImageReader interface {
 // Controller is one approved host session's execution authority. Agent and UI
 // adapters must share this instance; constructing a Tool never grants approval.
 type Controller struct {
-	session        *ComputerSession
-	backend        Backend
-	serial         chan struct{}
-	control        chan struct{} // Pause/Resume only; Stop must never queue behind them.
-	stopping       chan struct{} // Repeat Stop must not abort an earlier Stop acknowledgement.
-	mu             sync.Mutex
-	cancel         context.CancelFunc
-	targetRegistry TargetRegistry
-	runner         *Runner
-	turnPublisher  TurnPublisher
-	pausing        int
-	pauseVersion   uint64
+	session            *ComputerSession
+	backend            Backend
+	serial             chan struct{}
+	control            chan struct{} // Pause/Resume only; Stop must never queue behind them.
+	stopping           chan struct{} // Repeat Stop must not abort an earlier Stop acknowledgement.
+	mu                 sync.Mutex
+	cancel             context.CancelFunc
+	targetRegistry     TargetRegistry
+	runner             *Runner
+	turnPublisher      TurnPublisher
+	visualCuePublisher VisualCuePublisher
+	pausing            int
+	pauseVersion       uint64
 }
 
 func NewController(s *ComputerSession, b Backend) (*Controller, error) {
@@ -70,6 +71,24 @@ func (c *Controller) SetTurnPublisher(publisher TurnPublisher) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.turnPublisher = publisher
+}
+
+func (c *Controller) SetVisualCuePublisher(publisher VisualCuePublisher) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.visualCuePublisher = publisher
+}
+
+func (c *Controller) publishVisualCue(turnID string, sequence uint64, action Action, before Observation, receipt ActionReceipt, now time.Time) {
+	c.mu.Lock()
+	publisher := c.visualCuePublisher
+	c.mu.Unlock()
+	if publisher == nil {
+		return
+	}
+	if cue, ok := NewActionVisualCue(turnID, sequence, action, before, receipt, now); ok {
+		publisher.PublishVisualCue(cue)
+	}
 }
 
 func (c *Controller) publishTurn(result ComputerTurnResult) {
@@ -543,6 +562,9 @@ func (c *Controller) ExecuteTurn(ctx context.Context, owner SessionOwner, a Acti
 		c.failRun()
 		return turnResultFromReceipt(turnID, sequence, started, a, receipt), err
 	}
+	// The receipt is durable before any visual hint is published. A visual
+	// consumer cannot erase or reinterpret an already-dispatched input.
+	c.publishVisualCue(turnID, sequence, a, before, receipt, time.Now())
 	if c.runner != nil {
 		switch {
 		case c.session.State() == SessionPaused:

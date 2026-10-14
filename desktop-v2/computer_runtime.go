@@ -114,6 +114,13 @@ func (r *RuntimeSupervisor) EventBus() *cu.EventBus {
 	return nil
 }
 
+func (r *RuntimeSupervisor) VisualCueBus() *cu.VisualCueBus {
+	if manager := r.Manager(); manager != nil {
+		return manager.visualCues
+	}
+	return nil
+}
+
 // Stop is the only normal runtime termination path. It revokes the active
 // session and drains the helper before canceling its lifetime context. Client
 // disconnect cannot interrupt this bounded, explicit shutdown.

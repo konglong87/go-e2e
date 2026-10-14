@@ -104,6 +104,7 @@ type computerManager struct {
 	factory       computerBackendFactory
 	runtimeCtx    context.Context
 	events        *cu.EventBus
+	visualCues    *cu.VisualCueBus
 	remote        *computerbridge.Client
 	remoteOwner   cu.SessionOwner
 	remoteSession string
@@ -121,6 +122,7 @@ func newRemoteComputerManager(client *computerbridge.Client) *computerManager {
 		owner:       cu.SessionOwner{TenantID: localComputerTenantID, UserID: localComputerUserID},
 		remote:      client,
 		remoteOwner: computerUIBridgeOwner,
+		visualCues:  cu.NewVisualCueBus(),
 		attempts:    make(map[computerStartAttemptKey]string),
 	}
 }
@@ -136,7 +138,7 @@ func newComputerManagerWithRuntime(runtimeCtx context.Context, events *cu.EventB
 	if events == nil {
 		events = cu.NewEventBus()
 	}
-	return &computerManager{owner: cu.SessionOwner{TenantID: localComputerTenantID, UserID: localComputerUserID}, factory: newComputerBackend, runtimeCtx: runtimeCtx, events: events, attempts: make(map[computerStartAttemptKey]string)}
+	return &computerManager{owner: cu.SessionOwner{TenantID: localComputerTenantID, UserID: localComputerUserID}, factory: newComputerBackend, runtimeCtx: runtimeCtx, events: events, visualCues: cu.NewVisualCueBus(), attempts: make(map[computerStartAttemptKey]string)}
 }
 
 func (m *computerManager) activeSessionID() string {
@@ -385,6 +387,9 @@ func (m *computerManager) startOwnedWithLifetime(ctx, lifetime context.Context, 
 	if m.events != nil {
 		c.SetTurnPublisher(m.events)
 	}
+	if m.visualCues != nil {
+		c.SetVisualCuePublisher(m.visualCues)
+	}
 	if in.Approved {
 		if err := s.Approve(owner); err != nil {
 			return ComputerSessionDTO{}, err
@@ -444,6 +449,9 @@ func (m *computerManager) replaceBackendLocked(ctx context.Context) error {
 		m.controller = c
 		if m.events != nil {
 			c.SetTurnPublisher(m.events)
+		}
+		if m.visualCues != nil {
+			c.SetVisualCuePublisher(m.visualCues)
 		}
 	}
 	return nil
