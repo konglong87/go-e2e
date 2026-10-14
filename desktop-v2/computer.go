@@ -752,6 +752,7 @@ func (a *app) computer() *computerManager {
 	if a.computerManager == nil {
 		if a.providerRuntime != nil {
 			if client := a.providerRuntime.BridgeClient(); client != nil {
+				a.providerRuntime.StartVisualCueOverlay()
 				a.computerManager = newRemoteComputerManager(client)
 				return a.computerManager
 			}

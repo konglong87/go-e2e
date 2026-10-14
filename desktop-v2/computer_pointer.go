@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/konglong87/go-e2e/internal/computerbridge"
 	cu "github.com/konglong87/go-e2e/internal/computeruse"
 )
 
@@ -14,6 +15,54 @@ type computerPointer interface {
 	Show(cu.ActionVisualCue)
 	Hide()
 	Close()
+}
+
+func startRemoteComputerVisualCueOverlay(ctx context.Context, client *computerbridge.Client, bus *cu.VisualCueBus) func() {
+	if client == nil || bus == nil {
+		return func() {}
+	}
+	pollCtx, cancel := context.WithCancel(ctx)
+	localStop := startComputerVisualCueOverlay(pollCtx, bus)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+		last := ""
+		poll := func() {
+			requestCtx, requestCancel := context.WithTimeout(pollCtx, 250*time.Millisecond)
+			defer requestCancel()
+			status, err := client.RuntimeStatus(requestCtx, computerRuntimeSupervisionOwner)
+			if err != nil || !status.ActiveSession || status.SessionID == "" {
+				return
+			}
+			response, err := client.VisualCue(requestCtx, computerRuntimeSupervisionOwner, status.SessionID)
+			if err != nil || response.Cue == nil {
+				return
+			}
+			cue := *response.Cue
+			key := cue.SessionID + "\x00" + cue.ActionID + "\x00" + string(cue.Phase) + "\x00" + cue.CreatedAt.UTC().Format(time.RFC3339Nano)
+			if key == last {
+				return
+			}
+			last = key
+			bus.PublishVisualCue(cue)
+		}
+		poll()
+		for {
+			select {
+			case <-pollCtx.Done():
+				return
+			case <-ticker.C:
+				poll()
+			}
+		}
+	}()
+	return func() {
+		cancel()
+		localStop()
+		<-done
+	}
 }
 
 func startComputerVisualCueOverlay(ctx context.Context, bus *cu.VisualCueBus) func() {

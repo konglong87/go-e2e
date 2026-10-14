@@ -251,3 +251,17 @@ func (c *Client) StopRuntime(ctx context.Context, owner cu.SessionOwner) error {
 	}
 	return nil
 }
+
+func (c *Client) VisualCue(ctx context.Context, owner cu.SessionOwner, sessionID string) (VisualCueResponse, error) {
+	if !validID(sessionID) {
+		return VisualCueResponse{}, ErrInvalidRequest
+	}
+	var out VisualCueResponse
+	if err := c.data(ctx, Request{Op: OpVisualCue, Owner: owner, SessionID: sessionID}, &out); err != nil {
+		return VisualCueResponse{}, err
+	}
+	if !validVisualCueResponse(out, sessionID) {
+		return VisualCueResponse{}, ErrInvalidResponse
+	}
+	return out, nil
+}

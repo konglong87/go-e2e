@@ -147,6 +147,28 @@ func (s computerAgentService) ExecuteTurn(ctx context.Context, owner cu.SessionO
 	return c.ExecuteTurn(ctx, effectiveOwner, a)
 }
 
+// VisualCue is restricted to the local UI/supervision identities. Model
+// owners never receive a polling endpoint for native UI presentation hints.
+func (s computerAgentService) VisualCue(ctx context.Context, owner cu.SessionOwner, sessionID string) (computerbridge.VisualCueResponse, error) {
+	if owner != computerUIBridgeOwner && owner != computerRuntimeSupervisionOwner {
+		return computerbridge.VisualCueResponse{}, errComputerAgentUnauthorized
+	}
+	if s.manager == nil || strings.TrimSpace(sessionID) == "" {
+		return computerbridge.VisualCueResponse{}, errComputerAgentUnauthorized
+	}
+	s.manager.mu.Lock()
+	bus := s.manager.visualCues
+	s.manager.mu.Unlock()
+	if bus == nil {
+		return computerbridge.VisualCueResponse{}, nil
+	}
+	cue, ok := bus.LatestVisualCue(sessionID)
+	if !ok {
+		return computerbridge.VisualCueResponse{}, nil
+	}
+	return computerbridge.VisualCueResponse{Cue: &cue}, nil
+}
+
 func (s computerAgentService) Execute(ctx context.Context, owner cu.SessionOwner, a cu.Action) (cu.ActionReceipt, error) {
 	effectiveOwner := s.effectiveOwner(owner)
 	c, err := s.controller(ctx, owner, a.SessionID, false)

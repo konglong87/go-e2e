@@ -20,6 +20,7 @@ type RuntimeSupervisor struct {
 	process            *computerRuntimeProcess
 	bridgeConfig       *computerbridge.Config
 	statusClient       *computerbridge.Client
+	visualCueBus       *cu.VisualCueBus
 	visualCueStop      func()
 	stopped            bool
 }
@@ -27,7 +28,8 @@ type RuntimeSupervisor struct {
 func newComputerRuntime(_ context.Context) *RuntimeSupervisor {
 	ctx, cancel := context.WithCancel(context.Background())
 	bus := cu.NewEventBus()
-	return &RuntimeSupervisor{computerRuntimeCtx: ctx, cancel: cancel, manager: newComputerManagerWithRuntime(ctx, bus)}
+	manager := newComputerManagerWithRuntime(ctx, bus)
+	return &RuntimeSupervisor{computerRuntimeCtx: ctx, cancel: cancel, manager: manager, visualCueBus: manager.visualCues}
 }
 
 func newProcessComputerRuntime(process *computerRuntimeProcess) *RuntimeSupervisor {
@@ -39,6 +41,7 @@ func newProcessComputerRuntime(process *computerRuntimeProcess) *RuntimeSupervis
 		process:            process,
 		bridgeConfig:       &config,
 		statusClient:       process.Client(),
+		visualCueBus:       cu.NewVisualCueBus(),
 	}
 }
 
@@ -116,8 +119,16 @@ func (r *RuntimeSupervisor) EventBus() *cu.EventBus {
 }
 
 func (r *RuntimeSupervisor) VisualCueBus() *cu.VisualCueBus {
-	if manager := r.Manager(); manager != nil {
-		return manager.visualCues
+	if r == nil {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.visualCueBus != nil {
+		return r.visualCueBus
+	}
+	if r.manager != nil {
+		return r.manager.visualCues
 	}
 	return nil
 }
@@ -129,13 +140,36 @@ func (r *RuntimeSupervisor) StartVisualCueOverlay() {
 		return
 	}
 	r.mu.Lock()
-	if r.visualCueStop != nil || r.manager == nil {
+	if r.visualCueStop != nil {
 		r.mu.Unlock()
 		return
 	}
-	ctx, bus := r.computerRuntimeCtx, r.manager.visualCues
-	r.visualCueStop = startComputerVisualCueOverlay(ctx, bus)
+	ctx, manager, client, bus := r.computerRuntimeCtx, r.manager, r.statusClient, r.visualCueBus
+	if bus == nil && manager != nil {
+		bus = manager.visualCues
+		r.visualCueBus = bus
+	}
 	r.mu.Unlock()
+	if bus == nil {
+		return
+	}
+	var stop func()
+	if manager != nil {
+		stop = startComputerVisualCueOverlay(ctx, bus)
+	} else if client != nil {
+		stop = startRemoteComputerVisualCueOverlay(ctx, client, bus)
+	} else {
+		return
+	}
+	r.mu.Lock()
+	if r.visualCueStop == nil && !r.stopped {
+		r.visualCueStop = stop
+		stop = nil
+	}
+	r.mu.Unlock()
+	if stop != nil {
+		stop()
+	}
 }
 
 // Stop is the only normal runtime termination path. It revokes the active

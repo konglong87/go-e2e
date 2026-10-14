@@ -48,6 +48,8 @@ func validRequest(r Request) bool {
 		return r.SessionID == "" && validID(r.StartupAttemptID) && r.ObserveRequest == nil && r.Action == nil && r.ObservationID == ""
 	case OpRuntimeStatus, OpRuntimeStop, OpStartLocal:
 		return r.SessionID == "" && r.StartupAttemptID == "" && r.ObserveRequest == nil && r.Action == nil && r.ObservationID == ""
+	case OpVisualCue:
+		return validID(r.SessionID) && r.StartupAttemptID == "" && r.ObserveRequest == nil && r.Action == nil && r.ObservationID == ""
 	}
 	if !validID(r.SessionID) {
 		return false
@@ -117,6 +119,15 @@ func validAction(a cu.Action) bool {
 	default:
 		return true
 	}
+}
+
+func validVisualCueResponse(response VisualCueResponse, sessionID string) bool {
+	if response.Cue == nil {
+		return true
+	}
+	cue := response.Cue
+	return cue.SessionID == sessionID && cue.ActionID != "" && cue.WindowID != "" && cue.GlobalPoint != nil &&
+		!cue.CreatedAt.IsZero() && !cue.ExpiresAt.IsZero() && cue.ExpiresAt.After(cue.CreatedAt)
 }
 
 func validObservation(o cu.Observation, r cu.ObserveRequest) bool {

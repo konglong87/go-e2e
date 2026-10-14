@@ -94,6 +94,7 @@ type VisualCueBus struct {
 	mu          sync.Mutex
 	nextID      uint64
 	subscribers map[uint64]*visualCueSubscription
+	latest      ActionVisualCue
 }
 
 func NewVisualCueBus() *VisualCueBus {
@@ -130,6 +131,7 @@ func (b *VisualCueBus) PublishVisualCue(cue ActionVisualCue) {
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	b.latest = cloneVisualCue(cue)
 	for id, subscription := range b.subscribers {
 		select {
 		case subscription.channel <- cloneVisualCue(cue):
@@ -138,6 +140,18 @@ func (b *VisualCueBus) PublishVisualCue(cue ActionVisualCue) {
 			close(subscription.channel)
 		}
 	}
+}
+
+// LatestVisualCue returns the most recent non-expired cue for one session.
+// It is a read-only bridge projection; it never grants authority or replays an
+// action. A caller can safely poll this from a UI client.
+func (b *VisualCueBus) LatestVisualCue(sessionID string) (ActionVisualCue, bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.latest.SessionID != sessionID || b.latest.expired(time.Now()) || b.latest.Phase == VisualCueHidden {
+		return ActionVisualCue{}, false
+	}
+	return cloneVisualCue(b.latest), true
 }
 
 func (b *VisualCueBus) HideVisualCue(sessionID, actionID, turnID string) {

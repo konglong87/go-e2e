@@ -181,3 +181,20 @@ func TestNewActionVisualCuePrefersNativeResolvedGlobalPoint(t *testing.T) {
 		t.Fatalf("cue global point = %+v, want native point %+v", cue.GlobalPoint, receipt.ActualGlobalPoint)
 	}
 }
+
+func TestVisualCueBusLatestIsSessionBoundAndExpires(t *testing.T) {
+	bus := NewVisualCueBus()
+	now := time.Now()
+	point := ScreenPoint{X: 10, Y: 20}
+	cue := ActionVisualCue{SessionID: "session-1", ActionID: "action-1", ActionKind: ActionClick,
+		Phase: VisualCueDispatched, DispatchState: DispatchComplete, WindowID: "window-1", GlobalPoint: &point,
+		CreatedAt: now, ExpiresAt: now.Add(time.Second)}
+	bus.PublishVisualCue(cue)
+	if _, ok := bus.LatestVisualCue("other-session"); ok {
+		t.Fatal("latest cue crossed session boundary")
+	}
+	got, ok := bus.LatestVisualCue("session-1")
+	if !ok || got.ActionID != cue.ActionID || got.GlobalPoint == nil || *got.GlobalPoint != point {
+		t.Fatalf("latest cue = %+v ok=%v", got, ok)
+	}
+}

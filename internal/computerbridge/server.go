@@ -135,6 +135,19 @@ func dispatchHost(r *http.Request, host Host, q Request) (any, error) {
 			return nil, ErrRemote
 		}
 		return SessionResponse{}, stopper.StopRuntime(ctx, q.Owner)
+	case OpVisualCue:
+		reader, ok := host.(VisualCueReader)
+		if !ok {
+			return nil, ErrRemote
+		}
+		response, err := reader.VisualCue(ctx, q.Owner, q.SessionID)
+		if err != nil {
+			return nil, err
+		}
+		if !validVisualCueResponse(response, q.SessionID) {
+			return nil, ErrInvalidResponse
+		}
+		return response, nil
 	case OpStartLocal:
 		starter, ok := host.(LocalSessionStarter)
 		if !ok {

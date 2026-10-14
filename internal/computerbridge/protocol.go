@@ -37,6 +37,7 @@ const (
 	OpStartLocal    = "start_local"
 	OpSnapshot      = "snapshot"
 	OpRuntimeStop   = "runtime_stop"
+	OpVisualCue     = "visual_cue"
 )
 
 // Errors never contain host error text, response bodies, tokens, or image data.
@@ -150,6 +151,12 @@ type RuntimeStopService interface {
 	StopRuntime(context.Context, cu.SessionOwner) error
 }
 
+// VisualCueReader exposes only ephemeral, non-authoritative UI hints to the
+// local desktop client. It never carries input payloads or screenshot bytes.
+type VisualCueReader interface {
+	VisualCue(context.Context, cu.SessionOwner, string) (VisualCueResponse, error)
+}
+
 // SessionSnapshotResponse is a read-only lifecycle snapshot. It contains no
 // raw image bytes; media remains a separately validated observation asset.
 type SessionSnapshotResponse struct {
@@ -189,6 +196,10 @@ type ExecuteTurnResponse struct {
 
 // ImageResponse carries base64-encoded PNG bytes, not a data URL. Explicit IDs
 // bind the bytes to the requested observation and approved host session.
+type VisualCueResponse struct {
+	Cue *cu.ActionVisualCue `json:"cue,omitempty"`
+}
+
 type ImageResponse struct {
 	SessionID     string `json:"session_id"`
 	ObservationID string `json:"observation_id"`
