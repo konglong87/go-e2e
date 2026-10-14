@@ -91,7 +91,10 @@ func startComputerVisualCueOverlayWithPointer(ctx context.Context, bus *cu.Visua
 					timerC = nil
 					continue
 				}
-				if cue.GlobalPoint == nil || !cue.ExpiresAt.After(time.Now()) {
+				// Display-level captures cannot reliably exclude a separate overlay
+				// window. Keep the marker off unless the authoritative turn is bound
+				// to a concrete target window; window captures remain isolated.
+				if cue.WindowID == "" || cue.GlobalPoint == nil || !cue.ExpiresAt.After(time.Now()) {
 					continue
 				}
 				pointer.Show(cue)

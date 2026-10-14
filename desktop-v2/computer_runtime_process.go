@@ -287,8 +287,6 @@ func runComputerRuntimeProcess(dataDir string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	manager := newComputerManagerWithRuntime(ctx, nil)
-	visualCueStop := startComputerVisualCueOverlay(ctx, manager.visualCues)
-	defer visualCueStop()
 	stopRuntime := make(chan struct{}, 1)
 	listener, err := startDesktopComputerBridgeWithRuntimeStop(ctx, dataDir, manager, func() {
 		select {
@@ -327,7 +325,6 @@ func runComputerRuntimeProcess(dataDir string) error {
 	case <-signals:
 	case <-stopRuntime:
 	}
-	visualCueStop()
 	stopCtx, stopCancel := context.WithTimeout(context.Background(), computerRequestTimeout)
 	defer stopCancel()
 	return manager.close(stopCtx)

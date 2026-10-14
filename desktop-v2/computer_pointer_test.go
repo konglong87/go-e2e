@@ -47,7 +47,7 @@ func TestComputerVisualCueOverlayShowsCueAndCleansUp(t *testing.T) {
 	bus.PublishVisualCue(cu.ActionVisualCue{
 		SessionID: "session", ActionID: "action", ActionKind: cu.ActionClick,
 		Phase: cu.VisualCueDispatched, DispatchState: cu.DispatchComplete,
-		GlobalPoint: &point, CreatedAt: now, ExpiresAt: now.Add(500 * time.Millisecond),
+		WindowID: "window-1", GlobalPoint: &point, CreatedAt: now, ExpiresAt: now.Add(500 * time.Millisecond),
 	})
 	select {
 	case got := <-pointer.showCh:
@@ -76,7 +76,7 @@ func TestComputerVisualCueOverlayIgnoresImageOnlyCue(t *testing.T) {
 	imagePoint := cu.Point{X: 10, Y: 20}
 	bus.PublishVisualCue(cu.ActionVisualCue{
 		SessionID: "session", ActionID: "action", ActionKind: cu.ActionClick,
-		Phase: cu.VisualCueDispatched, DispatchState: cu.DispatchComplete,
+		WindowID: "window-1", Phase: cu.VisualCueDispatched, DispatchState: cu.DispatchComplete,
 		ImagePoint: &imagePoint, CreatedAt: now, ExpiresAt: now.Add(time.Second),
 	})
 	select {
