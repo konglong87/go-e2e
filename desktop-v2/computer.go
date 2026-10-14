@@ -648,6 +648,13 @@ func (m *computerManager) control(ctx context.Context, id string, kind cu.Action
 	}
 	return computerSnapshot(c.Session()), err
 }
+func (m *computerManager) stopRuntime(ctx context.Context) error {
+	if m == nil || m.remote == nil {
+		return errors.New("standalone computer runtime is unavailable")
+	}
+	return m.remote.StopRuntime(ctx, computerRuntimeSupervisionOwner)
+}
+
 func (m *computerManager) close(ctx context.Context) error {
 	if m.remote != nil {
 		return nil
