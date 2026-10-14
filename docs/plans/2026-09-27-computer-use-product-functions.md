@@ -11,7 +11,7 @@ history is in `docs/plans/2026-10-08-computer-use-stability.md`.
 | P0 | Immutable duplicate/lost-ACK action facts | Completed/unknown action IDs now return the original committed turn without redispatch or overwriting receipt. A canceled duplicate of an in-flight action returns bound unknown metadata, never zero/not_started. Bounded metadata cache excludes PNG bytes. Focused/race regressions pass. |
 | P0 | Consistent native passive-wait acknowledgement across atomic turn/bridge/tool | Committed/pushed 714cf13; 297 native safety assertions plus focused Go/race and 469 platform assertions pass. Current official build passive-wait smoke now returned `executed/complete` with ready same-turn observation and PNG, followed by legal Stop. No validation relaxation. |
 | P0 | Production request/context contract and first-action guidance | Offline production Responses HTTP regression proves requested model/high, exact 2048-token cap, latest-only PNG and preserved tool receipts. Shared prompt fixture prevents test/harness drift. Closed targets now use first-call atomic launch in both guidance surfaces; metadata duplication and lifecycle audit remain before another model run. |
-| P0 | Runtime lifecycle/control audit | Failing UI capabilities-first/conversation-start tests now pass with supervisor-owned helper context. Stop/drain precedes runtime cancellation and bridge close. Prompt-authorization deny remains effective in fast path. Active native window-close acceptance passed on the official tagged build; standalone runtime-process extraction remains open, so no full P0-E closure is claimed. |
+| P0 | Runtime lifecycle/control audit | Failing UI capabilities-first/conversation-start tests now pass with supervisor-owned helper context. Stop/drain precedes runtime cancellation and bridge close. Prompt-authorization deny remains effective in fast path. Provider/helper runtime now runs in a separately supervised process and survives host SIGTERM; full Wails UI-to-runtime client conversion and explicit runtime-owner Stop policy remain open, so no full P0-E closure is claimed. |
 | P0 | Native activation/launch ambiguity audit | Typed activation now distinguishes read-only failure from possible AX effects; no ambiguous raise is retried and original PID/bundle/window identity is carried across recovery. Native unknown/lost-ACK launch remains unknown and quarantines the helper. AX inspection records only the exact read stage, raw AXError, attribute name, and CF type ID; the WorkBuddy AX-geometry incompatibility now has a strict exact-Window-Server fallback with no replay. Current official build deterministic launch/observation/PNG/Stop smoke passed; no input was sent. |
 | P0 | Current-build automated/native gates | Focused Go/race, Python acceptance, native safety/platform, helper and tagged official build, strict codesign. The 2026-10-14 official build and one deterministic native launch/Stop smoke now pass; final model closure remains separate and unrun. |
 | P0 | Fresh gpt-6-sol/high closure after all deterministic gates | Same build/session/run launch → click → command+a → type → send once → wait once → actual reply screenshot → model Stop. Remains open; no replay or further model retry while deterministic work is unfinished. |
@@ -180,6 +180,41 @@ Verification for this phase:
 - Explicit acceptance `Stop` returned `state=stopped`.
 - Official build manifest and prior focused/race/native gates remain unchanged;
   no source code was modified in this evidence-only phase.
+
+
+### Phase update — standalone provider runtime survived host termination — 2026-10-14
+
+The official tagged build from `2dbe5f2dcf185c335e6a649adc3317a79b9041d5`
+was rebuilt with `source_dirty=false` and `web_source_dirty=false`; the app,
+embedded service, and helper passed deep strict local codesign verification. The
+Wails host now starts a separate `go-e2e-desktop --computer-runtime-process`
+with an owner-only bridge root, an in-memory authenticated handshake, matching
+PID/protocol/binary hash checks, and no token persisted to disk. The provider
+bridge uses that process; it is not the old in-process Wails manager.
+
+A no-model lifecycle probe started the final build, observed the outer Wails
+host, standalone runtime process, local server, and helper together, then sent
+`SIGTERM` only to the Wails host. The host and acceptance socket disappeared,
+while the standalone runtime became orphaned under launchd and remained alive;
+the runtime bridge root also remained present. The worker was then terminated
+with an explicit cleanup `SIGINT`. Evidence and the exact build identity are in
+`desktop-v2/build/validation/20261014/runtime-process-lifecycle-08/`.
+
+A second final-build native UI gate used the real CUA close-button click while
+an explicitly approved local Computer Use session was `ready`. Across 20
+post-close samples the host/server/helper remained available, a same-session
+acceptance `snapshot` returned `state=ready`, and explicit `Stop` returned
+`state=stopped`. Evidence is in
+`desktop-v2/build/validation/20261014/native-window-close-final-01/`. No
+WorkBuddy launch/input, model request, screenshot capture, or permission change
+was performed, and no model retry was made.
+
+This closes the provider-process survival and current-build native client-close
+gates. It does **not** claim the complete P0-E target yet: Wails UI/panel
+control still has a local compatibility manager path, and a separately defined
+runtime-owner Stop/revoke/fault policy must be completed before declaring the
+whole runtime lifecycle refactor closed. Unknown or dispatched actions remain
+non-replayable.
 
 ## Historical ordered queue — 2026-09-30
 
