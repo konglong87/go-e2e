@@ -11,7 +11,7 @@ history is in `docs/plans/2026-10-08-computer-use-stability.md`.
 | P0 | Immutable duplicate/lost-ACK action facts | Completed/unknown action IDs now return the original committed turn without redispatch or overwriting receipt. A canceled duplicate of an in-flight action returns bound unknown metadata, never zero/not_started. Bounded metadata cache excludes PNG bytes. Focused/race regressions pass. |
 | P0 | Consistent native passive-wait acknowledgement across atomic turn/bridge/tool | Committed/pushed 714cf13; 297 native safety assertions plus focused Go/race and 469 platform assertions pass. Current official build passive-wait smoke now returned `executed/complete` with ready same-turn observation and PNG, followed by legal Stop. No validation relaxation. |
 | P0 | Production request/context contract and first-action guidance | Offline production Responses HTTP regression proves requested model/high, exact 2048-token cap, latest-only PNG and preserved tool receipts. Shared prompt fixture prevents test/harness drift. Closed targets now use first-call atomic launch in both guidance surfaces; metadata duplication and lifecycle audit remain before another model run. |
-| P0 | Runtime lifecycle/control audit | Failing UI capabilities-first/conversation-start tests now pass with supervisor-owned helper context. Stop/drain precedes runtime cancellation and bridge close. Prompt-authorization deny remains effective in fast path. Active native panel/window-close acceptance and standalone runtime-process extraction remain open; no full P0-E closure claimed. |
+| P0 | Runtime lifecycle/control audit | Failing UI capabilities-first/conversation-start tests now pass with supervisor-owned helper context. Stop/drain precedes runtime cancellation and bridge close. Prompt-authorization deny remains effective in fast path. Active native window-close acceptance passed on the official tagged build; standalone runtime-process extraction remains open, so no full P0-E closure is claimed. |
 | P0 | Native activation/launch ambiguity audit | Typed activation now distinguishes read-only failure from possible AX effects; no ambiguous raise is retried and original PID/bundle/window identity is carried across recovery. Native unknown/lost-ACK launch remains unknown and quarantines the helper. AX inspection records only the exact read stage, raw AXError, attribute name, and CF type ID; the WorkBuddy AX-geometry incompatibility now has a strict exact-Window-Server fallback with no replay. Current official build deterministic launch/observation/PNG/Stop smoke passed; no input was sent. |
 | P0 | Current-build automated/native gates | Focused Go/race, Python acceptance, native safety/platform, helper and tagged official build, strict codesign. The 2026-10-14 official build and one deterministic native launch/Stop smoke now pass; final model closure remains separate and unrun. |
 | P0 | Fresh gpt-6-sol/high closure after all deterministic gates | Same build/session/run launch → click → command+a → type → send once → wait once → actual reply screenshot → model Stop. Remains open; no replay or further model retry while deterministic work is unfinished. |
@@ -149,6 +149,37 @@ any further model request, reproduce this with a no-model host-lifecycle probe,
 identify the close initiator, and make the runtime/acceptance harness retain the
 host until explicit Stop or test teardown. Do not weaken native guards and do not
 replay the unknown launch.
+
+
+### Phase update — active native window close retained the runtime — 2026-10-14
+
+The official tagged build from `15e1c812c8402ea1d4acf64753f07174f9d1f02e` was
+started with the owner-only acceptance socket and an explicitly approved local
+Computer Use session. A native CUA click closed the real go-e2e window while
+that session was `ready`; this was a window-client close, not a model action and
+not a replay. For 20 samples over 5 seconds, the Wails host, local server, and
+Computer Helper all remained alive. A post-close acceptance `snapshot` succeeded
+against the same session, proving the runtime was still reachable after the
+window disappeared. The session then returned an explicit `Stop=stopped`, and
+the app was torn down for cleanup.
+
+Evidence is under:
+`desktop-v2/build/validation/20261014/window-close-active-session-01/`.
+No WorkBuddy input, launch, screenshot capture, model request, or permission
+change was performed in this gate. This closes the active native window-close
+acceptance for the short-term Wails/client boundary. It does **not** claim that
+the runtime survives an external OS process kill or that the full standalone
+headless runtime-process extraction is complete; those remain the next P0-E
+implementation slice. No model retry was performed.
+
+Verification for this phase:
+
+- CUA native close click against the real go-e2e window passed.
+- 20/20 post-close process samples retained host/server/helper availability.
+- Same-session post-close acceptance `snapshot` succeeded.
+- Explicit acceptance `Stop` returned `state=stopped`.
+- Official build manifest and prior focused/race/native gates remain unchanged;
+  no source code was modified in this evidence-only phase.
 
 ## Historical ordered queue — 2026-09-30
 
