@@ -4,6 +4,8 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -169,5 +171,23 @@ func TestAppendRuntimeProcessEnvRemovesInheritedHandshakeFD(t *testing.T) {
 	joined := strings.Join(env, "\n")
 	if strings.Contains(joined, "GO_E2E_COMPUTER_RUNTIME_CONFIG_FD=") || !strings.Contains(joined, "A=1") || !strings.Contains(joined, "B=2") {
 		t.Fatalf("sanitized runtime environment = %q", joined)
+	}
+}
+
+func TestStandaloneRuntimeAcceptsExistingDesktopDataParent(t *testing.T) {
+	parent := t.TempDir()
+	if err := os.Chmod(parent, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	child := filepath.Join(parent, "computer-runtime")
+	if err := ensurePrivateDirectory(child); err != nil {
+		t.Fatalf("private runtime child rejected under existing data parent: %v", err)
+	}
+	info, err := os.Stat(child)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o700 {
+		t.Fatalf("runtime child mode = %o, want 0700", info.Mode().Perm())
 	}
 }

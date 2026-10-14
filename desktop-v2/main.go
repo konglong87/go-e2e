@@ -345,9 +345,11 @@ func (a *app) shutdown(ctx context.Context) {
 	// Revoke/drain authoritative sessions before disconnecting provider clients.
 	// Closing the bridge first can discard an in-flight executed receipt.
 	if provider != nil {
-		if err := provider.Stop(ctx); err != nil {
-			wailsruntime.LogErrorf(ctx, "stop standalone computer runtime: %v", err)
-		}
+		// The standalone provider runtime is intentionally not tied to Wails
+		// shutdown. A host close, crash, or SIGTERM is a client disconnect, not
+		// an authoritative Computer Use Stop. Only the runtime owner may stop
+		// this process after session revocation/drain.
+		startupLog("standalone computer runtime retained after host shutdown")
 	}
 	if runtime != nil {
 		if err := runtime.Stop(ctx); err != nil {

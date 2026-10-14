@@ -94,7 +94,11 @@ func normalizeRuntimeProcessExit(err error) error {
 }
 
 func startDesktopComputerRuntime(dataDir string) (*RuntimeSupervisor, error) {
-	if err := ensurePrivateDirectory(dataDir); err != nil {
+	if !filepath.IsAbs(dataDir) || filepath.Clean(dataDir) != dataDir || strings.ContainsRune(dataDir, 0) {
+		return nil, errors.New("runtime parent directory must be an absolute clean path")
+	}
+	runtimeRoot := filepath.Join(dataDir, "computer-runtime")
+	if err := ensurePrivateDirectory(runtimeRoot); err != nil {
 		return nil, err
 	}
 	executable, err := os.Executable()
@@ -109,7 +113,7 @@ func startDesktopComputerRuntime(dataDir string) (*RuntimeSupervisor, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create runtime handshake pipe: %w", err)
 	}
-	cmd := exec.Command(executable, computerRuntimeProcessFlag, computerRuntimeDataDirFlag, filepath.Join(dataDir, "computer-runtime"))
+	cmd := exec.Command(executable, computerRuntimeProcessFlag, computerRuntimeDataDirFlag, runtimeRoot)
 	cmd.ExtraFiles = []*os.File{writeConfig}
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
@@ -230,8 +234,7 @@ func ensurePrivateDirectory(path string) error {
 	if !info.IsDir() || info.Mode().Perm() != 0o700 || !ok || stat.Uid != uint32(os.Geteuid()) {
 		return errors.New("runtime directory must be an owner-only 0700 directory")
 	}
-	resolved, err := filepath.EvalSymlinks(path)
-	if err != nil || resolved != filepath.Clean(path) {
+	if info.Mode()&os.ModeSymlink != 0 {
 		return errors.New("runtime directory must not be a symlink")
 	}
 	return nil
