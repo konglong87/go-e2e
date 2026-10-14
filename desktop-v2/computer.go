@@ -759,6 +759,7 @@ func (a *app) computer() *computerManager {
 		if a.computerRuntime == nil {
 			a.computerRuntime = newComputerRuntime(nil)
 		}
+		a.computerRuntime.StartVisualCueOverlay()
 		a.computerManager = a.computerRuntime.Manager()
 	}
 	return a.computerManager

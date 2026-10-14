@@ -20,6 +20,7 @@ type RuntimeSupervisor struct {
 	process            *computerRuntimeProcess
 	bridgeConfig       *computerbridge.Config
 	statusClient       *computerbridge.Client
+	visualCueStop      func()
 	stopped            bool
 }
 
@@ -121,6 +122,22 @@ func (r *RuntimeSupervisor) VisualCueBus() *cu.VisualCueBus {
 	return nil
 }
 
+// StartVisualCueOverlay attaches a best-effort native pointer to this runtime.
+// It is explicit so unit-created supervisors do not create windows implicitly.
+func (r *RuntimeSupervisor) StartVisualCueOverlay() {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	if r.visualCueStop != nil || r.manager == nil {
+		r.mu.Unlock()
+		return
+	}
+	ctx, bus := r.computerRuntimeCtx, r.manager.visualCues
+	r.visualCueStop = startComputerVisualCueOverlay(ctx, bus)
+	r.mu.Unlock()
+}
+
 // Stop is the only normal runtime termination path. It revokes the active
 // session and drains the helper before canceling its lifetime context. Client
 // disconnect cannot interrupt this bounded, explicit shutdown.
@@ -137,7 +154,12 @@ func (r *RuntimeSupervisor) Stop(ctx context.Context) error {
 	cancel := r.cancel
 	manager := r.manager
 	process := r.process
+	visualCueStop := r.visualCueStop
+	r.visualCueStop = nil
 	r.mu.Unlock()
+	if visualCueStop != nil {
+		visualCueStop()
+	}
 	defer cancel()
 	if process != nil {
 		return process.Stop(ctx)
