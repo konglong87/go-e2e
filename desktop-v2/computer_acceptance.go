@@ -222,7 +222,7 @@ func dispatchAcceptance(hostCtx, ctx context.Context, m *computerManager, r acce
 			if r.Op == computerbridge.OpExecuteTurn {
 				// The observer gets the committed atomic result and its already
 				// associated PNG, never legacy execute/image/posthoc reconstruction.
-				result, err := c.ExecuteTurn(ctx, m.owner, *r.Action)
+				result, err := m.executeTurn(ctx, *r.Action)
 				response := computerbridge.ExecuteTurnResponse{Result: result}
 				if result.ScreenshotState == cu.ScreenshotReady && result.Observation != nil && result.Screenshot != nil {
 					response.ScreenshotData = base64.StdEncoding.EncodeToString(result.ScreenshotData)
@@ -231,7 +231,7 @@ func dispatchAcceptance(hostCtx, ctx context.Context, m *computerManager, r acce
 				}
 				return response, err
 			}
-			return c.Execute(ctx, m.owner, *r.Action)
+			return m.execute(ctx, *r.Action)
 		default:
 			if strings.TrimSpace(r.ObservationID) == "" {
 				return nil, errors.New("observation id required")
