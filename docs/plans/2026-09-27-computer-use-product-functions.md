@@ -11,7 +11,7 @@ history is in `docs/plans/2026-10-08-computer-use-stability.md`.
 | P0 | Immutable duplicate/lost-ACK action facts | Completed/unknown action IDs now return the original committed turn without redispatch or overwriting receipt. A canceled duplicate of an in-flight action returns bound unknown metadata, never zero/not_started. Bounded metadata cache excludes PNG bytes. Focused/race regressions pass. |
 | P0 | Consistent native passive-wait acknowledgement across atomic turn/bridge/tool | Committed/pushed 714cf13; 297 native safety assertions plus focused Go/race and 469 platform assertions pass. Current official build passive-wait smoke now returned `executed/complete` with ready same-turn observation and PNG, followed by legal Stop. No validation relaxation. |
 | P0 | Production request/context contract and first-action guidance | Offline production Responses HTTP regression proves requested model/high, exact 2048-token cap, latest-only PNG and preserved tool receipts. Shared prompt fixture prevents test/harness drift. Closed targets now use first-call atomic launch in both guidance surfaces; metadata duplication and lifecycle audit remain before another model run. |
-| P0 | Runtime lifecycle/control audit | Failing UI capabilities-first/conversation-start tests now pass with supervisor-owned helper context. Stop/drain precedes runtime cancellation and bridge close. Prompt-authorization deny remains effective in fast path. Provider/helper runtime now runs in a separately supervised process and survives host SIGTERM; full Wails UI-to-runtime client conversion and explicit runtime-owner Stop policy remain open, so no full P0-E closure is claimed. |
+| P0 | Runtime lifecycle/control audit | Failing UI capabilities-first/conversation-start tests now pass with supervisor-owned helper context. Stop/drain precedes runtime cancellation and bridge close. Prompt-authorization deny remains effective in fast path. Provider/helper runtime runs in a separately supervised process and survives host SIGTERM; Wails UI/session/control/preview paths now use the authenticated runtime bridge. Explicit runtime-owner Stop/revoke/fault policy remains open, so no full P0-E closure is claimed. |
 | P0 | Native activation/launch ambiguity audit | Typed activation now distinguishes read-only failure from possible AX effects; no ambiguous raise is retried and original PID/bundle/window identity is carried across recovery. Native unknown/lost-ACK launch remains unknown and quarantines the helper. AX inspection records only the exact read stage, raw AXError, attribute name, and CF type ID; the WorkBuddy AX-geometry incompatibility now has a strict exact-Window-Server fallback with no replay. Current official build deterministic launch/observation/PNG/Stop smoke passed; no input was sent. |
 | P0 | Current-build automated/native gates | Focused Go/race, Python acceptance, native safety/platform, helper and tagged official build, strict codesign. The 2026-10-14 official build and one deterministic native launch/Stop smoke now pass; final model closure remains separate and unrun. |
 | P0 | Fresh gpt-6-sol/high closure after all deterministic gates | Same build/session/run launch → click → command+a → type → send once → wait once → actual reply screenshot → model Stop. Remains open; no replay or further model retry while deterministic work is unfinished. |
@@ -215,6 +215,43 @@ control still has a local compatibility manager path, and a separately defined
 runtime-owner Stop/revoke/fault policy must be completed before declaring the
 whole runtime lifecycle refactor closed. Unknown or dispatched actions remain
 non-replayable.
+
+
+### Phase update — fixed UI-bridge owner mapping and passed remote atomic native gate — 2026-10-14
+
+The first final-build attempt through the new runtime bridge exposed an adapter
+bug before native dispatch: the local UI bridge owner was translated to the
+local preview owner, then rejected by the generic conversation-owner check
+because its internal `SessionID` is intentionally zero. The bridge returned a
+bound `unknown` result, so that action was not replayed and no model retry was
+made. A failing regression now pins the separation between the UI bridge owner
+and model conversation owners; the adapter permits the UI path only after the
+explicit local approval boundary, while model ensure remains denied for that
+owner.
+
+Commit `11cc31d` fixes the mapping and adds focused coverage for the local UI
+atomic turn and provider/UI authority split. A fresh tagged official build was
+created from that commit with `source_dirty=false` and `web_source_dirty=false`;
+deep strict local codesign passed. Through the standalone runtime process and
+new authenticated UI bridge, one new deterministic local session executed:
+
+- atomic `launch_app` once: `outcome=executed`, `dispatch_state=complete`;
+- the same-turn observation and PNG were returned and visually inspected;
+- one passive `wait`: `outcome=executed`, `dispatch_state=complete`;
+- explicit `Stop`: `state=stopped`.
+
+Real screenshots from the same build/session/run:
+
+- `desktop-v2/build/validation/20261014/native-runtime-bridge-final-02/launch-screenshot.png`
+- `desktop-v2/build/validation/20261014/native-runtime-bridge-final-02/wait-screenshot.png`
+
+The screenshots show the real WorkBuddy window and the post-wait desktop state;
+there was no model request, click/type/hotkey/send input, or replay of the
+previous unknown action. This closes the UI owner mapping defect and the
+remote-bridge deterministic launch/wait/Stop gate. The separate runtime process
+still intentionally remains alive across Wails host shutdown until its explicit
+runtime-owner teardown policy is implemented; that lifecycle policy remains the
+next P0-E item.
 
 ## Historical ordered queue — 2026-09-30
 
