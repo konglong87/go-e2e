@@ -276,6 +276,25 @@ This closes the explicit runtime-owner teardown policy. Permission revoke and
 unrecoverable helper-fault handling still require their own deterministic
 termination/recovery matrix before P0-E can be fully closed.
 
+
+### Phase update — current deterministic and automated gates green — 2026-10-14
+
+Against the pushed runtime/control commits and the final tagged desktop build:
+
+- `go test ./...` passed.
+- `go test -race ./...` passed; only the repository's existing macOS linker
+  `LC_DYSYMTAB` warnings were emitted.
+- `python3 -m unittest scripts/computer-use-120s-acceptance_test.py
+  scripts/computer_acceptance_safety_test.py` passed all 60 tests.
+- `bash native/macos/tests/run.sh` passed 311 native safety assertions.
+- `bash native/macos/tests/platform.sh` passed 469 platform assertions.
+- `bash scripts/build-desktop-v2.sh -tags computeracceptance` passed, and
+  `codesign --verify --deep --strict` passed for the app and nested helper.
+
+No model request was made during these gates. The remaining open acceptance is
+only the separately authorized fresh model closure; the prior unknown action is
+not replayed.
+
 ## Historical ordered queue — 2026-09-30
 
 This queue is authoritative; older phase notes below are historical and must not
