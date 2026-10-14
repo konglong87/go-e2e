@@ -86,6 +86,11 @@ func startComputerVisualCueOverlayWithPointer(ctx context.Context, bus *cu.Visua
 				if !ok {
 					return
 				}
+				if cue.Phase == cu.VisualCueHidden {
+					pointer.Hide()
+					timerC = nil
+					continue
+				}
 				if cue.GlobalPoint == nil || !cue.ExpiresAt.After(time.Now()) {
 					continue
 				}

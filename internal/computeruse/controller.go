@@ -79,6 +79,27 @@ func (c *Controller) SetVisualCuePublisher(publisher VisualCuePublisher) {
 	c.visualCuePublisher = publisher
 }
 
+func (c *Controller) publishPreparingVisualCue(turnID string, sequence uint64, action Action, before Observation, now time.Time) {
+	c.mu.Lock()
+	publisher := c.visualCuePublisher
+	c.mu.Unlock()
+	if publisher == nil {
+		return
+	}
+	if cue, ok := NewPreparingActionVisualCue(turnID, sequence, action, before, now); ok {
+		publisher.PublishVisualCue(cue)
+	}
+}
+
+func (c *Controller) hideVisualCue(turnID string, action Action) {
+	c.mu.Lock()
+	publisher := c.visualCuePublisher
+	c.mu.Unlock()
+	if hider, ok := publisher.(VisualCueHider); ok {
+		hider.HideVisualCue(action.SessionID, action.ID, turnID)
+	}
+}
+
 func (c *Controller) publishVisualCue(turnID string, sequence uint64, action Action, before Observation, receipt ActionReceipt, now time.Time) {
 	c.mu.Lock()
 	publisher := c.visualCuePublisher
@@ -392,6 +413,7 @@ func (c *Controller) Execute(ctx context.Context, owner SessionOwner, a Action) 
 		}
 	}
 	started := time.Now()
+	c.publishPreparingVisualCue("", 0, a, before, started)
 	receipt, backendErr := c.backend.Execute(op, a)
 	// No response or an invalid response after dispatch is never evidence of no
 	// side effect. Always retain an unknown receipt, without backend error text.
@@ -411,7 +433,13 @@ func (c *Controller) Execute(ctx context.Context, owner SessionOwner, a Action) 
 	receipt.Duration = time.Since(started)
 	if err = c.session.RecordReceipt(receipt); err != nil {
 		c.failRun()
+		c.hideVisualCue("", a)
 		return receipt, err
+	}
+	if receipt.Outcome == OutcomeExecuted || receipt.Outcome == OutcomeUnknown {
+		c.publishVisualCue("", 0, a, before, receipt, time.Now())
+	} else {
+		c.hideVisualCue("", a)
 	}
 	if c.runner != nil {
 		cooperativePause := c.session.State() == SessionPaused
@@ -531,6 +559,7 @@ func (c *Controller) ExecuteTurn(ctx context.Context, owner SessionOwner, a Acti
 	}
 
 	actionStarted := time.Now()
+	c.publishPreparingVisualCue(turnID, sequence, a, before, actionStarted)
 	var launchReceipt *LaunchReceipt
 	var rawReceipt ActionReceipt
 	var backendErr error
@@ -562,9 +591,13 @@ func (c *Controller) ExecuteTurn(ctx context.Context, owner SessionOwner, a Acti
 		c.failRun()
 		return turnResultFromReceipt(turnID, sequence, started, a, receipt), err
 	}
-	// The receipt is durable before any visual hint is published. A visual
+	// The receipt is durable before any terminal visual hint is published. A visual
 	// consumer cannot erase or reinterpret an already-dispatched input.
-	c.publishVisualCue(turnID, sequence, a, before, receipt, time.Now())
+	if receipt.Outcome == OutcomeExecuted || receipt.Outcome == OutcomeUnknown {
+		c.publishVisualCue(turnID, sequence, a, before, receipt, time.Now())
+	} else {
+		c.hideVisualCue(turnID, a)
+	}
 	if c.runner != nil {
 		switch {
 		case c.session.State() == SessionPaused:
@@ -1035,6 +1068,7 @@ func (c *Controller) Pause(ctx context.Context, owner SessionOwner, id string) (
 	if err = c.session.Pause(); err != nil { // Stop may have won while queued.
 		return err
 	}
+	c.hideVisualCue("", Action{ID: "runtime", SessionID: id})
 	if err = controlResult(ctx, c.backend.Pause(ctx)); err != nil {
 		return err
 	}
@@ -1094,6 +1128,7 @@ func (c *Controller) Stop(ctx context.Context, owner SessionOwner, id string) er
 	if err := c.session.Stop(owner); err != nil {
 		return err
 	}
+	c.hideVisualCue("", Action{ID: "runtime", SessionID: id})
 	c.stopRun()
 	// Stop bypasses action and Pause/Resume gates. Serialize only other Stops:
 	// a backend's idempotent no-op ack must not abort an earlier Stop RPC.

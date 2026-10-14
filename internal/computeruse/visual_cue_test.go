@@ -70,13 +70,17 @@ func TestControllerPublishesVisualCueAfterReceiptBeforeObservation(t *testing.T)
 	if err := session.SetObservation(initial); err != nil {
 		t.Fatal(err)
 	}
-	publisher := &recordingVisualCuePublisher{cues: make(chan ActionVisualCue, 1)}
+	publisher := &recordingVisualCuePublisher{cues: make(chan ActionVisualCue, 2)}
 	controller.SetVisualCuePublisher(publisher)
 	action := Action{ID: "click-cue", SessionID: session.ID(), ObservationID: initial.ID, Kind: ActionClick, Point: &Point{X: 30, Y: 40}}
 
 	result, err := controller.ExecuteTurn(context.Background(), owner, action)
 	if err != nil {
 		t.Fatalf("ExecuteTurn() error = %v", err)
+	}
+	preparing := <-publisher.cues
+	if preparing.Phase != VisualCuePreparing || preparing.GlobalPoint == nil {
+		t.Fatalf("preparing cue = %+v", preparing)
 	}
 	cue := <-publisher.cues
 	if _, ok := session.Receipt(action.ID); !ok {
@@ -105,6 +109,10 @@ func TestControllerPublishesUnknownVisualCueWithoutReplay(t *testing.T) {
 	result, err := controller.ExecuteTurn(context.Background(), owner, action)
 	if err == nil || result.Outcome != OutcomeUnknown || result.RetryPolicy != RetryNever {
 		t.Fatalf("unknown turn = result=%+v err=%v", result, err)
+	}
+	preparing := <-publisher.cues
+	if preparing.Phase != VisualCuePreparing {
+		t.Fatalf("preparing cue = %+v", preparing)
 	}
 	cue := <-publisher.cues
 	if cue.Phase != VisualCueUnknown || cue.DispatchState != DispatchUnknown {

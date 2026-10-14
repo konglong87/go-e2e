@@ -13,6 +13,7 @@ const visualCueTTL = 1200 * time.Millisecond
 type VisualCuePhase string
 
 const (
+	VisualCuePreparing  VisualCuePhase = "preparing"
 	VisualCueDispatched VisualCuePhase = "dispatched"
 	VisualCueUnknown    VisualCuePhase = "unknown"
 	VisualCueHidden     VisualCuePhase = "hidden"
@@ -50,7 +51,16 @@ func (c ActionVisualCue) expired(now time.Time) bool {
 }
 
 func (c ActionVisualCue) valid() bool {
-	if c.SessionID == "" || c.ActionID == "" || c.ActionKind == "" || c.Phase == "" || c.CreatedAt.IsZero() || c.ExpiresAt.IsZero() || !c.ExpiresAt.After(c.CreatedAt) {
+	if c.SessionID == "" || c.ActionID == "" || c.Phase == "" || c.CreatedAt.IsZero() || c.ExpiresAt.IsZero() || !c.ExpiresAt.After(c.CreatedAt) {
+		return false
+	}
+	if c.Phase == VisualCueHidden {
+		return true
+	}
+	if c.ActionKind == "" {
+		return false
+	}
+	if c.Phase == VisualCuePreparing && c.DispatchState != DispatchNotStarted {
 		return false
 	}
 	if c.Phase == VisualCueDispatched && c.DispatchState != DispatchComplete {
@@ -66,6 +76,12 @@ func (c ActionVisualCue) valid() bool {
 // non-blocking from the action path and must not call back into Controller.
 type VisualCuePublisher interface {
 	PublishVisualCue(ActionVisualCue)
+}
+
+// VisualCueHider is an optional control-plane extension used when Stop or a
+// pre-dispatch rejection must immediately remove an ephemeral marker.
+type VisualCueHider interface {
+	HideVisualCue(sessionID, actionID, turnID string)
 }
 
 type visualCueSubscription struct {
@@ -124,6 +140,14 @@ func (b *VisualCueBus) PublishVisualCue(cue ActionVisualCue) {
 	}
 }
 
+func (b *VisualCueBus) HideVisualCue(sessionID, actionID, turnID string) {
+	now := time.Now()
+	b.PublishVisualCue(ActionVisualCue{
+		SessionID: sessionID, ActionID: actionID, TurnID: turnID,
+		Phase: VisualCueHidden, CreatedAt: now, ExpiresAt: now.Add(time.Millisecond),
+	})
+}
+
 func cloneVisualCue(cue ActionVisualCue) ActionVisualCue {
 	if cue.ImagePoint != nil {
 		point := *cue.ImagePoint
@@ -155,6 +179,30 @@ func visualCuePoint(action Action, receipt ActionReceipt) *Point {
 	}
 	point := *action.Point
 	return &point
+}
+
+// NewPreparingActionVisualCue creates a non-authoritative marker before the
+// backend dispatches. Native guards still decide whether input is sent; a
+// later hidden/unknown/dispatched cue corrects this hint.
+func NewPreparingActionVisualCue(turnID string, sequence uint64, action Action, before Observation, now time.Time) (ActionVisualCue, bool) {
+	if !visualCueAction(action.Kind) || action.Point == nil {
+		return ActionVisualCue{}, false
+	}
+	point := *action.Point
+	cue := ActionVisualCue{
+		SessionID: action.SessionID, TurnID: turnID, ActionID: action.ID,
+		Sequence: sequence, ActionKind: action.Kind, Phase: VisualCuePreparing,
+		DispatchState: DispatchNotStarted, AppBundleID: before.ActiveWindow.BundleID,
+		WindowID: before.WindowID, DisplayID: before.DisplayID, ImagePoint: &point,
+		CreatedAt: now, ExpiresAt: now.Add(visualCueTTL),
+	}
+	if bounds := before.Capabilities.CoordinateSpace.Bounds; bounds != nil {
+		scale := before.Capabilities.CoordinateSpace.ScaleFactor
+		if scale > 0 {
+			cue.GlobalPoint = &ScreenPoint{X: bounds.X + float64(point.X)/scale, Y: bounds.Y + float64(point.Y)/scale}
+		}
+	}
+	return cue, cue.valid()
 }
 
 // NewActionVisualCue derives a cue from the same action, observation and
