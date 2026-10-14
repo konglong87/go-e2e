@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/konglong87/go-e2e/internal/computerbridge"
 	cu "github.com/konglong87/go-e2e/internal/computeruse"
@@ -111,5 +113,50 @@ func TestRemoteDesktopManagerUsesBridgeForLocalSession(t *testing.T) {
 	}
 	if stopped.State != cu.SessionStopped {
 		t.Fatalf("remote stop = %+v", stopped)
+	}
+}
+
+// A local-preview owner has no conversation ID. It must reach the trusted
+// runtime controller only through the separately authenticated UI listener.
+type bridgeLaunchBackend struct {
+	*cu.FakeBackend
+	launches int
+}
+
+func (b *bridgeLaunchBackend) LaunchApp(context.Context, string, string) (cu.LaunchReceipt, error) {
+	b.launches++
+	return cu.LaunchReceipt{BundleID: cu.WorkBuddyBundleID, Window: cu.WindowRef{ID: "fixture-window", OwnerPID: 42, BundleID: cu.WorkBuddyBundleID, IsVisible: true, IsFrontmost: true}, Outcome: cu.OutcomeExecuted, CompletedAt: time.Now()}, nil
+}
+
+func TestLocalUIAtomicTurnReachesRuntimeAndPreservesExecutedReceipt(t *testing.T) {
+	manager, _ := testComputerManager()
+	base, err := manager.factory(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := &bridgeLaunchBackend{FakeBackend: base.(*cu.FakeBackend)}
+	backend.ObserveError = errors.New("fixture observation unavailable after dispatch")
+	manager.backend = backend
+	service := computerAgentService{manager: manager}
+	started, err := service.StartLocal(context.Background(), computerUIBridgeOwner, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, turnErr := service.ExecuteTurn(context.Background(), computerUIBridgeOwner, cu.Action{
+		ID: "ui-atomic-launch", SessionID: started.SessionID, TargetID: computerTargetWorkBuddy, Kind: cu.ActionLaunchApp,
+	})
+	if backend.launches != 1 || result.Outcome != cu.OutcomeExecuted || result.DispatchState != cu.DispatchComplete || result.Receipt.ActionID != "ui-atomic-launch" {
+		t.Fatalf("UI turn was rejected before runtime dispatch: calls=%d outcome=%s dispatch=%s receipt=%s err=%v", backend.launches, result.Outcome, result.DispatchState, result.Receipt.ActionID, turnErr)
+	}
+}
+
+func TestProviderEndpointCannotUseLocalUIOperations(t *testing.T) {
+	manager, _ := testComputerManager()
+	service := computerAgentService{manager: manager}
+	if _, err := service.EnsureComputerSession(context.Background(), computerUIBridgeOwner); err == nil {
+		t.Fatal("provider endpoint accepted local UI owner as a model conversation")
+	}
+	if _, err := service.Snapshot(context.Background(), computerUIBridgeOwner, "missing"); err == nil {
+		t.Fatal("UI snapshot accepted a missing local session")
 	}
 }

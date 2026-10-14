@@ -38,7 +38,7 @@ func (s computerAgentService) EnsureComputerSessionAttempt(ctx context.Context, 
 }
 
 func (s computerAgentService) ensureComputerSession(ctx context.Context, owner cu.SessionOwner, attemptID string) (string, error) {
-	if s.manager == nil || !validComputerConversationOwner(owner) {
+	if s.manager == nil || owner == computerUIBridgeOwner || !validComputerConversationOwner(owner) {
 		return "", errComputerAgentUnauthorized
 	}
 	snapshot, err := s.manager.startOwned(ctx, ComputerSessionStartInput{Approved: true}, owner)
@@ -79,8 +79,9 @@ func (s computerAgentService) controller(ctx context.Context, owner cu.SessionOw
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	uiOwner := owner == computerUIBridgeOwner
 	owner = s.effectiveOwner(owner)
-	if s.manager == nil || owner.TenantID == 0 || owner.UserID == 0 || owner.SessionID == 0 {
+	if s.manager == nil || owner.TenantID == 0 || owner.UserID == 0 || (!uiOwner && owner.SessionID == 0) {
 		return nil, errComputerAgentUnauthorized
 	}
 	s.manager.mu.Lock()
