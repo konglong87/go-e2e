@@ -9,7 +9,7 @@ history is in `docs/plans/2026-10-08-computer-use-stability.md`.
 | Priority | Remaining gate / dependency | Status |
 |---|---|---|
 | P0 | Immutable duplicate/lost-ACK action facts | Completed/unknown action IDs now return the original committed turn without redispatch or overwriting receipt. A canceled duplicate of an in-flight action returns bound unknown metadata, never zero/not_started. Bounded metadata cache excludes PNG bytes. Focused/race regressions pass. |
-| P0 | Consistent native passive-wait acknowledgement across atomic turn/bridge/tool | Committed/pushed 714cf13; 297 native safety assertions plus focused Go/race and 469 platform assertions pass. Real current-build passive-wait smoke still pending. No validation relaxation. |
+| P0 | Consistent native passive-wait acknowledgement across atomic turn/bridge/tool | Committed/pushed 714cf13; 297 native safety assertions plus focused Go/race and 469 platform assertions pass. Current official build passive-wait smoke now returned `executed/complete` with ready same-turn observation and PNG, followed by legal Stop. No validation relaxation. |
 | P0 | Production request/context contract and first-action guidance | Offline production Responses HTTP regression proves requested model/high, exact 2048-token cap, latest-only PNG and preserved tool receipts. Shared prompt fixture prevents test/harness drift. Closed targets now use first-call atomic launch in both guidance surfaces; metadata duplication and lifecycle audit remain before another model run. |
 | P0 | Runtime lifecycle/control audit | Failing UI capabilities-first/conversation-start tests now pass with supervisor-owned helper context. Stop/drain precedes runtime cancellation and bridge close. Prompt-authorization deny remains effective in fast path. Active native panel/window-close acceptance and standalone runtime-process extraction remain open; no full P0-E closure claimed. |
 | P0 | Native activation/launch ambiguity audit | Typed activation now distinguishes read-only failure from possible AX effects; no ambiguous raise is retried and original PID/bundle/window identity is carried across recovery. Native unknown/lost-ACK launch remains unknown and quarantines the helper. AX inspection records only the exact read stage, raw AXError, attribute name, and CF type ID; the WorkBuddy AX-geometry incompatibility now has a strict exact-Window-Server fallback with no replay. Current official build deterministic launch/observation/PNG/Stop smoke passed; no input was sent. |
@@ -110,6 +110,19 @@ The same session then returned a legal `Stop` with state `stopped`. No click,
 type, hotkey, send, wait, or model request was issued. This proves the guarded
 native launch fallback and same-turn launch evidence path; it does not claim
 the autonomous model closure, which remains intentionally unrun.
+
+### Phase update — current-build passive wait and same-turn media passed — 2026-10-14
+
+A second fresh session `f1752d32-27ed-41bf-90cd-f6e155de39bc` on the same
+official build launched WorkBuddy once, then issued exactly one passive wait
+with a fresh launch observation. The wait committed
+`outcome=executed`, `dispatch_state=complete`, `observation_state=ready`, and
+`screenshot_state=ready`; its PNG was visually inspected at
+`desktop-v2/build/validation/20261014/native-c39a6a6-wait-01/wait-screenshot.png`.
+The session then returned `Stop=stopped`. No input, send, or model request was
+issued. This closes the current-build deterministic launch → wait → same-turn
+observation/PNG → Stop gate; autonomous model closure remains intentionally
+unrun.
 
 ## Historical ordered queue — 2026-09-30
 
