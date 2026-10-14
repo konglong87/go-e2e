@@ -5,7 +5,10 @@ import (
 	"time"
 )
 
-const visualCueTTL = 1200 * time.Millisecond
+const (
+	visualCueTTL       = 1200 * time.Millisecond
+	visualCueHiddenTTL = visualCueTTL
+)
 
 // VisualCuePhase describes a best-effort visual indication. It is deliberately
 // separate from ComputerTurnResult: a cue never grants authority, changes a
@@ -148,7 +151,7 @@ func (b *VisualCueBus) PublishVisualCue(cue ActionVisualCue) {
 func (b *VisualCueBus) LatestVisualCue(sessionID string) (ActionVisualCue, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.latest.SessionID != sessionID || b.latest.expired(time.Now()) || b.latest.Phase == VisualCueHidden {
+	if b.latest.SessionID != sessionID || b.latest.expired(time.Now()) {
 		return ActionVisualCue{}, false
 	}
 	return cloneVisualCue(b.latest), true
@@ -158,7 +161,7 @@ func (b *VisualCueBus) HideVisualCue(sessionID, actionID, turnID string) {
 	now := time.Now()
 	b.PublishVisualCue(ActionVisualCue{
 		SessionID: sessionID, ActionID: actionID, TurnID: turnID,
-		Phase: VisualCueHidden, CreatedAt: now, ExpiresAt: now.Add(time.Millisecond),
+		Phase: VisualCueHidden, CreatedAt: now, ExpiresAt: now.Add(visualCueHiddenTTL),
 	})
 }
 

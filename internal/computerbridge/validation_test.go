@@ -26,4 +26,8 @@ func TestVisualCueRequestAndResponseValidation(t *testing.T) {
 	if validVisualCueResponse(response, "session-1") {
 		t.Fatal("cross-session visual cue response accepted")
 	}
+	response.Cue = &cu.ActionVisualCue{SessionID: "session-1", ActionID: "runtime", Phase: cu.VisualCueHidden, CreatedAt: now, ExpiresAt: now.Add(time.Millisecond)}
+	if !validVisualCueResponse(response, "session-1") {
+		t.Fatal("hidden visual cue response rejected")
+	}
 }

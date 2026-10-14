@@ -115,6 +115,21 @@ static NSString *PointerAppName(NSString *bundleID) {
     return parts.lastObject.length > 0 ? parts.lastObject : @"目标 App";
 }
 
+static CGFloat PointerPrimaryTop(void) {
+    NSScreen *primary = NSScreen.screens.firstObject;
+    if (primary != nil) return NSMaxY(primary.frame);
+    NSScreen *main = NSScreen.mainScreen;
+    return main != nil ? NSMaxY(main.frame) : 0.0;
+}
+
+static NSPoint PointerAppKitPointForGlobalPoint(NSPoint globalPoint) {
+    // Native computer-use points are CG global top-left coordinates. AppKit
+    // window frames use a global bottom-left origin, so flip only Y about the
+    // primary screen's top edge. Do not flip about the target screen/window: a
+    // secondary display may have a negative origin or a different height.
+    return NSMakePoint(globalPoint.x, PointerPrimaryTop() - globalPoint.y);
+}
+
 static NSScreen *PointerScreenForPoint(NSPoint point) {
     for (NSScreen *screen in NSScreen.screens) {
         if (NSPointInRect(point, screen.frame)) return screen;
@@ -168,7 +183,8 @@ static NSScreen *PointerScreenForPoint(NSPoint point) {
     self.view.appName = PointerAppName(bundleID);
     self.view.visible = YES;
 
-    NSPoint target = NSMakePoint(x.doubleValue, y.doubleValue);
+    NSPoint globalPoint = NSMakePoint(x.doubleValue, y.doubleValue);
+    NSPoint target = PointerAppKitPointForGlobalPoint(globalPoint);
     NSRect frame = NSMakeRect(target.x - 12.0, target.y - 12.0, kPointerWidth, kPointerHeight);
     NSScreen *screen = PointerScreenForPoint(target);
     if (screen != nil) {

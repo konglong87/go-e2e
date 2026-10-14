@@ -197,4 +197,12 @@ func TestVisualCueBusLatestIsSessionBoundAndExpires(t *testing.T) {
 	if !ok || got.ActionID != cue.ActionID || got.GlobalPoint == nil || *got.GlobalPoint != point {
 		t.Fatalf("latest cue = %+v ok=%v", got, ok)
 	}
+	bus.HideVisualCue("session-1", "runtime", "")
+	hidden, ok := bus.LatestVisualCue("session-1")
+	if !ok || hidden.Phase != VisualCueHidden {
+		t.Fatalf("hidden cue was not retained for bridge delivery: %+v ok=%v", hidden, ok)
+	}
+	if hidden.ExpiresAt.Sub(hidden.CreatedAt) < 100*time.Millisecond {
+		t.Fatalf("hidden cue expires before the remote bridge can poll it: created=%s expires=%s", hidden.CreatedAt, hidden.ExpiresAt)
+	}
 }

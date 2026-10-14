@@ -126,8 +126,13 @@ func validVisualCueResponse(response VisualCueResponse, sessionID string) bool {
 		return true
 	}
 	cue := response.Cue
-	return cue.SessionID == sessionID && cue.ActionID != "" && cue.WindowID != "" && cue.GlobalPoint != nil &&
-		!cue.CreatedAt.IsZero() && !cue.ExpiresAt.IsZero() && cue.ExpiresAt.After(cue.CreatedAt)
+	if cue.SessionID != sessionID || cue.ActionID == "" || cue.CreatedAt.IsZero() || cue.ExpiresAt.IsZero() || !cue.ExpiresAt.After(cue.CreatedAt) {
+		return false
+	}
+	if cue.Phase == cu.VisualCueHidden {
+		return true
+	}
+	return cue.WindowID != "" && cue.GlobalPoint != nil
 }
 
 func validObservation(o cu.Observation, r cu.ObserveRequest) bool {
