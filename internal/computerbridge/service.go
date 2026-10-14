@@ -243,3 +243,11 @@ func (c *Client) Snapshot(ctx context.Context, owner cu.SessionOwner, id string)
 	}
 	return out, nil
 }
+
+func (c *Client) StopRuntime(ctx context.Context, owner cu.SessionOwner) error {
+	var out SessionResponse
+	if err := c.data(ctx, Request{Op: OpRuntimeStop, Owner: owner}, &out); err != nil {
+		return err
+	}
+	return nil
+}

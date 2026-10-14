@@ -36,6 +36,7 @@ const (
 	OpRuntimeStatus = "runtime_status"
 	OpStartLocal    = "start_local"
 	OpSnapshot      = "snapshot"
+	OpRuntimeStop   = "runtime_stop"
 )
 
 // Errors never contain host error text, response bodies, tokens, or image data.
@@ -141,6 +142,12 @@ type RuntimeStatusResponse struct {
 // accepted for this probe.
 type RuntimeStatusService interface {
 	RuntimeStatus(context.Context, cu.SessionOwner) (RuntimeStatusResponse, error)
+}
+
+// RuntimeStopService is the explicit owner-only runtime teardown boundary. It
+// is distinct from session Stop and is never invoked by a Wails UI shutdown.
+type RuntimeStopService interface {
+	StopRuntime(context.Context, cu.SessionOwner) error
 }
 
 // SessionSnapshotResponse is a read-only lifecycle snapshot. It contains no

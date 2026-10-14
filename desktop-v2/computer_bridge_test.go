@@ -160,3 +160,25 @@ func TestProviderEndpointCannotUseLocalUIOperations(t *testing.T) {
 		t.Fatal("UI snapshot accepted a missing local session")
 	}
 }
+
+func TestRuntimeOwnerStopRequiresSessionRevocation(t *testing.T) {
+	manager, _ := testComputerManager()
+	stopped := false
+	service := computerAgentService{manager: manager, stopRuntime: func() { stopped = true }}
+	started, err := service.StartLocal(context.Background(), computerUIBridgeOwner, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.StopRuntime(context.Background(), computerRuntimeSupervisionOwner); err == nil {
+		t.Fatal("runtime owner stopped an active session")
+	}
+	if _, err := manager.control(context.Background(), started.SessionID, cu.ActionStop); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.StopRuntime(context.Background(), computerRuntimeSupervisionOwner); err != nil {
+		t.Fatal(err)
+	}
+	if !stopped {
+		t.Fatal("runtime stop callback was not notified")
+	}
+}

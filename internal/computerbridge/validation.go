@@ -46,7 +46,7 @@ func validRequest(r Request) bool {
 		return r.SessionID == "" && optionalID(r.StartupAttemptID) && r.ObserveRequest == nil && r.Action == nil && r.ObservationID == ""
 	case OpResolveEnsure:
 		return r.SessionID == "" && validID(r.StartupAttemptID) && r.ObserveRequest == nil && r.Action == nil && r.ObservationID == ""
-	case OpRuntimeStatus, OpStartLocal:
+	case OpRuntimeStatus, OpRuntimeStop, OpStartLocal:
 		return r.SessionID == "" && r.StartupAttemptID == "" && r.ObserveRequest == nil && r.Action == nil && r.ObservationID == ""
 	}
 	if !validID(r.SessionID) {

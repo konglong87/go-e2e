@@ -16,7 +16,8 @@ var errComputerAgentUnauthorized = errors.New("no approved computer session for 
 // controller only when a full, non-local owner binding is already present.
 // A local preview/acceptance owner (conversation=0) is intentionally invisible.
 type computerAgentService struct {
-	manager *computerManager
+	manager     *computerManager
+	stopRuntime func()
 }
 
 // EnsureComputerSession is called only after the agent tool's normal
@@ -280,4 +281,23 @@ func (s computerAgentService) RuntimeStatus(ctx context.Context, owner cu.Sessio
 		return computerbridge.RuntimeStatusResponse{}, errComputerAgentUnauthorized
 	}
 	return computerbridge.RuntimeStatusResponse{ActiveSession: s.manager.hasActiveSession(), SessionID: s.manager.activeSessionID()}, nil
+}
+
+func (s computerAgentService) StopRuntime(ctx context.Context, owner cu.SessionOwner) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if owner != computerRuntimeSupervisionOwner || s.manager == nil {
+		return errComputerAgentUnauthorized
+	}
+	if s.manager.hasActiveSession() {
+		return errors.New("stop the active computer session before stopping the runtime")
+	}
+	if err := s.manager.close(ctx); err != nil {
+		return err
+	}
+	if s.stopRuntime != nil {
+		s.stopRuntime()
+	}
+	return nil
 }

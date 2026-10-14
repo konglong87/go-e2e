@@ -667,3 +667,18 @@ func TestClientStartLocalAndSnapshotRoundTrip(t *testing.T) {
 		t.Fatalf("snapshot=%+v", got)
 	}
 }
+
+func TestClientStopRuntimeRoundTrip(t *testing.T) {
+	service := &serverSpy{runtimeStopOK: true}
+	listener := listenerTestStart(t, context.Background(), listenerTestRoot(t), service)
+	client, err := NewClient(listener.Config())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := client.StopRuntime(context.Background(), testOwner()); err != nil {
+		t.Fatal(err)
+	}
+	if service.runtimeStopCalls != 1 || service.owner != testOwner() {
+		t.Fatalf("calls=%d owner=%+v", service.runtimeStopCalls, service.owner)
+	}
+}

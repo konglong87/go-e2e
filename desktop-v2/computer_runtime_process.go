@@ -66,6 +66,15 @@ func (p *computerRuntimeProcess) Stop(ctx context.Context) error {
 		return nil
 	}
 	p.stopOnce.Do(func() {
+		stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), computerRuntimeStartWait)
+		if p.client != nil {
+			if err := p.client.StopRuntime(stopCtx, computerRuntimeSupervisionOwner); err != nil {
+				cancel()
+				p.stopErr = err
+				return
+			}
+		}
+		cancel()
 		if err := p.cmd.Process.Signal(os.Interrupt); err != nil && !errors.Is(err, os.ErrProcessDone) {
 			p.stopErr = err
 			return
@@ -278,7 +287,13 @@ func runComputerRuntimeProcess(dataDir string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	manager := newComputerManagerWithRuntime(ctx, nil)
-	listener, err := startDesktopComputerBridge(ctx, dataDir, manager)
+	stopRuntime := make(chan struct{}, 1)
+	listener, err := startDesktopComputerBridgeWithRuntimeStop(ctx, dataDir, manager, func() {
+		select {
+		case stopRuntime <- struct{}{}:
+		default:
+		}
+	})
 	if err != nil {
 		return err
 	}
@@ -306,7 +321,10 @@ func runComputerRuntimeProcess(dataDir string) error {
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(signals)
-	<-signals
+	select {
+	case <-signals:
+	case <-stopRuntime:
+	}
 	stopCtx, stopCancel := context.WithTimeout(context.Background(), computerRequestTimeout)
 	defer stopCancel()
 	return manager.close(stopCtx)

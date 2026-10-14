@@ -129,6 +129,12 @@ func dispatchHost(r *http.Request, host Host, q Request) (any, error) {
 			return nil, ErrRemote
 		}
 		return status.RuntimeStatus(ctx, q.Owner)
+	case OpRuntimeStop:
+		stopper, ok := host.(RuntimeStopService)
+		if !ok {
+			return nil, ErrRemote
+		}
+		return SessionResponse{}, stopper.StopRuntime(ctx, q.Owner)
 	case OpStartLocal:
 		starter, ok := host.(LocalSessionStarter)
 		if !ok {

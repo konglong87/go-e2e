@@ -14,13 +14,15 @@ import (
 
 type serverSpy struct {
 	Service
-	calls         int
-	owner         cu.SessionOwner
-	receipt       cu.ActionReceipt
-	err           error
-	runtimeActive bool
-	localSnapshot SessionSnapshotResponse
-	startApproved bool
+	calls            int
+	owner            cu.SessionOwner
+	receipt          cu.ActionReceipt
+	err              error
+	runtimeActive    bool
+	localSnapshot    SessionSnapshotResponse
+	startApproved    bool
+	runtimeStopOK    bool
+	runtimeStopCalls int
 }
 
 func (s *serverSpy) Lookup(_ context.Context, owner cu.SessionOwner) (string, error) {
@@ -174,4 +176,13 @@ func (s *serverSpy) StartLocal(_ context.Context, _ cu.SessionOwner, approved bo
 func (s *serverSpy) Snapshot(_ context.Context, _ cu.SessionOwner, _ string) (SessionSnapshotResponse, error) {
 	s.calls++
 	return s.localSnapshot, s.err
+}
+
+func (s *serverSpy) StopRuntime(_ context.Context, owner cu.SessionOwner) error {
+	s.runtimeStopCalls++
+	s.owner = owner
+	if !s.runtimeStopOK {
+		return errors.New("runtime stop denied")
+	}
+	return nil
 }
