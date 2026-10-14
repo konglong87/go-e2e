@@ -253,7 +253,21 @@ func (a *app) SelectWorkspace() (string, error) {
 	return selectWorkspace(ctx)
 }
 
+func (a *app) shouldPreventWindowClose() bool {
+	a.mu.Lock()
+	manager := a.computerManager
+	a.mu.Unlock()
+	return manager != nil && manager.hasActiveSession()
+}
+
 func (a *app) beforeClose(ctx context.Context) bool {
+	if a.shouldPreventWindowClose() {
+		// A Wails close/quit event must not tear down an active Computer Use
+		// turn. The model/runtime must explicitly Stop (or reach a terminal
+		// permission/helper-fault state) before the host can exit.
+		startupLog("before close prevented: active computer runtime")
+		return true
+	}
 	startupLog("before close")
 	if err := a.persistWindowState(ctx); err != nil {
 		wailsruntime.LogErrorf(ctx, "save window state: %v", err)

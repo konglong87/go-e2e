@@ -117,6 +117,20 @@ func newComputerManagerWithRuntime(runtimeCtx context.Context, events *cu.EventB
 	return &computerManager{owner: cu.SessionOwner{TenantID: localComputerTenantID, UserID: localComputerUserID}, factory: newComputerBackend, runtimeCtx: runtimeCtx, events: events, attempts: make(map[computerStartAttemptKey]string)}
 }
 
+func (m *computerManager) hasActiveSession() bool {
+	if m == nil {
+		return false
+	}
+	m.mu.Lock()
+	controller := m.controller
+	m.mu.Unlock()
+	if controller == nil {
+		return false
+	}
+	state := controller.Session().State()
+	return state != cu.SessionStopped && state != cu.SessionFailed
+}
+
 func (m *computerManager) runtimeContext() context.Context {
 	if m.runtimeCtx != nil {
 		return m.runtimeCtx

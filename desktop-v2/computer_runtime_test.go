@@ -108,3 +108,21 @@ func TestComputerRuntimeStopDrainsBeforeCancellingHelperLifetime(t *testing.T) {
 		t.Fatal("runtime canceled helper before bounded Stop/drain completed")
 	}
 }
+
+func TestActiveComputerRuntimePreventsWailsHostClose(t *testing.T) {
+	manager, _ := testComputerManager()
+	ready, err := manager.start(context.Background(), ComputerSessionStartInput{Approved: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := &app{computerManager: manager}
+	if !app.shouldPreventWindowClose() {
+		t.Fatal("active computer session allowed Wails host close")
+	}
+	if _, err := manager.control(context.Background(), ready.ID, cu.ActionStop); err != nil {
+		t.Fatal(err)
+	}
+	if app.shouldPreventWindowClose() {
+		t.Fatal("terminal computer session still blocked explicit host close")
+	}
+}
