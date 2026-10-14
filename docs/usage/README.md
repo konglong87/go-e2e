@@ -20,6 +20,10 @@
 
 CLI 和 TUI 都可叠加 [`--bare` runtime profile](bare.md)，只自动装配 `Read`、`Edit`、`Bash`，并关闭未显式请求的上下文与扩展发现。
 
+## Desktop 个性化
+
+Desktop/WebUI 的宠物、背景和视觉设置见 [桌面个性化指南](desktop-personalization.md)。当前内置陪伴角色为 Go 伙伴和中国龙；Desktop 额外支持本地背景上传。CLI/TUI 不依赖这些视觉能力。
+
 ---
 
 ## 为什么这里几乎没有截图

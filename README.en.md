@@ -115,6 +115,20 @@ See [Get started in 5 minutes](docs/getting-started.md) for installation, config
 | **WebUI** | A browser workspace, server deployment, or team usage | [WebUI docs](docs/usage/webui.md) |
 | **Feishu** | Channel messages and long-running workers | [Feishu channel docs](docs/usage/feishu.md) |
 
+## Desktop personalization: make the Agent workspace yours
+
+Desktop is more than a runtime shell: it is a personalized coding workspace for long-running Agent tasks. The current “skin” experience combines **desktop companion characters** with **background and visual appearance controls**:
+
+| Capability | What is available today |
+| --- | --- |
+| **Desktop pet / virtual companion** | Open `Settings → Pet` to choose **Go Companion** or **Chinese Dragon**, switch Idle/Focus/Celebrate animation states, adjust size and position, manage the status bubble, or hide and restore the pet on the current device. |
+| **Background settings** | Open `Settings → Appearance` to set a background color or image URL. Desktop also supports uploading, replacing, and removing local PNG/JPEG/WebP/GIF backgrounds. |
+| **Visual appearance** | Tune overlay, sidebar surface, and bubble opacity, plus empty-state, conversation, and composer blur for a more comfortable personalized coding workspace. |
+
+This is not a skin marketplace or an arbitrary 3D character upload system. The current built-in characters are registered as extendable assets, and local Desktop backgrounds stay in the app’s local data directory rather than being included in model requests.
+
+See the [desktop personalization guide](docs/usage/desktop-personalization.md) for the settings reference, data boundaries, and current limitations.
+
 ## Public release boundaries
 
 The project is still in fast-moving `0.x` development. Desktop, Computer Use, parts of multi-agent execution, and
