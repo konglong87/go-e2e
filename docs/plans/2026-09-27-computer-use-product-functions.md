@@ -124,6 +124,32 @@ issued. This closes the current-build deterministic launch → wait → same-tur
 observation/PNG → Stop gate; autonomous model closure remains intentionally
 unrun.
 
+### Phase update — single model closure attempt stopped by Wails host shutdown — 2026-10-14
+
+The final closure build was rebuilt and codesign-verified from runtime commit
+`9bfe330f3d1a74120b99d9952b721354abf5bcd6`, with
+`source_dirty=false` and `web_source_dirty=false`. A single production
+`gpt-6-sol/high` request used the exact shared prompt and created session 146;
+this is the only model closure attempt in this phase. The model issued exactly
+one `ComputerUse` call: `launch_app`.
+
+The host lifecycle, not native launch, then became the blocker. The startup
+ledger records `before close` at `11:18:18.667 +08`, immediately followed by
+`shutdown begin`; the ComputerUse result at `11:18:18.716 +08` was the bound
+non-replayable `outcome=unknown`, `dispatch_state=unknown`, `error_code=inactive`.
+The server finished the run as cancelled/context-canceled and the bridge cleanup
+also failed because the host had already shut down. No click, command+a, type,
+send, wait, or model retry occurred, and no reply screenshot exists for this
+run. The run is a failure, not a closure pass.
+
+This exposes a separate P0-E acceptance blocker: the official Wails host can
+receive an external/undetermined termination while a provider ComputerUse turn
+is active, even though the runtime has an independent supervisor context. Before
+any further model request, reproduce this with a no-model host-lifecycle probe,
+identify the close initiator, and make the runtime/acceptance harness retain the
+host until explicit Stop or test teardown. Do not weaken native guards and do not
+replay the unknown launch.
+
 ## Historical ordered queue — 2026-09-30
 
 This queue is authoritative; older phase notes below are historical and must not
