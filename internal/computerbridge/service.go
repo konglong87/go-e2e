@@ -208,3 +208,13 @@ func (c *Client) data(ctx context.Context, request Request, out any) error {
 	}
 	return decodeStrict(response.Data, out)
 }
+
+// RuntimeStatus is a read-only lifecycle probe. It never creates, resumes, or
+// mutates a Computer Use session.
+func (c *Client) RuntimeStatus(ctx context.Context, owner cu.SessionOwner) (RuntimeStatusResponse, error) {
+	var out RuntimeStatusResponse
+	if err := c.data(ctx, Request{Op: OpRuntimeStatus, Owner: owner}, &out); err != nil {
+		return RuntimeStatusResponse{}, err
+	}
+	return out, nil
+}

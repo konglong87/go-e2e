@@ -25,6 +25,10 @@ const (
 	localComputerUserID   uint64 = 1
 )
 
+// This non-conversation owner is used only for the local, read-only lifecycle
+// probe between the Wails client and the standalone runtime process.
+var computerRuntimeSupervisionOwner = cu.SessionOwner{TenantID: 1, UserID: 1, SessionID: 1}
+
 type ComputerSessionStartInput struct {
 	Approved        bool   `json:"approved"`
 	ConversationRef string `json:"conversation_ref,omitempty"`

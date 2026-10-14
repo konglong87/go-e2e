@@ -37,6 +37,7 @@ type app struct {
 	service           *localServiceController
 	computerManager   *computerManager
 	computerRuntime   *RuntimeSupervisor
+	providerRuntime   *RuntimeSupervisor
 	acceptanceClose   func()
 	computerBridge    *computerbridge.Listener
 	windowCtx         context.Context
@@ -47,6 +48,17 @@ type app struct {
 }
 
 func main() {
+	if dataDir, found, err := parseComputerRuntimeProcessArgs(os.Args[1:]); found {
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if err := runComputerRuntimeProcess(dataDir); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	port, err := selectServerPort()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -149,18 +161,13 @@ func (a *app) startup(ctx context.Context) {
 	serverLogPath := filepath.Join(filepath.Dir(sqlitePath), "go-e2e-server.log")
 	var bridgeConfig *computerbridge.Config
 	if stdruntime.GOOS == "darwin" {
-		bridgeCtx := ctx
-		if runtime := a.runtime(); runtime != nil {
-			bridgeCtx = runtime.Context()
-		}
-		bridge, err := startDesktopComputerBridge(bridgeCtx, filepath.Dir(sqlitePath), a.computer())
-		if err != nil {
-			startupLog("computer bridge unavailable: " + err.Error())
-		} else {
+		provider, runtimeErr := startDesktopComputerRuntime(filepath.Dir(sqlitePath))
+		if runtimeErr != nil {
+			startupLog("standalone computer runtime unavailable: " + runtimeErr.Error())
+		} else if cfg, ok := provider.BridgeConfig(); ok {
 			a.mu.Lock()
-			a.computerBridge = bridge
+			a.providerRuntime = provider
 			a.mu.Unlock()
-			cfg := bridge.Config()
 			bridgeConfig = &cfg
 		}
 	}
@@ -256,8 +263,10 @@ func (a *app) SelectWorkspace() (string, error) {
 func (a *app) shouldPreventWindowClose() bool {
 	a.mu.Lock()
 	manager := a.computerManager
+	provider := a.providerRuntime
 	a.mu.Unlock()
-	return manager != nil && manager.hasActiveSession()
+	return (manager != nil && manager.hasActiveSession()) ||
+		(provider != nil && provider.HasActiveSession())
 }
 
 func (a *app) beforeClose(ctx context.Context) bool {
@@ -325,14 +334,21 @@ func (a *app) shutdown(ctx context.Context) {
 	service := a.service
 	computer := a.computerManager
 	runtime := a.computerRuntime
+	provider := a.providerRuntime
 	bridge := a.computerBridge
 	a.computerBridge = nil
 	a.service = nil
 	a.computerManager = nil
 	a.computerRuntime = nil
+	a.providerRuntime = nil
 	a.mu.Unlock()
 	// Revoke/drain authoritative sessions before disconnecting provider clients.
 	// Closing the bridge first can discard an in-flight executed receipt.
+	if provider != nil {
+		if err := provider.Stop(ctx); err != nil {
+			wailsruntime.LogErrorf(ctx, "stop standalone computer runtime: %v", err)
+		}
+	}
 	if runtime != nil {
 		if err := runtime.Stop(ctx); err != nil {
 			wailsruntime.LogErrorf(ctx, "stop computer runtime: %v", err)

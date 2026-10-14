@@ -628,3 +628,19 @@ func TestClientObservePreservesControlledHostErrorCode(t *testing.T) {
 		t.Fatalf("observe error = %v, want controlled code %q", err, cu.ErrorCodeFocusChanged)
 	}
 }
+
+func TestClientRuntimeStatusRoundTrip(t *testing.T) {
+	service := &serverSpy{runtimeActive: true}
+	listener := listenerTestStart(t, context.Background(), listenerTestRoot(t), service)
+	client, err := NewClient(listener.Config())
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, err := client.RuntimeStatus(context.Background(), testOwner())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !status.ActiveSession || service.calls != 1 || service.owner != testOwner() {
+		t.Fatalf("status=%+v calls=%d owner=%+v", status, service.calls, service.owner)
+	}
+}

@@ -14,10 +14,11 @@ import (
 
 type serverSpy struct {
 	Service
-	calls   int
-	owner   cu.SessionOwner
-	receipt cu.ActionReceipt
-	err     error
+	calls         int
+	owner         cu.SessionOwner
+	receipt       cu.ActionReceipt
+	err           error
+	runtimeActive bool
 }
 
 func (s *serverSpy) Lookup(_ context.Context, owner cu.SessionOwner) (string, error) {
@@ -149,4 +150,10 @@ func TestHostHandlerPreservesSanitizedControlledErrorCode(t *testing.T) {
 	if out.ErrorCode != cu.ErrorCodeFocusChanged || strings.Contains(response.Body.String(), "secret host detail") {
 		t.Fatalf("response=%s", response.Body.String())
 	}
+}
+
+func (s *serverSpy) RuntimeStatus(_ context.Context, owner cu.SessionOwner) (RuntimeStatusResponse, error) {
+	s.calls++
+	s.owner = owner
+	return RuntimeStatusResponse{ActiveSession: s.runtimeActive}, nil
 }

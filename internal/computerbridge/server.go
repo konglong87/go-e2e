@@ -123,6 +123,12 @@ func dispatchHost(r *http.Request, host Host, q Request) (any, error) {
 			err = ErrInvalidResponse
 		}
 		return SessionResponse{SessionID: id, StartupAttemptID: q.StartupAttemptID}, err
+	case OpRuntimeStatus:
+		status, ok := host.(RuntimeStatusService)
+		if !ok {
+			return nil, ErrRemote
+		}
+		return status.RuntimeStatus(ctx, q.Owner)
 	case OpCapabilities:
 		return host.Capabilities(ctx, q.Owner, q.SessionID)
 	case OpLaunchApp:

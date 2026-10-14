@@ -4,9 +4,10 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"strings"
+	"testing"
 
 	cu "github.com/konglong87/go-e2e/internal/computeruse"
-	"testing"
 )
 
 func TestComputerRuntimeOutlivesWindowContext(t *testing.T) {
@@ -124,5 +125,49 @@ func TestActiveComputerRuntimePreventsWailsHostClose(t *testing.T) {
 	}
 	if app.shouldPreventWindowClose() {
 		t.Fatal("terminal computer session still blocked explicit host close")
+	}
+}
+
+func TestProviderRuntimeActiveSessionPreventsWailsHostClose(t *testing.T) {
+	manager, _ := testComputerManager()
+	ready, err := manager.start(context.Background(), ComputerSessionStartInput{Approved: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := newComputerRuntime(nil)
+	provider.manager = manager
+	app := &app{providerRuntime: provider}
+	if !app.shouldPreventWindowClose() {
+		t.Fatal("active provider runtime session allowed Wails host close")
+	}
+	if _, err := manager.control(context.Background(), ready.ID, cu.ActionStop); err != nil {
+		t.Fatal(err)
+	}
+	if app.shouldPreventWindowClose() {
+		t.Fatal("stopped provider runtime still blocked explicit host close")
+	}
+}
+
+func TestParseComputerRuntimeProcessArgsRequiresPrivateAbsoluteDirectory(t *testing.T) {
+	if _, found, err := parseComputerRuntimeProcessArgs(nil); found || err != nil {
+		t.Fatalf("no runtime args = found=%t err=%v", found, err)
+	}
+	if _, found, err := parseComputerRuntimeProcessArgs([]string{computerRuntimeProcessFlag}); !found || err == nil {
+		t.Fatal("runtime process without data directory was accepted")
+	}
+	path, found, err := parseComputerRuntimeProcessArgs([]string{computerRuntimeProcessFlag, computerRuntimeDataDirFlag, "/private/runtime"})
+	if err != nil || !found || path != "/private/runtime" {
+		t.Fatalf("runtime args = path=%q found=%t err=%v", path, found, err)
+	}
+	if _, found, err := parseComputerRuntimeProcessArgs([]string{computerRuntimeProcessFlag, computerRuntimeDataDirFlag, "relative"}); !found || err == nil {
+		t.Fatal("relative runtime directory was accepted")
+	}
+}
+
+func TestAppendRuntimeProcessEnvRemovesInheritedHandshakeFD(t *testing.T) {
+	env := appendRuntimeProcessEnv([]string{"A=1", "GO_E2E_COMPUTER_RUNTIME_CONFIG_FD=99", "B=2"})
+	joined := strings.Join(env, "\n")
+	if strings.Contains(joined, "GO_E2E_COMPUTER_RUNTIME_CONFIG_FD=") || !strings.Contains(joined, "A=1") || !strings.Contains(joined, "B=2") {
+		t.Fatalf("sanitized runtime environment = %q", joined)
 	}
 }

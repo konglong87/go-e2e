@@ -33,6 +33,7 @@ const (
 	OpStop          = "stop"
 	OpImage         = "image"
 	OpLaunchApp     = "launch_app"
+	OpRuntimeStatus = "runtime_status"
 )
 
 // Errors never contain host error text, response bodies, tokens, or image data.
@@ -123,6 +124,19 @@ type Response struct {
 type SessionResponse struct {
 	SessionID        string `json:"session_id"`
 	StartupAttemptID string `json:"startup_attempt_id,omitempty"`
+}
+
+// RuntimeStatusResponse is a read-only lifecycle probe for the UI client. It
+// carries no authority and intentionally exposes no model owner or action data.
+type RuntimeStatusResponse struct {
+	ActiveSession bool `json:"active_session"`
+}
+
+// RuntimeStatusService is implemented by the long-lived runtime process. The
+// caller must use a dedicated local supervision owner; model owners are never
+// accepted for this probe.
+type RuntimeStatusService interface {
+	RuntimeStatus(context.Context, cu.SessionOwner) (RuntimeStatusResponse, error)
 }
 
 // LookupResponse identifies an existing host-approved session.

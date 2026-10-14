@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/konglong87/go-e2e/internal/computerbridge"
 	cu "github.com/konglong87/go-e2e/internal/computeruse"
 )
 
@@ -188,4 +189,14 @@ func (s computerAgentService) ObservationImage(ctx context.Context, owner cu.Ses
 		return nil, "", err
 	}
 	return c.ObservationImage(ctx, owner, id, observationID)
+}
+
+func (s computerAgentService) RuntimeStatus(ctx context.Context, owner cu.SessionOwner) (computerbridge.RuntimeStatusResponse, error) {
+	if err := ctx.Err(); err != nil {
+		return computerbridge.RuntimeStatusResponse{}, err
+	}
+	if owner != computerRuntimeSupervisionOwner || s.manager == nil {
+		return computerbridge.RuntimeStatusResponse{}, errComputerAgentUnauthorized
+	}
+	return computerbridge.RuntimeStatusResponse{ActiveSession: s.manager.hasActiveSession()}, nil
 }
