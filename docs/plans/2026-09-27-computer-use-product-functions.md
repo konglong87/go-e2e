@@ -12,8 +12,10 @@ reply screenshot → Stop` in one build/session/run. The local screenshot and JS
 evidence are intentionally ignored and are not committed to the public repository.
 
 This ledger does not claim formal Developer ID signing/notarization/distribution,
-physical second-display acceptance, Windows/Linux native GUI acceptance, or the
-full permission-revoke/unrecoverable-helper-fault termination matrix.
+physical second-display acceptance, or Windows/Linux native GUI acceptance. The
+P0 permission-revoke, helper-fault, bridge-disconnect, worker-exit, and no-replay
+lifecycle matrix is now implemented and covered by deterministic Go/native tests;
+no fresh model retry was used for this hardening pass.
 
 The runtime contract is specified in
 `docs/plans/2026-10-10-computer-use-runtime-rearchitecture.md`; the stability
@@ -24,7 +26,7 @@ history is in `docs/plans/2026-10-08-computer-use-stability.md`.
 | P0 | Immutable duplicate/lost-ACK action facts | Completed/unknown action IDs now return the original committed turn without redispatch or overwriting receipt. A canceled duplicate of an in-flight action returns bound unknown metadata, never zero/not_started. Bounded metadata cache excludes PNG bytes. Focused/race regressions pass. |
 | P0 | Consistent native passive-wait acknowledgement across atomic turn/bridge/tool | Committed/pushed 714cf13; 297 native safety assertions plus focused Go/race and 469 platform assertions pass. Current official build passive-wait smoke now returned `executed/complete` with ready same-turn observation and PNG, followed by legal Stop. No validation relaxation. |
 | P0 | Production request/context contract and first-action guidance | Closed for the current macOS Computer Use route. Offline production Responses HTTP regression proves requested model/high, exact 2048-token cap, latest-only PNG and preserved tool receipts. Shared prompt fixture prevents test/harness drift. Closed targets use first-call atomic launch in both guidance surfaces. |
-| P0 | Runtime lifecycle/control audit | Failing UI capabilities-first/conversation-start tests now pass with supervisor-owned helper context. Stop/drain precedes runtime cancellation and bridge close. Prompt-authorization deny remains effective in fast path. Provider/helper runtime runs in a separately supervised process and survives host SIGTERM; Wails UI/session/control/preview paths use the authenticated runtime bridge; explicit runtime-owner Stop now drains and terminates the worker. Permission-revoke and unrecoverable-helper-fault termination policy remain open, so no full P0-E closure is claimed. |
+| P0 | Runtime lifecycle/control audit | Closed for deterministic/runtime scope. Typed runtime states/faults now distinguish ready, degraded, stopping, stopped, and faulted; bridge status carries redacted fault metadata; worker exit is observed without stale authority; Stop falls back to the authenticated process handle when the bridge is unavailable. Permission revoke pauses with `permission_required`, invalidates observation, requires capability refresh + explicit Resume + fresh Observe, and never replays. Helper transport/response faults quarantine the helper, preserve unknown/complete receipt semantics, and allow manager replacement only through explicit recovery. Focused/race Go, native safety/platform, full Go, tagged desktop build, and strict codesign gates pass. Live model closure was not rerun. |
 | P0 | Native activation/launch ambiguity audit | Typed activation now distinguishes read-only failure from possible AX effects; no ambiguous raise is retried and original PID/bundle/window identity is carried across recovery. Native unknown/lost-ACK launch remains unknown and quarantines the helper. AX inspection records only the exact read stage, raw AXError, attribute name, and CF type ID; the WorkBuddy AX-geometry incompatibility now has a strict exact-Window-Server fallback with no replay. Current official build deterministic launch/observation/PNG/Stop smoke passed; no input was sent. |
 | P0 | Current-build automated/native gates | Closed for the current macOS build. Focused Go/race, Python acceptance, native safety/platform, helper build, tagged official build and strict codesign passed. |
 | P0 | Fresh gpt-6-sol/high closure after all deterministic gates | Closed on 2026-10-15 for the current macOS single-display Developer Preview. One fresh build/session/run completed launch → click → Command+A → type → send once → wait once → real reply screenshot → model Stop; all receipts were executed/complete and no input was replayed. |
@@ -37,6 +39,40 @@ no reply screenshot was delivered to the model. The saved send screenshot was
 visually inspected and shows the target preparing execution, **not a reply**.
 This run is a failure, not a closure pass. Concurrent community/documentation
 work is outside this task's write set and must never be included in its commits.
+
+
+### Phase update — P0 runtime fault lifecycle matrix — 2026-10-15
+
+The highest-priority deterministic runtime hardening pass is complete. The
+implementation now has one platform-neutral runtime lifecycle contract:
+`starting → ready → degraded → stopping → stopped/faulted`, with redacted
+`RuntimeFault` metadata and stable error codes. The standalone worker is watched
+by the parent supervisor; unexpected worker exit becomes terminal `worker_exited`
+without exposing process details, while bridge disconnect is fail-closed for
+window-close protection and explicit Stop can still signal/wait on the process
+handle.
+
+The safety matrix is explicit and covered by regression tests:
+
+- Permission revoke before dispatch returns a bound rejected/not-started turn with
+  `permission_required`; the old observation is invalidated, no input reaches the
+  backend, and recovery requires capability refresh, explicit Resume, fresh Observe,
+  then a new action ID.
+- Permission revoke or helper loss after dispatch preserves `executed/complete`
+  or `unknown/partial` exactly as returned; unknown is terminal with
+  `RetryNever`, the session cannot Resume, and a new action ID cannot replay it.
+- Helper observe/transport faults are reported as the stable
+  `helper_unavailable` code, quarantine the exact helper, and replace the backend
+  only after a capability probe; approval survives, observation does not, and
+  recovery is explicit.
+- Runtime bridge status reports `ready`, `degraded`, or `faulted` plus redacted
+  fault metadata; it never grants authority or reconstructs a turn.
+
+Verification for this phase: focused `internal/computeruse`, macOS backend,
+bridge, and `desktop-v2` tests; focused `go test -race`; full `go test ./...`;
+313 native safety assertions; 469 native platform assertions; fresh tagged
+`computeracceptance` desktop build; and deep strict local codesign. No fresh model
+request, input, or replay was performed.
 
 ### Phase update — deterministic model-deadline root cause — 2026-10-13
 
