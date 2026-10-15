@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	cu "github.com/konglong87/go-e2e/internal/computeruse"
 )
@@ -189,5 +191,30 @@ func TestStandaloneRuntimeAcceptsExistingDesktopDataParent(t *testing.T) {
 	}
 	if info.Mode().Perm() != 0o700 {
 		t.Fatalf("runtime child mode = %o, want 0700", info.Mode().Perm())
+	}
+}
+
+func TestRuntimeSupervisorMarksUnexpectedWorkerExitAsFaulted(t *testing.T) {
+	process := &computerRuntimeProcess{done: make(chan error, 1)}
+	runtime := newProcessComputerRuntime(process)
+	process.done <- errors.New("worker exited unexpectedly")
+	defer func() { _ = runtime.Stop(context.Background()) }()
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if runtime.State() == cu.RuntimeFaulted {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if runtime.State() != cu.RuntimeFaulted {
+		t.Fatalf("runtime state = %q, want faulted", runtime.State())
+	}
+	fault, ok := runtime.Fault()
+	if !ok || fault.ErrorCode != cu.RuntimeFaultWorkerExited || fault.Recoverable {
+		t.Fatalf("runtime fault = %+v, ok=%t", fault, ok)
+	}
+	if runtime.HasActiveSession() {
+		t.Fatal("faulted runtime still reported an active session")
 	}
 }

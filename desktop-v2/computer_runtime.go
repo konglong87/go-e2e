@@ -22,6 +22,8 @@ type RuntimeSupervisor struct {
 	statusClient       *computerbridge.Client
 	visualCueBus       *cu.VisualCueBus
 	visualCueStop      func()
+	state              cu.RuntimeState
+	fault              *cu.RuntimeFault
 	stopped            bool
 }
 
@@ -29,20 +31,31 @@ func newComputerRuntime(_ context.Context) *RuntimeSupervisor {
 	ctx, cancel := context.WithCancel(context.Background())
 	bus := cu.NewEventBus()
 	manager := newComputerManagerWithRuntime(ctx, bus)
-	return &RuntimeSupervisor{computerRuntimeCtx: ctx, cancel: cancel, manager: manager, visualCueBus: manager.visualCues}
+	return &RuntimeSupervisor{computerRuntimeCtx: ctx, cancel: cancel, manager: manager, visualCueBus: manager.visualCues, state: cu.RuntimeReady}
 }
 
 func newProcessComputerRuntime(process *computerRuntimeProcess) *RuntimeSupervisor {
 	ctx, cancel := context.WithCancel(context.Background())
 	config := process.Config()
-	return &RuntimeSupervisor{
+	runtime := &RuntimeSupervisor{
 		computerRuntimeCtx: ctx,
 		cancel:             cancel,
 		process:            process,
 		bridgeConfig:       &config,
 		statusClient:       process.Client(),
 		visualCueBus:       cu.NewVisualCueBus(),
+		state:              cu.RuntimeReady,
 	}
+	if process != nil {
+		if process.exitDone == nil {
+			process.exitDone = make(chan struct{})
+		}
+		if process.done != nil {
+			process.startWaitMonitor()
+			go runtime.watchProcessExit()
+		}
+	}
+	return runtime
 }
 
 func (r *RuntimeSupervisor) Context() context.Context {
@@ -133,6 +146,58 @@ func (r *RuntimeSupervisor) VisualCueBus() *cu.VisualCueBus {
 	return nil
 }
 
+func (r *RuntimeSupervisor) State() cu.RuntimeState {
+	if r == nil {
+		return cu.RuntimeStopped
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.state
+}
+
+func (r *RuntimeSupervisor) Fault() (cu.RuntimeFault, bool) {
+	if r == nil {
+		return cu.RuntimeFault{}, false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.fault == nil {
+		return cu.RuntimeFault{}, false
+	}
+	return *r.fault, true
+}
+
+func (r *RuntimeSupervisor) markFault(fault cu.RuntimeFault) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.stopped || r.state == cu.RuntimeStopping || r.state == cu.RuntimeStopped {
+		return
+	}
+	fault.State = cu.RuntimeFaulted
+	if fault.OccurredAt.IsZero() {
+		fault.OccurredAt = time.Now()
+	}
+	r.fault = &fault
+	r.state = cu.RuntimeFaulted
+}
+
+func (r *RuntimeSupervisor) watchProcessExit() {
+	err := r.process.wait(context.Background())
+	r.mu.Lock()
+	stopping := r.stopped || r.state == cu.RuntimeStopping || r.state == cu.RuntimeStopped
+	r.mu.Unlock()
+	if stopping {
+		return
+	}
+	fault := cu.RuntimeFault{ErrorCode: cu.RuntimeFaultWorkerExited, Recoverable: false}
+	if err != nil {
+		// Preserve only the stable lifecycle code; native/process error text is
+		// deliberately not exposed across the runtime boundary.
+		fault.ErrorCode = cu.RuntimeFaultWorkerExited
+	}
+	r.markFault(fault)
+}
+
 // StartVisualCueOverlay attaches a best-effort native pointer to this runtime.
 // It is explicit so unit-created supervisors do not create windows implicitly.
 func (r *RuntimeSupervisor) StartVisualCueOverlay() {
@@ -185,6 +250,7 @@ func (r *RuntimeSupervisor) Stop(ctx context.Context) error {
 		return nil
 	}
 	r.stopped = true
+	r.state = cu.RuntimeStopping
 	cancel := r.cancel
 	manager := r.manager
 	process := r.process
@@ -195,13 +261,22 @@ func (r *RuntimeSupervisor) Stop(ctx context.Context) error {
 		visualCueStop()
 	}
 	defer cancel()
+	var err error
 	if process != nil {
-		return process.Stop(ctx)
+		err = process.Stop(ctx)
+	} else if manager != nil {
+		stopCtx, stopCancel := context.WithTimeout(context.WithoutCancel(ctx), computerRequestTimeout)
+		defer stopCancel()
+		err = manager.close(stopCtx)
 	}
-	if manager == nil {
-		return nil
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if err != nil {
+		fault := cu.RuntimeFault{State: cu.RuntimeFaulted, ErrorCode: cu.RuntimeFaultStopFailed, Recoverable: false, OccurredAt: time.Now()}
+		r.fault = &fault
+		r.state = cu.RuntimeFaulted
+		return err
 	}
-	stopCtx, stopCancel := context.WithTimeout(context.WithoutCancel(ctx), computerRequestTimeout)
-	defer stopCancel()
-	return manager.close(stopCtx)
+	r.state = cu.RuntimeStopped
+	return nil
 }

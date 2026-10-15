@@ -38,10 +38,15 @@ type computerRuntimeHandshake struct {
 }
 
 type computerRuntimeProcess struct {
-	cmd    *exec.Cmd
-	config computerbridge.Config
-	client *computerbridge.Client
-	done   chan error
+	cmd             *exec.Cmd
+	config          computerbridge.Config
+	client          *computerbridge.Client
+	done            chan error
+	exitDone        chan struct{}
+	exitOnce        sync.Once
+	waitMonitorOnce sync.Once
+	exitMu          sync.Mutex
+	exitErr         error
 
 	stopOnce sync.Once
 	stopErr  error
@@ -59,6 +64,42 @@ func (p *computerRuntimeProcess) Client() *computerbridge.Client {
 		return nil
 	}
 	return p.client
+}
+
+func (p *computerRuntimeProcess) startWaitMonitor() {
+	if p == nil || p.done == nil {
+		return
+	}
+	p.waitMonitorOnce.Do(func() {
+		go func() { p.recordExit(<-p.done) }()
+	})
+}
+
+func (p *computerRuntimeProcess) recordExit(err error) {
+	if p == nil {
+		return
+	}
+	p.exitOnce.Do(func() {
+		p.exitMu.Lock()
+		p.exitErr = normalizeRuntimeProcessExit(err)
+		p.exitMu.Unlock()
+		close(p.exitDone)
+	})
+}
+
+func (p *computerRuntimeProcess) wait(ctx context.Context) error {
+	if p == nil || p.exitDone == nil {
+		return nil
+	}
+	select {
+	case <-p.exitDone:
+		p.exitMu.Lock()
+		err := p.exitErr
+		p.exitMu.Unlock()
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (p *computerRuntimeProcess) Stop(ctx context.Context) error {
@@ -79,13 +120,8 @@ func (p *computerRuntimeProcess) Stop(ctx context.Context) error {
 			p.stopErr = err
 			return
 		}
-		select {
-		case err := <-p.done:
-			p.stopErr = normalizeRuntimeProcessExit(err)
-		case <-ctx.Done():
-			_ = p.cmd.Process.Kill()
-			err := <-p.done
-			p.stopErr = errors.Join(ctx.Err(), normalizeRuntimeProcessExit(err))
+		if err := p.wait(ctx); err != nil {
+			p.stopErr = err
 		}
 	})
 	return p.stopErr
@@ -163,8 +199,9 @@ func startDesktopComputerRuntime(dataDir string) (*RuntimeSupervisor, error) {
 		_, _ = cmd.Process.Wait()
 		return nil, fmt.Errorf("probe standalone computer runtime: %w", err)
 	}
-	process := &computerRuntimeProcess{cmd: cmd, config: clientConfig(client, handshake), client: client, done: make(chan error, 1)}
+	process := &computerRuntimeProcess{cmd: cmd, config: clientConfig(client, handshake), client: client, done: make(chan error, 1), exitDone: make(chan struct{})}
 	go func() { process.done <- cmd.Wait() }()
+	process.startWaitMonitor()
 	return newProcessComputerRuntime(process), nil
 }
 
