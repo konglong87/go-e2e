@@ -28,7 +28,7 @@ func (s RuntimeState) Valid() bool {
 const (
 	RuntimeFaultWorkerExited       = "worker_exited"
 	RuntimeFaultBridgeDisconnected = "bridge_disconnected"
-	RuntimeFaultHelperUnavailable  = "helper_unavailable"
+	RuntimeFaultHelperUnavailable  = ErrorCodeHelperUnavailable
 	RuntimeFaultPermissionRevoked  = "permission_revoked"
 	RuntimeFaultHelperUncertain    = "helper_outcome_uncertain"
 	RuntimeFaultStopFailed         = "stop_failed"

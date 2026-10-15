@@ -1072,3 +1072,26 @@ func TestPermissionRevokeAfterDispatchIsUnknownAndTerminal(t *testing.T) {
 		t.Fatal("unknown permission race was replayed under a new action ID")
 	}
 }
+
+func TestHelperObserveFaultIsRecoverableWithoutInputReplay(t *testing.T) {
+	session, owner, _ := newTestSession(t, false)
+	backend := &FakeBackend{
+		CapabilitiesValue: readyCapabilities(),
+		ObserveError:      &codedError{code: ErrorCodeHelperUnavailable},
+	}
+	controller, err := NewController(session, backend)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = controller.Observe(context.Background(), owner, ObserveRequest{SessionID: session.ID()})
+	if err == nil {
+		t.Fatal("helper observe fault unexpectedly succeeded")
+	}
+	var coded interface{ Code() string }
+	if !errors.As(err, &coded) || coded.Code() != ErrorCodeHelperUnavailable {
+		t.Fatalf("observe fault = %v, code=%q", err, coded.Code())
+	}
+	if session.State() != SessionPaused || controller.RunSnapshot().State == RunStateFailed {
+		t.Fatalf("helper fault lifecycle = session=%s run=%s, want paused/non-terminal", session.State(), controller.RunSnapshot().State)
+	}
+}

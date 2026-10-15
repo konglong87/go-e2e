@@ -449,6 +449,7 @@ const (
 	ErrorCodeInputUnavailable        = "input_unavailable"
 	ErrorCodeTimeout                 = "timeout"
 	ErrorCodeCanceled                = "canceled"
+	ErrorCodeHelperUnavailable       = "helper_unavailable"
 )
 
 // PublicErrorCode preserves only stable, non-sensitive diagnostics across the
@@ -460,7 +461,7 @@ func PublicErrorCode(code string) string {
 		ErrorCodeUnsupportedDisplay, ErrorCodeInvalidAction, ErrorCodeInvalidBinding,
 		ErrorCodeInactive, ErrorCodeClosed, ErrorCodeInputUnavailable,
 		ErrorCodeUnsupportedApplication, ErrorCodeUnsupportedTarget, ErrorCodeLaunchFailed, ErrorCodeLaunchTimeout,
-		ErrorCodeTimeout, ErrorCodeCanceled:
+		ErrorCodeTimeout, ErrorCodeCanceled, ErrorCodeHelperUnavailable:
 		return strings.TrimSpace(code)
 	default:
 		return ErrorCodeActionFailed

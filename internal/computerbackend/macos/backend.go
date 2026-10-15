@@ -239,6 +239,25 @@ type rejection struct{ code string }
 func (e *rejection) Error() string { return "computer helper rejected request: " + e.code }
 func (e *rejection) Code() string  { return e.code }
 
+// helperFault is a stable, redacted transport fault. It deliberately does not
+// expose native process errors or paths across the Computer Use boundary.
+type helperFault struct{}
+
+func (*helperFault) Error() string { return "computer helper unavailable" }
+func (*helperFault) Code() string  { return cu.ErrorCodeHelperUnavailable }
+
+func classifyObserveFault(b *Backend, err error) error {
+	if err == nil {
+		return nil
+	}
+	var rejected *rejection
+	if errors.As(err, &rejected) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	b.invalidate()
+	return &helperFault{}
+}
+
 // Native input needs no model credentials, agent sockets or loader overrides.
 // Apply the same allowlist to explicit env overrides, not just inherited env.
 func helperEnvironment(extra []string) []string {
@@ -427,10 +446,13 @@ func (b *Backend) hostInputAllowed() bool {
 
 func (b *Backend) Capabilities(ctx context.Context) (cu.Capabilities, error) {
 	b.mu.Lock()
-	closed := b.closed
+	closed, failed := b.closed, b.failed
 	b.mu.Unlock()
 	if closed {
 		return cu.Capabilities{}, &rejection{"closed"}
+	}
+	if failed {
+		return cu.Capabilities{}, &helperFault{}
 	}
 	if err := b.requestPermissions(ctx); err != nil {
 		return cu.Capabilities{}, err
@@ -581,6 +603,10 @@ func (b *Backend) acquire(ctx context.Context) (uint64, error) {
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if b.failed {
+		<-b.operation
+		return 0, &helperFault{}
+	}
 	if b.closed || b.stopped || b.paused {
 		<-b.operation
 		return 0, &rejection{"inactive"}
@@ -624,24 +650,24 @@ func (b *Backend) Observe(ctx context.Context, req cu.ObserveRequest) (cu.Observ
 			"layer": "go_backend", "phase": "observe_request_error", "observation_id": id,
 			"session_id": req.SessionID, "window_id": req.WindowID, "display_id": req.DisplayID, "error_code": cu.PublicErrorCode(errorCode),
 		})
-		return cu.Observation{}, err
+		return cu.Observation{}, classifyObserveFault(b, err)
 	}
 	data, mediaType, width, height, err := decodeImage(response.Result)
 	if err != nil {
-		return cu.Observation{}, err
+		return cu.Observation{}, classifyObserveFault(b, err)
 	}
 	display, ok := response.Result["display_id"].(string)
 	scale, okScale := response.Result["scale_factor"].(float64)
 	if !ok || display == "" || !okScale || math.IsNaN(scale) || math.IsInf(scale, 0) || scale <= 0 || scale > 8 || (req.DisplayID != "" && req.DisplayID != display) {
-		return cu.Observation{}, errors.New("invalid screenshot coordinate metadata")
+		return cu.Observation{}, classifyObserveFault(b, errors.New("invalid screenshot coordinate metadata"))
 	}
 	coordinateSpace, err := decodeCaptureGeometry(response.Result, display, scale, width, height)
 	if err != nil {
-		return cu.Observation{}, err
+		return cu.Observation{}, classifyObserveFault(b, err)
 	}
 	targetWindow, err := decodeCaptureTarget(response.Result, req.WindowID)
 	if err != nil {
-		return cu.Observation{}, err
+		return cu.Observation{}, classifyObserveFault(b, err)
 	}
 	if targetWindow.ID != "" {
 		// The window origin can shift by a few pixels during launch animation
@@ -656,7 +682,7 @@ func (b *Backend) Observe(ctx context.Context, req cu.ObserveRequest) (cu.Observ
 				"capture_width": coordinateSpace.Bounds.Width, "capture_height": coordinateSpace.Bounds.Height,
 				"error_code": cu.ErrorCodeTargetWindowMismatch,
 			})
-			return cu.Observation{}, errors.New("screenshot target size does not match capture bounds")
+			return cu.Observation{}, classifyObserveFault(b, errors.New("screenshot target size does not match capture bounds"))
 		}
 		targetWindow.Frame = coordinateSpace.Bounds
 	}
@@ -676,18 +702,18 @@ func (b *Backend) Observe(ctx context.Context, req cu.ObserveRequest) (cu.Observ
 		})
 		return cu.Observation{}, &rejection{cu.ErrorCodeTargetWindowMismatch}
 	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if !b.validEpoch(epoch) {
-		return cu.Observation{}, &rejection{"inactive"}
-	}
 	now := b.config.Now()
 	// Use the helper's actual snapshot expiry, not this capture RPC's timeout.
 	// Requiring its bounded metadata fails closed with stale/unmatched helpers.
 	expiryText, okExpiry := response.Result["observation_expires_at"].(string)
 	expires, expiryErr := time.Parse(time.RFC3339Nano, expiryText)
 	if !okExpiry || expiryErr != nil || !expires.After(now) || expires.After(now.Add(cu.DefaultObservationTTL)) {
-		return cu.Observation{}, errors.New("invalid observation expiration metadata")
+		return cu.Observation{}, classifyObserveFault(b, errors.New("invalid observation expiration metadata"))
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if !b.validEpoch(epoch) {
+		return cu.Observation{}, &rejection{"inactive"}
 	}
 	caps := b.capabilities.Clone()
 	activeWindow, _ := decodeWindowRef(response.Result["active_window"])
@@ -723,8 +749,11 @@ func (b *Backend) Execute(ctx context.Context, action cu.Action) (receipt cu.Act
 		if err != nil {
 			receipt.ErrorMessage = "computer action did not complete"
 			var rejected *rejection
+			var coded interface{ Code() string }
 			if errors.As(err, &rejected) {
 				receipt.ErrorCode = cu.PublicErrorCode(rejected.Code())
+			} else if errors.As(err, &coded) {
+				receipt.ErrorCode = cu.PublicErrorCode(coded.Code())
 			} else if receipt.ErrorCode == "" {
 				receipt.ErrorCode = cu.ErrorCodeActionFailed
 			}
@@ -849,6 +878,8 @@ func (b *Backend) Execute(ctx context.Context, action cu.Action) (receipt cu.Act
 			// failure. finish() only overwrites an empty code.
 			if response.ErrorCode != "" {
 				receipt.ErrorCode = cu.PublicErrorCode(response.ErrorCode)
+			} else {
+				receipt.ErrorCode = cu.ErrorCodeHelperUnavailable
 			}
 			// A locally requested Pause/Stop invalidated this generation and the
 			// native executor acknowledged interruption after releasing input.

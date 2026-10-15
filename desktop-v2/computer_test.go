@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"reflect"
 	"testing"
 	"time"
@@ -251,5 +252,94 @@ func TestComputerManagerRestartsFailedHelperBeforeCreatingSession(t *testing.T) 
 	}
 	if m.controller == nil || m.controller.Session().Capabilities().PermissionState != cu.PermissionApproved {
 		t.Fatal("replacement helper did not bind a ready session")
+	}
+}
+
+type observeFaultBackend struct {
+	*cu.FakeBackend
+	observeErr      error
+	capabilitiesErr error
+	faulted         bool
+}
+
+func (b *observeFaultBackend) Observe(context.Context, cu.ObserveRequest) (cu.Observation, error) {
+	if b.observeErr != nil {
+		b.faulted = true
+		return cu.Observation{}, b.observeErr
+	}
+	return b.FakeBackend.Observe(context.Background(), cu.ObserveRequest{})
+}
+
+func (b *observeFaultBackend) Capabilities(ctx context.Context) (cu.Capabilities, error) {
+	if b.faulted && b.capabilitiesErr != nil {
+		return cu.Capabilities{}, b.capabilitiesErr
+	}
+	return b.FakeBackend.Capabilities(ctx)
+}
+
+func (b *observeFaultBackend) ObservationImage(context.Context, string) ([]byte, string, error) {
+	return []byte("png"), "image/png", nil
+}
+
+type managerImageBackend struct {
+	*cu.FakeBackend
+}
+
+func (b *managerImageBackend) ObservationImage(context.Context, string) ([]byte, string, error) {
+	return []byte("png"), "image/png", nil
+}
+
+func TestComputerManagerRecoversObserveHelperFaultWithoutReusingObservation(t *testing.T) {
+	caps := cu.Capabilities{
+		ProtocolVersion:  cu.ProtocolVersion,
+		Platform:         cu.PlatformMacOS,
+		Backend:          cu.BackendNativeHost,
+		CaptureReadiness: cu.ReadinessReady,
+		InputReadiness:   cu.ReadinessReady,
+		PermissionState:  cu.PermissionApproved,
+		CoordinateSpace:  cu.CoordinateSpace{Origin: cu.OriginTopLeft, Unit: cu.CoordinatePixels},
+	}
+	first := &observeFaultBackend{
+		FakeBackend:     &cu.FakeBackend{CapabilitiesValue: caps, ObservationValue: cu.Observation{Capabilities: caps, ID: "stale-observation"}},
+		observeErr:      errors.New("helper pipe closed"),
+		capabilitiesErr: errors.New("helper exited"),
+	}
+	second := &managerImageBackend{FakeBackend: &cu.FakeBackend{CapabilitiesValue: caps, ObservationValue: cu.Observation{Capabilities: caps, ID: "fresh-observation", Width: 100, Height: 100, ScaleFactor: 1, ObservedAt: time.Now(), ExpiresAt: time.Now().Add(time.Minute)}}}
+	created := 0
+	m := &computerManager{owner: cu.SessionOwner{TenantID: 1, UserID: 1}, factory: func(context.Context) (cu.Backend, error) {
+		created++
+		if created == 1 {
+			return first, nil
+		}
+		return second, nil
+	}}
+	started, err := m.start(context.Background(), ComputerSessionStartInput{Approved: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.observe(context.Background(), started.ID); err == nil {
+		t.Fatal("helper observe fault unexpectedly succeeded")
+	}
+	if m.controller.Session().State() != cu.SessionPaused {
+		t.Fatalf("session state after helper observe fault = %s, want paused", m.controller.Session().State())
+	}
+	oldController := m.controller
+	if _, err := m.capabilities(context.Background()); err != nil {
+		t.Fatalf("capability refresh did not replace failed helper: %v", err)
+	}
+	if created != 2 || m.controller == oldController || m.controller.Session().ID() != started.ID || m.controller.Session().State() != cu.SessionPaused {
+		t.Fatalf("replacement lifecycle created=%d controller_reused=%t old=%p new=%p backend=%T session=%+v", created, m.controller == oldController, oldController, m.controller, m.backend, computerSnapshot(m.controller.Session()))
+	}
+	if _, ok := m.controller.Session().CurrentObservation(); ok {
+		t.Fatal("helper replacement restored stale observation authority")
+	}
+	if _, err := m.control(context.Background(), started.ID, cu.ActionResume); err != nil {
+		t.Fatalf("explicit resume after helper replacement failed: %v", err)
+	}
+	if _, err := m.observe(context.Background(), started.ID); err != nil {
+		t.Fatalf("fresh observe after helper replacement failed: %v", err)
+	}
+	if m.controller.Session().State() != cu.SessionReady {
+		t.Fatalf("session state after fresh observe = %s, want ready", m.controller.Session().State())
 	}
 }

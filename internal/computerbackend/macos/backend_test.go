@@ -825,3 +825,20 @@ func TestBackendStopAcknowledgesQuarantinedHelperTermination(t *testing.T) {
 		t.Fatal("Stop restored failed input authority")
 	}
 }
+
+func TestHelperTransportFaultUsesStableCode(t *testing.T) {
+	backend := newTestBackend(t, "exit", time.Second, "")
+	observation := observeTest(t, backend)
+	receipt, err := backend.Execute(context.Background(), waitAction(observation))
+	if err == nil || receipt.Outcome != cu.OutcomeUnknown || receipt.DispatchState == cu.DispatchNotStarted || receipt.ErrorCode != cu.ErrorCodeHelperUnavailable {
+		t.Fatalf("transport fault receipt=%+v err=%v", receipt, err)
+	}
+	if _, err := backend.Observe(context.Background(), cu.ObserveRequest{SessionID: "session-1"}); err == nil {
+		t.Fatal("quarantined helper accepted a later observe")
+	} else {
+		var coded interface{ Code() string }
+		if !errors.As(err, &coded) || coded.Code() != cu.ErrorCodeHelperUnavailable {
+			t.Fatalf("observe transport fault=%v code=%q", err, coded.Code())
+		}
+	}
+}

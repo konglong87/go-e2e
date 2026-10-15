@@ -358,7 +358,7 @@ func observeFailure(err error) error {
 func transientFailureCode(code string) bool {
 	switch code {
 	case ErrorCodeFocusChanged, ErrorCodePermissionRequired, ErrorCodeScreenshotFailed,
-		ErrorCodeTargetWindowMismatch, ErrorCodeUnsupportedDisplay:
+		ErrorCodeTargetWindowMismatch, ErrorCodeUnsupportedDisplay, ErrorCodeHelperUnavailable:
 		return true
 	}
 	return false
