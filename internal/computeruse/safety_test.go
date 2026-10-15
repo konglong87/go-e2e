@@ -964,3 +964,111 @@ func TestUnknownPausedSessionCannotResumeOrReplayUnderNewID(t *testing.T) {
 		t.Fatal("unknown replayed under new id")
 	}
 }
+
+func TestPermissionRevokeBeforeDispatchPreservesPermissionErrorAndBlocksReplay(t *testing.T) {
+	session, owner, now := newTestSession(t, false)
+	backend := &FakeBackend{CapabilitiesValue: readyCapabilities(), ObservationValue: readyObservation(session.ID(), now), ReceiptValue: ActionReceipt{Outcome: OutcomeExecuted, DispatchState: DispatchComplete}}
+	controller, err := NewController(session, backend)
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial, err := controller.Observe(context.Background(), owner, ObserveRequest{SessionID: session.ID()})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	backend.mu.Lock()
+	backend.CapabilitiesValue.CaptureReadiness = ReadinessPermissionRequired
+	backend.CapabilitiesValue.InputReadiness = ReadinessPermissionRequired
+	backend.CapabilitiesValue.PermissionState = PermissionRequired
+	backend.mu.Unlock()
+	if _, err := controller.Capabilities(context.Background(), owner, session.ID()); err != nil {
+		t.Fatal(err)
+	}
+	if session.State() != SessionPaused {
+		t.Fatalf("session state = %s, want paused after permission revoke", session.State())
+	}
+
+	action := Action{ID: "permission-revoked", SessionID: session.ID(), ObservationID: initial.ID, Kind: ActionWait}
+	result, err := controller.ExecuteTurn(context.Background(), owner, action)
+	if err == nil {
+		t.Fatal("permission-revoked turn unexpectedly succeeded")
+	}
+	if result.Receipt.Outcome != OutcomeRejected || result.DispatchState != DispatchNotStarted || result.ErrorCode != ErrorCodePermissionRequired {
+		t.Fatalf("permission-revoked result = %+v, want rejected/not_started/permission_required", result)
+	}
+	if len(backend.Executed) != 0 {
+		t.Fatalf("revoked permission dispatched input: %+v", backend.Executed)
+	}
+	if result.RetryPolicy != RetryObserveOnly {
+		t.Fatalf("retry policy = %s, want observe_only", result.RetryPolicy)
+	}
+	if _, err := controller.ExecuteTurn(context.Background(), owner, Action{ID: "permission-replayed", SessionID: session.ID(), ObservationID: initial.ID, Kind: ActionWait}); err == nil {
+		t.Fatal("permission-revoked action was replayed under a new action ID")
+	}
+
+	backend.mu.Lock()
+	backend.CapabilitiesValue = readyCapabilities()
+	backend.ObservationValue.ID = "permission-restored-observation"
+	backend.mu.Unlock()
+	if _, err := controller.Capabilities(context.Background(), owner, session.ID()); err != nil {
+		t.Fatal(err)
+	}
+	if err := controller.Resume(context.Background(), owner, session.ID()); err != nil {
+		t.Fatalf("permission restore did not require explicit resume: %v", err)
+	}
+	if _, err := controller.ExecuteTurn(context.Background(), owner, Action{ID: "before-fresh-observe", SessionID: session.ID(), ObservationID: "permission-restored-observation", Kind: ActionWait}); err == nil {
+		t.Fatal("action was allowed before fresh observe after permission restore")
+	}
+	restored, err := controller.Observe(context.Background(), owner, ObserveRequest{SessionID: session.ID()})
+	if err != nil {
+		t.Fatalf("fresh observe after permission restore failed: %v", err)
+	}
+	backend.mu.Lock()
+	backend.ObservationValue.ID = "permission-post-action-observation"
+	backend.mu.Unlock()
+	result, err = controller.ExecuteTurn(context.Background(), owner, Action{ID: "after-permission-restore", SessionID: session.ID(), ObservationID: restored.ID, Kind: ActionWait})
+	if err == nil || result.Outcome != OutcomeExecuted || result.DispatchState != DispatchComplete {
+		t.Fatalf("new action after explicit recovery was not dispatched: result=%+v err=%v", result, err)
+	}
+}
+
+func TestPermissionRevokeAfterDispatchIsUnknownAndTerminal(t *testing.T) {
+	session, owner, now := newTestSession(t, false)
+	backend := &FakeBackend{
+		CapabilitiesValue: readyCapabilities(),
+		ObservationValue:  readyObservation(session.ID(), now),
+		ReceiptValue: ActionReceipt{
+			Outcome:       OutcomeUnknown,
+			DispatchState: DispatchUnknown,
+			Verification:  VerificationUnknown,
+			ErrorCode:     ErrorCodePermissionRequired,
+		},
+		ExecuteError: &codedError{code: ErrorCodePermissionRequired},
+	}
+	controller, err := NewController(session, backend)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observation, err := controller.Observe(context.Background(), owner, ObserveRequest{SessionID: session.ID()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	action := Action{ID: "permission-race", SessionID: session.ID(), ObservationID: observation.ID, Kind: ActionWait}
+	result, err := controller.ExecuteTurn(context.Background(), owner, action)
+	if err == nil {
+		t.Fatal("permission race unexpectedly returned nil error")
+	}
+	if result.Outcome != OutcomeUnknown || result.DispatchState != DispatchUnknown || result.RetryPolicy != RetryNever || result.Receipt.ActionID == "" {
+		t.Fatalf("permission race result = %+v", result)
+	}
+	if session.State() != SessionFailed || !session.InputUncertain() {
+		t.Fatalf("permission race state = %s uncertain=%t, want failed/true", session.State(), session.InputUncertain())
+	}
+	if err := controller.Resume(context.Background(), owner, session.ID()); err == nil {
+		t.Fatal("unknown permission race was resumable")
+	}
+	if _, err := controller.ExecuteTurn(context.Background(), owner, Action{ID: "permission-race-replay", SessionID: session.ID(), ObservationID: observation.ID, Kind: ActionWait}); err == nil {
+		t.Fatal("unknown permission race was replayed under a new action ID")
+	}
+}

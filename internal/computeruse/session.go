@@ -42,6 +42,18 @@ type SessionOptions struct {
 // ComputerSession is the authorization/state authority. It never runs native
 // code under its mutex; a Controller serializes dispatch separately so Stop can
 // revoke authorization even while a backend is blocked.
+type sessionError struct {
+	code string
+	text string
+}
+
+func (e *sessionError) Error() string { return e.text }
+func (e *sessionError) Code() string  { return e.code }
+
+func sessionFailure(code, text string) error {
+	return &sessionError{code: code, text: text}
+}
+
 type ComputerSession struct {
 	mu             sync.RWMutex
 	id             string
@@ -133,7 +145,7 @@ func (s *ComputerSession) Approve(o SessionOwner) error {
 		return fmt.Errorf("cannot approve session in state %q", s.state)
 	}
 	if !s.capabilities.Ready() {
-		return errors.New("computer backend is not ready")
+		return sessionFailure(ErrorCodePermissionRequired, "computer backend permission is required")
 	}
 	s.approved = true
 	s.state = SessionReady
@@ -161,8 +173,17 @@ func (s *ComputerSession) Resume(o SessionOwner) error {
 	if s.owner != o {
 		return errors.New("computer session ownership mismatch")
 	}
-	if s.state != SessionPaused || !s.approved || !s.capabilities.Ready() || s.uncertain {
-		return errors.New("computer session cannot resume")
+	if !s.approved || s.state == SessionStopped || s.state == SessionFailed || s.state == SessionPendingApproval {
+		return sessionFailure(ErrorCodeInactive, "computer session cannot resume")
+	}
+	if s.uncertain {
+		return sessionFailure(ErrorCodeInputUncertain, "computer action outcome is uncertain")
+	}
+	if !s.capabilities.Ready() {
+		return sessionFailure(ErrorCodePermissionRequired, "computer backend permission is required")
+	}
+	if s.state != SessionPaused {
+		return sessionFailure(ErrorCodeInactive, "computer session cannot resume")
 	}
 	s.state = SessionNeedsObservation
 	s.hasObservation = false
@@ -185,8 +206,11 @@ func (s *ComputerSession) CanObserve() error {
 	return s.canObserveLocked()
 }
 func (s *ComputerSession) canObserveLocked() error {
-	if !s.approved || !s.capabilities.Ready() || s.state == SessionStopped || s.state == SessionFailed || s.state == SessionPendingApproval {
-		return errors.New("computer observation is not authorized")
+	if !s.approved || s.state == SessionStopped || s.state == SessionFailed || s.state == SessionPendingApproval {
+		return sessionFailure(ErrorCodeInactive, "computer observation is not authorized")
+	}
+	if !s.capabilities.Ready() {
+		return sessionFailure(ErrorCodePermissionRequired, "computer backend permission is required")
 	}
 	if s.inFlight != "" {
 		return errors.New("computer action is in flight")
@@ -248,8 +272,17 @@ func (s *ComputerSession) validateActionLocked(a Action) error {
 	if a.SessionID != s.id {
 		return errors.New("action session mismatch")
 	}
-	if s.state != SessionReady || !s.approved || !s.capabilities.Ready() || s.uncertain {
-		return errors.New("computer session is not ready")
+	if s.uncertain {
+		return sessionFailure(ErrorCodeInputUncertain, "computer action outcome is uncertain")
+	}
+	if !s.approved || s.state == SessionStopped || s.state == SessionFailed || s.state == SessionPendingApproval {
+		return sessionFailure(ErrorCodeInactive, "computer session is not ready")
+	}
+	if !s.capabilities.Ready() {
+		return sessionFailure(ErrorCodePermissionRequired, "computer backend permission is required")
+	}
+	if s.state != SessionReady {
+		return sessionFailure(ErrorCodeInactive, "computer session is not ready")
 	}
 	if s.inFlight != "" {
 		return errors.New("computer action is in flight")
