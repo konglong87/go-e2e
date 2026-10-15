@@ -28,6 +28,7 @@
 | 先跑起来 | [../README.md](../README.md) |
 | 看分模式、分场景的使用说明（TUI / CLI / agent-webui） | [usage/README.md](usage/README.md) |
 | 配置桌面宠物、背景和视觉外观 | [桌面个性化指南](usage/desktop-personalization.md) |
+| 使用和验收 Computer Use | [Computer Use 使用说明](usage/computer-use.md) |
 | 用最小工具和显式上下文运行 CLI/TUI | [usage/bare.md](usage/bare.md) |
 | 装上并跑起来（源码安装 / 预编译产物 / 只构建） | [../README.md#安装](../README.md#安装) |
 | 查会话存档：transcript / checkpoint / resume / inspect | [session_quickstart.md](session_quickstart.md) |

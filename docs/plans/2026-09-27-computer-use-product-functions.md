@@ -1,6 +1,19 @@
 # Computer Use functional parity — implementation ledger
 
-## Current ordered queue — 2026-10-13
+## Current ordered queue — 2026-10-15
+
+### Current public status
+
+The core Computer Use runtime and the current macOS single-display model closure are
+complete for Developer Preview use. The latest tagged desktop build passed the
+focused/race/Python/native/helper/build/codesign gates and one fresh
+`gpt-6-sol/high` run completed `launch → click → Command+A → type → send → wait →
+reply screenshot → Stop` in one build/session/run. The local screenshot and JSON
+evidence are intentionally ignored and are not committed to the public repository.
+
+This ledger does not claim formal Developer ID signing/notarization/distribution,
+physical second-display acceptance, Windows/Linux native GUI acceptance, or the
+full permission-revoke/unrecoverable-helper-fault termination matrix.
 
 The runtime contract is specified in
 `docs/plans/2026-10-10-computer-use-runtime-rearchitecture.md`; the stability
@@ -10,11 +23,11 @@ history is in `docs/plans/2026-10-08-computer-use-stability.md`.
 |---|---|---|
 | P0 | Immutable duplicate/lost-ACK action facts | Completed/unknown action IDs now return the original committed turn without redispatch or overwriting receipt. A canceled duplicate of an in-flight action returns bound unknown metadata, never zero/not_started. Bounded metadata cache excludes PNG bytes. Focused/race regressions pass. |
 | P0 | Consistent native passive-wait acknowledgement across atomic turn/bridge/tool | Committed/pushed 714cf13; 297 native safety assertions plus focused Go/race and 469 platform assertions pass. Current official build passive-wait smoke now returned `executed/complete` with ready same-turn observation and PNG, followed by legal Stop. No validation relaxation. |
-| P0 | Production request/context contract and first-action guidance | Offline production Responses HTTP regression proves requested model/high, exact 2048-token cap, latest-only PNG and preserved tool receipts. Shared prompt fixture prevents test/harness drift. Closed targets now use first-call atomic launch in both guidance surfaces; metadata duplication and lifecycle audit remain before another model run. |
+| P0 | Production request/context contract and first-action guidance | Closed for the current macOS Computer Use route. Offline production Responses HTTP regression proves requested model/high, exact 2048-token cap, latest-only PNG and preserved tool receipts. Shared prompt fixture prevents test/harness drift. Closed targets use first-call atomic launch in both guidance surfaces. |
 | P0 | Runtime lifecycle/control audit | Failing UI capabilities-first/conversation-start tests now pass with supervisor-owned helper context. Stop/drain precedes runtime cancellation and bridge close. Prompt-authorization deny remains effective in fast path. Provider/helper runtime runs in a separately supervised process and survives host SIGTERM; Wails UI/session/control/preview paths use the authenticated runtime bridge; explicit runtime-owner Stop now drains and terminates the worker. Permission-revoke and unrecoverable-helper-fault termination policy remain open, so no full P0-E closure is claimed. |
 | P0 | Native activation/launch ambiguity audit | Typed activation now distinguishes read-only failure from possible AX effects; no ambiguous raise is retried and original PID/bundle/window identity is carried across recovery. Native unknown/lost-ACK launch remains unknown and quarantines the helper. AX inspection records only the exact read stage, raw AXError, attribute name, and CF type ID; the WorkBuddy AX-geometry incompatibility now has a strict exact-Window-Server fallback with no replay. Current official build deterministic launch/observation/PNG/Stop smoke passed; no input was sent. |
-| P0 | Current-build automated/native gates | Focused Go/race, Python acceptance, native safety/platform, helper and tagged official build, strict codesign. The 2026-10-14 official build and one deterministic native launch/Stop smoke now pass; final model closure remains separate and unrun. |
-| P0 | Fresh gpt-6-sol/high closure after all deterministic gates | Same build/session/run launch → click → command+a → type → send once → wait once → actual reply screenshot → model Stop. Remains open; no replay or further model retry while deterministic work is unfinished. |
+| P0 | Current-build automated/native gates | Closed for the current macOS build. Focused Go/race, Python acceptance, native safety/platform, helper build, tagged official build and strict codesign passed. |
+| P0 | Fresh gpt-6-sol/high closure after all deterministic gates | Closed on 2026-10-15 for the current macOS single-display Developer Preview. One fresh build/session/run completed launch → click → Command+A → type → send once → wait once → real reply screenshot → model Stop; all receipts were executed/complete and no input was replayed. |
 | P1 | Historical native control/display follow-ups | Unchanged; do not promote old screenshots to current evidence. |
 
 `model-ca023a7-final-01` completed click/hotkey/type/send once/wait once and model

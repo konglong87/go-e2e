@@ -1,5 +1,11 @@
 # Computer Use stability and real desktop closure — 2026-10-08
 
+> Historical stability ledger. The implementation described here was folded into the
+> current runtime. For public usage scope and current acceptance status, see
+> [Computer Use 使用说明](../usage/computer-use.md) and the
+> [current implementation ledger](2026-09-27-computer-use-product-functions.md).
+> Historical failures below are not current release status.
+
 ## Current continuation ledger — 2026-10-08 evening
 
 Baseline main/HEAD/origin 942ed52, pulled before work. Only pre-existing generated

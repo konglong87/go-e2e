@@ -1,5 +1,12 @@
 # Computer Use Runtime 重构与修复方案
 
+> Historical architecture plan. The P0-A through P0-F implementation work is
+> reflected in the current code and the current implementation ledger. Read
+> [Computer Use 使用说明](../usage/computer-use.md) for public scope, limitations
+> and current acceptance status. The original planning instructions and paths
+> below are retained only as engineering history; they are not user-facing
+> operational commands.
+
 - 日期：2026-10-10
 - 基线：`main` / `origin/main`，`HEAD=108f365`
 - 目标：停止重复 fresh model retry，先把 Computer Use 的 turn contract、runtime 生命周期、截图资产生命周期和证据闭环重构正确，再做一次真实模型验收。
@@ -660,8 +667,8 @@ fresh tagged build
 ```text
 你是这个仓库的主实现者。继续在当前工作区完成 Computer Use runtime 重构，不要再重复 fresh model retry，也不要只给方案不改代码。
 
-工作区：/Users/konglong/GolandProjects/go-e2e
-目标文档：/Users/konglong/GolandProjects/go-e2e/docs/plans/2026-10-10-computer-use-runtime-rearchitecture.md
+工作区：<repository-root>
+目标文档：<repository-root>/docs/plans/2026-10-10-computer-use-runtime-rearchitecture.md
 当前基线：main，HEAD/origin/main=108f365（启动时必须再次 git pull --ff-only origin main 确认）。
 
 强制规则：
@@ -671,7 +678,7 @@ fresh tagged build
 4. 先做架构和依赖检查，再动代码。不要为了让模型验收通过而放宽 focus/window/permission/screenshot safety guard。
 5. 每个 coherent slice：先写失败回归，再实现，跑 focused Go/native/race tests，审查 git diff --check，立即 commit + push origin main。commit user 必须是 konglong <konglong@com>。
 6. 测试必须匹配真实用户表面：desktop 改动必须 build 当前 `.app`，native acceptance 必须看真实截图；不能只用 DOM 或日志宣布通过。
-7. 所有 validation evidence 放在 /Users/konglong/GolandProjects/go-e2e/desktop-v2/build/validation/YYYYMMDD/ 下的全新唯一目录；禁止混用旧 run、旧 session、旧 build；完成后清理未请求的临时产物。
+7. 所有 validation evidence 放在 <repository-root>/desktop-v2/build/validation/YYYYMMDD/ 下的全新唯一目录；禁止混用旧 run、旧 session、旧 build；完成后清理未请求的临时产物。
 8. 不要把 near-pass 记为 pass。最终闭环必须同时有真实 reply screenshot、每个输入 action 一次 dispatch、合法 Stop receipt、同一 build/session 的 turn/provider/runtime evidence。
 
 不要重写已经通过的 native safety 基础：TargetID/TargetRegistry、TargetBinding、owner 校验、observation 一次性消费、action 去重、unknown 禁止 replay、native generation/epoch、Pause/Stop/permission fail-closed、dispatch state 和公共 error code 都要保留并复用。

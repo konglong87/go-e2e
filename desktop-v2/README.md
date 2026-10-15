@@ -138,11 +138,17 @@ open desktop-v2/build/bin/go-e2e.app
 后续动作使用单次有效的 observation。输入回执并不等于视觉验收；成功动作还会返回
 新截图，结果不明时停止且不重放输入。系统首次授权仍由用户完成。
 
-当前已有单屏真实模型启动 WorkBuddy 的记录及原生输入/窗口目标/基础拖拽的分项证据，
-但不能据此称为全部功能稳定版验收通过。同应用多窗口定向、拖拽异常释放、权限运行中
-撤销与恢复等矩阵仍须闭环。根据用户 2026-09-28 的范围调整，第二块物理显示器实机
-验收及正式签名/分发延期，不作为本阶段阻塞项，也不标记为已验证。最新实现、测试
-和证据边界见 [功能实施与验收台账](../docs/plans/2026-09-27-computer-use-product-functions.md)。
+当前版本可作为 **macOS 单屏 Developer Preview** 交付开发者使用。最新 tagged
+desktop build 已通过 deterministic/native gates，并完成一次真实的
+`gpt-6-sol/high` 闭环：launch、click、Command+A、type、send、wait、真实回复截图和
+ComputerUse Stop。receipt、observation、screenshot、dispatch state 和错误语义来自同一个
+turn；unknown 或已 dispatch 输入不会自动 replay。
+
+这不是所有平台和发行条件都完成的稳定正式版。第二块物理显示器、Developer ID 签名/
+公证/正式分发、Windows/Linux 原生 GUI 完整验收，以及运行中 permission revoke 和
+不可恢复 helper fault 的完整终止/恢复矩阵仍未宣称完成。面向用户的安装、权限、使用和
+验收边界见 [Computer Use 使用说明](../docs/usage/computer-use.md)，实现台账见
+[功能实施与验收台账](../docs/plans/2026-09-27-computer-use-product-functions.md)。
 
 ## 原生窗口控制
 

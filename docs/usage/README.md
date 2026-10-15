@@ -9,6 +9,7 @@
 | **TUI** | 本地交互写代码、读文件、跑工具、审批权限 | `go run ./cmd/golang-cc` | [tui.md](tui.md) · 11 个场景 |
 | **CLI**（print/headless） | 脚本、CI、一次性自动化 | `-p, --print` | [cli.md](cli.md) · 6 个场景 |
 | **agent-webui** | 浏览器界面、任务运行、全链路观测 | `scripts/web-agent-start.sh` | [webui.md](webui.md) · 7 个场景 |
+| **Desktop Computer Use** | macOS 单屏开发者预览、受安全边界约束的真实桌面操作 | `scripts/build-desktop-v2.sh` | [computer-use.md](computer-use.md) |
 
 想先装上并跑起来看根 [README 安装](../../README.md#安装)；运行架构和时序图见 [architecture/runtime_modes.md](../architecture/runtime_modes.md)。
 
