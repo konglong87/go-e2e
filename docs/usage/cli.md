@@ -3,7 +3,7 @@
 CLI（print / headless）模式适合脚本、CI、一次性自动化：给一个 prompt，拿到结果就退出，可选结构化输出。核心是 `-p, --print`。
 
 ```bash
-go run ./cmd/golang-cc -p "查看当前目录有哪些文件"
+go run ./cmd/go-e2e -p "查看当前目录有哪些文件"
 ```
 
 每个场景统一结构：**一句话定位 → 命令 → 输出说明 → 要点**。本页不放截图，理由见 [使用说明总入口](README.md#为什么这里几乎没有截图)。
@@ -15,7 +15,7 @@ go run ./cmd/golang-cc -p "查看当前目录有哪些文件"
 给一个 prompt，直接输出文本结果，跑完即退出。最适合快速问答和嵌入脚本。
 
 ```bash
-go run ./cmd/golang-cc -p "帮我总结 README.md"
+go run ./cmd/go-e2e -p "帮我总结 README.md"
 ```
 
 默认输出人类可读的文本（`--output-format text`）：正文直接写到 stdout，诊断日志默认完全不写 stderr（见根 [README 诊断日志](../../README.md#诊断日志)），所以可以直接管道给别的程序。
@@ -34,10 +34,10 @@ go run ./cmd/golang-cc -p "帮我总结 README.md"
 
 ```bash
 # 只要最终结果（单个 JSON）
-go run ./cmd/golang-cc -p "列出项目结构" --output-format json
+go run ./cmd/go-e2e -p "列出项目结构" --output-format json
 
 # 流式事件（每行一个 JSON 事件）
-go run ./cmd/golang-cc -p "读取 go.mod" --output-format stream-json
+go run ./cmd/go-e2e -p "读取 go.mod" --output-format stream-json
 ```
 
 `json` 给一个最终结果对象；`stream-json` 逐行吐出 tool_use / tool_result / text / usage 等事件。
@@ -55,7 +55,7 @@ go run ./cmd/golang-cc -p "读取 go.mod" --output-format stream-json
 在 CI 或脚本里对某个项目目录跑自动化时，用 `--cwd` 显式指定项目上下文。
 
 ```bash
-go run ./cmd/golang-cc \
+go run ./cmd/go-e2e \
   --cwd /path/to/other-project \
   -p "读取项目规则并列出关键约束" \
   --output-format json
@@ -76,7 +76,7 @@ go run ./cmd/golang-cc \
 需要可预测的最小工具面和显式上下文时，用 `--bare` 关闭自动发现，只保留 `Read`、`Edit`、`Bash`。
 
 ```bash
-go run ./cmd/golang-cc --bare -p "读取 go.mod 并总结模块信息"
+go run ./cmd/go-e2e --bare -p "读取 go.mod 并总结模块信息"
 ```
 
 bare 保留权限、sandbox、会话持久化以及显式 `--settings`、`--mcp-config`、`--add-dir`；它关闭 hooks、workspace memory、Git context、skills/custom agents/plugins/MCP 自动发现和启动期增强。
@@ -96,13 +96,13 @@ bare 保留权限、sandbox、会话持久化以及显式 `--settings`、`--mcp-
 
 ```bash
 # 丢后台
-go run ./cmd/golang-cc -p "跑一遍全量测试并总结失败项" --bg
+go run ./cmd/go-e2e -p "跑一遍全量测试并总结失败项" --bg
 
 # 观察与控制
-go run ./cmd/golang-cc ps
-go run ./cmd/golang-cc logs <id>
-go run ./cmd/golang-cc attach <id> --wait
-go run ./cmd/golang-cc kill <id>
+go run ./cmd/go-e2e ps
+go run ./cmd/go-e2e logs <id>
+go run ./cmd/go-e2e attach <id> --wait
+go run ./cmd/go-e2e kill <id>
 ```
 
 后台任务、Goal 后台运行、Loop 定时任务共用同一套 `ps` / `logs` / `attach` / `kill` 观测控制命令。
@@ -120,10 +120,10 @@ go run ./cmd/golang-cc kill <id>
 环境自检、版本确认、会话请求链路排查。
 
 ```bash
-go run ./cmd/golang-cc --version
-go run ./cmd/golang-cc version --json
-go run ./cmd/golang-cc doctor
-go run ./cmd/golang-cc session inspect <session-id> --json
+go run ./cmd/go-e2e --version
+go run ./cmd/go-e2e version --json
+go run ./cmd/go-e2e doctor
+go run ./cmd/go-e2e session inspect <session-id> --json
 ```
 
 `session inspect` 关联 transcript 与模型请求日志，展示每次请求的用途、模型、最终 provider、安全化 endpoint、attempt 和 fallback。
@@ -140,10 +140,10 @@ go run ./cmd/golang-cc session inspect <session-id> --json
 
 ```bash
 # 当前解析出的会话模型
-golang-cc model get
+go-e2e model get
 
 # 当前配置的 modelOptions、主模型和 fallback provider 模型
-golang-cc model list
+go-e2e model list
 ```
 
 `model list` 按配置顺序合并并去重模型 ID；没有自定义模型配置时，回退到内置模型目录。`--provider <name>` 仍用于本次会话选择命名 provider，选择 provider 后会使用该 provider 配置的模型。

@@ -135,6 +135,8 @@ The project is still in fast-moving `0.x` development. Desktop, Computer Use, pa
 channel integrations will continue to evolve; read the [CHANGELOG](CHANGELOG.md) and [roadmap](docs/roadmap.md) before upgrading.
 Unsigned macOS builds may require manual approval in System Settings, and running an Agent requires a model service and API credentials that you configure yourself.
 
+Computer Use is currently a **macOS single-display Developer Preview**. The latest tagged desktop build completed a real `gpt-6-sol/high` launch → click → Command+A → type → send → wait → reply screenshot → Stop closure. See the [Computer Use guide](docs/usage/computer-use.md) for setup and safety boundaries. Second physical display acceptance, formal signing/distribution, cross-platform native GUI acceptance, and the remaining permission/helper-fault lifecycle matrix are not claimed complete.
+
 ## Product Loop
 
 <p align="center">
@@ -226,7 +228,7 @@ external tools, preserves context, and delivers results continuously.
 
 The table below is a snapshot based on the current code, tests, and architecture documents. It distinguishes capabilities that already have a working foundation from those that still need validation in a real environment.
 
-Snapshot: **2026-09-24** · Code baseline: `fdc3497`
+Capability snapshot: **2026-10-15** for Computer Use; other module rows retain their documented audit scope.
 
 | Module | Progress | Implemented today | Current boundary | Main code entry points |
 | --- | --- | --- | --- | --- |
@@ -243,11 +245,11 @@ Snapshot: **2026-09-24** · Code baseline: `fdc3497`
 | Human-in-the-loop | ✅ Implemented | User questions, permission confirmation, pause/wait, resume, and interaction results | High-risk actions still need real interactive acceptance for each entry point | `internal/tools/askuserquestion/`, `internal/permissions/`, `internal/pendinginput/` |
 | Permissions and safety | ✅ Mature foundation | Tool approval, dangerous-command detection, directory and sensitive-path limits, network policy, sandboxing, and audit records | Security behavior still needs ongoing adversarial regression testing | `internal/permissions/`, `internal/sandbox/`, `internal/tools/guarded.go` |
 | Evaluation and observability | 🟡 Foundation implemented | Tests, Goldens, runtime traces, Trace, Telemetry, behavior evaluation, and capability scorecard scripts | Stable task sets, independent verifiers, Pass@k / Pass^k, and first-error analysis still need to be added | `internal/agenteval/`, `internal/observability/`, `scripts/` |
-| Computer Use | 🟡 macOS desktop integration available; acceptance ongoing | Native floating controls, expand/collapse/hide, latest operation-image preview, session state, permission gates, and action receipts.<br><a href="docs/web_agent/images/computer-use-native-overlay.jpg"><img src="docs/web_agent/images/computer-use-native-overlay.jpg" alt="go-e2e macOS Computer Use native floating panel and operation-image preview" width="220"></a><br><sub>Desktop screenshot · Click to enlarge</sub> | Selected native clicks and preview verified; full-screen Spaces, complete controls, and autonomous model E2E still require acceptance. Second physical display and formal signing/distribution are deferred. | `desktop-v2/computer_overlay.go`, `internal/computeruse/`, `internal/computerbackend/`, `native/macos/` |
+| Computer Use | 🟡 macOS single-display Developer Preview | Native floating controls, trusted window binding, atomic turn results, receipts, observations, screenshots, Stop, and fail-closed safety paths. [Usage and acceptance guide](docs/usage/computer-use.md) | The latest tagged macOS desktop build completed one real model closure; second physical display, formal signing/distribution, cross-platform native GUI acceptance, and part of the permission/fault matrix remain outside the claimed scope. | `desktop-v2/computer_overlay.go`, `internal/computeruse/`, `internal/computerbackend/`, `native/macos/` |
 | RAG / knowledge retrieval | 🟡 Partially implemented | File, web, and project-context retrieval can feed results back into the Agent | It is not yet a full vector-index, semantic-retrieval, reranking, and source-citation pipeline | `internal/memory/`, `internal/tools/websearch/`, `internal/tools/webfetch/` |
 | Continual evolution | 🟡 Partially implemented | Project memory, runtime experience, Skills, and evaluation results can be retained | There is not yet a complete automatic loop that turns trajectories into knowledge, programs, or model updates | `internal/memory/`, `internal/skills/`, `internal/agenteval/` |
 
-Computer Use row updated: **2026-09-30**; other modules retain the audit baseline above.
+Computer Use row updated: **2026-10-15**; other modules retain the audit baseline above.
 
 > “Implemented” means that the capability exists in the code and tests. It does not mean that every external Provider, MCP Server, database, or desktop permission is configured by default.
 

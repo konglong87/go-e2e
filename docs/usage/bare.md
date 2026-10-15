@@ -7,28 +7,28 @@
 启动 bare TUI：
 
 ```bash
-golang-cc --bare
+go-e2e --bare
 ```
 
 运行一次 headless 查询：
 
 ```bash
-golang-cc --bare -p "读取 go.mod 并说明模块信息"
+go-e2e --bare -p "读取 go.mod 并说明模块信息"
 ```
 
-从源码运行时，把 `golang-cc` 替换为 `go run ./cmd/golang-cc`：
+从源码运行时，把 `go-e2e` 替换为 `go run ./cmd/go-e2e`：
 
 ```bash
-go run ./cmd/golang-cc --bare -p "总结 README.md"
+go run ./cmd/go-e2e --bare -p "总结 README.md"
 ```
 
-`--bare` 是全局参数。与顶层子命令组合时应放在子命令之前；但 bare V1 只支持 query/TUI，会拒绝 `golang-cc --bare review` 这类普通顶层子命令。`--help` 和 `--version` 例外。
+`--bare` 是全局参数。与顶层子命令组合时应放在子命令之前；但 bare V1 只支持 query/TUI，会拒绝 `go-e2e --bare review` 这类普通顶层子命令。`--help` 和 `--version` 例外。
 
 ## 行为契约
 
 | 能力 | bare 行为 |
 | --- | --- |
-| system prompt | 默认只包含 `golang-cc` 身份、CWD 和日期；仍可用 `--system-prompt[-file]` 替换或用 `--append-system-prompt[-file]` 追加 |
+| system prompt | 默认只包含 `go-e2e` 身份、CWD 和日期；仍可用 `--system-prompt[-file]` 替换或用 `--append-system-prompt[-file]` 追加 |
 | 内置工具 | 默认仅 `Read`、`Edit`、`Bash` |
 | 自动上下文 | 不加载 cwd、父目录、用户目录或 managed memory，不注入 Git snapshot、auto-memory protocol 和 skill catalog |
 | hooks 与扩展 | 不执行 hooks，不装配 LSP，不自动发现 custom agents、plugins 或 MCP |
@@ -46,10 +46,10 @@ bare 的原则是：跳过没有显式请求的 runtime contributor，但保留�
 
 ```bash
 # 只暴露 Read 和 Bash
-golang-cc --bare --tools Read,Bash -p "检查项目但不要修改文件"
+go-e2e --bare --tools Read,Bash -p "检查项目但不要修改文件"
 
 # Task 不属于 bare baseline，最终只暴露 Read
-golang-cc --bare --tools Task,Read -p "读取 README.md"
+go-e2e --bare --tools Task,Read -p "读取 README.md"
 ```
 
 `--allowedTools` 和 `--disallowedTools` 属于权限层，也不能扩大工具面。显式 `--mcp-config` 或显式 `--settings` 中声明的 MCP tools 可以加入 bare 会话，但仍受 `--tools` 和权限规则过滤。
@@ -59,7 +59,7 @@ golang-cc --bare --tools Task,Read -p "读取 README.md"
 `--add-dir` 在 bare 中同时表示额外可写目录和显式 context root：
 
 ```bash
-golang-cc --bare \
+go-e2e --bare \
   --add-dir /path/to/context-root \
   -p "按显式目录中的项目规则检查当前代码"
 ```
@@ -99,7 +99,7 @@ bundled skill 和 `--add-dir` 显式目录中的 slash skill 仍可按名称调�
 确认当前二进制公开该参数：
 
 ```bash
-golang-cc --bare --help
+go-e2e --bare --help
 ```
 
 在 bare TUI 中输入 `/tools`，默认应只看到 `Read`、`Edit`、`Bash`。如果工具更少，检查 `--tools`、`--allowedTools`、`--disallowedTools` 和 settings 中的权限规则；如果显式 MCP tool 没出现，同时检查 `--mcp-config` 是否加载成功以及工具过滤规则。
@@ -113,7 +113,7 @@ golang-cc --bare --help
 
 ## 与 Claude Code bare 的已知差异
 
-golang-cc V1 没有 Claude Code 的 `--agents <json>` inline agent 和 `--plugin-dir` escape hatch。凭据继续使用 golang-cc 的 provider-neutral env/settings 解析，不硬编码 Anthropic API-key-only 规则。transcript 首写保持同步正确性，没有采用上游的异步首写优化。
+go-e2e V1 没有 Claude Code 的 `--agents <json>` inline agent 和 `--plugin-dir` escape hatch。凭据继续使用 go-e2e 的 provider-neutral env/settings 解析，不硬编码 Anthropic API-key-only 规则。transcript 首写保持同步正确性，没有采用上游的异步首写优化。
 
 当前自动化验证已经证明 bare 的 system bytes 和 tool definitions 少于 default，且无显式 MCP 时工具数为 3；30 次冷/暖进程级 p50/p95 基准仍是发布验收项，因此这里不承诺实际启动延迟或 provider 响应延迟收益。
 

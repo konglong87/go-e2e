@@ -1,6 +1,6 @@
 # agent-webui 模式使用说明
 
-agent-webui 模式把 golang-cc 跑成一个带浏览器界面的 Web Agent：API Server 提供 SSE / WebSocket 后端，`web/`（Vite + React + TypeScript）提供前端，支持任务创建、运行、取消、多轮会话和全链路观测。
+agent-webui 模式把 go-e2e 跑成一个带浏览器界面的 Web Agent：API Server 提供 SSE / WebSocket 后端，`web/`（Vite + React + TypeScript）提供前端，支持任务创建、运行、取消、多轮会话和全链路观测。
 
 启动（手工验收 profile，复用历史 WebUI 会话）：
 
@@ -19,7 +19,7 @@ scripts/web-agent-start.sh e2e
 ```bash
 # 终端 1：API Server
 export GOLANG_CC_MOBILE_DEV_AUTH=true
-go run ./cmd/golang-cc server --host 127.0.0.1 --port 8080 --auth-token test-token
+go run ./cmd/go-e2e server --host 127.0.0.1 --port 8080 --auth-token test-token
 
 # 终端 2：前端开发服务器
 npm --prefix web install --legacy-peer-deps
@@ -39,7 +39,7 @@ scripts/web-agent-start.sh manual
 # 或构建后由 API Server 托管：
 #   npm --prefix web run build
 #   export GOLANG_CC_WEBUI_DIR=web/dist
-#   go run ./cmd/golang-cc server --host 127.0.0.1 --port 8080 --auth-token test-token
+#   go run ./cmd/go-e2e server --host 127.0.0.1 --port 8080 --auth-token test-token
 # 访问 http://127.0.0.1:8080/webui/?token=test-token
 ```
 

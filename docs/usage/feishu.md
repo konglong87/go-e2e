@@ -1,6 +1,6 @@
 # Feishu Bot 接入
 
-本文说明如何在本机或单机部署中运行 golang-cc 的 Feishu Bot channel worker。它只描述当前仓库已经提供的 CLI 和脚本能力；多实例生产部署还需要自行配置进程托管、MySQL 高可用、Redis lease 和监控。
+本文说明如何在本机或单机部署中运行 go-e2e 的 Feishu Bot channel worker。它只描述当前仓库已经提供的 CLI 和脚本能力；多实例生产部署还需要自行配置进程托管、MySQL 高可用、Redis lease 和监控。
 
 ## 工作流
 
@@ -16,7 +16,7 @@
 可以使用仓库提供的向导创建应用：
 
 ```bash
-go run ./cmd/golang-cc channels onboard feishu
+go run ./cmd/go-e2e channels onboard feishu
 ```
 
 命令会引导浏览器授权，并把凭据保存到本机受保护的凭据文件。应用创建后，仍需在飞书开发者后台完成应用配置、事件订阅和发布。不要把 App Secret、Verification Token 或 Encrypt Key 写入仓库。
@@ -24,7 +24,7 @@ go run ./cmd/golang-cc channels onboard feishu
 已有应用需要补充权限时，可以使用：
 
 ```bash
-go run ./cmd/golang-cc channels authorize feishu
+go run ./cmd/go-e2e channels authorize feishu
 ```
 
 具体权限以当前飞书开发者后台和命令输出为准。至少要确认 Bot 能接收消息、发送消息；使用 reaction、资源或交互卡片时，还要开通对应权限。
@@ -43,7 +43,7 @@ export GOLANG_CC_CHANNEL_MODEL="your-model"
 
 ```bash
 export GOLANG_CC_MYSQL_DSN='user:password@tcp(127.0.0.1:3306)/golang_cc?parseTime=true'
-export GOLANG_CC_FEISHU_CREDENTIAL_FILE="$HOME/Library/Application Support/golang-cc/feishu-credentials.json"
+export GOLANG_CC_FEISHU_CREDENTIAL_FILE="$HOME/Library/Application Support/go-e2e/feishu-credentials.json"
 export GOLANG_CC_CHANNEL_TENANT_ID="1"
 export GOLANG_CC_CHANNEL_ACCOUNT_ID="1"
 export GOLANG_CC_CHANNEL_ACCOUNT_KEY="feishu-main"
@@ -83,7 +83,7 @@ GOLANG_CC_CHANNEL_WORKER_NAME="feishu-main" scripts/channel-worker-screen.sh sto
 不要用下面的方式作为常驻服务：
 
 ```bash
-go run ./cmd/golang-cc channels run &
+go run ./cmd/go-e2e channels run &
 ```
 
 电脑重启后，使用同一个 worker name 再执行 `start` 即可从持久化环境文件恢复配置。
@@ -104,7 +104,7 @@ Redis lease 可用于多进程部署：
 
 ```bash
 export GOLANG_CC_CHANNEL_REDIS_ADDR="redis://127.0.0.1:6379/0"
-export GOLANG_CC_CHANNEL_REDIS_PREFIX="golang-cc:channel"
+export GOLANG_CC_CHANNEL_REDIS_PREFIX="go-e2e:channel"
 ```
 
 没有配置 Redis 时，worker 使用单实例本地 lease；这不适合作为多副本协调方案。

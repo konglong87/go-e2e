@@ -1,4 +1,4 @@
-# golang-cc 使用说明（分模式场景指南）
+# go-e2e 使用说明（分模式场景指南）
 
 按**运行模式 × 使用场景**组织的使用说明。每个场景统一结构：**一句话定位 → 启动/命令 → 界面说明 → 要点**。
 
@@ -6,7 +6,7 @@
 
 | 模式 | 适合 | 入口 | 场景文档 |
 | --- | --- | --- | --- |
-| **TUI** | 本地交互写代码、读文件、跑工具、审批权限 | `go run ./cmd/golang-cc` | [tui.md](tui.md) · 11 个场景 |
+| **TUI** | 本地交互写代码、读文件、跑工具、审批权限 | `go run ./cmd/go-e2e` | [tui.md](tui.md) · 11 个场景 |
 | **CLI**（print/headless） | 脚本、CI、一次性自动化 | `-p, --print` | [cli.md](cli.md) · 6 个场景 |
 | **agent-webui** | 浏览器界面、任务运行、全链路观测 | `scripts/web-agent-start.sh` | [webui.md](webui.md) · 7 个场景 |
 | **Desktop Computer Use** | macOS 单屏开发者预览、受安全边界约束的真实桌面操作 | `scripts/build-desktop-v2.sh` | [computer-use.md](computer-use.md) |

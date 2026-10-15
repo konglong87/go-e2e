@@ -45,14 +45,14 @@ describe("TaskFirstHomePage", () => {
   });
 
   it("passes the selected workspace to the composer and workspace affordance", async () => {
-    const selectedWorkspace = "/Users/konglong/go-e2e-workspace/go-e2e";
+    const selectedWorkspace = "/Users/test-user/go-e2e-workspace/go-e2e";
     const selectWorkspace = vi.fn<() => Promise<string | null>>().mockResolvedValue(selectedWorkspace);
 
     act(() => root.render(
       <I18nProvider>
         <TaskFirstHomePage
           availableSources={[]}
-          defaultWorkspace="/Users/konglong/GolandProjects/go-e2e"
+          defaultWorkspace="/Users/test-user/GolandProjects/go-e2e"
           identity={identity}
           onCreated={vi.fn()}
           onSelectWorkspace={selectWorkspace}
@@ -61,7 +61,7 @@ describe("TaskFirstHomePage", () => {
       </I18nProvider>
     ));
 
-    expect(host.querySelector("[data-testid=composer]")?.getAttribute("data-cwd")).toBe("/Users/konglong/GolandProjects/go-e2e");
+    expect(host.querySelector("[data-testid=composer]")?.getAttribute("data-cwd")).toBe("/Users/test-user/GolandProjects/go-e2e");
 
     await act(async () => {
       host.querySelector<HTMLButtonElement>(".webui2-task-first-context-item")?.click();

@@ -66,8 +66,8 @@
 | --- | --- |
 | [usage/](usage/) | 分模式（TUI / CLI / agent-webui）、分场景的使用说明，每个场景配命令、界面说明和要点。 |
 | [api/](api/) | 移动端、OpenAI-compatible 调用方和 API 形态专题。主 API 文档仍保留在 [api_server.md](api_server.md)。 |
-| [agentic_patterns_learning/](agentic_patterns_learning/) | 《智能体设计模式（双语版）》与 golang-cc 源码实践的对照学习材料。 |
-| [architecture/](architecture/) | 运行模式、单条消息 runtime flow、闭环 gate、Computer Use、golang-cc agent 能力边界、subagent runtime、Loop scheduler、上游对齐等架构级说明。 |
+| [agentic_patterns_learning/](agentic_patterns_learning/) | 《智能体设计模式（双语版）》与 go-e2e 源码实践的对照学习材料。 |
+| [architecture/](architecture/) | 运行模式、单条消息 runtime flow、闭环 gate、Computer Use、go-e2e agent 能力边界、subagent runtime、Loop scheduler、上游对齐等架构级说明。 |
 | [audit/](audit/) | 全项目独立审计报告与修复 backlog（带 `file:line` 证据、稳定条目 ID、验收标准和已验证/未验证边界）。 |
 | [archive/](archive/) | 已完成的重要发布归档，记录实际范围、提交/tag、验证证据、已知边界和过程复盘。 |
 | [auto_memory_plan/](auto_memory_plan/) | 自动记忆（auto memory）方案。 |
@@ -77,7 +77,7 @@
 | [manual_testing/](manual_testing/) | 人工验收和 WebUI prompt context 检查清单。 |
 | [observability/](observability/) | Trace Viewer、端到端性能与质量可观测方案、telemetry/trace 可视化说明、system prompt 快照设计。 |
 | [optimization/](optimization/) | prompt engineering 优化方案（v1/v2）。 |
-| [prompt_logic/](prompt_logic/) | prompt 加载、session prompt 拼装、memory/cache，以及 [Claude Code 原版 vs golang-cc 深度差异诊断](prompt_logic/claude_code_vs_go_claude_deep_diagnosis.md)、[Claude Code 差距证据采集与修复进度](prompt_logic/prompt_gap_recovery_progress.md) 和 [Agent 修复一次成功率提升技术方案](prompt_logic/agent_repair_first_pass_success_plan.md)。 |
+| [prompt_logic/](prompt_logic/) | prompt 加载、session prompt 拼装、memory/cache，以及 [Claude Code 原版 vs go-e2e 深度差异诊断](prompt_logic/claude_code_vs_go_claude_deep_diagnosis.md)、[Claude Code 差距证据采集与修复进度](prompt_logic/prompt_gap_recovery_progress.md) 和 [Agent 修复一次成功率提升技术方案](prompt_logic/agent_repair_first_pass_success_plan.md)。 |
 | [session_recap/](session_recap/) | TUI session recap 方案。 |
 | [skills/](skills/) | skills/plugins 加载、运行时 frontmatter 和渐进式加载。 |
 | [subagent_multiagent/](subagent_multiagent/) | subagent authoring 与 multi-agent parity。 |

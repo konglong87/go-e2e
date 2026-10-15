@@ -3,9 +3,9 @@
 TUI 是本地交互式终端模式，适合边写代码边对话、读文件、跑工具、审批权限。启动即进入，无需任何参数：
 
 ```bash
-go run ./cmd/golang-cc
+go run ./cmd/go-e2e
 # 指定另一个项目作为上下文
-go run ./cmd/golang-cc --cwd /path/to/project
+go run ./cmd/go-e2e --cwd /path/to/project
 ```
 
 每个场景统一结构：**一句话定位 → 命令 → 界面说明 → 要点**。除「代码审查」一节，本页不放截图，理由见 [使用说明总入口](README.md#为什么这里几乎没有截图)。
@@ -33,7 +33,7 @@ go run ./cmd/golang-cc --cwd /path/to/project
 最轻量的用法：直接聊天、问身份、追问"你怎么知道的"。启动后即可输入。
 
 ```bash
-go run ./cmd/golang-cc
+go run ./cmd/go-e2e
 ```
 
 打招呼、问"你什么模型"——模型信息来自会话初始化时注入的 `Environment` 元数据，不是从项目文件读取，所以它能直接回答。追问"你怎么知道的"，它会说明这段信息是运行环境写入系统提示的，无需 Read/Grep 工具。
@@ -51,7 +51,7 @@ go run ./cmd/golang-cc
 给一个一步就能完成的任务（读文件、总结、列目录），通常只触发一次工具调用。
 
 ```bash
-go run ./cmd/golang-cc
+go run ./cmd/go-e2e
 # 输入：查看当前目录有哪些文件
 # 输入：帮我总结 README.md
 ```
@@ -71,7 +71,7 @@ go run ./cmd/golang-cc
 真正的 coding 场景：让它改代码、跑测试。写文件和执行命令会受权限策略约束。
 
 ```bash
-go run ./cmd/golang-cc --cwd /path/to/your-project
+go run ./cmd/go-e2e --cwd /path/to/your-project
 # 输入：给 xxx 函数加一个边界条件测试，然后让测试通过
 ```
 
@@ -91,7 +91,7 @@ go run ./cmd/golang-cc --cwd /path/to/your-project
 Skills 是可复用的任务指令包。命中相关请求时按需渐进式加载，无需手动开关。
 
 ```bash
-go run ./cmd/golang-cc
+go run ./cmd/go-e2e
 # 输入 / 查看可用 slash 命令与已注册 skills
 ```
 
@@ -105,19 +105,19 @@ go run ./cmd/golang-cc
 
 ### 创建一个新 skill
 
-不只是用 skill——可以直接让 golang-cc 帮你**创建**一个新 skill 并落盘：编写带 frontmatter 的 `SKILL.md`、更新项目的路由/清单文件，一步到位。
+不只是用 skill——可以直接让 go-e2e 帮你**创建**一个新 skill 并落盘：编写带 frontmatter 的 `SKILL.md`、更新项目的路由/清单文件，一步到位。
 
 ```bash
-go run ./cmd/golang-cc --cwd /path/to/your-skill-project
+go run ./cmd/go-e2e --cwd /path/to/your-skill-project
 # 输入：帮我新增一位「梁文锋」AI 技术理想主义视角的专家 skill
 ```
 
-一次真实运行：在一个专家路由项目里让 golang-cc 新建一位专家 skill——它生成了完整的 `experts/liang-wenfeng-perspective/SKILL.md`（含决策启发式、表达 DNA、Agentic Protocol、诚实边界），新增 `router_keywords.json` 的 `ai_technology` 路由规则，并在主 `SKILL.md` 专家清单补一行，最后自动提交推送（同下方「Git 提交与推送」场景）。
+一次真实运行：在一个专家路由项目里让 go-e2e 新建一位专家 skill——它生成了完整的 `experts/liang-wenfeng-perspective/SKILL.md`（含决策启发式、表达 DNA、Agentic Protocol、诚实边界），新增 `router_keywords.json` 的 `ai_technology` 路由规则，并在主 `SKILL.md` 专家清单补一行，最后自动提交推送（同下方「Git 提交与推送」场景）。
 
 **创建要点**
 
 - 一个 skill 至少要有 `name` / `description` 的 frontmatter，放到 skills 根目录即可被发现并触发。
-- golang-cc 会按目标项目的既有结构落盘（示例里是 `experts/` + `router_keywords.json` + 主 `SKILL.md`，这是该项目自己的约定，不是 golang-cc 强制格式）。
+- go-e2e 会按目标项目的既有结构落盘（示例里是 `experts/` + `router_keywords.json` + 主 `SKILL.md`，这是该项目自己的约定，不是 go-e2e 强制格式）。
 - 创建后可直接接一句「提交并推送」，让它跑 git 收尾——见 [10. Git 提交与推送](#10-git-提交与推送)。
 
 ---
@@ -127,7 +127,7 @@ go run ./cmd/golang-cc --cwd /path/to/your-skill-project
 需要实时信息时调用 WebSearch / WebFetch / WebBrowser 工具。
 
 ```bash
-go run ./cmd/golang-cc
+go run ./cmd/go-e2e
 # 输入：搜索一下 xxx 的最新进展
 ```
 
@@ -146,7 +146,7 @@ go run ./cmd/golang-cc
 复杂任务可拆给多个子代理并行处理，主会话负责分发与汇总。
 
 ```bash
-go run ./cmd/golang-cc
+go run ./cmd/go-e2e
 # 输入：分别从性能、安全、可读性三个角度审查这次改动
 ```
 
@@ -167,9 +167,9 @@ go run ./cmd/golang-cc
 
 ```bash
 # 继续最近一次会话
-go run ./cmd/golang-cc --continue
+go run ./cmd/go-e2e --continue
 # 恢复指定 session
-go run ./cmd/golang-cc --resume <session-id>
+go run ./cmd/go-e2e --resume <session-id>
 ```
 
 TUI 内 slash 命令：
@@ -200,7 +200,7 @@ TUI 内 slash 命令：
 把长期目标交给状态机自动推进，或让某个 prompt 定时循环执行。
 
 ```bash
-go run ./cmd/golang-cc
+go run ./cmd/go-e2e
 # Goal：先查看帮助，再创建并启动后台执行
 /goal help
 /goal start Implement TUI app-level selection
@@ -263,14 +263,14 @@ autoCompact:
 
 ## 10. Git 提交与推送
 
-改完代码或创建完文件后，直接在对话里让 golang-cc 跑 git 收尾——`git status` / `commit` / `push` 都走「运行命令」（Bash）工具，和其他命令一样受权限约束。
+改完代码或创建完文件后，直接在对话里让 go-e2e 跑 git 收尾——`git status` / `commit` / `push` 都走「运行命令」（Bash）工具，和其他命令一样受权限约束。
 
 ```bash
-go run ./cmd/golang-cc --cwd /path/to/your-project
+go run ./cmd/go-e2e --cwd /path/to/your-project
 # 输入：把这次改动提交并 push 到远程
 ```
 
-接着上面「创建 skill」的那次运行：生成/更新文件后，golang-cc 依次跑 `git status`、`git commit`（`a278ea7 添加梁文锋专家Skill：AI技术理想主义视角`）、`git push`，终端回显「已成功推送到远程仓库 `ec60813..a278ea7 main -> main`」。
+接着上面「创建 skill」的那次运行：生成/更新文件后，go-e2e 依次跑 `git status`、`git commit`（`a278ea7 添加梁文锋专家Skill：AI技术理想主义视角`）、`git push`，终端回显「已成功推送到远程仓库 `ec60813..a278ea7 main -> main`」。
 
 **要点**
 
@@ -283,10 +283,10 @@ go run ./cmd/golang-cc --cwd /path/to/your-project
 
 ## 11. 代码审查（Review 提交）
 
-让 golang-cc 审查最近几次提交并给出结构化评价：它会自己编排多条只读 git 命令读取历史和 diff，再输出好处/坏处、评分表和可执行建议。
+让 go-e2e 审查最近几次提交并给出结构化评价：它会自己编排多条只读 git 命令读取历史和 diff，再输出好处/坏处、评分表和可执行建议。
 
 ```bash
-go run ./cmd/golang-cc --cwd /path/to/your-project
+go run ./cmd/go-e2e --cwd /path/to/your-project
 # 输入：帮我 review 最近 3 次提交，有啥好处和坏处？
 ```
 
@@ -307,19 +307,19 @@ go run ./cmd/golang-cc --cwd /path/to/your-project
 
 ### 💡 效果取决于模型：同一任务的深度对比
 
-同一 prompt、同一项目（superPM），只换模型和 agent 平台——上面是 golang-cc 跑 `deepseek-v4-flash`，下面是 Claude Code 跑 `Opus 4.8`（扩展思考）对同一批提交的 review。
+同一 prompt、同一项目（superPM），只换模型和 agent 平台——上面是 go-e2e 跑 `deepseek-v4-flash`，下面是 Claude Code 跑 `Opus 4.8`（扩展思考）对同一批提交的 review。
 
 ![Claude Code（Opus 4.8）对同一批提交的 review](images/review-compare-claude-code.png)
 
 *Opus 4.8 把 `8392730`(39→40) 这类"数量修正"提交上升为根因诊断——"三处清单副本、缺单一数据源"，并质疑 semver 语义（把可能回退的实验升 minor 偏激进），最后给出单条最高优先级建议并主动提出代为清理。*
 
-| | golang-cc · deepseek-v4-flash | Claude Code · Opus 4.8 |
+| | go-e2e · deepseek-v4-flash | Claude Code · Opus 4.8 |
 | --- | --- | --- |
 | 分析深度 | 逐条好处/坏处 + 评分表，清单式 | 追根因（缺单一数据源）、质疑版本语义 |
 | 建议 | 4 条并列 | 一条最高优先级 + 主动代办 |
 | 成本 / 速度 | 便宜快（56s） | 慢且贵，深度更高 |
 
-**用法提示**：审查、分析这类"要深度推理"的任务，模型强弱直接决定产出质量。golang-cc 是 provider / model 中立的 runtime——同一套流程（多步工具编排、错误恢复、结构化产出）在弱模型上已经跑通，换上更强的模型即可逼近上面的深度。
+**用法提示**：审查、分析这类"要深度推理"的任务，模型强弱直接决定产出质量。go-e2e 是 provider / model 中立的 runtime——同一套流程（多步工具编排、错误恢复、结构化产出）在弱模型上已经跑通，换上更强的模型即可逼近上面的深度。
 
 ---
 

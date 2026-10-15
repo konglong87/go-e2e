@@ -110,8 +110,8 @@ describe("NewSessionDialog", () => {
   });
 
   it("selects a folder through the desktop bridge and creates with the selected workspace", async () => {
-    const selectWorkspace = vi.fn<() => Promise<string | null>>().mockResolvedValue("/Users/konglong/GolandProjects/huyu");
-    vi.mocked(validateAgentWorkspace).mockResolvedValueOnce({ cwd: "/Users/konglong/GolandProjects/huyu", workspace_name: "huyu", exists: true, is_dir: true, is_git_repo: false });
+    const selectWorkspace = vi.fn<() => Promise<string | null>>().mockResolvedValue("/Users/test-user/GolandProjects/huyu");
+    vi.mocked(validateAgentWorkspace).mockResolvedValueOnce({ cwd: "/Users/test-user/GolandProjects/huyu", workspace_name: "huyu", exists: true, is_dir: true, is_git_repo: false });
     render(vi.fn(), "", selectWorkspace);
 
     await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Choose folder"]')?.click());
@@ -119,7 +119,7 @@ describe("NewSessionDialog", () => {
     expect(host.querySelector(".webui2-workspace-picker-name")?.textContent).toBe("huyu");
 
     await act(async () => host.querySelector<HTMLButtonElement>('button[type="submit"]')?.click());
-    expect(client.create).toHaveBeenCalledWith(identity, expect.objectContaining({ cwd: "/Users/konglong/GolandProjects/huyu" }));
+    expect(client.create).toHaveBeenCalledWith(identity, expect.objectContaining({ cwd: "/Users/test-user/GolandProjects/huyu" }));
   });
 
   it("keeps the current workspace when the native picker is cancelled", async () => {
