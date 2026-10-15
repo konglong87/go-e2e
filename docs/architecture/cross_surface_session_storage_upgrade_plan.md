@@ -927,14 +927,14 @@ cross_surface_write_disabled
 
 ### 12.1 复用和扩展
 
-- [internal/session/store.go](<repository-root>/internal/session/store.go)：复用 JSONL 文件扫描、读取、标题、追加、compact、rename、delete 能力。
-- [internal/sessioncontrol/local.go](<repository-root>/internal/sessioncontrol/local.go)：从“只读元信息适配器”扩展为统一 transcript read adapter。
-- [internal/sessioncontrol/managed.go](<repository-root>/internal/sessioncontrol/managed.go)：保留服务编排和权限边界，替换底层聊天事实读取方式。
-- [internal/server/session_conversation.go](<repository-root>/internal/server/session_conversation.go)：统一 tenant/local/cross-surface 的事件分页和 cursor。
-- [web/src/v2/api/sessionEventReducer.ts](<repository-root>/web/src/v2/api/sessionEventReducer.ts)：继续负责前端展示归并，不直接理解存储实现。
-- [web/src/v2/api/httpSessionControlClient.ts](<repository-root>/web/src/v2/api/httpSessionControlClient.ts)：保留协议和 DTO，只增加来源展示字段。
-- [internal/channel/runtime/service.go](<repository-root>/internal/channel/runtime/service.go)：飞书入站、出站和运行事件接入 JSONL transcript。
-- [internal/cli/cmd_channels.go](<repository-root>/internal/cli/cmd_channels.go)：保留飞书控制面初始化，替换聊天事实写入入口。
+- [internal/session/store.go](../../internal/session/store.go)：复用 JSONL 文件扫描、读取、标题、追加、compact、rename、delete 能力。
+- [internal/sessioncontrol/local.go](../../internal/sessioncontrol/local.go)：从“只读元信息适配器”扩展为统一 transcript read adapter。
+- [internal/sessioncontrol/managed.go](../../internal/sessioncontrol/managed.go)：保留服务编排和权限边界，替换底层聊天事实读取方式。
+- [internal/server/session_conversation.go](../../internal/server/session_conversation.go)：统一 tenant/local/cross-surface 的事件分页和 cursor。
+- [web/src/v2/api/sessionEventReducer.ts](../../web/src/v2/api/sessionEventReducer.ts)：继续负责前端展示归并，不直接理解存储实现。
+- [web/src/v2/api/httpSessionControlClient.ts](../../web/src/v2/api/httpSessionControlClient.ts)：保留协议和 DTO，只增加来源展示字段。
+- [internal/channel/runtime/service.go](../../internal/channel/runtime/service.go)：飞书入站、出站和运行事件接入 JSONL transcript。
+- [internal/cli/cmd_channels.go](../../internal/cli/cmd_channels.go)：保留飞书控制面初始化，替换聊天事实写入入口。
 
 ### 12.2 新增建议模块
 
