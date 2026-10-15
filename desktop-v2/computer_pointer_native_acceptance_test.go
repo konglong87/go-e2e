@@ -3,19 +3,20 @@
 package main
 
 import (
+	"encoding/json"
+	"image"
 	"image/png"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
-	"time"
-
-	cu "github.com/konglong87/go-e2e/internal/computeruse"
 )
 
-// TestNativeComputerPointerScreenshot is an opt-in visual gate. It exercises
-// the real AppKit pointer window and saves one native desktop screenshot; it
-// does not post input or modify the target application.
+// TestNativeComputerPointerScreenshot is an opt-in visual gate. It builds a
+// tiny AppKit-hosted process so the real pointer window is created and driven
+// on AppKit's main thread, then saves both a native desktop capture and the
+// pointer view render. It never posts input or modifies the target application.
 func TestNativeComputerPointerScreenshot(t *testing.T) {
 	output := os.Getenv("COMPUTER_POINTER_ACCEPTANCE_OUTPUT")
 	if output == "" {
@@ -27,56 +28,91 @@ func TestNativeComputerPointerScreenshot(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(output), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	pointer := newNativeComputerPointer()
-	if pointer == nil {
-		t.Fatal("native pointer overlay is unavailable")
-	}
-	defer pointer.Close()
 
-	now := time.Now()
-	point := cu.ScreenPoint{X: 370, Y: 560}
-	pointer.Show(cu.ActionVisualCue{
-		SessionID: "pointer-acceptance-session", TurnID: "pointer-acceptance-turn",
-		ActionID: "pointer-acceptance-action", ActionKind: cu.ActionClick,
-		Phase: cu.VisualCueDispatched, DispatchState: cu.DispatchComplete,
-		AppBundleID: "com.apple.calculator", WindowID: "acceptance-window",
-		GlobalPoint: &point, CreatedAt: now, ExpiresAt: now.Add(2 * time.Second),
-	})
-	time.Sleep(400 * time.Millisecond)
-	if err := exec.Command("screencapture", "-x", output).Run(); err != nil {
-		t.Fatal(err)
-	}
-	if info, err := os.Stat(output); err != nil || info.Size() == 0 {
-		t.Fatalf("native pointer screenshot missing: %v", err)
-	}
-	file, err := os.Open(output)
+	overlayOutput := output + ".overlay.png"
+	geometryOutput := output + ".geometry.json"
+	repoRoot, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
-	image, err := png.Decode(file)
+	helperSource := filepath.Join(repoRoot, "testdata", "computer_pointer_acceptance_main.m")
+	nativeSource := filepath.Join(repoRoot, "computer_pointer_darwin.m")
+	helperBinary := filepath.Join(t.TempDir(), "computer-pointer-acceptance")
+	build := exec.Command("clang", "-x", "objective-c", nativeSource, helperSource,
+		"-framework", "AppKit", "-framework", "Foundation", "-o", helperBinary)
+	build.Dir = repoRoot
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build native pointer acceptance helper: %v\n%s", err, out)
+	}
+
+	run := exec.Command(helperBinary, output, overlayOutput, geometryOutput)
+	if out, err := run.CombinedOutput(); err != nil {
+		t.Fatalf("run native pointer acceptance helper: %v\n%s", err, out)
+	}
+
+	image := decodePNG(t, output)
+	if image.Bounds().Dx() == 0 || image.Bounds().Dy() == 0 {
+		t.Fatal("native desktop screenshot has empty dimensions")
+	}
+	overlay := decodePNG(t, overlayOutput)
+	// NSWindowSharingNone intentionally keeps the pointer out of authoritative
+	// desktop captures. Inspect the actual AppKit view render separately.
+	accentPixels := 0
+	for y := overlay.Bounds().Min.Y; y < overlay.Bounds().Max.Y; y++ {
+		for x := overlay.Bounds().Min.X; x < overlay.Bounds().Max.X; x++ {
+			r, g, b, a := overlay.At(x, y).RGBA()
+			if a > 30000 && b > r+10000 && b > g+5000 {
+				accentPixels++
+			}
+		}
+	}
+	if accentPixels < 20 {
+		t.Fatalf("native pointer overlay has no visible accent pixels: %d", accentPixels)
+	}
+
+	var geometry struct {
+		GlobalX     float64 `json:"global_x"`
+		GlobalY     float64 `json:"global_y"`
+		AppKitX     float64 `json:"appkit_x"`
+		AppKitY     float64 `json:"appkit_y"`
+		PrimaryTop  float64 `json:"primary_top"`
+		FrameX      float64 `json:"frame_x"`
+		FrameY      float64 `json:"frame_y"`
+		FrameWidth  float64 `json:"frame_width"`
+		FrameHeight float64 `json:"frame_height"`
+	}
+	file, err := os.Open(geometryOutput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.NewDecoder(file).Decode(&geometry); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	_ = file.Close()
+
+	const globalX, globalY = 370.0, 560.0
+	if math.Abs(geometry.GlobalX-globalX) > 0.5 || math.Abs(geometry.GlobalY-globalY) > 0.5 ||
+		math.Abs(geometry.AppKitY-(geometry.PrimaryTop-globalY)) > 0.5 {
+		t.Fatalf("pointer geometry = %+v, want global=(%v,%v) and AppKit Y=%v", geometry, globalX, globalY, geometry.PrimaryTop-globalY)
+	}
+	if geometry.FrameWidth <= 0 || geometry.FrameHeight <= 0 ||
+		geometry.FrameX > geometry.AppKitX || geometry.FrameX+geometry.FrameWidth < geometry.AppKitX ||
+		geometry.FrameY > geometry.AppKitY || geometry.FrameY+geometry.FrameHeight < geometry.AppKitY {
+		t.Fatalf("pointer panel does not cover target AppKit point: %+v", geometry)
+	}
+}
+
+func decodePNG(t *testing.T, path string) image.Image {
+	t.Helper()
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := png.Decode(file)
 	_ = file.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The marker is drawn in points while screencapture returns Retina pixels.
-	// A locked/permission-denied desktop can still produce a valid all-black
-	// PNG, so require visible marker pixels around the expected point.
-	visible := false
-	centerX, centerY := int(point.X*2), int(point.Y*2)
-	for y := centerY - 80; y <= centerY+80 && !visible; y++ {
-		for x := centerX - 80; x <= centerX+180; x++ {
-			if x < 0 || y < 0 || x >= image.Bounds().Dx() || y >= image.Bounds().Dy() {
-				continue
-			}
-			r, g, b, _ := image.At(x, y).RGBA()
-			if r > 18000 || g > 18000 || b > 18000 {
-				visible = true
-				break
-			}
-		}
-	}
-	if !visible {
-		t.Fatal("native pointer marker was not visible in the real desktop screenshot")
-	}
-	pointer.Hide()
+	return decoded
 }

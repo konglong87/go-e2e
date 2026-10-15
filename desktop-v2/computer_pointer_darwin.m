@@ -33,6 +33,9 @@ struct goe2e_computer_pointer {
 @property(nonatomic, assign) goe2e_computer_pointer *bridge;
 @property(nonatomic, retain) Goe2EComputerPointerPanel *panel;
 @property(nonatomic, retain) Goe2EComputerPointerView *view;
+@property(nonatomic, assign) NSPoint lastGlobalPoint;
+@property(nonatomic, assign) NSPoint lastAppKitPoint;
+@property(nonatomic, assign) BOOL hasTarget;
 - (instancetype)initWithBridge:(goe2e_computer_pointer *)bridge;
 - (void)showJSON:(char *)json;
 - (void)hide;
@@ -95,10 +98,16 @@ struct goe2e_computer_pointer {
 @end
 
 static void OnPointerMainThread(void (^block)(void)) {
-    // Never synchronously hop from the Go/runtime worker to AppKit's main
-    // queue. The standalone runtime has no Wails main-loop ownership, and a
-    // sync hop there can deadlock the action/runtime process. Ordering is
-    // preserved by the serial main queue; lifecycle methods are idempotent.
+    // Never synchronously hop from a non-main Go/runtime worker to AppKit's
+    // main queue. The standalone runtime has no Wails main-loop ownership,
+    // and a sync hop there can deadlock the action/runtime process. When the
+    // caller is already AppKit's main thread, execute directly so native
+    // acceptance helpers and Wails main-thread callbacks do not depend on an
+    // external queue pump.
+    if (pthread_main_np() != 0) {
+        block();
+        return;
+    }
     dispatch_async(dispatch_get_main_queue(), block);
 }
 
@@ -185,6 +194,9 @@ static NSScreen *PointerScreenForPoint(NSPoint point) {
 
     NSPoint globalPoint = NSMakePoint(x.doubleValue, y.doubleValue);
     NSPoint target = PointerAppKitPointForGlobalPoint(globalPoint);
+    self.lastGlobalPoint = globalPoint;
+    self.lastAppKitPoint = target;
+    self.hasTarget = YES;
     NSRect frame = NSMakeRect(target.x - 12.0, target.y - 12.0, kPointerWidth, kPointerHeight);
     NSScreen *screen = PointerScreenForPoint(target);
     if (screen != nil) {
@@ -214,6 +226,80 @@ static NSScreen *PointerScreenForPoint(NSPoint point) {
     [super dealloc];
 }
 @end
+
+typedef int (^PointerResultBlock)(void);
+
+static int WaitForPointerMainThread(PointerResultBlock block) {
+    dispatch_semaphore_t done = dispatch_semaphore_create(0);
+    __block int result = 0;
+    OnPointerMainThread(^{
+        result = block ? block() : 0;
+        dispatch_semaphore_signal(done);
+    });
+    dispatch_semaphore_wait(done, DISPATCH_TIME_FOREVER);
+    return result;
+}
+
+int goe2e_computer_pointer_capture_overlay(goe2e_computer_pointer *bridge, const char *pathUTF8) {
+    if (bridge == NULL || pathUTF8 == NULL || pathUTF8[0] == '\0') return 0;
+    char *pathCopy = strdup(pathUTF8);
+    if (pathCopy == NULL) return 0;
+    __block int result = 0;
+    dispatch_semaphore_t done = dispatch_semaphore_create(0);
+    OnPointerMainThread(^{
+        pthread_mutex_lock(&bridge->mutex);
+        BOOL closed = bridge->closed;
+        Goe2EComputerPointerController *controller = [bridge->controller retain];
+        pthread_mutex_unlock(&bridge->mutex);
+        if (!closed && controller != nil && controller.view.visible) {
+            NSRect bounds = controller.view.bounds;
+            NSBitmapImageRep *rep = [controller.view bitmapImageRepForCachingDisplayInRect:bounds];
+            [controller.view cacheDisplayInRect:bounds toBitmapImageRep:rep];
+            NSData *png = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+            NSString *path = [NSString stringWithUTF8String:pathCopy];
+            result = (png != nil && path != nil && [png writeToFile:path options:NSDataWritingAtomic error:nil]) ? 1 : 0;
+        }
+        [controller release];
+        free(pathCopy);
+        dispatch_semaphore_signal(done);
+    });
+    dispatch_semaphore_wait(done, DISPATCH_TIME_FOREVER);
+    return result;
+}
+
+int goe2e_computer_pointer_geometry(goe2e_computer_pointer *bridge, double *globalX, double *globalY,
+                                    double *appkitX, double *appkitY, double *primaryTop,
+                                    double *frameX, double *frameY, double *frameWidth, double *frameHeight) {
+    if (bridge == NULL || globalX == NULL || globalY == NULL || appkitX == NULL || appkitY == NULL ||
+        primaryTop == NULL || frameX == NULL || frameY == NULL || frameWidth == NULL || frameHeight == NULL) return 0;
+    __block NSPoint globalPoint = NSZeroPoint;
+    __block NSPoint appKitPoint = NSZeroPoint;
+    __block NSRect frame = NSZeroRect;
+    __block CGFloat top = 0.0;
+    int result = WaitForPointerMainThread(^{
+        pthread_mutex_lock(&bridge->mutex);
+        BOOL closed = bridge->closed;
+        Goe2EComputerPointerController *controller = [bridge->controller retain];
+        pthread_mutex_unlock(&bridge->mutex);
+        int ready = 0;
+        if (!closed && controller != nil && controller.hasTarget) {
+            globalPoint = controller.lastGlobalPoint;
+            appKitPoint = controller.lastAppKitPoint;
+            frame = controller.panel.frame;
+            top = PointerPrimaryTop();
+            ready = 1;
+        }
+        [controller release];
+        return ready;
+    });
+    if (!result) return 0;
+    *globalX = globalPoint.x; *globalY = globalPoint.y;
+    *appkitX = appKitPoint.x; *appkitY = appKitPoint.y;
+    *primaryTop = top;
+    *frameX = frame.origin.x; *frameY = frame.origin.y;
+    *frameWidth = frame.size.width; *frameHeight = frame.size.height;
+    return 1;
+}
 
 goe2e_computer_pointer *goe2e_computer_pointer_create(void) {
     goe2e_computer_pointer *bridge = calloc(1, sizeof(goe2e_computer_pointer));

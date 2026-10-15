@@ -12,6 +12,12 @@ void goe2e_computer_pointer_show(goe2e_computer_pointer *pointer, const char *js
 void goe2e_computer_pointer_hide(goe2e_computer_pointer *pointer);
 void goe2e_computer_pointer_close(goe2e_computer_pointer *pointer);
 
+// Acceptance-only probes. Runtime code must use create/show/hide/close only.
+int goe2e_computer_pointer_capture_overlay(goe2e_computer_pointer *pointer, const char *path_utf8);
+int goe2e_computer_pointer_geometry(goe2e_computer_pointer *pointer, double *global_x, double *global_y,
+                                    double *appkit_x, double *appkit_y, double *primary_top,
+                                    double *frame_x, double *frame_y, double *frame_width, double *frame_height);
+
 #ifdef __cplusplus
 }
 #endif
