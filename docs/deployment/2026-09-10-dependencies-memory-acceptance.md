@@ -66,7 +66,7 @@
   实际写入、冷进程召回、other-project、chat、bare、ignore、unindexed、
   missing、readonly-with-write-tools、预算均通过；全局 settings SHA 未变化。
   预算场景记录 2048 bytes 正文预算和 455 bytes read-pointer 开销。
-- 真实验收证据位于 `/Users/Shared/golang-cc-memory-20260910-run5`，未进入 Git；
+- 真实验收证据位于 `<validation-root>/golang-cc-memory-20260910-run5`，未进入 Git；
   provider key 未出现在 prompt dump。证据是 runtime logical pre-provider
   request dump，不宣称 HTTP wire capture。
 

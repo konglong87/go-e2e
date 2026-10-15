@@ -63,6 +63,14 @@ class PublicComputerUseDocsTest(unittest.TestCase):
         for path in REMOVED_HISTORICAL_DOCS:
             self.assertFalse(path.exists(), f"superseded historical document remains active: {path}")
 
+    def test_tracked_docs_do_not_expose_local_user_paths(self) -> None:
+        for path in (ROOT / "docs").rglob("*"):
+            if not path.is_file() or path.suffix.lower() not in {".md", ".json", ".yaml", ".yml", ".go"}:
+                continue
+            content = path.read_text(encoding="utf-8", errors="replace")
+            self.assertNotIn("/Users/konglong", content, f"local user path in public docs: {path}")
+            self.assertNotIn("/Users/Shared/golang-cc", content, f"local evidence path in public docs: {path}")
+
 
 if __name__ == "__main__":
     unittest.main()
