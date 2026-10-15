@@ -682,7 +682,7 @@ func (b *Backend) Observe(ctx context.Context, req cu.ObserveRequest) (cu.Observ
 				"capture_width": coordinateSpace.Bounds.Width, "capture_height": coordinateSpace.Bounds.Height,
 				"error_code": cu.ErrorCodeTargetWindowMismatch,
 			})
-			return cu.Observation{}, classifyObserveFault(b, errors.New("screenshot target size does not match capture bounds"))
+			return cu.Observation{}, &rejection{cu.ErrorCodeTargetWindowMismatch}
 		}
 		targetWindow.Frame = coordinateSpace.Bounds
 	}

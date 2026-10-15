@@ -190,6 +190,15 @@ func (c Capabilities) Ready() bool {
 		c.PermissionState == PermissionApproved
 }
 
+// ReadinessErrorCode distinguishes an OS permission transition from a helper
+// or transport availability fault without exposing native diagnostics.
+func (c Capabilities) ReadinessErrorCode() string {
+	if c.PermissionState != PermissionApproved || c.CaptureReadiness == ReadinessPermissionRequired || c.InputReadiness == ReadinessPermissionRequired {
+		return ErrorCodePermissionRequired
+	}
+	return ErrorCodeHelperUnavailable
+}
+
 func (c Capabilities) Supports(action ActionKind) bool {
 	for _, supported := range c.Actions {
 		if supported == action {

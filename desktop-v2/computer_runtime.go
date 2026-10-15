@@ -36,6 +36,10 @@ func newComputerRuntime(_ context.Context) *RuntimeSupervisor {
 
 func newProcessComputerRuntime(process *computerRuntimeProcess) *RuntimeSupervisor {
 	ctx, cancel := context.WithCancel(context.Background())
+	if process == nil {
+		fault := cu.RuntimeFault{State: cu.RuntimeFaulted, ErrorCode: cu.RuntimeFaultHelperUnavailable, Recoverable: false, OccurredAt: time.Now()}
+		return &RuntimeSupervisor{computerRuntimeCtx: ctx, cancel: cancel, state: cu.RuntimeFaulted, fault: &fault}
+	}
 	config := process.Config()
 	runtime := &RuntimeSupervisor{
 		computerRuntimeCtx: ctx,

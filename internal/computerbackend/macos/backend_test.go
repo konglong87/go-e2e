@@ -842,3 +842,21 @@ func TestHelperTransportFaultUsesStableCode(t *testing.T) {
 		}
 	}
 }
+
+func TestTargetWindowSizeMismatchPreservesWindowGuardWithoutQuarantine(t *testing.T) {
+	b := newTestBackend(t, "metadata-frame-mismatch-width", time.Second, "")
+	_, err := b.Observe(context.Background(), cu.ObserveRequest{SessionID: "session-1", WindowID: "window-1"})
+	if err == nil {
+		t.Fatal("target window size mismatch unexpectedly succeeded")
+	}
+	var coded interface{ Code() string }
+	if !errors.As(err, &coded) || coded.Code() != cu.ErrorCodeTargetWindowMismatch {
+		t.Fatalf("error = %v, code=%q, want target_window_mismatch", err, coded.Code())
+	}
+	b.mu.Lock()
+	failed := b.failed
+	b.mu.Unlock()
+	if failed {
+		t.Fatal("target window guard quarantined a healthy helper")
+	}
+}

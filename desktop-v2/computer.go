@@ -207,11 +207,16 @@ func (m *computerManager) runtimeStatus() cu.RuntimeStatus {
 	switch state {
 	case cu.SessionPaused:
 		status.State = cu.RuntimeDegraded
-		fault := &cu.RuntimeFault{State: status.State, ErrorCode: cu.RuntimeFaultHelperUnavailable, Recoverable: true, SessionID: session.ID(), OccurredAt: time.Now()}
-		if !session.Capabilities().Ready() {
-			fault.ErrorCode = cu.RuntimeFaultPermissionRevoked
+		// A user-requested Pause is a normal control state, not a helper fault.
+		// Only a readiness regression is a lifecycle fault visible at this
+		// boundary; helper transport details remain on the turn/error path.
+		if caps := session.Capabilities(); !caps.Ready() {
+			code := cu.RuntimeFaultPermissionRevoked
+			if caps.ReadinessErrorCode() != cu.ErrorCodePermissionRequired {
+				code = cu.RuntimeFaultHelperUnavailable
+			}
+			status.Fault = &cu.RuntimeFault{State: status.State, ErrorCode: code, Recoverable: true, SessionID: session.ID(), OccurredAt: time.Now()}
 		}
-		status.Fault = fault
 	case cu.SessionFailed:
 		status.State = cu.RuntimeFaulted
 		code := cu.RuntimeFaultHelperUncertain

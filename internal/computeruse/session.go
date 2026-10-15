@@ -54,6 +54,13 @@ func sessionFailure(code, text string) error {
 	return &sessionError{code: code, text: text}
 }
 
+func capabilitiesFailure(c Capabilities) error {
+	if c.ReadinessErrorCode() == ErrorCodePermissionRequired {
+		return sessionFailure(ErrorCodePermissionRequired, "computer backend permission is required")
+	}
+	return sessionFailure(ErrorCodeHelperUnavailable, "computer helper is unavailable")
+}
+
 type ComputerSession struct {
 	mu             sync.RWMutex
 	id             string
@@ -145,7 +152,7 @@ func (s *ComputerSession) Approve(o SessionOwner) error {
 		return fmt.Errorf("cannot approve session in state %q", s.state)
 	}
 	if !s.capabilities.Ready() {
-		return sessionFailure(ErrorCodePermissionRequired, "computer backend permission is required")
+		return capabilitiesFailure(s.capabilities)
 	}
 	s.approved = true
 	s.state = SessionReady
@@ -180,7 +187,7 @@ func (s *ComputerSession) Resume(o SessionOwner) error {
 		return sessionFailure(ErrorCodeInputUncertain, "computer action outcome is uncertain")
 	}
 	if !s.capabilities.Ready() {
-		return sessionFailure(ErrorCodePermissionRequired, "computer backend permission is required")
+		return capabilitiesFailure(s.capabilities)
 	}
 	if s.state != SessionPaused {
 		return sessionFailure(ErrorCodeInactive, "computer session cannot resume")
@@ -210,7 +217,7 @@ func (s *ComputerSession) canObserveLocked() error {
 		return sessionFailure(ErrorCodeInactive, "computer observation is not authorized")
 	}
 	if !s.capabilities.Ready() {
-		return sessionFailure(ErrorCodePermissionRequired, "computer backend permission is required")
+		return capabilitiesFailure(s.capabilities)
 	}
 	if s.inFlight != "" {
 		return errors.New("computer action is in flight")
@@ -279,7 +286,7 @@ func (s *ComputerSession) validateActionLocked(a Action) error {
 		return sessionFailure(ErrorCodeInactive, "computer session is not ready")
 	}
 	if !s.capabilities.Ready() {
-		return sessionFailure(ErrorCodePermissionRequired, "computer backend permission is required")
+		return capabilitiesFailure(s.capabilities)
 	}
 	if s.state != SessionReady {
 		return sessionFailure(ErrorCodeInactive, "computer session is not ready")

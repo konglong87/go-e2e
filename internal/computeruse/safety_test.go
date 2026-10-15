@@ -1095,3 +1095,22 @@ func TestHelperObserveFaultIsRecoverableWithoutInputReplay(t *testing.T) {
 		t.Fatalf("helper fault lifecycle = session=%s run=%s, want paused/non-terminal", session.State(), controller.RunSnapshot().State)
 	}
 }
+
+func TestUnavailableCapabilitiesUseHelperFaultCodeNotPermissionRevoke(t *testing.T) {
+	session, owner, _ := newTestSession(t, true)
+	caps := session.Capabilities()
+	caps.CaptureReadiness = ReadinessUnavailable
+	caps.InputReadiness = ReadinessUnavailable
+	caps.PermissionState = PermissionApproved
+	if err := session.UpdateCapabilities(caps); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.Approve(owner); err == nil {
+		t.Fatal("unavailable helper was approved")
+	} else {
+		var coded interface{ Code() string }
+		if !errors.As(err, &coded) || coded.Code() != ErrorCodeHelperUnavailable {
+			t.Fatalf("approve error = %v, code=%q, want helper_unavailable", err, coded.Code())
+		}
+	}
+}

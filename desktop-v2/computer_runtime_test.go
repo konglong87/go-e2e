@@ -246,3 +246,29 @@ func TestComputerManagerRuntimeStatusSeparatesRecoverableAndTerminalFaults(t *te
 		t.Fatalf("stopped runtime status = %+v", status)
 	}
 }
+
+func TestComputerManagerRuntimeStatusDoesNotMislabelUserPauseAsHelperFault(t *testing.T) {
+	manager, _ := testComputerManager()
+	started, err := manager.start(context.Background(), ComputerSessionStartInput{Approved: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.control(context.Background(), started.ID, cu.ActionPause); err != nil {
+		t.Fatal(err)
+	}
+	status := manager.runtimeStatus()
+	if status.State != cu.RuntimeDegraded || status.Fault != nil || !status.ActiveSession {
+		t.Fatalf("user pause runtime status = %+v, want degraded without fault", status)
+	}
+}
+
+func TestNewProcessComputerRuntimeNilFailsClosed(t *testing.T) {
+	runtime := newProcessComputerRuntime(nil)
+	if runtime.State() != cu.RuntimeFaulted {
+		t.Fatalf("nil process state = %s, want faulted", runtime.State())
+	}
+	fault, ok := runtime.Fault()
+	if !ok || fault.ErrorCode != cu.RuntimeFaultHelperUnavailable || fault.Recoverable {
+		t.Fatalf("nil process fault = %+v ok=%t", fault, ok)
+	}
+}
