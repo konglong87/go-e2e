@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.3.5 — 2026-10-15
+
+### Computer Use milestone
+
+- 完成 Computer Use runtime 的原子 turn result、receipt/observation/screenshot 一致性、execute_turn bridge 和禁止 replay 安全语义。
+- 当前 macOS 单屏 Developer Preview 完成 deterministic/native gates，以及一次真实 `gpt-6-sol/high` `launch → click → Command+A → type → send → wait → reply screenshot → Stop` 闭环。
+- runtime 生命周期与 Wails UI 解耦，显式 Stop receipt、helper/runtime supervisor 和 native pointer cue 已纳入当前桌面构建。
+
+### Public documentation and privacy
+
+- 更新中英文 README 和 Computer Use 使用说明，明确开发者预览范围及第二显示器、正式签名/公证/分发、跨平台 GUI 的边界。
+- 修正公开使用文档中的旧 `cmd/golang-cc` 入口，统一为 `cmd/go-e2e`。
+- 删除过时的验收报告，清理 tracked test fixtures 中的本机用户路径，并新增公开文档隐私/链接回归。
+
+### Known limitations
+
+- 项目仍处于 `0.x` 快速迭代阶段；正式 Developer ID 签名、公证、clean install/upgrade、第二块物理显示器和部分 permission/helper-fault 生命周期矩阵仍未完成。
+- 运行 Agent 和 Computer Use 需要用户自行配置 Provider、凭据及 macOS Accessibility/Screen Recording 权限。
+
 ## v0.3.4 — 2026-10-13
 
 ### Public release reliability
