@@ -14,6 +14,7 @@ import (
 	"image/png"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/konglong87/go-e2e/internal/anthropic"
 	"github.com/konglong87/go-e2e/internal/computerdiag"
@@ -597,7 +598,16 @@ func (t Tool) control(ctx context.Context, owner cu.SessionOwner, params request
 	if err := fn(); err != nil {
 		return errorResult("control_failed", "computer session control failed")
 	}
-	return tools.Result{Content: marshal(map[string]string{"session_id": params.SessionID, "action": params.Action, "status": "ok"})}
+	payload := map[string]any{"session_id": params.SessionID, "action": params.Action, "status": "ok"}
+	if cu.ActionKind(params.Action) == cu.ActionStop {
+		now := time.Now()
+		payload["receipt"] = cu.ActionReceipt{
+			ActionID: "control-stop-" + params.SessionID, SessionID: params.SessionID,
+			Outcome: cu.OutcomeExecuted, DispatchState: cu.DispatchComplete,
+			Verification: cu.VerificationNotChecked, RedactedActionSummary: "stop", CompletedAt: now,
+		}
+	}
+	return tools.Result{Content: marshal(payload)}
 }
 
 func decode(input json.RawMessage, destination any) error {

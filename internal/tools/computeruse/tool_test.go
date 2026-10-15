@@ -1003,6 +1003,26 @@ func TestAtomicObserveRetainsLaunchReceiptOnBoundCaptureFailure(t *testing.T) {
 	assertSanitizedResult(t, result)
 }
 
+func TestStopReturnsAuthoritativeControlReceipt(t *testing.T) {
+	service := &coordinatingService{serviceStub: screenshotService(t), sessionID: testComputerSession}
+	result := New().Run(context.Background(), json.RawMessage(`{"action":"stop","session_id":"invented-by-model"}`), testContext(service))
+	if result.IsError {
+		t.Fatalf("stop failed: %s", result.Content)
+	}
+	var payload struct {
+		Receipt cu.ActionReceipt `json:"receipt"`
+		Status  string           `json:"status"`
+	}
+	if err := json.Unmarshal([]byte(result.Content), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Status != "ok" || payload.Receipt.SessionID != testComputerSession ||
+		payload.Receipt.ActionID == "" || payload.Receipt.Outcome != cu.OutcomeExecuted ||
+		payload.Receipt.DispatchState != cu.DispatchComplete || payload.Receipt.CompletedAt.IsZero() {
+		t.Fatalf("stop result lost authoritative control receipt: %s", result.Content)
+	}
+}
+
 func TestEveryActionUsesTrustedSessionBindingInsteadOfModelSessionID(t *testing.T) {
 	for _, action := range []string{"observe", "wait", "stop", "pause"} {
 		t.Run(action, func(t *testing.T) {
