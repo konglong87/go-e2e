@@ -134,8 +134,10 @@ type SessionResponse struct {
 // RuntimeStatusResponse is a read-only lifecycle probe for the UI client. It
 // carries no authority and intentionally exposes no model owner or action data.
 type RuntimeStatusResponse struct {
-	ActiveSession bool   `json:"active_session"`
-	SessionID     string `json:"session_id,omitempty"`
+	State         cu.RuntimeState  `json:"state"`
+	Fault         *cu.RuntimeFault `json:"fault,omitempty"`
+	ActiveSession bool             `json:"active_session"`
+	SessionID     string           `json:"session_id,omitempty"`
 }
 
 // RuntimeStatusService is implemented by the long-lived runtime process. The

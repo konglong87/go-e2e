@@ -218,3 +218,31 @@ func TestRuntimeSupervisorMarksUnexpectedWorkerExitAsFaulted(t *testing.T) {
 		t.Fatal("faulted runtime still reported an active session")
 	}
 }
+
+func TestComputerManagerRuntimeStatusSeparatesRecoverableAndTerminalFaults(t *testing.T) {
+	manager, _ := testComputerManager()
+	started, err := manager.start(context.Background(), ComputerSessionStartInput{Approved: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := manager.controller.Session()
+	caps := session.Capabilities()
+	caps.CaptureReadiness = cu.ReadinessPermissionRequired
+	caps.InputReadiness = cu.ReadinessPermissionRequired
+	caps.PermissionState = cu.PermissionRequired
+	if err := session.UpdateCapabilities(caps); err != nil {
+		t.Fatal(err)
+	}
+	status := manager.runtimeStatus()
+	if status.State != cu.RuntimeDegraded || status.Fault == nil || status.Fault.ErrorCode != cu.RuntimeFaultPermissionRevoked || !status.Fault.Recoverable || !status.ActiveSession || status.SessionID != started.ID {
+		t.Fatalf("permission runtime status = %+v", status)
+	}
+
+	if err := session.Stop(session.Owner()); err != nil {
+		t.Fatal(err)
+	}
+	status = manager.runtimeStatus()
+	if status.State != cu.RuntimeReady || status.Fault != nil || status.ActiveSession || status.SessionID != "" {
+		t.Fatalf("stopped runtime status = %+v", status)
+	}
+}

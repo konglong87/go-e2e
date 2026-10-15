@@ -108,20 +108,20 @@ func (p *computerRuntimeProcess) Stop(ctx context.Context) error {
 	}
 	p.stopOnce.Do(func() {
 		stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), computerRuntimeStartWait)
+		var bridgeErr error
 		if p.client != nil {
-			if err := p.client.StopRuntime(stopCtx, computerRuntimeSupervisionOwner); err != nil {
-				cancel()
-				p.stopErr = err
-				return
-			}
+			// The bridge is a control plane, not the process owner. If it is
+			// already gone, fall back to the authenticated process handle and
+			// confirm exit; never leave a worker alive because Stop RPC failed.
+			bridgeErr = p.client.StopRuntime(stopCtx, computerRuntimeSupervisionOwner)
 		}
 		cancel()
 		if err := p.cmd.Process.Signal(os.Interrupt); err != nil && !errors.Is(err, os.ErrProcessDone) {
-			p.stopErr = err
+			p.stopErr = errors.Join(bridgeErr, err)
 			return
 		}
 		if err := p.wait(ctx); err != nil {
-			p.stopErr = err
+			p.stopErr = errors.Join(bridgeErr, err)
 		}
 	})
 	return p.stopErr

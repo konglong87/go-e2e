@@ -630,7 +630,7 @@ func TestClientObservePreservesControlledHostErrorCode(t *testing.T) {
 }
 
 func TestClientRuntimeStatusRoundTrip(t *testing.T) {
-	service := &serverSpy{runtimeActive: true}
+	service := &serverSpy{runtimeActive: true, runtimeState: cu.RuntimeFaulted, runtimeFault: &cu.RuntimeFault{State: cu.RuntimeFaulted, ErrorCode: cu.RuntimeFaultWorkerExited, Recoverable: false, OccurredAt: time.Now()}}
 	listener := listenerTestStart(t, context.Background(), listenerTestRoot(t), service)
 	client, err := NewClient(listener.Config())
 	if err != nil {
@@ -640,7 +640,7 @@ func TestClientRuntimeStatusRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !status.ActiveSession || service.calls != 1 || service.owner != testOwner() {
+	if !status.ActiveSession || status.State != cu.RuntimeFaulted || status.Fault == nil || status.Fault.ErrorCode != cu.RuntimeFaultWorkerExited || service.calls != 1 || service.owner != testOwner() {
 		t.Fatalf("status=%+v calls=%d owner=%+v", status, service.calls, service.owner)
 	}
 }

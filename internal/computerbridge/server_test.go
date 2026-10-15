@@ -19,6 +19,8 @@ type serverSpy struct {
 	receipt          cu.ActionReceipt
 	err              error
 	runtimeActive    bool
+	runtimeState     cu.RuntimeState
+	runtimeFault     *cu.RuntimeFault
 	localSnapshot    SessionSnapshotResponse
 	startApproved    bool
 	runtimeStopOK    bool
@@ -159,7 +161,7 @@ func TestHostHandlerPreservesSanitizedControlledErrorCode(t *testing.T) {
 func (s *serverSpy) RuntimeStatus(_ context.Context, owner cu.SessionOwner) (RuntimeStatusResponse, error) {
 	s.calls++
 	s.owner = owner
-	return RuntimeStatusResponse{ActiveSession: s.runtimeActive}, nil
+	return RuntimeStatusResponse{ActiveSession: s.runtimeActive, State: s.runtimeState, Fault: s.runtimeFault}, nil
 }
 
 func testSessionSnapshot() SessionSnapshotResponse {

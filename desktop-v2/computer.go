@@ -187,6 +187,42 @@ func (m *computerManager) hasActiveSession() bool {
 	return state != cu.SessionStopped && state != cu.SessionFailed
 }
 
+func (m *computerManager) runtimeStatus() cu.RuntimeStatus {
+	status := cu.RuntimeStatus{State: cu.RuntimeReady}
+	if m == nil {
+		return status
+	}
+	m.mu.Lock()
+	controller := m.controller
+	m.mu.Unlock()
+	if controller == nil {
+		return status
+	}
+	session := controller.Session()
+	state := session.State()
+	if state != cu.SessionStopped {
+		status.ActiveSession = state != cu.SessionFailed
+		status.SessionID = session.ID()
+	}
+	switch state {
+	case cu.SessionPaused:
+		status.State = cu.RuntimeDegraded
+		fault := &cu.RuntimeFault{State: status.State, ErrorCode: cu.RuntimeFaultHelperUnavailable, Recoverable: true, SessionID: session.ID(), OccurredAt: time.Now()}
+		if !session.Capabilities().Ready() {
+			fault.ErrorCode = cu.RuntimeFaultPermissionRevoked
+		}
+		status.Fault = fault
+	case cu.SessionFailed:
+		status.State = cu.RuntimeFaulted
+		code := cu.RuntimeFaultHelperUncertain
+		if !session.InputUncertain() {
+			code = cu.RuntimeFaultHelperUnavailable
+		}
+		status.Fault = &cu.RuntimeFault{State: status.State, ErrorCode: code, Recoverable: false, SessionID: session.ID(), OccurredAt: time.Now()}
+	}
+	return status
+}
+
 func (m *computerManager) runtimeContext() context.Context {
 	if m.runtimeCtx != nil {
 		return m.runtimeCtx

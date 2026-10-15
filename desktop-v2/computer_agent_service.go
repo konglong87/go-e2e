@@ -302,7 +302,8 @@ func (s computerAgentService) RuntimeStatus(ctx context.Context, owner cu.Sessio
 	if owner != computerRuntimeSupervisionOwner || s.manager == nil {
 		return computerbridge.RuntimeStatusResponse{}, errComputerAgentUnauthorized
 	}
-	return computerbridge.RuntimeStatusResponse{ActiveSession: s.manager.hasActiveSession(), SessionID: s.manager.activeSessionID()}, nil
+	status := s.manager.runtimeStatus()
+	return computerbridge.RuntimeStatusResponse{State: status.State, Fault: status.Fault, ActiveSession: status.ActiveSession, SessionID: status.SessionID}, nil
 }
 
 func (s computerAgentService) StopRuntime(ctx context.Context, owner cu.SessionOwner) error {

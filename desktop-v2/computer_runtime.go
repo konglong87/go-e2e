@@ -121,7 +121,17 @@ func (r *RuntimeSupervisor) HasActiveSession() bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	status, err := client.RuntimeStatus(ctx, computerRuntimeSupervisionOwner)
-	return err == nil && status.ActiveSession
+	if err == nil {
+		return status.ActiveSession
+	}
+	if fault, ok := r.Fault(); ok && fault.ErrorCode == cu.RuntimeFaultWorkerExited {
+		return false
+	}
+	r.markFault(cu.RuntimeFault{ErrorCode: cu.RuntimeFaultBridgeDisconnected, Recoverable: false})
+	// A disconnected control plane cannot prove that input authority is gone.
+	// Fail closed for window-close protection; explicit RuntimeSupervisor.Stop
+	// still has the process-handle fallback.
+	return true
 }
 
 func (r *RuntimeSupervisor) EventBus() *cu.EventBus {

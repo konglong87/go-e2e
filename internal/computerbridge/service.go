@@ -216,6 +216,9 @@ func (c *Client) RuntimeStatus(ctx context.Context, owner cu.SessionOwner) (Runt
 	if err := c.data(ctx, Request{Op: OpRuntimeStatus, Owner: owner}, &out); err != nil {
 		return RuntimeStatusResponse{}, err
 	}
+	if !out.State.Valid() || (out.Fault != nil && (!out.Fault.State.Valid() || out.Fault.State != out.State)) {
+		return RuntimeStatusResponse{}, ErrInvalidResponse
+	}
 	return out, nil
 }
 
