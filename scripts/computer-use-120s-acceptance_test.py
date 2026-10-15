@@ -142,6 +142,19 @@ class WrapperUnitTests(unittest.TestCase):
         self.assertEqual((server.desktop_pid, server.server_pid, server.port), (100, 101, 12345))
         self.assertEqual(server.token, "synthetic-token")
 
+    def test_server_discovery_ignores_runtime_process_when_selecting_host(self):
+        workspace = Path("/fixture/workspace")
+        host = str(workspace / "desktop-v2/build/bin/go-e2e.app/Contents/MacOS/go-e2e-desktop")
+        service = str(workspace / "desktop-v2/build/bin/go-e2e.app/Contents/MacOS/go-e2e")
+        rows = (
+            f"100 1 {host}\n"
+            f"200 100 {host} --computer-runtime-process --computer-runtime-data-dir /private/runtime\n"
+            f"201 100 {service} server --desktop-local --port 12345 --auth-token synthetic-token\n"
+        )
+        with mock.patch.object(MODULE.subprocess, "check_output", return_value=rows):
+            server = MODULE.find_local_server(workspace)
+        self.assertEqual((server.desktop_pid, server.server_pid, server.port), (100, 201, 12345))
+
     def test_rfc3339nano_fraction_widths_are_valid_on_older_python(self):
         expected = MODULE.parse_iso("2026-10-08T05:11:07.391210Z")
         self.assertEqual(MODULE.parse_iso("2026-10-08T05:11:07.39121Z"), expected)
