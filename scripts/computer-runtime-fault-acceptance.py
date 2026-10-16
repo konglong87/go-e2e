@@ -43,7 +43,7 @@ def process_rows():
 def helper_pids():
     return [
         pid for pid, _, command in process_rows()
-        if command.endswith("/ComputerHelper.app/Contents/MacOS/computer-helper-macos")
+        if "/ComputerHelper.app/Contents/MacOS/computer-helper-macos" in command
     ]
 
 
