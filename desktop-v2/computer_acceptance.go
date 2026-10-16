@@ -192,6 +192,11 @@ func dispatchAcceptance(hostCtx, ctx context.Context, m *computerManager, r acce
 	switch r.Op {
 	case "capabilities":
 		return m.capabilities(hostCtx)
+	case "runtime_status":
+		if m.remote != nil {
+			return m.remote.RuntimeStatus(ctx, computerRuntimeSupervisionOwner)
+		}
+		return m.runtimeStatus(), nil
 	case "runtime_stop":
 		if err := m.stopRuntime(ctx); err != nil {
 			return nil, err

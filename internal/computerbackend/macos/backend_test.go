@@ -860,3 +860,14 @@ func TestTargetWindowSizeMismatchPreservesWindowGuardWithoutQuarantine(t *testin
 		t.Fatal("target window guard quarantined a healthy helper")
 	}
 }
+
+func TestBackendRuntimeFaultCodeReportsOnlyQuarantine(t *testing.T) {
+	backend := &Backend{}
+	if got := backend.RuntimeFaultCode(); got != "" {
+		t.Fatalf("healthy backend runtime fault = %q, want empty", got)
+	}
+	backend.failed = true
+	if got := backend.RuntimeFaultCode(); got != cu.ErrorCodeHelperUnavailable {
+		t.Fatalf("quarantined backend runtime fault = %q, want %q", got, cu.ErrorCodeHelperUnavailable)
+	}
+}

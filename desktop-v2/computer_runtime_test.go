@@ -307,3 +307,32 @@ func TestComputerRuntimeProcessStopEscalatesAfterInterruptTimeout(t *testing.T) 
 		t.Fatal("runtime process remained alive after Stop escalation")
 	}
 }
+
+type runtimeFaultReportingBackend struct {
+	*cu.FakeBackend
+	code string
+}
+
+func (b *runtimeFaultReportingBackend) RuntimeFaultCode() string { return b.code }
+
+func TestComputerManagerRuntimeStatusReportsQuarantinedHelperFault(t *testing.T) {
+	manager, _ := testComputerManager()
+	backend := &runtimeFaultReportingBackend{FakeBackend: &cu.FakeBackend{CapabilitiesValue: cu.Capabilities{
+		ProtocolVersion: cu.ProtocolVersion, Platform: cu.PlatformMacOS, Backend: cu.BackendNativeHost,
+		CaptureReadiness: cu.ReadinessReady, InputReadiness: cu.ReadinessReady,
+		PermissionState: cu.PermissionApproved,
+		CoordinateSpace: cu.CoordinateSpace{Origin: cu.OriginTopLeft, Unit: cu.CoordinatePixels},
+	}}, code: cu.ErrorCodeHelperUnavailable}
+	manager.factory = func(context.Context) (cu.Backend, error) { return backend, nil }
+	started, err := manager.start(context.Background(), ComputerSessionStartInput{Approved: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.controller.Session().Pause(); err != nil {
+		t.Fatal(err)
+	}
+	status := manager.runtimeStatus()
+	if status.State != cu.RuntimeDegraded || status.Fault == nil || status.Fault.ErrorCode != cu.RuntimeFaultHelperUnavailable || !status.Fault.Recoverable || status.SessionID != started.ID {
+		t.Fatalf("quarantined helper status = %+v", status)
+	}
+}

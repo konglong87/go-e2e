@@ -444,6 +444,18 @@ func (b *Backend) hostInputAllowed() bool {
 	return inputAllowed
 }
 
+// RuntimeFaultCode reports only the stable helper lifecycle state needed by
+// the long-lived runtime supervisor. It is intentionally read-only and
+// redacted; native error text remains inside diagnostics.
+func (b *Backend) RuntimeFaultCode() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.failed {
+		return cu.ErrorCodeHelperUnavailable
+	}
+	return ""
+}
+
 func (b *Backend) Capabilities(ctx context.Context) (cu.Capabilities, error) {
 	b.mu.Lock()
 	closed, failed := b.closed, b.failed

@@ -105,7 +105,7 @@ def main():
     p.add_argument("--socket", type=Path, default=DEFAULT_SOCKET)
     p.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     p.add_argument("--label", default=None)
-    p.add_argument("op", choices=["start", "capabilities", "observe", "step", "pause", "resume", "stop", "snapshot"])
+    p.add_argument("op", choices=["start", "capabilities", "runtime_status", "observe", "step", "pause", "resume", "stop", "snapshot"])
     p.add_argument("action", nargs="?", help="Structured native Action JSON for step")
     args = p.parse_args()
     d = Driver(args.socket, args.output)
@@ -115,6 +115,8 @@ def main():
         result = d.require(d.call("capabilities"))
     elif args.op == "observe":
         result = d.observe(args.label)
+    elif args.op == "runtime_status":
+        result = d.require(d.call("runtime_status"))
     elif args.op == "step":
         if not args.action:
             p.error("step requires Action JSON")

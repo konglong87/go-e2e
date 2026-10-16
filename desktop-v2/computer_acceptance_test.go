@@ -69,6 +69,9 @@ func TestAcceptanceRequestBoundary(t *testing.T) {
 	if r := acceptanceCall(h, `{"op":"start"}`, true); !strings.Contains(r.Body.String(), "explicit acceptance session approval required") {
 		t.Fatal(r.Body.String())
 	}
+	if r := acceptanceCall(h, `{"op":"runtime_status"}`, true); r.Code != http.StatusOK {
+		t.Fatalf("runtime status code = %d body=%s", r.Code, r.Body.String())
+	}
 	if m.controller != nil {
 		t.Fatal("unapproved controller created")
 	}

@@ -193,7 +193,7 @@ func (m *computerManager) runtimeStatus() cu.RuntimeStatus {
 		return status
 	}
 	m.mu.Lock()
-	controller := m.controller
+	controller, backend := m.controller, m.backend
 	m.mu.Unlock()
 	if controller == nil {
 		return status
@@ -208,14 +208,21 @@ func (m *computerManager) runtimeStatus() cu.RuntimeStatus {
 	case cu.SessionPaused:
 		status.State = cu.RuntimeDegraded
 		// A user-requested Pause is a normal control state, not a helper fault.
-		// Only a readiness regression is a lifecycle fault visible at this
-		// boundary; helper transport details remain on the turn/error path.
-		if caps := session.Capabilities(); !caps.Ready() {
-			code := cu.RuntimeFaultPermissionRevoked
-			if caps.ReadinessErrorCode() != cu.ErrorCodePermissionRequired {
-				code = cu.RuntimeFaultHelperUnavailable
+		// A quarantined backend reports a stable helper fault without requiring
+		// a new IPC probe or changing authority.
+		if reporter, ok := backend.(cu.BackendFaultReporter); ok {
+			if code := cu.PublicErrorCode(reporter.RuntimeFaultCode()); code == cu.ErrorCodeHelperUnavailable {
+				status.Fault = &cu.RuntimeFault{State: status.State, ErrorCode: code, Recoverable: true, SessionID: session.ID(), OccurredAt: time.Now()}
 			}
-			status.Fault = &cu.RuntimeFault{State: status.State, ErrorCode: code, Recoverable: true, SessionID: session.ID(), OccurredAt: time.Now()}
+		}
+		if status.Fault == nil {
+			if caps := session.Capabilities(); !caps.Ready() {
+				code := cu.RuntimeFaultPermissionRevoked
+				if caps.ReadinessErrorCode() != cu.ErrorCodePermissionRequired {
+					code = cu.RuntimeFaultHelperUnavailable
+				}
+				status.Fault = &cu.RuntimeFault{State: status.State, ErrorCode: code, Recoverable: true, SessionID: session.ID(), OccurredAt: time.Now()}
+			}
 		}
 	case cu.SessionFailed:
 		status.State = cu.RuntimeFaulted
