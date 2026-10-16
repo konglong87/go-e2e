@@ -1,12 +1,14 @@
 # Computer Use functional parity — implementation ledger
 
-## Current ordered queue — 2026-10-15
+## Current ordered queue — 2026-10-16
 
 ### Current public status
 
 The core Computer Use runtime and the current macOS single-display model closure are
 complete for Developer Preview use. The latest tagged desktop build passed the
-focused/race/Python/native/helper/build/codesign gates and one fresh
+focused/race/Python/native/helper/build/codesign gates. On 2026-10-16 the local
+Mac completed live helper-kill fault acceptance and Retina pointer screenshot
+acceptance without sending model input. The existing fresh
 `gpt-6-sol/high` run completed `launch → click → Command+A → type → send → wait →
 reply screenshot → Stop` in one build/session/run. The local screenshot and JSON
 evidence are intentionally ignored and are not committed to the public repository.
@@ -30,7 +32,12 @@ history is in `docs/plans/2026-10-08-computer-use-stability.md`.
 | P0 | Native activation/launch ambiguity audit | Typed activation now distinguishes read-only failure from possible AX effects; no ambiguous raise is retried and original PID/bundle/window identity is carried across recovery. Native unknown/lost-ACK launch remains unknown and quarantines the helper. AX inspection records only the exact read stage, raw AXError, attribute name, and CF type ID; the WorkBuddy AX-geometry incompatibility now has a strict exact-Window-Server fallback with no replay. Current official build deterministic launch/observation/PNG/Stop smoke passed; no input was sent. |
 | P0 | Current-build automated/native gates | Closed for the current macOS build. Focused Go/race, Python acceptance, native safety/platform, helper build, tagged official build and strict codesign passed. |
 | P0 | Fresh gpt-6-sol/high closure after all deterministic gates | Closed on 2026-10-15 for the current macOS single-display Developer Preview. One fresh build/session/run completed launch → click → Command+A → type → send once → wait once → real reply screenshot → model Stop; all receipts were executed/complete and no input was replayed. |
-| P1 | Historical native control/display follow-ups | Unchanged; do not promote old screenshots to current evidence. |
+| P1 | Stop convergence after caller timeout | Completed in `cb82080`: Stop is retryable, performs bounded graceful shutdown, then SIGKILL fallback and final exit confirmation. Regression and race tests pass. |
+| P1 | Live helper/bridge fault acceptance | Completed in `64c05c9`/`4caaa41`: current tagged desktop build killed the exact bundled helper, returned explicit post-kill error, reported degraded `helper_unavailable`, stopped the session/runtime, and left no helper process. No input action was sent. |
+| P1 | Retina pointer screenshot acceptance | Completed on 2026-10-16: real AppKit pointer overlay screenshot and geometry passed on the built-in Retina display (`2704×1756`, scale `2`); evidence is under ignored `desktop-v2/build/validation/20261016/pointer-acceptance/`. |
+| P1 | ScreenCaptureKit migration | Implemented in `fb19bcf`: ScreenCaptureKit is preferred on macOS 14+, with exact geometry/size checks and the existing Window Server path retained as a bounded compatibility fallback. Native safety/platform and tagged helper build pass. |
+| P1 | Native diagnostics privacy | Completed in `8b26c23`: native diagnostics are silent by default and only enabled through an owner-only explicit path; no unconditional `/tmp/swift-mismatch.log` remains. |
+| P1 | Historical native control/display follow-ups | Second physical display remains hardware-deferred; formal signing/distribution remains user-deferred. Do not promote old screenshots to current evidence. |
 
 `model-ca023a7-final-01` completed click/hotkey/type/send once/wait once and model
 Stop on the requested route. Native wait completed with a screenshot, but its
@@ -40,6 +47,32 @@ visually inspected and shows the target preparing execution, **not a reply**.
 This run is a failure, not a closure pass. Concurrent community/documentation
 work is outside this task's write set and must never be included in its commits.
 
+
+### Phase update — local macOS reliability hardening — 2026-10-16
+
+The local macOS hardening pass is complete for the current single-display Developer
+Preview. Runtime Stop now converges even when the caller deadline expires: the
+parent retries Stop, waits through a bounded graceful phase, escalates to SIGKILL
+only when necessary, and confirms process exit. A later explicit Stop can retry
+after an earlier timeout; no receipt or replay policy is changed.
+
+The acceptance adapter now exposes a read-only `runtime_status` probe and a
+deterministic live fault script. On the current tagged desktop build, the exact
+bundled `ComputerHelper` was terminated after a real observation. The next
+observe returned an explicit error, runtime status became degraded with
+`helper_unavailable`, the session Stop and runtime Stop both converged, and no
+input action was sent.
+
+macOS capture now prefers ScreenCaptureKit on macOS 14+ while retaining the old
+Window Server capture as a bounded fallback. Existing target/window/focus/size
+checks remain in Engine before and after capture. The real Retina pointer gate
+passed with a `2704×1756` pixel capture, scale factor `2`, and verified AppKit
+coordinate conversion. Native diagnostics are now opt-in through an owner-only
+path and do not create an unconditional `/tmp` log.
+
+Verification: focused Go/race tests, native 313/469 assertions, helper build,
+tagged desktop build, strict codesign, live helper-kill fault acceptance, and
+real pointer screenshots. No fresh model retry was performed.
 
 ### Phase update — P0 runtime fault lifecycle matrix — 2026-10-15
 
