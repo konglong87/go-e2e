@@ -20,6 +20,7 @@ swiftc -O \
   -framework CoreGraphics \
   -framework Foundation \
   -framework ImageIO \
+  -framework ScreenCaptureKit \
   -framework UniformTypeIdentifiers \
   "$ROOT_DIR/native/macos/Protocol.swift" \
   "$ROOT_DIR/native/macos/Diagnostics.swift" \

@@ -3,6 +3,7 @@ import ApplicationServices
 import Carbon.HIToolbox
 import CoreGraphics
 import ImageIO
+import ScreenCaptureKit
 import UniformTypeIdentifiers
 
 protocol DesktopPlatform {
@@ -216,7 +217,7 @@ struct MacDesktop: DesktopPlatform {
         do {
             if let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first {
                 willDispatch()
-                _ = running.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+                _ = running.activate(options: [.activateAllWindows])
             } else {
                 guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
                     throw SafetyError.launchFailed
@@ -397,17 +398,95 @@ struct MacDesktop: DesktopPlatform {
     func capture(_ geometry: DisplayGeometry) throws -> Data {
         guard captureAllowed() else { throw SafetyError.screenshotFailed }
         let image: CGImage?
-        if let windowID = geometry.windowID, let number = UInt32(windowID) {
-            image = CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(number), [.bestResolution, .boundsIgnoreFraming])
-        } else if let displayID = UInt32(geometry.id) {
-            image = CGDisplayCreateImage(displayID)
-        } else { image = nil }
+        if #available(macOS 14.0, *) {
+            do {
+                image = try screenCaptureKitImage(geometry)
+            } catch {
+                // Keep the existing Window Server path as a bounded compatibility
+                // fallback. Safety validation happens before and after capture in
+                // Engine, so switching capture APIs never widens target authority.
+                diagnostic(["phase": "screen_capture_kit_fallback", "window_id": geometry.windowID ?? "", "display_id": geometry.id])
+                image = legacyCaptureImage(geometry)
+            }
+        } else {
+            image = legacyCaptureImage(geometry)
+        }
         guard let image, image.width == geometry.width, image.height == geometry.height else { throw SafetyError.screenshotFailed }
         let data = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil) else { throw SafetyError.screenshotFailed }
         CGImageDestinationAddImage(destination, image, nil)
         guard CGImageDestinationFinalize(destination), data.length <= maxPNGBytes else { throw SafetyError.screenshotFailed }
         return data as Data
+    }
+
+    @available(macOS 14.0, *)
+    private func screenCaptureKitImage(_ geometry: DisplayGeometry) throws -> CGImage {
+        final class CaptureResult: @unchecked Sendable {
+            private let lock = NSLock()
+            private var image: CGImage?
+            private var error: Error?
+
+            func setImage(_ value: CGImage) {
+                lock.lock()
+                image = value
+                lock.unlock()
+            }
+
+            func setError(_ value: Error) {
+                lock.lock()
+                error = value
+                lock.unlock()
+            }
+
+            func snapshot() -> (CGImage?, Error?) {
+                lock.lock()
+                defer { lock.unlock() }
+                return (image, error)
+            }
+        }
+        let result = CaptureResult()
+        let completed = DispatchSemaphore(value: 0)
+        Task {
+            do {
+                let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+                let filter: SCContentFilter
+                if let windowID = geometry.windowID, let number = UInt32(windowID) {
+                    guard let window = content.windows.first(where: { $0.windowID == CGWindowID(number) }) else {
+                        throw SafetyError.unsupportedDisplay
+                    }
+                    filter = SCContentFilter(desktopIndependentWindow: window)
+                } else if let displayID = UInt32(geometry.id),
+                          let display = content.displays.first(where: { $0.displayID == CGDirectDisplayID(displayID) }) {
+                    filter = SCContentFilter(display: display, excludingWindows: [])
+                } else {
+                    throw SafetyError.unsupportedDisplay
+                }
+                let configuration = SCStreamConfiguration()
+                configuration.width = geometry.width
+                configuration.height = geometry.height
+                configuration.showsCursor = false
+                let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
+                result.setImage(image)
+            } catch {
+                result.setError(error)
+            }
+            completed.signal()
+        }
+        guard completed.wait(timeout: .now() + 5) == .success else { throw SafetyError.screenshotFailed }
+        let (image, error) = result.snapshot()
+        if let image { return image }
+        if let error { throw error }
+        throw SafetyError.screenshotFailed
+    }
+
+    private func legacyCaptureImage(_ geometry: DisplayGeometry) -> CGImage? {
+        if let windowID = geometry.windowID, let number = UInt32(windowID) {
+            return CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(number), [.bestResolution, .boundsIgnoreFraming])
+        }
+        if let displayID = UInt32(geometry.id) {
+            return CGDisplayCreateImage(displayID)
+        }
+        return nil
     }
     func post(_ operation: InputOperation) throws {
         switch operation {
