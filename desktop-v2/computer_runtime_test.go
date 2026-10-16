@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -270,5 +272,38 @@ func TestNewProcessComputerRuntimeNilFailsClosed(t *testing.T) {
 	fault, ok := runtime.Fault()
 	if !ok || fault.ErrorCode != cu.RuntimeFaultHelperUnavailable || fault.Recoverable {
 		t.Fatalf("nil process fault = %+v ok=%t", fault, ok)
+	}
+}
+
+func TestRuntimeStopFixture(t *testing.T) {
+	if os.Getenv("GO_E2E_RUNTIME_STOP_FIXTURE") != "1" {
+		return
+	}
+	signal.Ignore(os.Interrupt)
+	select {}
+}
+
+func TestComputerRuntimeProcessStopEscalatesAfterInterruptTimeout(t *testing.T) {
+	cmd := exec.Command(os.Args[0], "-test.run=^TestRuntimeStopFixture$", "-test.v")
+	cmd.Env = append(os.Environ(), "GO_E2E_RUNTIME_STOP_FIXTURE=1")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	process := &computerRuntimeProcess{
+		cmd:      cmd,
+		done:     make(chan error, 1),
+		exitDone: make(chan struct{}),
+	}
+	go func() { process.done <- cmd.Wait() }()
+	process.startWaitMonitor()
+	defer func() { _ = process.Stop(context.Background()) }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if err := process.Stop(ctx); err != nil {
+		t.Fatalf("Stop() error = %v, want bounded escalation to converge", err)
+	}
+	if !process.exited() {
+		t.Fatal("runtime process remained alive after Stop escalation")
 	}
 }

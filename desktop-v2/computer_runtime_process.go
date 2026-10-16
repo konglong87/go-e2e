@@ -27,6 +27,8 @@ const (
 	computerRuntimeConfigFD    = 3
 	computerRuntimeProtocol    = "computer-runtime.v1"
 	computerRuntimeStartWait   = 15 * time.Second
+	computerRuntimeStopGrace   = 2 * time.Second
+	computerRuntimeKillGrace   = 500 * time.Millisecond
 )
 
 type computerRuntimeHandshake struct {
@@ -48,8 +50,8 @@ type computerRuntimeProcess struct {
 	exitMu          sync.Mutex
 	exitErr         error
 
-	stopOnce sync.Once
-	stopErr  error
+	stopMu  sync.Mutex
+	stopErr error
 }
 
 func (p *computerRuntimeProcess) Config() computerbridge.Config {
@@ -106,25 +108,84 @@ func (p *computerRuntimeProcess) Stop(ctx context.Context) error {
 	if p == nil || p.cmd == nil || p.cmd.Process == nil {
 		return nil
 	}
-	p.stopOnce.Do(func() {
-		stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), computerRuntimeStartWait)
-		var bridgeErr error
-		if p.client != nil {
-			// The bridge is a control plane, not the process owner. If it is
-			// already gone, fall back to the authenticated process handle and
-			// confirm exit; never leave a worker alive because Stop RPC failed.
-			bridgeErr = p.client.StopRuntime(stopCtx, computerRuntimeSupervisionOwner)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	// Stop is serialized, but it is intentionally not one-shot. A caller can
+	// time out while the worker is still draining; a later explicit Stop must
+	// be able to retry and converge instead of being blocked by a cached error.
+	p.stopMu.Lock()
+	defer p.stopMu.Unlock()
+
+	if p.exited() {
+		return nil
+	}
+
+	var bridgeErr error
+	stopCtx, cancel := context.WithTimeout(context.Background(), computerRuntimeStopGrace)
+	if p.client != nil {
+		// The bridge is a control plane, not the process owner. If it is
+		// already gone, fall back to the authenticated process handle and
+		// confirm exit; never leave a worker alive because Stop RPC failed.
+		bridgeErr = p.client.StopRuntime(stopCtx, computerRuntimeSupervisionOwner)
+	}
+	cancel()
+
+	// The process handle is authoritative for teardown. Do not let a short
+	// caller deadline prevent the bounded native shutdown and final kill.
+	interruptErr := p.cmd.Process.Signal(os.Interrupt)
+	if interruptErr != nil && !errors.Is(interruptErr, os.ErrProcessDone) {
+		if p.waitWithGrace(computerRuntimeKillGrace); p.exited() {
+			return nil
 		}
-		cancel()
-		if err := p.cmd.Process.Signal(os.Interrupt); err != nil && !errors.Is(err, os.ErrProcessDone) {
-			p.stopErr = errors.Join(bridgeErr, err)
-			return
+		return errors.Join(bridgeErr, interruptErr)
+	}
+	if p.waitWithGrace(computerRuntimeStopGrace); p.exited() {
+		return nil
+	}
+
+	// A runtime that ignores or fails to process SIGINT must not survive an
+	// explicit Stop. SIGKILL is used only after the graceful bounded phase;
+	// it never changes an already-recorded action receipt or authorizes replay.
+	killErr := p.cmd.Process.Kill()
+	if killErr != nil && !errors.Is(killErr, os.ErrProcessDone) {
+		if p.waitWithGrace(computerRuntimeKillGrace); p.exited() {
+			return nil
 		}
-		if err := p.wait(ctx); err != nil {
-			p.stopErr = errors.Join(bridgeErr, err)
-		}
-	})
-	return p.stopErr
+		return errors.Join(bridgeErr, killErr)
+	}
+	if waitErr := p.waitWithGrace(computerRuntimeKillGrace); !p.exited() {
+		return errors.Join(bridgeErr, waitErr)
+	}
+	return nil
+}
+
+func (p *computerRuntimeProcess) exited() bool {
+	if p == nil || p.exitDone == nil {
+		return true
+	}
+	select {
+	case <-p.exitDone:
+		return true
+	default:
+		return false
+	}
+}
+
+func (p *computerRuntimeProcess) exitError() error {
+	if p == nil {
+		return nil
+	}
+	p.exitMu.Lock()
+	defer p.exitMu.Unlock()
+	return p.exitErr
+}
+
+func (p *computerRuntimeProcess) waitWithGrace(grace time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), grace)
+	defer cancel()
+	return p.wait(ctx)
 }
 
 func normalizeRuntimeProcessExit(err error) error {
