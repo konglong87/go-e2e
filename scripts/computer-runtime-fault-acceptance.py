@@ -13,6 +13,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import shlex
 import subprocess
 import time
 
@@ -22,6 +23,8 @@ DRIVER = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(DRIVER)
 
 FAULT_CODES = {"helper_unavailable", "helper_outcome_uncertain", "worker_exited"}
+EXPECTED_HELPER = (Path(__file__).resolve().parents[1] /
+                   "desktop-v2/build/bin/go-e2e.app/Contents/Helpers/ComputerHelper.app/Contents/MacOS/computer-helper-macos")
 
 
 def process_rows():
@@ -41,10 +44,16 @@ def process_rows():
 
 
 def helper_pids():
-    return [
-        pid for pid, _, command in process_rows()
-        if "/ComputerHelper.app/Contents/MacOS/computer-helper-macos" in command
-    ]
+    expected = str(EXPECTED_HELPER.resolve())
+    matches = []
+    for pid, _, command in process_rows():
+        try:
+            executable = str(Path(shlex.split(command)[0]).resolve())
+        except (IndexError, ValueError):
+            continue
+        if executable == expected:
+            matches.append(pid)
+    return matches
 
 
 def wait_until(predicate, timeout=8.0, interval=0.1):

@@ -1,5 +1,6 @@
 import Foundation
 import CoreGraphics
+import Darwin
 
 let workBuddyAppName = "WorkBuddy"
 let workBuddyBundleID = "com.workbuddy.workbuddy"
@@ -1020,6 +1021,24 @@ do {
         failureStage: "application.windows.values", failureAttribute: "AXWindows", actionMayHaveRun: true)
     expect(!AccessibilityWindowFallbackPolicy.allowsExactWindowServerFallback(unknownFailure),
            "already-dispatched AX uncertainty never falls back or replays")
+}
+
+
+// Explicit diagnostics must never follow a symlink to an unrelated file.
+do {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("go-e2e-diagnostics-")
+        .appendingPathComponent(UUID().uuidString)
+    let target = root.appendingPathComponent("target.log")
+    let link = root.appendingPathComponent("diagnostics.log")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true,
+                                            attributes: [.posixPermissions: 0o700])
+    try Data("sentinel\n".utf8).write(to: target, options: .atomic)
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
+    setenv("GO_E2E_COMPUTER_DIAGNOSTICS_PATH", link.path, 1)
+    NativeDiagnostics.append(["phase": "symlink-regression"])
+    let contents = try String(contentsOf: target, encoding: .utf8)
+    expect(contents == "sentinel\n", "diagnostics reject symlink destinations")
+    try? FileManager.default.removeItem(at: root)
 }
 
 print("PASS: \(assertions) native safety assertions (fake platform; no real input/capture)")

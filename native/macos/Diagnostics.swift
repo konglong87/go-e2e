@@ -13,15 +13,32 @@ enum NativeDiagnostics {
     private static let path: String? = {
         guard let raw = ProcessInfo.processInfo.environment["GO_E2E_COMPUTER_DIAGNOSTICS_PATH"],
               raw.hasPrefix("/"), !raw.contains("\0") else { return nil }
-        let url = URL(fileURLWithPath: raw)
-        let parent = url.deletingLastPathComponent().path
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: parent),
-              let permissions = attributes[.posixPermissions] as? NSNumber,
-              permissions.intValue & 0o077 == 0,
-              let owner = attributes[.ownerAccountID] as? NSNumber,
-              owner.uintValue == getuid() else { return nil }
+        let url = URL(fileURLWithPath: raw).standardizedFileURL
+        let parentURL = url.deletingLastPathComponent()
+        let parent = parentURL.path
+        // Reject symlinked parent components as well as a symlink at the output
+        // path. Diagnostics must never be redirected to an unrelated file.
+        guard parentURL.resolvingSymlinksInPath().standardizedFileURL.path == parent,
+              ownerOnlyDirectory(parent) else { return nil }
+
+        var existing = stat()
+        let result = url.path.withCString { lstat($0, &existing) }
+        if result == 0 {
+            guard (existing.st_mode & S_IFMT) == S_IFREG,
+                  existing.st_uid == getuid(),
+                  (existing.st_mode & 0o077) == 0 else { return nil }
+        } else if errno != ENOENT {
+            return nil
+        }
         return url.path
     }()
+
+    private static func ownerOnlyDirectory(_ path: String) -> Bool {
+        var info = stat()
+        guard path.withCString({ lstat($0, &info) }) == 0 else { return false }
+        return (info.st_mode & S_IFMT) == S_IFDIR &&
+            info.st_uid == getuid() && (info.st_mode & 0o077) == 0
+    }
     private static let lock = NSLock()
     private static let formatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
