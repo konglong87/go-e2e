@@ -612,5 +612,32 @@ class DesktopBuildCodeSignatureTests(unittest.TestCase):
         self.assertIn(helper_rm, helper_script)
         self.assertLess(helper_script.index(helper_rm), helper_script.index(helper_compile))
 
+
+class NativeDisplayPreflightTests(unittest.TestCase):
+    def test_display_preflight_rejects_sleeping_display(self):
+        state = MODULE.parse_display_preflight("""
+Graphics/Displays:
+
+    Apple M4:
+      Displays:
+        Color LCD:
+          Online: Yes
+          Display Asleep: Yes
+""")
+        self.assertEqual(state["display_state"], "asleep")
+        self.assertFalse(state["ready"])
+
+    def test_display_preflight_accepts_awake_online_display(self):
+        state = MODULE.parse_display_preflight("""
+Graphics/Displays:
+
+    Apple M4:
+      Displays:
+        Color LCD:
+          Online: Yes
+""")
+        self.assertEqual(state["display_state"], "awake")
+        self.assertTrue(state["ready"])
+
 if __name__ == "__main__":
     unittest.main()

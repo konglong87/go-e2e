@@ -386,6 +386,76 @@ def application_process_ids(app_path: Path, bundle_id: str, process_listing: Opt
         raise AcceptanceError("initial_state", "cannot attest registered target process state") from exc
 
 
+
+def parse_display_preflight(raw: str) -> dict[str, Any]:
+    """Parse system_profiler display state without retaining private output."""
+    online = len(re.findall(r"^\s*Online:\s*Yes\s*$", raw, re.MULTILINE))
+    asleep = len(re.findall(r"^\s*Display Asleep:\s*Yes\s*$", raw, re.MULTILINE))
+    if online == 0:
+        state = "unavailable"
+    elif asleep == 0:
+        state = "awake"
+    elif asleep < online:
+        state = "mixed"
+    else:
+        state = "asleep"
+    return {
+        "ready": state == "awake",
+        "display_state": state,
+        "online_display_count": online,
+        "asleep_display_count": asleep,
+    }
+
+
+def native_preflight(evidence: Evidence, app_path: Path, desktop_pid: int) -> dict[str, Any]:
+    """Fail before model/session creation when macOS cannot capture the desktop."""
+    if desktop_pid <= 0:
+        return {"skipped": True, "reason": "desktop_pid_not_supplied"}
+    try:
+        raw = subprocess.check_output(
+            ["system_profiler", "SPDisplaysDataType"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise AcceptanceError("native_preflight", "display probe failed") from exc
+    state = parse_display_preflight(raw)
+    state.update({"captured_at": iso_now(), "source": "system_profiler_display_state"})
+    evidence.json("native-preflight.json", state)
+    if not state["ready"]:
+        code = {
+            "asleep": "display_asleep",
+            "mixed": "display_state_mixed",
+            "unavailable": "display_unavailable",
+        }.get(state["display_state"], "display_unavailable")
+        raise AcceptanceError("native_preflight", f"{code}: wake and unlock the display before acceptance")
+
+    try:
+        rows = subprocess.check_output(
+            ["ps", "-axo", "pid=,ppid=,command="], text=True,
+        ).splitlines()
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise AcceptanceError("native_preflight", "runtime process probe failed") from exc
+    expected = str((app_path / "Contents/MacOS/go-e2e-desktop").resolve())
+    stale: list[dict[str, Any]] = []
+    for row in rows:
+        fields = row.split(None, 2)
+        if len(fields) != 3:
+            continue
+        try:
+            pid, ppid = int(fields[0]), int(fields[1])
+            executable = str(Path(shlex.split(fields[2])[0]).resolve())
+        except (ValueError, IndexError):
+            continue
+        if executable == expected and "--computer-runtime-process" in fields[2] and ppid != desktop_pid:
+            stale.append({"pid": pid, "ppid": ppid})
+    state["stale_runtime_processes"] = stale
+    evidence.json("native-preflight.json", state)
+    if stale:
+        raise AcceptanceError("native_preflight", "stale_runtime_process: stop the old desktop runtime before acceptance")
+    return state
+
+
 def source_commit(workspace: Path) -> str:
     try:
         return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=workspace, text=True, stderr=subprocess.DEVNULL).strip()
@@ -1123,6 +1193,7 @@ def run_acceptance(
     poll_interval: float = DEFAULT_POLL_INTERVAL_SECONDS,
     observe_only: bool = False,
     target_app_path: Path = DEFAULT_TARGET_APP_PATH,
+    desktop_pid: int = 0,
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
 ) -> dict[str, Any]:
@@ -1187,6 +1258,7 @@ def run_acceptance(
                   "无论成功失败，最后 action=stop。不要预打开应用，不使用任何其他工具。")
 
     try:
+        native_preflight(evidence, app_path, desktop_pid)
         initial_pids = application_process_ids(target_app_path, TARGET_BUNDLE_ID)
         initial_target_state = {
             "checked_at": iso_now(), "source": "public bundle executable + exact process command path",
@@ -1474,6 +1546,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 poll_interval=args.poll_interval,
                 observe_only=args.observe_only,
                 target_app_path=args.target_app,
+                desktop_pid=server.desktop_pid,
             )
         finally:
             monitor.stop()
