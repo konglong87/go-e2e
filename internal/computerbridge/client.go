@@ -32,8 +32,9 @@ type Config struct {
 // authority, background work, reconnect loop, redirects or automatic retries.
 // The host owns session lifecycle and serializes input independently of Stop.
 type Client struct {
-	http  *http.Client
-	token string
+	http       *http.Client
+	token      string
+	socketPath string
 }
 
 // remoteOperationError keeps a stable, public host error code across the IPC
@@ -73,11 +74,20 @@ func NewClient(cfg Config) (*Client, error) {
 		ResponseHeaderTimeout:  cfg.RequestTimeout,
 		MaxResponseHeaderBytes: maxHeaderBytes,
 	}
-	return &Client{token: cfg.Token, http: &http.Client{
+	return &Client{token: cfg.Token, socketPath: cfg.SocketPath, http: &http.Client{
 		Transport:     transport,
 		Timeout:       cfg.RequestTimeout,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}}, nil
+}
+
+// SocketPath is a read-only local endpoint identity. It contains no token and
+// is used only by the desktop owner for bounded acceptance/fallback cleanup.
+func (c *Client) SocketPath() string {
+	if c == nil {
+		return ""
+	}
+	return c.socketPath
 }
 
 func validToken(token string) bool {

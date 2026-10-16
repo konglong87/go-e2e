@@ -97,19 +97,20 @@ func desktopComputerTargets() *cu.StaticTargetRegistry {
 // Platform construction is injected; control/snapshot logic depends only on
 // the domain controller. Windows will supply a factory, not a second manager.
 type computerManager struct {
-	mu            sync.Mutex
-	backend       cu.Backend
-	controller    *cu.Controller
-	owner         cu.SessionOwner
-	factory       computerBackendFactory
-	runtimeCtx    context.Context
-	events        *cu.EventBus
-	visualCues    *cu.VisualCueBus
-	remote        *computerbridge.Client
-	remoteOwner   cu.SessionOwner
-	remoteSession string
-	attemptsMu    sync.Mutex
-	attempts      map[computerStartAttemptKey]string
+	mu                  sync.Mutex
+	backend             cu.Backend
+	controller          *cu.Controller
+	owner               cu.SessionOwner
+	factory             computerBackendFactory
+	runtimeCtx          context.Context
+	events              *cu.EventBus
+	visualCues          *cu.VisualCueBus
+	remote              *computerbridge.Client
+	remoteOwner         cu.SessionOwner
+	runtimeStopFallback func(context.Context) error
+	remoteSession       string
+	attemptsMu          sync.Mutex
+	attempts            map[computerStartAttemptKey]string
 }
 
 type computerStartAttemptKey struct {
@@ -117,13 +118,18 @@ type computerStartAttemptKey struct {
 	attemptID string
 }
 
-func newRemoteComputerManager(client *computerbridge.Client) *computerManager {
+func newRemoteComputerManager(client *computerbridge.Client, fallback ...func(context.Context) error) *computerManager {
+	var runtimeStopFallback func(context.Context) error
+	if len(fallback) > 0 {
+		runtimeStopFallback = fallback[0]
+	}
 	return &computerManager{
-		owner:       cu.SessionOwner{TenantID: localComputerTenantID, UserID: localComputerUserID},
-		remote:      client,
-		remoteOwner: computerUIBridgeOwner,
-		visualCues:  cu.NewVisualCueBus(),
-		attempts:    make(map[computerStartAttemptKey]string),
+		owner:               cu.SessionOwner{TenantID: localComputerTenantID, UserID: localComputerUserID},
+		remote:              client,
+		remoteOwner:         computerUIBridgeOwner,
+		runtimeStopFallback: runtimeStopFallback,
+		visualCues:          cu.NewVisualCueBus(),
+		attempts:            make(map[computerStartAttemptKey]string),
 	}
 }
 
@@ -708,7 +714,17 @@ func (m *computerManager) stopRuntime(ctx context.Context) error {
 	if m == nil || m.remote == nil {
 		return errors.New("standalone computer runtime is unavailable")
 	}
-	return m.remote.StopRuntime(ctx, computerRuntimeSupervisionOwner)
+	if err := m.remote.StopRuntime(ctx, computerRuntimeSupervisionOwner); err == nil {
+		return nil
+	} else if m.runtimeStopFallback != nil && errors.Is(err, computerbridge.ErrTransport) {
+		if fallbackErr := m.runtimeStopFallback(ctx); fallbackErr == nil {
+			return nil
+		} else {
+			return errors.Join(err, fallbackErr)
+		}
+	} else {
+		return err
+	}
 }
 
 func (m *computerManager) close(ctx context.Context) error {
@@ -801,7 +817,16 @@ func (a *app) computer() *computerManager {
 		if a.providerRuntime != nil {
 			if client := a.providerRuntime.BridgeClient(); client != nil {
 				a.providerRuntime.StartVisualCueOverlay()
-				a.computerManager = newRemoteComputerManager(client)
+				fallback := func(ctx context.Context) error {
+					a.mu.Lock()
+					runtime := a.providerRuntime
+					a.mu.Unlock()
+					if runtime == nil {
+						return errors.New("standalone computer runtime is unavailable")
+					}
+					return runtime.Stop(ctx)
+				}
+				a.computerManager = newRemoteComputerManager(client, fallback)
 				return a.computerManager
 			}
 		}

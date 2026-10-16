@@ -182,3 +182,25 @@ func TestRuntimeOwnerStopRequiresSessionRevocation(t *testing.T) {
 		t.Fatal("runtime stop callback was not notified")
 	}
 }
+
+func TestRemoteDesktopManagerRuntimeStopFallsBackAfterBridgeDisconnect(t *testing.T) {
+	client, err := computerbridge.NewClient(computerbridge.Config{
+		SocketPath:     filepath.Join(t.TempDir(), "missing.sock"),
+		Token:          "bridge-test-token",
+		RequestTimeout: 20 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	manager := newRemoteComputerManager(client, func(context.Context) error {
+		called = true
+		return nil
+	})
+	if err := manager.stopRuntime(context.Background()); err != nil {
+		t.Fatalf("stopRuntime() error = %v", err)
+	}
+	if !called {
+		t.Fatal("runtime stop did not use the authenticated process fallback")
+	}
+}

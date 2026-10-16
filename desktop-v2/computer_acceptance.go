@@ -197,6 +197,14 @@ func dispatchAcceptance(hostCtx, ctx context.Context, m *computerManager, r acce
 			return m.remote.RuntimeStatus(ctx, computerRuntimeSupervisionOwner)
 		}
 		return m.runtimeStatus(), nil
+	case "runtime_disconnect_bridge":
+		if m.remote == nil || m.remote.SocketPath() == "" {
+			return nil, errors.New("standalone computer runtime is unavailable")
+		}
+		if err := os.Remove(m.remote.SocketPath()); err != nil {
+			return nil, err
+		}
+		return map[string]string{"state": "bridge_disconnected"}, nil
 	case "runtime_stop":
 		if err := m.stopRuntime(ctx); err != nil {
 			return nil, err
