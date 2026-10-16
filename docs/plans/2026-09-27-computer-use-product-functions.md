@@ -107,6 +107,33 @@ bridge, and `desktop-v2` tests; focused `go test -race`; full `go test ./...`;
 `computeracceptance` desktop build; and deep strict local codesign. No fresh model
 request, input, or replay was performed.
 
+### Phase update — standalone bridge disconnect recovery — 2026-10-16
+
+The current bridge-disconnect slice is implemented and pushed in `bbe80f2`.
+The Wails acceptance owner now treats the Unix bridge as a control plane rather
+than the runtime owner: `runtime_stop` falls back only for an authenticated
+transport failure to the parent-held `RuntimeSupervisor` process handle. Bridge
+logical errors are returned unchanged, so a normal session/revocation failure
+can never be bypassed by killing the runtime. The acceptance-only
+`runtime_disconnect_bridge` operation unlinks only the already-authenticated
+standalone endpoint and does not add a provider fallback to the legacy
+`execute + image` path.
+
+The freshly built `computeracceptance` app passed a live no-observe bridge
+disconnect proof: status was `ready`, the endpoint was disconnected, a second
+status call failed closed with transport error, and `runtime_stop` returned
+`stopped` while the standalone runtime process exited. Evidence is retained in
+ignored `desktop-v2/build/validation/20261016/runtime-bridge-disconnect/` without
+credentials or raw logs. The full screenshot-backed start/observe variant was
+not run because the macOS preflight reported `Online: Yes` and `Display Asleep:
+Yes`; no lock-screen bypass, permission relaxation, or input replay was used.
+
+Verification: focused and full Go tests, focused/full race tests, Go vet, Python
+acceptance/doc tests, native 314/469 assertions, fresh tagged desktop build,
+strict codesign, and the live bridge-disconnect process-handle proof passed.
+No fresh model request was made.
+
+
 ### Phase update — deterministic model-deadline root cause — 2026-10-13
 
 - The latest fresh run `model-f574e81-final-01` executed native `launch_app`,
