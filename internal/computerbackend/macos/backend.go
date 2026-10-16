@@ -263,7 +263,10 @@ func classifyObserveFault(b *Backend, err error) error {
 func helperEnvironment(extra []string) []string {
 	allowed := map[string]bool{"HOME": true, "USER": true, "LOGNAME": true, "TMPDIR": true, "LANG": true, "LC_CTYPE": true, "__CF_USER_TEXT_ENCODING": true,
 		// Opt-in local acceptance fault injection; absent from normal environments.
-		"GO_E2E_TEST_HELPER_HOLD_AFTER_BATCH_MS": true}
+		"GO_E2E_TEST_HELPER_HOLD_AFTER_BATCH_MS": true,
+		// Explicit, owner-only native diagnostics. The helper remains silent by
+		// default and never inherits arbitrary process environment variables.
+		"GO_E2E_COMPUTER_DIAGNOSTICS_PATH": true}
 	values := map[string]string{"PATH": "/usr/bin:/bin:/usr/sbin:/sbin"}
 	for _, entry := range append(os.Environ(), extra...) {
 		k, v, ok := strings.Cut(entry, "=")

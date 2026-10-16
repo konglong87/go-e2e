@@ -564,6 +564,24 @@ func TestBackendCallerCancellationAndLocalRejections(t *testing.T) {
 	_ = observeTest(t, b)
 }
 
+func TestBackendAllowsOnlyExplicitNativeDiagnosticPath(t *testing.T) {
+	cfg := helperConfig(t, "", time.Second, "")
+	cfg.HelperEnv = []string{"GO_E2E_COMPUTER_DIAGNOSTICS_PATH=/private/diagnostics/native.jsonl"}
+	b, err := New(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close(context.Background())
+	response, err := b.request(context.Background(), "environment", "", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := json.Marshal(response.Result)
+	if !bytes.Contains(data, []byte("GO_E2E_COMPUTER_DIAGNOSTICS_PATH=/private/diagnostics/native.jsonl")) {
+		t.Fatalf("explicit diagnostics path was not passed to helper: %s", data)
+	}
+}
+
 func TestBackendEnvironmentAndStderr(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "SECRET-CREDENTIAL")
 	t.Setenv("CUSTOM_CREDENTIAL", "SECRET-CREDENTIAL")
