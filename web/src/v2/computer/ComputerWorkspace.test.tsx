@@ -420,6 +420,25 @@ describe("ComputerWorkspace", () => {
     expect(button("Start session").disabled).toBe(false);
   });
 
+  it("shows a bridge fault recovery guide and blocks unsafe actions while preserving Stop", async () => {
+    const client = createTestClient();
+    client.getRuntimeStatus = vi.fn().mockResolvedValue({
+        state: "faulted", active_session: true, session_id: "s1", available: false, error_code: "bridge_disconnected",
+        fault: { state: "faulted", error_code: "bridge_disconnected", recoverable: false },
+      });
+    await act(async () => root.render(<I18nProvider><ComputerWorkspace client={client} /></I18nProvider>));
+    await click("Start session");
+    await click("Approve session");
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    expect(document.body.textContent).toContain("runtime connection was lost");
+    expect(button("Stop").disabled).toBe(false);
+    expect(button("Refresh screenshot").disabled).toBe(true);
+    expect(button("Pause").disabled).toBe(true);
+    expect(button("Refresh runtime status")).toBeTruthy();
+    await click("Stop runtime");
+    expect(client.stopRuntime).toHaveBeenCalled();
+  });
+
   it("keeps Pause and Stop clickable during capture and ignores late control/capture responses", async () => {
     const client = createTestClient();
     const capture = deferred<ComputerObservationResponse>();

@@ -4,7 +4,7 @@ import type { ComputerCapabilities, ComputerFocusState, ComputerOutcome, Compute
 const en = {
   nativeTitle: "Computer Use", reopenNativePanel: "Show Computer Use panel",
   workspace: "Computer workspace", controlSurface: "CONTROL SURFACE", launcher: "Open Computer Use workspace", collapseWorkspace: "Collapse Computer Use workspace", dragWorkspace: "Drag Computer Use workspace", collapse: "Collapse", backendDetecting: "detecting", idle: "idle", requested: "requested",
-  startSession: "Start session", refreshScreenshot: "Refresh screenshot", pause: "Pause", resume: "Resume", stop: "Stop",
+  startSession: "Start session", refreshScreenshot: "Refresh screenshot", pause: "Pause", resume: "Resume", stop: "Stop", refreshRuntimeStatus: "Refresh runtime status", stopRuntime: "Stop runtime", runtimeFaultTitle: "Computer Use runtime needs attention", runtimeFaultNoReplay: "The last action was not replayed. Stop the session before trying a new action.", runtimeRestartHint: "Restart the desktop app after stopping if the runtime does not recover.",
   systemPermissions: "SYSTEM PERMISSIONS", permissionsTitle: "Computer Use needs system permissions", permissionsIntro: "Open the relevant macOS settings, enable access for Computer Use, then recheck permissions.", accessibility: "Accessibility", accessibilityDescription: "Allow Computer Use to control the desktop.", screenRecording: "Screen Recording", screenRecordingDescription: "Allow Computer Use to read the desktop.", openAccessibility: "Open Accessibility settings", openScreenRecording: "Open Screen Recording settings", openingSettings: "Opening settings…", recheckPermissions: "Recheck permissions", checkingPermissions: "Checking permissions…", settingsError: "Unable to open Computer Use permission settings.",
   sessionApproval: "SESSION APPROVAL", approvalTitle: "Allow Computer Use?", approvalDescription: "Do not enter passwords, tokens, or other secrets through Computer Use.", platform: "Platform", capture: "Capture", input: "Input", target: "Target", unknown: "Unknown", unknownBackend: "Unknown backend", currentDesktop: "Current desktop", cancel: "Cancel", starting: "Starting…", approveSession: "Approve session",
   conversationRef: "Conversation ref", modelManagedSession: "Model-managed session (Stop only)", boundConversation: "Desktop access granted to conversation", conversationApprovalDescription: "Approving grants the exact conversation shown below access to observe and operate your desktop. Selecting another conversation does not transfer this grant; stop this session before approving another conversation.",
@@ -17,13 +17,23 @@ const en = {
   session: { pending_approval: "pending approval", ready: "ready", paused: "paused", needs_observation: "needs observation", stopped: "stopped", failed: "failed" } satisfies Record<ComputerSessionState, string>,
   outcome: { not_started: "not started", executed: "executed", rejected: "rejected", failed: "failed", unknown: "unknown" } satisfies Record<ComputerOutcome, string>,
   verification: { not_checked: "not checked", passed: "passed", failed: "failed", unknown: "unknown" } satisfies Record<ComputerVerification, string>,
+  runtimeFault: {
+    bridge_disconnected: "The Computer Use runtime connection was lost.",
+    worker_exited: "The Computer Use worker exited unexpectedly.",
+    helper_unavailable: "The Computer Use helper is unavailable.",
+    helper_outcome_uncertain: "The previous Computer Use outcome could not be confirmed.",
+    permission_revoked: "Computer Use permissions changed and the session is paused.",
+    stop_failed: "The Computer Use runtime did not stop cleanly.",
+    runtime_status_unavailable: "The Computer Use runtime status is unavailable.",
+    unknown: "The Computer Use runtime reported a safety fault.",
+  } satisfies Record<string, string>,
   availability: "Computer Use is unavailable on this host.", checking: "Checking Computer Use capabilities…", captureNotReady: (state: string) => `Screen capture is not ready: ${state}.`, inputNotReady: (state: string) => `Desktop input is not ready: ${state}.`, permissionNotApproved: (state: string) => `System permission is not approved: ${state}.`, imagesNotSupported: "Desktop images are not supported.", stopNotSupported: "The backend must support Stop before a session can start.",
 };
 
 const zh: typeof en = {
   nativeTitle: "电脑操作", reopenNativePanel: "显示电脑操作面板",
   workspace: "电脑操作窗口", controlSurface: "控制界面", launcher: "展开电脑操作窗口", collapseWorkspace: "收起电脑操作窗口", dragWorkspace: "拖动电脑操作窗口", collapse: "收起", backendDetecting: "检测中", idle: "空闲", requested: "已请求",
-  startSession: "开始会话", refreshScreenshot: "刷新截图", pause: "暂停", resume: "继续", stop: "停止",
+  startSession: "开始会话", refreshScreenshot: "刷新截图", pause: "暂停", resume: "继续", stop: "停止", refreshRuntimeStatus: "刷新运行时状态", stopRuntime: "停止运行时", runtimeFaultTitle: "电脑操作运行时需要处理", runtimeFaultNoReplay: "上一次操作不会被重放。请先停止会话，再尝试新的操作。", runtimeRestartHint: "如果运行时没有恢复，请重启桌面应用。",
   systemPermissions: "系统权限", permissionsTitle: "电脑操作需要系统权限", permissionsIntro: "打开对应的 macOS 设置，为电脑操作开启权限，然后返回此处重新检测。", accessibility: "辅助功能", accessibilityDescription: "允许电脑操作控制桌面。", screenRecording: "屏幕录制", screenRecordingDescription: "允许电脑操作读取桌面画面。", openAccessibility: "打开辅助功能设置", openScreenRecording: "打开屏幕录制设置", openingSettings: "正在打开设置…", recheckPermissions: "重新检测权限", checkingPermissions: "正在检测权限…", settingsError: "无法打开电脑操作权限设置。",
   sessionApproval: "会话授权", approvalTitle: "允许电脑操作？", approvalDescription: "请勿通过电脑操作输入密码、令牌或其他敏感信息。", platform: "平台", capture: "截图", input: "输入", target: "目标", unknown: "未知", unknownBackend: "未知后端", currentDesktop: "当前桌面", cancel: "取消", starting: "正在启动…", approveSession: "授权本次会话",
   conversationRef: "会话引用", modelManagedSession: "模型创建的会话（仅可停止）", boundConversation: "已授权桌面访问的会话", conversationApprovalDescription: "确认后，下方明确显示的会话将获准查看并操作你的桌面。切换所选会话不会转移授权；如需授权其他会话，请先停止本次会话。",
@@ -36,6 +46,16 @@ const zh: typeof en = {
   session: { pending_approval: "等待授权", ready: "已就绪", paused: "已暂停", needs_observation: "等待截图", stopped: "已停止", failed: "失败" },
   outcome: { not_started: "未开始", executed: "已执行", rejected: "已拒绝", failed: "失败", unknown: "未知" },
   verification: { not_checked: "未检查", passed: "通过", failed: "失败", unknown: "未知" },
+  runtimeFault: {
+    bridge_disconnected: "电脑操作运行时连接已断开。",
+    worker_exited: "电脑操作工作进程意外退出。",
+    helper_unavailable: "电脑操作 helper 当前不可用。",
+    helper_outcome_uncertain: "上一次电脑操作结果无法确认。",
+    permission_revoked: "电脑操作权限发生变化，会话已暂停。",
+    stop_failed: "电脑操作运行时没有正常停止。",
+    runtime_status_unavailable: "暂时无法读取电脑操作运行时状态。",
+    unknown: "电脑操作运行时报告了安全故障。",
+  },
   availability: "此设备暂不支持电脑操作。", checking: "正在检测电脑操作能力…", captureNotReady: (state) => `屏幕截图未就绪：${state}。`, inputNotReady: (state) => `桌面输入未就绪：${state}。`, permissionNotApproved: (state) => `系统权限尚未开通：${state}。`, imagesNotSupported: "此设备不支持桌面截图。", stopNotSupported: "后端必须支持停止操作，才能开始会话。",
 };
 
@@ -79,6 +99,12 @@ export function computerReadinessMessage(available: boolean, caps: ComputerCapab
   if (!caps.image_supported) return copy.imagesNotSupported;
   if (!caps.supports_stop) return copy.stopNotSupported;
   return null;
+}
+
+export function computerRuntimeFaultMessage(errorCode: string | undefined, language: Language): string {
+  const copy = computerUICopy[language];
+  const messages = copy.runtimeFault as Record<string, string>;
+  return messages[errorCode ?? "unknown"] ?? messages.unknown;
 }
 
 // Preserve unknown native errors verbatim. Only map the client-owned, stable readiness messages.

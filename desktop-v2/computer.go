@@ -60,6 +60,23 @@ type ComputerSessionDTO struct {
 	LastReceipt  *cu.ActionReceipt `json:"last_receipt,omitempty"`
 }
 
+type ComputerRuntimeFaultDTO struct {
+	State       cu.RuntimeState `json:"state"`
+	ErrorCode   string          `json:"error_code"`
+	Recoverable bool            `json:"recoverable"`
+	SessionID   string          `json:"session_id,omitempty"`
+	ActionID    string          `json:"action_id,omitempty"`
+}
+
+type ComputerRuntimeStatusDTO struct {
+	State         cu.RuntimeState          `json:"state"`
+	Fault         *ComputerRuntimeFaultDTO `json:"fault,omitempty"`
+	ActiveSession bool                     `json:"active_session"`
+	SessionID     string                   `json:"session_id,omitempty"`
+	Available     bool                     `json:"available"`
+	ErrorCode     string                   `json:"error_code,omitempty"`
+}
+
 type computerBackendFactory func(context.Context) (cu.Backend, error)
 
 const computerTargetWorkBuddy cu.TargetID = "workbuddy"
@@ -191,6 +208,100 @@ func (m *computerManager) hasActiveSession() bool {
 	}
 	state := controller.Session().State()
 	return state != cu.SessionStopped && state != cu.SessionFailed
+}
+
+const computerRuntimeStatusUnavailable = "runtime_status_unavailable"
+
+func publicComputerRuntimeFaultCode(code string) string {
+	code = strings.TrimSpace(code)
+	if code == "" {
+		return ""
+	}
+	switch code {
+	case cu.RuntimeFaultWorkerExited, cu.RuntimeFaultBridgeDisconnected, cu.RuntimeFaultHelperUnavailable,
+		cu.RuntimeFaultPermissionRevoked, cu.RuntimeFaultHelperUncertain, cu.RuntimeFaultStopFailed,
+		computerRuntimeStatusUnavailable:
+		return code
+	default:
+		return computerRuntimeStatusUnavailable
+	}
+}
+
+func computerRuntimeFaultDTO(fault *cu.RuntimeFault) *ComputerRuntimeFaultDTO {
+	if fault == nil {
+		return nil
+	}
+	return &ComputerRuntimeFaultDTO{
+		State:       fault.State,
+		ErrorCode:   publicComputerRuntimeFaultCode(fault.ErrorCode),
+		Recoverable: fault.Recoverable,
+		SessionID:   fault.SessionID,
+		ActionID:    fault.ActionID,
+	}
+}
+
+func computerRuntimeStatusDTO(status cu.RuntimeStatus, available bool, errorCode string) ComputerRuntimeStatusDTO {
+	return ComputerRuntimeStatusDTO{
+		State:         status.State,
+		Fault:         computerRuntimeFaultDTO(status.Fault),
+		ActiveSession: status.ActiveSession,
+		SessionID:     status.SessionID,
+		Available:     available,
+		ErrorCode:     publicComputerRuntimeFaultCode(errorCode),
+	}
+}
+
+func (m *computerManager) runtimeStatusForUI(ctx context.Context) ComputerRuntimeStatusDTO {
+	if m == nil {
+		return ComputerRuntimeStatusDTO{State: cu.RuntimeFaulted, Available: false, ErrorCode: computerRuntimeStatusUnavailable}
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if m.remote != nil {
+		status, err := m.remote.RuntimeStatus(ctx, computerRuntimeSupervisionOwner)
+		if err == nil {
+			return ComputerRuntimeStatusDTO{
+				State:         status.State,
+				Fault:         computerRuntimeFaultDTO(status.Fault),
+				ActiveSession: status.ActiveSession,
+				SessionID:     status.SessionID,
+				Available:     true,
+			}
+		}
+		m.mu.Lock()
+		sessionID := m.remoteSession
+		m.mu.Unlock()
+		if errors.Is(err, computerbridge.ErrTransport) {
+			status := cu.RuntimeStatus{
+				State:         cu.RuntimeFaulted,
+				ActiveSession: sessionID != "",
+				SessionID:     sessionID,
+				Fault: &cu.RuntimeFault{
+					State:       cu.RuntimeFaulted,
+					ErrorCode:   cu.RuntimeFaultBridgeDisconnected,
+					Recoverable: false,
+					SessionID:   sessionID,
+					OccurredAt:  time.Now(),
+				},
+			}
+			return computerRuntimeStatusDTO(status, false, cu.RuntimeFaultBridgeDisconnected)
+		}
+		faultStatus := cu.RuntimeStatus{
+			State:         cu.RuntimeFaulted,
+			ActiveSession: sessionID != "",
+			SessionID:     sessionID,
+			Fault: &cu.RuntimeFault{
+				State:       cu.RuntimeFaulted,
+				ErrorCode:   computerRuntimeStatusUnavailable,
+				Recoverable: false,
+				SessionID:   sessionID,
+				OccurredAt:  time.Now(),
+			},
+		}
+		return computerRuntimeStatusDTO(faultStatus, false, computerRuntimeStatusUnavailable)
+	}
+	return computerRuntimeStatusDTO(m.runtimeStatus(), true, "")
 }
 
 func (m *computerManager) runtimeStatus() cu.RuntimeStatus {
@@ -750,6 +861,31 @@ func (a *app) GetComputerCapabilities() ComputerCapabilitiesDTO {
 		return ComputerCapabilitiesDTO{ErrorCode: "capability_unavailable", ErrorMessage: err.Error()}
 	}
 	return ComputerCapabilitiesDTO{Capabilities: caps, Available: true}
+}
+
+// GetComputerRuntimeStatus is read-only and fail-closed. It never creates a
+// session, refreshes an observation, or grants input authority. A disconnected
+// standalone bridge is reported as a stable lifecycle fault instead of leaking
+// transport details into the UI.
+func (a *app) GetComputerRuntimeStatus() ComputerRuntimeStatusDTO {
+	return a.computer().runtimeStatusForUI(context.Background())
+}
+
+// StopComputerRuntime is an explicit, owner-only emergency teardown control for
+// the local desktop client. It is the UI counterpart of the process-handle
+// fallback used when the standalone bridge is unavailable; it never replays or
+// dispatches an input action.
+func (a *app) StopComputerRuntime() ComputerRuntimeStatusDTO {
+	manager := a.computer()
+	if err := manager.stopRuntime(context.Background()); err == nil {
+		return ComputerRuntimeStatusDTO{State: cu.RuntimeStopped, Available: false}
+	}
+	status := manager.runtimeStatusForUI(context.Background())
+	status.State = cu.RuntimeFaulted
+	status.Available = false
+	status.ErrorCode = cu.RuntimeFaultStopFailed
+	status.Fault = &ComputerRuntimeFaultDTO{State: cu.RuntimeFaulted, ErrorCode: cu.RuntimeFaultStopFailed, Recoverable: false, SessionID: status.SessionID}
+	return status
 }
 func (a *app) StartComputerSession(in ComputerSessionStartInput) (ComputerSessionDTO, error) {
 	ctx := a.windowContext()

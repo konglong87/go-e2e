@@ -16,6 +16,8 @@ export const observationResponse: ComputerObservationResponse = {
 export function createTestClient(): ComputerClient {
   return {
     getCapabilities: vi.fn<ComputerClient["getCapabilities"]>().mockResolvedValue({ available: true, capabilities }),
+    getRuntimeStatus: vi.fn<NonNullable<ComputerClient["getRuntimeStatus"]>>().mockResolvedValue({ state: "ready", active_session: false, available: true }),
+    stopRuntime: vi.fn<NonNullable<ComputerClient["stopRuntime"]>>().mockResolvedValue({ state: "stopped", active_session: false, available: false }),
     openPermissionSettings: vi.fn<ComputerClient["openPermissionSettings"]>().mockResolvedValue(undefined),
     start: vi.fn<ComputerClient["start"]>().mockResolvedValue(snapshot()),
     getSession: vi.fn<ComputerClient["getSession"]>().mockResolvedValue(snapshot()),

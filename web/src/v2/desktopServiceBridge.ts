@@ -1,4 +1,4 @@
-import type { ComputerActionReceipt, ComputerCapabilitiesResponse, ComputerObservationResponse, ComputerPermissionTarget, ComputerSessionSnapshot, StartComputerSessionInput } from "./computer/types";
+import type { ComputerActionReceipt, ComputerCapabilitiesResponse, ComputerObservationResponse, ComputerPermissionTarget, ComputerRuntimeStatus, ComputerSessionSnapshot, StartComputerSessionInput } from "./computer/types";
 
 export type DesktopServiceStatus = {
   state: "stopped" | "starting" | "ready" | "failed";
@@ -42,6 +42,8 @@ export type DesktopServiceBridge = {
   SetBackgroundMode?: (mode: DesktopBackgroundMode) => Promise<DesktopBackgroundImage>;
   ClearBackgroundImage?: () => Promise<void>;
   GetComputerCapabilities?: () => Promise<ComputerCapabilitiesResponse>;
+  GetComputerRuntimeStatus?: () => Promise<ComputerRuntimeStatus>;
+  StopComputerRuntime?: () => Promise<ComputerRuntimeStatus>;
   OpenComputerPermissionSettings?: (target: ComputerPermissionTarget) => Promise<void>;
   StartComputerSession?: (input: StartComputerSessionInput) => Promise<ComputerSessionSnapshot>;
   GetComputerSession?: (sessionID: string) => Promise<ComputerSessionSnapshot>;

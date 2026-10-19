@@ -204,3 +204,44 @@ func TestRemoteDesktopManagerRuntimeStopFallsBackAfterBridgeDisconnect(t *testin
 		t.Fatal("runtime stop did not use the authenticated process fallback")
 	}
 }
+
+func TestGetComputerRuntimeStatusFailsClosedAfterBridgeDisconnect(t *testing.T) {
+	client, err := computerbridge.NewClient(computerbridge.Config{
+		SocketPath:     filepath.Join(t.TempDir(), "missing.sock"),
+		Token:          "bridge-test-token",
+		RequestTimeout: 20 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := newRemoteComputerManager(client)
+	manager.remoteSession = "session-after-disconnect"
+	app := &app{computerManager: manager}
+	status := app.GetComputerRuntimeStatus()
+	if status.State != cu.RuntimeFaulted || status.Fault == nil || status.Fault.ErrorCode != cu.RuntimeFaultBridgeDisconnected {
+		t.Fatalf("runtime status = %+v, want redacted bridge-disconnected fault", status)
+	}
+	if !status.ActiveSession || status.SessionID != manager.remoteSession || status.Available {
+		t.Fatalf("runtime status lost fail-closed session authority: %+v", status)
+	}
+}
+
+func TestStopComputerRuntimeUsesExplicitProcessFallback(t *testing.T) {
+	client, err := computerbridge.NewClient(computerbridge.Config{
+		SocketPath:     filepath.Join(t.TempDir(), "missing.sock"),
+		Token:          "bridge-test-token",
+		RequestTimeout: 20 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fallbackCalled := false
+	manager := newRemoteComputerManager(client, func(context.Context) error {
+		fallbackCalled = true
+		return nil
+	})
+	status := (&app{computerManager: manager}).StopComputerRuntime()
+	if !fallbackCalled || status.State != cu.RuntimeStopped || status.Available {
+		t.Fatalf("stop runtime status = %+v fallback_called=%t", status, fallbackCalled)
+	}
+}

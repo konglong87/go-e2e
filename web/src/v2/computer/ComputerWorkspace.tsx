@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import type { ReactElement, PointerEvent as ReactPointerEvent } from "react";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useI18n } from "../../lib/i18n";
-import { computerReadinessMessage, computerUICopy, preferredComputerLanguage, localizeComputerError } from "./computerUICopy";
+import { computerReadinessMessage, computerRuntimeFaultMessage, computerUICopy, preferredComputerLanguage, localizeComputerError } from "./computerUICopy";
 import { ComputerApprovalDialog } from "./ComputerApprovalDialog";
 import { ComputerExecutionProgress } from "./ComputerExecutionProgress";
 import { ComputerPermissionGuide } from "./ComputerPermissionGuide";
@@ -68,7 +68,9 @@ export function ComputerWorkspace({ client, selectedConversationRef = null, nati
 
   const state = computer.session?.state ?? "idle";
   const readiness = computerReadinessMessage(computer.available, computer.capabilities, language);
-  const hasDisplayError = Boolean(computer.error || readiness);
+  const runtimeFault = computer.runtimeStatus?.fault ?? null;
+  const runtimeFaultMessage = runtimeFault ? computerRuntimeFaultMessage(runtimeFault.error_code, language) : null;
+  const hasDisplayError = Boolean(computer.error || readiness || runtimeFault);
   const overlay = useNativeComputerOverlay(nativeOverlay && client !== null, computer.session, language, readiness, displayMode);
   useEffect(() => {
     dispatchDisplay({
@@ -89,7 +91,7 @@ export function ComputerWorkspace({ client, selectedConversationRef = null, nati
     return () => window.removeEventListener("go-e2e:computer-workspace-open", openWorkspace);
   }, [overlay.active, overlay.show]);
 
-  const status = readiness ? "attention" : state;
+  const status = readiness || runtimeFault ? "attention" : state;
   const backend = computer.capabilities?.backend || copy.backendDetecting;
   const active = computer.session && computer.session.state !== "stopped";
   const modelManaged = computer.session?.owner_kind === "managed_conversation";
@@ -253,6 +255,7 @@ export function ComputerWorkspace({ client, selectedConversationRef = null, nati
         available={computer.available}
         busy={computer.loading}
         controlIntent={computer.controlIntent}
+        runtimeFault={runtimeFault}
         readOnly={modelManaged}
         onStart={openApproval}
         onObserve={() => action(computer.observe)}
@@ -261,6 +264,16 @@ export function ComputerWorkspace({ client, selectedConversationRef = null, nati
         onStop={() => action(computer.stop)}
       />
       {active ? <p role="status" style={{ margin: 0, overflowWrap: "anywhere" }}>{approvalLabel}</p> : null}
+      {runtimeFault ? <section className="webui2-computer-error" data-runtime-fault={runtimeFault.error_code} role="alert">
+        <strong>{copy.runtimeFaultTitle}</strong>
+        <p>{runtimeFaultMessage}</p>
+        <p>{copy.runtimeFaultNoReplay}</p>
+        <p>{copy.runtimeRestartHint}</p>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button className="webui2-computer-button webui2-computer-button--quiet" onClick={() => action(computer.loadRuntimeStatus)} type="button">{copy.refreshRuntimeStatus}</button>
+          {computer.stopRuntime ? <button className="webui2-computer-button webui2-computer-button--danger" disabled={computer.loading} onClick={() => action(computer.stopRuntime)} type="button">{copy.stopRuntime}</button> : null}
+        </div>
+      </section> : null}
       {projection.showFeedback && (!computer.session || computer.session.state === "stopped" || computer.capabilities?.permission_state === "required") ? <ComputerPermissionGuide
         available={computer.available}
         capabilities={computer.capabilities}

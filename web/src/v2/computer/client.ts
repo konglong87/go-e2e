@@ -1,8 +1,10 @@
 import { getDesktopServiceBridge, type DesktopServiceBridge } from "../desktopServiceBridge";
-import type { ComputerActionReceipt, ComputerCapabilitiesResponse, ComputerObservationResponse, ComputerPermissionTarget, ComputerSessionSnapshot, StartComputerSessionInput } from "./types";
+import type { ComputerActionReceipt, ComputerCapabilitiesResponse, ComputerObservationResponse, ComputerPermissionTarget, ComputerRuntimeStatus, ComputerSessionSnapshot, StartComputerSessionInput } from "./types";
 
 export type ComputerClient = {
   getCapabilities: () => Promise<ComputerCapabilitiesResponse>;
+  getRuntimeStatus?: () => Promise<ComputerRuntimeStatus>;
+  stopRuntime?: () => Promise<ComputerRuntimeStatus>;
   openPermissionSettings: (target: ComputerPermissionTarget) => Promise<void>;
   start: (input: StartComputerSessionInput) => Promise<ComputerSessionSnapshot>;
   getSession: (sessionID: string) => Promise<ComputerSessionSnapshot>;
@@ -14,7 +16,7 @@ export type ComputerClient = {
   getReceipt: (sessionID: string, actionID: string) => Promise<ComputerActionReceipt>;
 };
 
-export type ComputerBridge = Pick<Required<DesktopServiceBridge>, "GetComputerCapabilities" | "StartComputerSession" | "GetComputerSession" | "ObserveComputerSession" | "PauseComputerSession" | "ResumeComputerSession" | "StopComputerSession" | "GetComputerActionReceipt"> & Pick<DesktopServiceBridge, "OpenComputerPermissionSettings" | "GetActiveComputerSession">;
+export type ComputerBridge = Pick<Required<DesktopServiceBridge>, "GetComputerCapabilities" | "StartComputerSession" | "GetComputerSession" | "ObserveComputerSession" | "PauseComputerSession" | "ResumeComputerSession" | "StopComputerSession" | "GetComputerActionReceipt"> & Pick<DesktopServiceBridge, "GetComputerRuntimeStatus" | "StopComputerRuntime" | "OpenComputerPermissionSettings" | "GetActiveComputerSession">;
 
 export function getComputerBridge(): ComputerBridge | null {
   const bridge = getDesktopServiceBridge();
@@ -36,6 +38,8 @@ export function getComputerBridge(): ComputerBridge | null {
 export function createComputerClient(bridge: ComputerBridge): ComputerClient {
   return {
     getCapabilities: () => bridge.GetComputerCapabilities(),
+    getRuntimeStatus: bridge.GetComputerRuntimeStatus ? () => bridge.GetComputerRuntimeStatus!() : undefined,
+    stopRuntime: bridge.StopComputerRuntime ? () => bridge.StopComputerRuntime!() : undefined,
     openPermissionSettings: (target) => bridge.OpenComputerPermissionSettings?.(target) ?? Promise.reject(new Error("Computer permission settings are unavailable.")),
     start: (input) => bridge.StartComputerSession(input),
     getSession: (sessionID) => bridge.GetComputerSession(sessionID),

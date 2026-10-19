@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ComputerClient } from "./client";
 import { computerReadinessError } from "./readiness";
-import type { ComputerActionReceipt, ComputerCapabilities, ComputerObservation, ComputerSessionSnapshot, StartComputerSessionInput } from "./types";
+import type { ComputerActionReceipt, ComputerCapabilities, ComputerObservation, ComputerRuntimeStatus, ComputerSessionSnapshot, StartComputerSessionInput } from "./types";
 
 type ComputerState = {
   available: boolean;
@@ -15,13 +15,14 @@ type ComputerState = {
   loading: boolean;
   error: string | null;
   controlIntent: "pause" | "stop" | null;
+  runtimeStatus: ComputerRuntimeStatus | null;
 };
 export const COMPUTER_SESSION_POLL_INTERVAL_MS = 1000;
 const isTerminal = (session: ComputerSessionSnapshot) => session.state === "stopped" || session.state === "failed";
 const canDiscoverSession = (state: ComputerState) => !state.loading && !state.controlIntent
   && (!state.session || isTerminal(state.session));
 
-const initialState: ComputerState = { available: false, capabilities: null, session: null, approvedConversationRef: null, observation: null, receipts: [], loading: false, error: null, controlIntent: null };
+const initialState: ComputerState = { available: false, capabilities: null, session: null, approvedConversationRef: null, observation: null, receipts: [], loading: false, error: null, controlIntent: null, runtimeStatus: null };
 
 function mergeSnapshot(current: ComputerState, snapshot: ComputerSessionSnapshot): ComputerState {
   const receipt = snapshot.last_receipt;
@@ -163,6 +164,41 @@ export function useComputerSession(client: ComputerClient | null) {
     }));
   }, [client, run]);
 
+  const runtimeStatusPending = useRef(false);
+  const loadRuntimeStatus = useCallback(async () => {
+    if (!client?.getRuntimeStatus || runtimeStatusPending.current) return null;
+    runtimeStatusPending.current = true;
+    try {
+      const status = await client.getRuntimeStatus();
+      if (mounted.current) update({ ...current.current, runtimeStatus: status });
+      return status;
+    } catch {
+      const unavailable: ComputerRuntimeStatus = {
+        state: "faulted", active_session: Boolean(current.current.session),
+        session_id: current.current.session?.session_id, available: false,
+        error_code: "runtime_status_unavailable",
+        fault: { state: "faulted", error_code: "runtime_status_unavailable", recoverable: false, session_id: current.current.session?.session_id },
+      };
+      if (mounted.current) update({ ...current.current, runtimeStatus: unavailable });
+      return null;
+    } finally {
+      runtimeStatusPending.current = false;
+    }
+  }, [client, update]);
+
+  useEffect(() => {
+    if (!client?.getRuntimeStatus) return;
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      if (disposed) return;
+      await loadRuntimeStatus();
+      if (!disposed) timer = setTimeout(() => { void poll(); }, 2000);
+    };
+    void poll();
+    return () => { disposed = true; clearTimeout(timer); };
+  }, [client, loadRuntimeStatus]);
+
   useEffect(() => {
     const refresh = (): void => {
       if (document.visibilityState === "hidden") return;
@@ -192,11 +228,23 @@ export function useComputerSession(client: ComputerClient | null) {
     }));
   }, [client, fail, run, update]);
 
+  const stopRuntime = useCallback(async () => {
+    if (!client?.stopRuntime) return fail("Computer runtime stop is unavailable");
+    return run(() => client.stopRuntime!(), (status, state) => ({
+      ...state,
+      runtimeStatus: status,
+      session: status.state === "stopped" && state.session ? { ...state.session, state: "stopped", observation: undefined } : state.session,
+      observation: status.state === "stopped" ? null : state.observation,
+      controlIntent: null,
+    }));
+  }, [client, fail, run]);
+
   const observe = useCallback(async () => {
     const state = current.current;
     const session = state.session;
     if (!client || !session) return fail("No computer session is active");
     if (state.controlIntent || !["ready", "needs_observation"].includes(session.state)) return fail("The computer session cannot observe until it is resumed");
+    if (state.runtimeStatus?.fault && state.runtimeStatus.fault.error_code !== "permission_revoked") return fail("The Computer Use runtime fault requires Stop before retrying");
     if (state.loading) return fail("A computer request is already pending");
     return run(() => client.observe(session.session_id), (value, state) => {
       if (value.observation.session_id !== session.session_id) throw new Error("Observation session mismatch");
@@ -212,6 +260,7 @@ export function useComputerSession(client: ComputerClient | null) {
     if (session.state === "stopped") return fail("The computer session is stopped");
     if (kind !== "stop" && state.controlIntent === "stop") return fail("Stop requested; retry Stop if it failed before continuing");
     if (kind === "resume" && (state.loading || session.state !== "paused")) return fail("Only a confirmed paused session can resume");
+    if (kind !== "stop" && state.runtimeStatus?.fault && state.runtimeStatus.fault.error_code !== "permission_revoked") return fail("The Computer Use runtime fault requires Stop before retrying");
     if (kind === "resume") {
       const readiness = computerReadinessError(state.available, state.capabilities);
       if (readiness) return fail(readiness);
@@ -240,5 +289,5 @@ export function useComputerSession(client: ComputerClient | null) {
     });
   }, [client, fail, run]);
 
-  return { ...state, loadCapabilities, start, observe, pause, resume, stop, getReceipt };
+  return { ...state, loadCapabilities, loadRuntimeStatus, start, observe, pause, resume, stop, stopRuntime, getReceipt };
 }

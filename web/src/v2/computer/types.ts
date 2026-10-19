@@ -102,6 +102,23 @@ export type ComputerCapabilitiesResponse = {
 
 export type ComputerSessionOwner = { tenant_id: number; user_id: number; session_id: number };
 
+export type ComputerRuntimeState = "starting" | "ready" | "degraded" | "stopping" | "stopped" | "faulted";
+export type ComputerRuntimeFault = {
+  state: ComputerRuntimeState;
+  error_code: string;
+  recoverable: boolean;
+  session_id?: string;
+  action_id?: string;
+};
+export type ComputerRuntimeStatus = {
+  state: ComputerRuntimeState;
+  fault?: ComputerRuntimeFault;
+  active_session: boolean;
+  session_id?: string;
+  available: boolean;
+  error_code?: string;
+};
+
 export type ComputerSessionSnapshot = {
   session_id: string;
   state: ComputerSessionState;
