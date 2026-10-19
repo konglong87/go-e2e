@@ -162,6 +162,30 @@ screenshot-backed bridge-disconnect acceptance, visual screenshot inspection,
 process/socket cleanup, and final `HEAD == origin/main` gate.
 
 
+### Phase update — release candidate reproducibility and fault recovery UX — 2026-10-19
+
+The next P0 productization slice is implemented and pushed. Desktop release-candidate
+builds now require a clean worktree when `COMPUTER_USE_RELEASE_CANDIDATE=1`, embed
+source commit, version, Go/Node/Wails versions, target, signing mode, build ID,
+and helper/service hashes, and self-verify the sealed app with
+`verify-computer-use-build.py`. The verifier never reads credentials, screenshots,
+provider requests, or runtime logs.
+
+The desktop bridge now exposes redacted `GetComputerRuntimeStatus` and explicit
+`StopComputerRuntime`. The Computer Workspace polls lifecycle status, maps stable
+fault codes to user-facing recovery guidance, disables new observe/pause/resume
+when a runtime fault blocks safe continuation, preserves Stop/runtime Stop, and
+explicitly states that the previous action will not be replayed. Permission revoke
+remains recoverable only through the existing permission refresh and explicit Resume
+path; bridge/helper/worker ambiguity remains fail-closed.
+
+Verification: focused Go/race desktop and bridge tests, 119 Computer Use frontend
+tests, frontend typecheck, build-manifest verifier tests, public documentation tests,
+fresh `computeracceptance` release-candidate build, generated Wails bindings,
+deep strict codesign, and live bridge-disconnect process-handle acceptance. No
+fresh model request or input replay was performed.
+
+
 ### Phase update — deterministic model-deadline root cause — 2026-10-13
 
 - The latest fresh run `model-f574e81-final-01` executed native `launch_app`,
