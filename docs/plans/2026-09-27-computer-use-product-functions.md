@@ -8,7 +8,9 @@ The core Computer Use runtime and the current macOS single-display model closure
 complete for Developer Preview use. The latest tagged desktop build passed the
 focused/race/Python/native/helper/build/codesign gates. On 2026-10-16 the local
 Mac completed live helper-kill fault acceptance and Retina pointer screenshot
-acceptance without sending model input. The existing fresh
+acceptance without sending model input. On 2026-10-19 the same current build
+completed the full screenshot-backed bridge-disconnect acceptance without sending
+model input. The existing fresh
 `gpt-6-sol/high` run completed `launch → click → Command+A → type → send → wait →
 reply screenshot → Stop` in one build/session/run. The local screenshot and JSON
 evidence are intentionally ignored and are not committed to the public repository.
@@ -33,7 +35,7 @@ history is in `docs/plans/2026-10-08-computer-use-stability.md`.
 | P0 | Current-build automated/native gates | Closed for the current macOS build. Focused Go/race, Python acceptance, native safety/platform, helper build, tagged official build and strict codesign passed. |
 | P0 | Fresh gpt-6-sol/high closure after all deterministic gates | Closed on 2026-10-15 for the current macOS single-display Developer Preview. One fresh build/session/run completed launch → click → Command+A → type → send once → wait once → real reply screenshot → model Stop; all receipts were executed/complete and no input was replayed. |
 | P1 | Stop convergence after caller timeout | Completed in `cb82080`: Stop is retryable, performs bounded graceful shutdown, then SIGKILL fallback and final exit confirmation. Regression and race tests pass. |
-| P1 | Live helper/bridge fault acceptance | Completed in `64c05c9`/`4caaa41`: current tagged desktop build killed the exact bundled helper, returned explicit post-kill error, reported degraded `helper_unavailable`, stopped the session/runtime, and left no helper process. No input action was sent. |
+| P1 | Live helper/bridge fault acceptance | Helper-kill acceptance completed in `64c05c9`/`4caaa41`; full bridge-disconnect acceptance completed on 2026-10-19 against the current tagged build: real observation PNG, bridge unlink, fail-closed status, process-handle Stop, and helper/runtime cleanup. No input action was sent. |
 | P1 | Retina pointer screenshot acceptance | Completed on 2026-10-16: real AppKit pointer overlay screenshot and geometry passed on the built-in Retina display (`2704×1756`, scale `2`); evidence is under ignored `desktop-v2/build/validation/20261016/pointer-acceptance/`. |
 | P1 | ScreenCaptureKit migration | Implemented in `fb19bcf`: ScreenCaptureKit is preferred on macOS 14+, with exact geometry/size checks and the existing Window Server path retained as a bounded compatibility fallback. Native safety/platform and tagged helper build pass. |
 | P1 | Native diagnostics privacy | Completed in `8b26c23`: native diagnostics are silent by default and only enabled through an owner-only explicit path; no unconditional `/tmp/swift-mismatch.log` remains. |
@@ -132,6 +134,32 @@ Verification: focused and full Go tests, focused/full race tests, Go vet, Python
 acceptance/doc tests, native 314/469 assertions, fresh tagged desktop build,
 strict codesign, and the live bridge-disconnect process-handle proof passed.
 No fresh model request was made.
+
+
+### Phase update — screenshot-backed bridge disconnect closure — 2026-10-19
+
+The environment blocker from the 2026-10-16 run is closed after the display was
+awake. The current tagged `computeracceptance` desktop build completed the full
+deterministic bridge-disconnect acceptance in one fresh build/session/run:
+
+```text
+start
+→ observe real screenshot
+→ disconnect standalone bridge
+→ runtime_status fails closed with transport error
+→ runtime_stop falls back to the parent process handle
+→ helper and standalone runtime both exit
+```
+
+The run sent zero input actions and did not start a model request. The real
+observation screenshot was visually inspected and is retained under ignored
+`desktop-v2/build/validation/20261019/runtime-bridge-disconnect/`; the manifest
+records `passed: true`, `stop.state: stopped`, and both process cleanup checks
+true. No focus, permission, screenshot, or replay guard was relaxed.
+
+Verification: official tagged desktop build, deep strict codesign, full
+screenshot-backed bridge-disconnect acceptance, visual screenshot inspection,
+process/socket cleanup, and final `HEAD == origin/main` gate.
 
 
 ### Phase update — deterministic model-deadline root cause — 2026-10-13
