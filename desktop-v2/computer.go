@@ -877,10 +877,24 @@ func (a *app) GetComputerRuntimeStatus() ComputerRuntimeStatusDTO {
 // dispatches an input action.
 func (a *app) StopComputerRuntime() ComputerRuntimeStatusDTO {
 	manager := a.computer()
-	if err := manager.stopRuntime(context.Background()); err == nil {
+	ctx := context.Background()
+	var err error
+	if manager.remote != nil {
+		err = manager.stopRuntime(ctx)
+	} else {
+		a.mu.Lock()
+		runtime := a.computerRuntime
+		a.mu.Unlock()
+		if runtime == nil {
+			err = errors.New("computer runtime is unavailable")
+		} else {
+			err = runtime.Stop(ctx)
+		}
+	}
+	if err == nil {
 		return ComputerRuntimeStatusDTO{State: cu.RuntimeStopped, Available: false}
 	}
-	status := manager.runtimeStatusForUI(context.Background())
+	status := manager.runtimeStatusForUI(ctx)
 	status.State = cu.RuntimeFaulted
 	status.Available = false
 	status.ErrorCode = cu.RuntimeFaultStopFailed
