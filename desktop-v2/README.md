@@ -114,6 +114,8 @@ desktop-v2 固定使用用户 home 下的 `.golang-cc` 目录，和平台默认�
 desktop-v2 现在提供独立的 Computer Workspace 控制面，不修改 WebBrowser 语义：
 
 - `GetComputerCapabilities`：读取 macOS Host 的 capture/input/focus/permission readiness。
+- `GetComputerRuntimeStatus`：读取脱敏的 runtime lifecycle/fault 状态；bridge 断开时 fail-closed，不返回 token、路径或原始 transport 文本。
+- `StopComputerRuntime`：用户显式确认后的 runtime teardown；bridge 不可用时使用父进程 handle 收敛，不会 replay 任何 action。
 - `StartComputerSession`：创建 session-level approval 会话；未批准不会进入 ready。
 - `ObserveComputerSession`：从 native helper 获取真实桌面 PNG，并展示 Preview。
 - `PauseComputerSession` / `ResumeComputerSession` / `StopComputerSession`：控制同一
@@ -145,9 +147,9 @@ ComputerUse Stop。receipt、observation、screenshot、dispatch state 和错误
 turn；unknown 或已 dispatch 输入不会自动 replay。
 
 这不是所有平台和发行条件都完成的稳定正式版。第二块物理显示器、Developer ID 签名/
-公证/正式分发、Windows/Linux 原生 GUI 完整验收，以及运行中 permission revoke 和
-不可恢复 helper fault 的完整终止/恢复矩阵仍未宣称完成。面向用户的安装、权限、使用和
-验收边界见 [Computer Use 使用说明](../docs/usage/computer-use.md)，实现台账见
+公证/正式分发和 Windows/Linux 原生 GUI 完整验收仍未宣称完成；permission/helper/bridge
+fault 的 deterministic 和当前 macOS live recovery gates 已通过。面向用户的安装、权限、
+使用和验收边界见 [Computer Use 使用说明](../docs/usage/computer-use.md)，实现台账见
 [功能实施与验收台账](../docs/plans/2026-09-27-computer-use-product-functions.md)。
 
 ## 原生窗口控制

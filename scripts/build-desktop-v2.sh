@@ -3,6 +3,14 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DESKTOP_DIR="${ROOT}/desktop-v2"
+COMPUTER_USE_RELEASE_CANDIDATE="${COMPUTER_USE_RELEASE_CANDIDATE:-0}"
+
+if [[ "${COMPUTER_USE_RELEASE_CANDIDATE}" == "1" ]]; then
+  if [[ -n "$(git -C "${ROOT}" status --porcelain=v1 --untracked-files=all)" ]]; then
+    echo "release candidate requires a clean git worktree" >&2
+    exit 2
+  fi
+fi
 
 VITE_DESKTOP_UI_VERSION=2 npm --prefix "${ROOT}/web" run build -- --mode desktop-v2
 FRONTEND_DIST="${DESKTOP_DIR}/frontend/dist"
@@ -74,7 +82,7 @@ if [[ -d "${APP_BIN}" ]]; then
     fi
     # Attest the exact committed source and executable bytes before sealing.
     python3 - "${APP_PATH}" "${ROOT}" <<'PYBUILD'
-import datetime, hashlib, json, pathlib, subprocess, sys
+import datetime, hashlib, json, os, pathlib, subprocess, sys
 app, root = map(pathlib.Path, sys.argv[1:])
 def digest(path):
     sha = hashlib.sha256()
@@ -82,6 +90,11 @@ def digest(path):
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             sha.update(chunk)
     return sha.hexdigest()
+def command_output(args, fallback="unavailable"):
+    try:
+        return subprocess.check_output(args, text=True, stderr=subprocess.DEVNULL).strip() or fallback
+    except (OSError, subprocess.CalledProcessError):
+        return fallback
 commit = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
 status = subprocess.check_output(["git", "-C", str(root), "status", "--porcelain=v1", "--untracked-files=all"], text=True)
 paths = []
@@ -101,7 +114,14 @@ resources.mkdir(exist_ok=True)
     # bytes. Keep that fact explicit instead of mixing UI work into runtime
     # evidence or silently pretending the entire workspace is clean.
     "source_dirty": runtime_dirty, "web_source_dirty": web_dirty,
+    "release_candidate": os.environ.get("COMPUTER_USE_RELEASE_CANDIDATE", "0") == "1",
+    "version": command_output(["git", "-C", str(root), "describe", "--tags", "--always", "--dirty"]),
     "built_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    "go_version": command_output(["go", "version"]),
+    "node_version": command_output(["node", "--version"]),
+    "wails_version": command_output(["wails", "version"]),
+    "target": "/".join(command_output(["go", "env", "GOOS", "GOARCH"]).split()),
+    "signing_mode": "adhoc" if os.environ.get("MACOS_ADHOC_SIGN", "1") == "1" else "unsigned",
     # Outer app sealing re-signs its main executable; a full SHA here would be circular.
     "desktop_build_id": subprocess.check_output(["go", "tool", "buildid", str(app / "Contents/MacOS/go-e2e-desktop")], text=True).strip(),
     "helper_sha256": digest(app / "Contents/Helpers/ComputerHelper.app/Contents/MacOS/computer-helper-macos"),
@@ -121,4 +141,9 @@ PYBUILD
   fi
   # Keep Finder's package modification time aligned with the actual build.
   touch "${APP_PATH}"
+  if [[ "${COMPUTER_USE_RELEASE_CANDIDATE}" == "1" ]]; then
+    python3 "${ROOT}/scripts/verify-computer-use-build.py" \
+      --app "${APP_PATH}" --workspace "${ROOT}" \
+      --require-clean --require-release-candidate --require-signature
+  fi
 fi
