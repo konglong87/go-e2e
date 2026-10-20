@@ -337,14 +337,10 @@ func ensurePrivateDirectory(path string) error {
 	if err != nil {
 		return err
 	}
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !info.IsDir() || info.Mode().Perm() != 0o700 || !ok || stat.Uid != uint32(os.Geteuid()) {
-		return errors.New("runtime directory must be an owner-only 0700 directory")
-	}
 	if info.Mode()&os.ModeSymlink != 0 {
 		return errors.New("runtime directory must not be a symlink")
 	}
-	return nil
+	return validatePrivateRuntimeDirectory(path, info)
 }
 
 func parseComputerRuntimeProcessArgs(args []string) (string, bool, error) {
