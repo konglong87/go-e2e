@@ -131,7 +131,10 @@ func TestWorkerProcessesInboundToFinalOutbox(t *testing.T) {
 
 func TestWorkerDeliversExistingOutboxWhileRunIsBlocked(t *testing.T) {
 	repo := &fakeRepo{outbox: []mysqlstore.ChannelOutbox{{ID: 90, MessageID: 11, TenantID: 1, AccountID: 2, Operation: mysqlstore.ChannelMessageOperationCreate, PayloadJSON: `{"provider":"feishu","account_id":"acct","external_chat_id":"oc-1","kind":"card","card":{"schema":"2.0"}}`}}}
-	adapter := &emittingAdapter{message: channelcontract.InboundMessage{Provider: channelcontract.ProviderFeishu, AccountID: "acct", EventID: "evt-blocked", ExternalMessageID: "om-blocked", ExternalConversationID: "oc-1", ExternalUserID: "ou-1", ChatType: channelcontract.ChatTypeP2P, Text: "blocked"}}
+	adapter := &emittingAdapter{
+		fakeAdapter: fakeAdapter{deliveredSignal: make(chan struct{}, 1)},
+		message:     channelcontract.InboundMessage{Provider: channelcontract.ProviderFeishu, AccountID: "acct", EventID: "evt-blocked", ExternalMessageID: "om-blocked", ExternalConversationID: "oc-1", ExternalUserID: "ou-1", ChatType: channelcontract.ChatTypeP2P, Text: "blocked"},
+	}
 	runner := &blockingRunner{started: make(chan struct{}), release: make(chan struct{})}
 	svc := New(Config{TenantID: 1, AccountID: 2, AccountKey: "acct", Repo: repo, Adapter: adapter, Runner: runner, PayloadCodec: JSONCodec{}, UserResolver: func(context.Context, channelcontract.InboundMessage) (uint64, error) { return 4, nil }, SessionResolver: func(context.Context, uint64, uint64, channelcontract.Scope) (uint64, error) { return 5, nil }})
 	ctx, cancel := context.WithCancel(context.Background())
@@ -145,14 +148,10 @@ func TestWorkerDeliversExistingOutboxWhileRunIsBlocked(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("run did not start")
 	}
-	deadline := time.After(time.Second)
-	for len(adapter.delivered) == 0 {
-		select {
-		case <-deadline:
-			t.Fatal("outbox was blocked by model run")
-		default:
-			time.Sleep(time.Millisecond)
-		}
+	select {
+	case <-adapter.deliveredSignal:
+	case <-time.After(time.Second):
+		t.Fatal("outbox was blocked by model run")
 	}
 	close(runner.release)
 	cancel()

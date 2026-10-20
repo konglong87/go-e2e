@@ -368,12 +368,13 @@ func (f *teamReactionRepoFake) MarkChannelReactionRetry(_ context.Context, _, _ 
 }
 
 type fakeAdapter struct {
-	delivered    []channelcontract.OutboundOperation
-	fail         bool
-	streams      *fakeCardStream
-	streamList   []*fakeCardStream
-	openAttempts []channelcontract.OutboundMessage
-	failOpenAt   map[int]bool
+	delivered       []channelcontract.OutboundOperation
+	deliveredSignal chan struct{}
+	fail            bool
+	streams         *fakeCardStream
+	streamList      []*fakeCardStream
+	openAttempts    []channelcontract.OutboundMessage
+	failOpenAt      map[int]bool
 }
 
 func (f *fakeAdapter) CreateReaction(_ context.Context, _ string, _ channelcontract.ReactionEmoji) (string, error) {
@@ -421,6 +422,12 @@ func (f *fakeAdapter) Start(context.Context, channelcontract.InboundHandler) err
 func (f *fakeAdapter) Stop(context.Context) error                                  { return nil }
 func (f *fakeAdapter) Deliver(_ context.Context, op channelcontract.OutboundOperation) (channelcontract.DeliveryReceipt, error) {
 	f.delivered = append(f.delivered, op)
+	if f.deliveredSignal != nil {
+		select {
+		case f.deliveredSignal <- struct{}{}:
+		default:
+		}
+	}
 	if f.fail {
 		return channelcontract.DeliveryReceipt{}, errors.New("temporary")
 	}
