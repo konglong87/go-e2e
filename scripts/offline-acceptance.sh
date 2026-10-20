@@ -164,13 +164,9 @@ else
   printf '%s\n' "$output" >&2
 fi
 
-echo "== Go cache maintenance"
-if output="$(bash "$SCRIPTS_DIR/go-cache-maintenance_test.sh" 2>&1)"; then
-  pass
-else
-  fail "Go cache maintenance regression:"
-  printf '%s\n' "$output" >&2
-fi
+# Go cache maintenance is a developer-machine hygiene helper, not a product
+# or release invariant. It remains available through its dedicated script and
+# the best-effort EXIT hook above, but is intentionally not part of CI.
 
 # Scenarios that run end to end with no API key and no companion checkout: each
 # builds its own deterministic TUI harness. Verified to pass offline; the rest of
