@@ -58,7 +58,11 @@ describe("ConversationMessage", () => {
     vi.stubGlobal("URL", class extends URL { static createObjectURL = vi.fn(() => "blob:computer-observation"); static revokeObjectURL = vi.fn(); });
     Object.defineProperty(HTMLDialogElement.prototype, "showModal", { configurable: true, value: vi.fn(function (this: HTMLDialogElement) { this.setAttribute("open", ""); }) });
     Object.defineProperty(HTMLDialogElement.prototype, "close", { configurable: true, value: vi.fn(function (this: HTMLDialogElement) { this.removeAttribute("open"); }) });
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(new Blob(["png"], { type: "image/png" }), { status: 200 })));
+    // Use a string body instead of passing a Blob to Node's Response
+    // constructor: Node 22's undici implementation does not consistently
+    // expose Blob#stream(), while the browser contract only requires the
+    // response to support response.blob().
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("png", { status: 200, headers: { "Content-Type": "image/png" } })));
     render(message({ kind: "tool", tool: { id: "tool-1", name: "ComputerUse", input: "{}", command: "observe", output: "done", status: "completed", computerObservation: { observationID: "obs-1", assetID: "asset-screen", mediaType: "image/png", name: "screen.png", sizeBytes: 42, sha256: "hash" } } }));
     await vi.waitFor(() => expect(host.querySelector('button[aria-label="Open generated asset"]')).not.toBeNull());
     expect(host.querySelector(".webui2-tool-message")?.getAttribute("open")).toBeNull();
