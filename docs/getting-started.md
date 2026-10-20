@@ -23,7 +23,7 @@ cd go-e2e
 go run ./cmd/go-e2e --version
 ```
 
-源码最低要求 Go 1.25+。CI / Release 使用 `.tool-versions` 中固定的 Go 版本。
+源码最低要求 Go 1.26+。CI / Release 使用 `.tool-versions` 中固定的 Go 版本。
 
 ## 2. 配置模型 Provider
 

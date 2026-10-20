@@ -49,9 +49,9 @@ esac
 
 # Two Go floors, and they do not mean the same thing:
 #   go.mod's `go` directive is the hard one — below it the compile itself fails.
-#   .tool-versions is the security floor (crypto/tls GO-2026-5856) and what CI
-#   pins, so falling short of it only warns: the build succeeds, the binary just
-#   carries a known stdlib CVE. Both are read from their files so this script
+#   .tool-versions is the patched security floor and what CI pins, so falling
+#   short of it only warns: the build succeeds, but the binary may carry a
+#   known toolchain advisory. Both are read from their files so this script
 #   never becomes a third place where a Go version is written down.
 min_version="$(awk '$1 == "go" { print $2; exit }' go.mod)"
 pinned_version="$(awk '$1 == "golang" { print $2; exit }' .tool-versions)"

@@ -38,7 +38,7 @@
   <a href="LICENSE">
     <img src="https://img.shields.io/github/license/konglong87/go-e2e" alt="License">
   </a>
-  <img src="https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go&logoColor=white" alt="Go 1.25+">
+  <img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go&logoColor=white" alt="Go 1.26+">
 </p>
 
 <p align="center">
@@ -79,7 +79,7 @@ go run ./cmd/go-e2e --version
 go run ./cmd/go-e2e -p "检查当前项目结构，告诉我最值得先改进的地方"
 ```
 
-最低源码要求为 Go 1.25+。配置文件默认位于 `~/.golang-cc/settings.json`，最小的
+最低源码要求为 Go 1.26+。配置文件默认位于 `~/.golang-cc/settings.json`，最小的
 OpenAI-compatible 配置示例：
 
 ```json

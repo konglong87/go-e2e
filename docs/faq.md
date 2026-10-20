@@ -10,7 +10,7 @@ go-e2e 面向任务交付：Agent 可以检查项目、调用工具、修改文�
 
 ## 支持哪些系统？
 
-源码路径要求 Go 1.25+。桌面 Release 目标包括 macOS Apple Silicon、macOS Intel、Windows 和 Linux x86_64；请以具体 Release 的资产和说明为准。
+源码路径要求 Go 1.26+。桌面 Release 目标包括 macOS Apple Silicon、macOS Intel、Windows 和 Linux x86_64；请以具体 Release 的资产和说明为准。
 
 ## 必须使用某一家模型吗？
 
