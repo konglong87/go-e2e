@@ -1,7 +1,10 @@
 name: CI
 
 on:
+  # Branch pushes and PRs run only the fast, release-relevant gate. Tag pushes
+  # are intentionally excluded: release.yml owns the tag build and acceptance.
   push:
+    branches: ["**"]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -15,34 +18,12 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # 必须显式 pin：go.mod 的 go 指令只是下界，而 crypto/tls 的
-  # GO-2026-5856 需要 1.26.5 才修好。同步 .tool-versions。
-  GO_VERSION: '1.26.6'
+  # Keep CI and release on the same patched Go toolchain. The source of truth
+  # for release jobs is .tool-versions; this explicit pin keeps the fast gate
+  # reproducible and prevents a runner image update from changing the result.
+  GO_VERSION: '1.26.10'
 
 jobs:
-  topology:
-    name: runtime topology 最新性
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          # PR 影响分析需要 merge-base；浅克隆只能做静态路径检查。
-          fetch-depth: 0
-      - uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-
-      - name: 校验 registry、代码锚点与图件完整性
-        run: go run ./scripts/runtime-topology-check
-
-      - name: 校验 PR 影响声明与图件同步
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: go run ./scripts/runtime-topology-check --base "$BASE_SHA"
-
   build:
     name: build / vet / gofmt
     runs-on: ubuntu-latest
@@ -74,57 +55,6 @@ jobs:
           go mod tidy
           git diff --exit-code -- go.mod go.sum
 
-  swagger:
-    name: swagger 已同步
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    # docs/swagger.json 曾漂移 19 个 commit（AUDIT-P0-18）：注解漏写不会有任何
-    # 报错，只会让生成物静默过期，前端只能手写内联类型兜底。这个 job 重新生成
-    # 一遍再 diff，漂移即失败。
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: web/.nvmrc
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-
-      # swag 版本必须 pin：不同版本生成的 JSON 会有无害但非空的差异，
-      # 浮动版本会让这个检查变成随机失败。
-      - run: go mod download
-      - run: go install github.com/swaggo/swag/cmd/swag@v1.16.4
-
-      - name: 重新生成 docs/swagger.json
-        run: swag init -g cmd/go-e2e/main.go --parseInternal --parseDependency
-
-      - name: swagger 生成物与注解一致
-        run: |
-          if ! git diff --exit-code -- docs/swagger.json docs/swagger.yaml docs/docs.go; then
-            echo "::error::docs/ 下的 swagger 生成物与 internal/server 的注解不一致。"
-            echo "::error::本地执行：swag init -g cmd/go-e2e/main.go --parseInternal --parseDependency"
-            echo "::error::若是新端点漏了 @Router 注解，补到 internal/server/swagger_annotations.go。"
-            exit 1
-          fi
-
-      - run: npm ci --legacy-peer-deps
-        working-directory: web
-
-      - name: 重新生成 web/src/lib/generated/api-types.ts
-        run: npm run generate:api-types
-        working-directory: web
-
-      - name: api-types 与 swagger.json 一致
-        run: |
-          if ! git diff --exit-code -- web/src/lib/generated/api-types.ts; then
-            echo "::error::web/src/lib/generated/api-types.ts 与 docs/swagger.json 不一致。"
-            echo "::error::本地执行：npm --prefix web run generate:api-types"
-            exit 1
-          fi
-
   test:
     name: go test -race (impact-aware)
     runs-on: ubuntu-latest
@@ -140,54 +70,18 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: Full race suite on main, tags and manual runs
-        if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+      - name: Full race suite on main and manual runs
+        if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
         run: go test -race ./... -count=1
 
       - name: Impact-aware race suite on PRs and feature branches
-        if: github.event_name != 'workflow_dispatch' && github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
+        if: github.event_name != 'workflow_dispatch' && github.ref != 'refs/heads/main'
         env:
           BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
         run: scripts/race-impacted.sh "$BASE_SHA"
 
-  scripts:
-    name: scripts/offline-acceptance.sh
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    # scripts/ 下 69 个脚本不参与 go build，烂掉了也没人知道（AUDIT-P0-19）。
-    # 这个 job 跑不需要 API key 和外部仓库的那部分：静态检查 + 确定性 TUI 场景。
-    # 需要真实 key 的脚本按 scripts/README.md 分类，保持 opt-in。
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: web/.nvmrc
-
-      - run: node --test scripts/test-desktop-ci-prerequisites.mjs
-      - run: node scripts/test-release-assets.mjs
-      - run: scripts/offline-acceptance.sh
-
-  govulncheck:
-    name: govulncheck
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    # 独立 job：漏洞库会随时间更新，新 CVE 不应连带遮蔽 build/test 信号。
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-
-      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
-      - run: govulncheck ./...
-
   web:
-    name: web lint / typecheck / build / test
+    name: web typecheck / build / test
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -198,27 +92,14 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
-      # --legacy-peer-deps 是必需的，不是省事：devDependency 里
-      # typescript@6 与 openapi-typescript@7.13 声明的 peer typescript@^5.x
-      # 冲突，裸 npm ci 直接 ERESOLVE 失败。等 openapi-typescript 支持
-      # TS 6 后可以去掉（见 AUDIT-P0-18 的 api-types 生成链路）。
+      # --legacy-peer-deps is required because TypeScript 6 and
+      # openapi-typescript 7.13 declare incompatible peer ranges.
       - run: npm ci --legacy-peer-deps
         working-directory: web
 
-      # lint 与 typecheck 先跑：它们最快，且失败原因最明确。
-      # biome 只做 lint 不做 format —— 现有代码风格与 biome 默认排版有 78 个
-      # 文件的差异，格式化会淹没真实改动（见 AUDIT-P2-05）。
-      - run: npm run lint
-        working-directory: web
-
-      # typecheck 覆盖 tsconfig.app.json（src）之外的部分：vite.config.ts、
-      # playwright.config.ts、整个 e2e/。build 里的 tsc 只看 src，这些文件
-      # 以前永远不被类型检查。
+      # typecheck covers src plus vite/playwright/e2e configuration.
       - run: npm run typecheck
         working-directory: web
-
-      # typecheck above already covers src; bundle directly here to avoid
-      # compiling the same TypeScript project a second time in build.
       - run: npm run build:bundle
         working-directory: web
       - run: npm run test

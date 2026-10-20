@@ -12234,6 +12234,7 @@ export interface components {
             member_count?: number;
             result_json?: string;
             source_account_id?: number;
+            source_kind?: string;
             started_at?: string;
             status?: string;
             team_effective_hash?: string;

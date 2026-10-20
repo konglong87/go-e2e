@@ -15617,6 +15617,9 @@ const docTemplate = `{
                 "source_account_id": {
                     "type": "integer"
                 },
+                "source_kind": {
+                    "type": "string"
+                },
                 "started_at": {
                     "type": "string"
                 },

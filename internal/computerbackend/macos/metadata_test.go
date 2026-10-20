@@ -58,17 +58,17 @@ func boundsField(key string, value any) metadataMutation {
 }
 func targetMutations() map[string]metadataMutation {
 	return map[string]metadataMutation{
-		"window-missing":        func(r map[string]any) { delete(r, "window_id") },
-		"window-empty":          func(r map[string]any) { r["window_id"] = "" },
-		"window-mismatch":       func(r map[string]any) { r["window_id"] = "window-2" },
-		"window-type":           func(r map[string]any) { r["window_id"] = 1 },
-		"window-null":           func(r map[string]any) { r["window_id"] = nil },
-		"target-missing":        func(r map[string]any) { delete(r, "target_window") },
-		"target-null":           func(r map[string]any) { r["target_window"] = nil },
-		"target-type":           func(r map[string]any) { r["target_window"] = "invalid" },
-		"target-id":             func(r map[string]any) { r["target_window"].(map[string]any)["id"] = "window-2" },
-		"frame-missing":         func(r map[string]any) { delete(r["target_window"].(map[string]any), "frame") },
-		"frame-null":            func(r map[string]any) { r["target_window"].(map[string]any)["frame"] = nil },
+		"window-missing":  func(r map[string]any) { delete(r, "window_id") },
+		"window-empty":    func(r map[string]any) { r["window_id"] = "" },
+		"window-mismatch": func(r map[string]any) { r["window_id"] = "window-2" },
+		"window-type":     func(r map[string]any) { r["window_id"] = 1 },
+		"window-null":     func(r map[string]any) { r["window_id"] = nil },
+		"target-missing":  func(r map[string]any) { delete(r, "target_window") },
+		"target-null":     func(r map[string]any) { r["target_window"] = nil },
+		"target-type":     func(r map[string]any) { r["target_window"] = "invalid" },
+		"target-id":       func(r map[string]any) { r["target_window"].(map[string]any)["id"] = "window-2" },
+		"frame-missing":   func(r map[string]any) { delete(r["target_window"].(map[string]any), "frame") },
+		"frame-null":      func(r map[string]any) { r["target_window"].(map[string]any)["frame"] = nil },
 		// Origin (x/y) drift is accepted: a window can shift position between
 		// the target_window lookup and capture during launch animation. Only
 		// size mismatches are rejected.

@@ -33,12 +33,19 @@ workflow 始终生成未签名 Preview artifact。
 
 ## 发布命令
 
-先确保目标 commit 已通过 CI，再创建并推送版本 tag：
+先确保目标 commit 已通过快速 CI；发布前如近期没有跑过维护检查，再手动运行
+`Quality and maintenance` workflow，确认拓扑、Swagger 生成物、脚本离线检查和
+`govulncheck` 没有新的阻塞项，然后创建并推送版本 tag：
 
 ```bash
 git tag -a v0.1.0 -m "Release v0.1.0"
 git push origin v0.1.0
 ```
+
+快速 CI 与 Release 是两个独立 workflow：快速 CI 验证源码质量，Release 在 tag
+上重新构建三平台产物、校验清单和 SHA256，并执行发布后验收。Release 不会因为
+某一次普通分支 CI 失败而自动停止；因此不能把“Release 成功”理解为所有维护
+检查都通过。tag push 不再重复触发普通 CI，避免同一版本出现两套重复构建信号。
 
 ## 自动产物
 

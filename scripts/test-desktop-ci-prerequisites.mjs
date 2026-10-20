@@ -83,6 +83,7 @@ test("fresh source embeds only placeholders and passes desktop build, vet and un
 
 test("desktop CI separates source-only checks from real native builds and follows main", () => {
   const ci = readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8");
+  const quality = readFileSync(path.join(root, ".github/workflows/quality.yml"), "utf8");
   const nativeWorkflow = readFileSync(
     path.join(root, ".github/workflows/desktop-linux.yml"),
     "utf8",
@@ -97,7 +98,7 @@ test("desktop CI separates source-only checks from real native builds and follow
   assert.match(native, /libgtk-3-dev libwebkit2gtk-4\.1-dev/);
   assert.match(native, /npm ci --legacy-peer-deps/);
   assert.match(native, /wails@v2\.10\.2/);
-  assert.match(ci, /node --test scripts\/test-desktop-ci-prerequisites\.mjs/);
+  assert.match(quality, /node --test scripts\/test-desktop-ci-prerequisites\.mjs/);
   const windows = readFileSync(path.join(root, ".github/workflows/desktop-windows.yml"), "utf8");
   assert.match(windows, /branches:\s+- main/);
   assert.match(windows, /workflow_call:/);
@@ -113,7 +114,7 @@ test("desktop CI separates source-only checks from real native builds and follow
   assert.match(release, /signing_mode/);
   assert.match(release, /Configure all six Apple Secrets/);
   assert.match(release, /MACOS_RELEASE_MODE/);
-  assert.match(release, /skipping Gatekeeper assessment/);
+  assert.match(release, /skipping code-signature and Gatekeeper verification/);
   assert.match(release, /sha256sum go-e2e-\* go-e2e_\*/);
   assert.match(release, /gh release create/);
   assert.match(release, /gh release download/);

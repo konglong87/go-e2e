@@ -141,6 +141,8 @@ nodes:
       - internal/tools/imagegen/
       - internal/tools/computeruse/
       - internal/computeruse/
+      - internal/computeracceptance/
+      - internal/computerbridge/
       - internal/computerbackend/
       - native/macos/
     downstream: [RT-SUBAGENT, RT-EVIDENCE, RT-PERSIST, RT-SESSION-CONTROL]
@@ -250,6 +252,7 @@ nodes:
       - internal/server/runtime_trace_artifact.go
       - internal/telemetry/
       - internal/sessiondiag/
+      - internal/computerdiag/
       - scripts/runtime-trace-baseline/
     downstream: [RT-PERSIST]
     tests:
