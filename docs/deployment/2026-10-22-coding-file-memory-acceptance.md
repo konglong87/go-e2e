@@ -201,7 +201,13 @@ settings remained byte-identical, and the copied credential/private fixture was
 removed. The current task patch is distinct from the earlier 20-case post-frontmatter
 run; neither evidence set substitutes for a native screenshot on this patch.
 
+The reviewed source is committed and pushed as `05910fcde2bcc80ea1533171ba16cec33fb9bf94`.
+A clean post-change release-candidate app was built from that commit; the app
+manifest records the same source commit, clean source flags, service SHA-256
+`34e89e0db58203f68c063a6b7df3542effd0b53e013e72b1c83d82022d7f192e`, and verified
+ad-hoc signature. This proves packaging/build integrity, not UI behavior.
+
 The native desktop was not launched for acceptance because CUA reported the Mac
-locked. Thus this patch has code, test, and real-provider evidence but no current
-post-patch native UI/screenshot evidence. Unlock the host and rerun the isolated
-cold-session test before claiming that final surface passed.
+locked. Thus this patch has code, automated, and real-provider evidence but no
+current post-patch native UI/screenshot evidence. Unlock the host and rerun the
+isolated cold-session test before claiming that final surface passed.

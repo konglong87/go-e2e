@@ -167,8 +167,11 @@ score without amplification. No provider/global settings or tenant changes.
 - New isolated CLI SHA-256: `a24f25f1958cc10b1865e33cdd6a773f2a8a4b0b7868ab66c9eff43c416f1ffd`.
   Global model settings stayed byte-identical; copied test credentials and fixture
   directory were removed.
-- Remaining gate: rebuild and operate the actual native app for this source patch.
-  CUA confirmed that the Mac is locked; no post-patch screenshot or desktop pass is
-  claimed. Previous native evidence is for a different binary.
+- The current source was rebuilt as a signed, clean release-candidate app for
+  `05910fc`; embedded service SHA-256 is
+  `34e89e0db58203f68c063a6b7df3542effd0b53e013e72b1c83d82022d7f192e` and signature
+  verification passed. Remaining gate: operate the native app and capture the
+  cold-session UI. CUA confirmed the Mac is locked, so no post-patch screenshot or
+  desktop pass is claimed. Previous native evidence is for a different binary.
 - Explicit deferrals remain unchanged; older 20-case evidence is not proof of this
   newly edited source. All generated validation outputs remain ignored/local.
