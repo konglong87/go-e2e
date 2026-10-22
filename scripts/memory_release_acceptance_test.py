@@ -57,7 +57,9 @@ class MemoryGateTests(unittest.TestCase):
             for invalid in (valid.replace("name: deploy", "name: []"),
                             valid.replace("type: project", "type: unknown"),
                             valid.replace("name: deploy", "name: " + code),
-                            valid.replace("name: deploy", "name: [invalid")):
+                            valid.replace("name: deploy", "name: [invalid"),
+                            valid.replace("\n---\n", "\n---not-a-delimiter\n"),
+                            valid.replace("\n---\n", "\n----\n")):
                 with self.subTest(content=invalid):
                     GATE.write_private(memory, invalid)
                     with self.assertRaises((AssertionError, yaml.YAMLError)):

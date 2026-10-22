@@ -20,11 +20,12 @@ import (
 )
 
 const (
-	defaultWorkflowPromptBudgetBytes = 4096
-	defaultProjectMemoryRecallFiles  = 4
-	defaultProjectMemoryPreviewLines = 12
-	defaultProjectMemoryMaxBytes     = 25 * 1024
-	defaultProjectMemoryMaxLines     = 200
+	projectMemoryFrontmatterDelimiter = "---"
+	defaultWorkflowPromptBudgetBytes  = 4096
+	defaultProjectMemoryRecallFiles   = 4
+	defaultProjectMemoryPreviewLines  = 12
+	defaultProjectMemoryMaxBytes      = 25 * 1024
+	defaultProjectMemoryMaxLines      = 200
 	// defaultDocumentPromptBudgetBytes caps a single memory document. Before
 	// this existed only Type=="Workflow" was capped, so one oversized
 	// CLAUDE.md, user memory or managed policy went into every prompt in full.
@@ -920,7 +921,7 @@ func readMemoryPreview(root *os.Root, relative string, maxLines int) (string, er
 	lines := make([]string, 0, maxLines)
 	for scanner.Scan() {
 		lines = append(lines, scanner.Text())
-		if len(lines) == maxLines || (len(lines) > 1 && strings.TrimSpace(scanner.Text()) == "---") {
+		if len(lines) == maxLines || (len(lines) > 1 && isProjectMemoryFrontmatterDelimiter(scanner.Text())) {
 			break
 		}
 	}
@@ -930,23 +931,32 @@ func readMemoryPreview(root *os.Root, relative string, maxLines int) (string, er
 	return strings.Join(lines, "\n"), nil
 }
 
+// Closing fences must occupy an unindented line. An indented fence can be
+// content of a YAML block scalar; suffixes such as ---key are not fences.
+func isProjectMemoryFrontmatterDelimiter(line string) bool {
+	return strings.TrimRight(line, " \t\r") == projectMemoryFrontmatterDelimiter
+}
+
 func memoryFrontmatterSummary(content string) (name, description string) {
 	normalized := strings.ReplaceAll(content, "\r\n", "\n")
-	if !strings.HasPrefix(normalized, "---\n") {
+	if !strings.HasPrefix(normalized, projectMemoryFrontmatterDelimiter+"\n") {
 		return "", ""
 	}
-	end := strings.Index(normalized[4:], "\n---")
-	if end < 0 {
-		return "", ""
+	lines := strings.Split(normalized, "\n")
+	for end := 1; end < len(lines); end++ {
+		if !isProjectMemoryFrontmatterDelimiter(lines[end]) {
+			continue
+		}
+		var summary struct {
+			Name        string `yaml:"name"`
+			Description string `yaml:"description"`
+		}
+		if err := yaml.Unmarshal([]byte(strings.Join(lines[1:end], "\n")), &summary); err != nil {
+			return "", ""
+		}
+		return strings.TrimSpace(summary.Name), strings.TrimSpace(summary.Description)
 	}
-	var summary struct {
-		Name        string `yaml:"name"`
-		Description string `yaml:"description"`
-	}
-	if err := yaml.Unmarshal([]byte(normalized[4:4+end]), &summary); err != nil {
-		return "", ""
-	}
-	return strings.TrimSpace(summary.Name), strings.TrimSpace(summary.Description)
+	return "", ""
 }
 
 func promptIgnoresMemory(prompt string) bool {

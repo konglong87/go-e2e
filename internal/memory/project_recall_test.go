@@ -181,3 +181,40 @@ func TestProjectMemoryReadStaysWithOpenedRootAfterRename(t *testing.T) {
 		t.Fatalf("read followed replacement directory: %q, err=%v", data, err)
 	}
 }
+
+func TestProjectMemoryRecallRequiresCompleteFrontmatterDelimiter(t *testing.T) {
+	cases := []struct {
+		name, closing string
+		want          bool
+	}{
+		{"exact", "---", true},
+		{"trailing whitespace", "--- \t", true},
+		{"suffix", "---not-a-delimiter", false},
+		{"extra dash", "----", false},
+		{"mapping key", "---: value", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			mustWrite(t, filepath.Join(dir, "note.md"), "---\nname: Release\ndescription: durable policy\n"+tc.closing+"\nbody")
+			docs := recallProjectMemoryFiles(dir, "- [Note](note.md) - deployment verification", "deployment verification")
+			if got := len(docs) == 1; got != tc.want {
+				t.Fatalf("closing delimiter %q: recalled=%v, want=%v", tc.closing, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestProjectMemoryPreviewKeepsIndentedDelimiterInScalar(t *testing.T) {
+	dir := t.TempDir()
+	body := "---\nname: Release\ndescription: |-\n  preflight\n  ---\n  rollback\nmetadata:\n  type: project\n---\nBODY"
+	mustWrite(t, filepath.Join(dir, "note.md"), body)
+	name, description := memoryFrontmatterSummary(body)
+	if name != "Release" || description != "preflight\n---\nrollback" {
+		t.Fatalf("summary=(%q, %q), want a complete literal block", name, description)
+	}
+	docs := recallProjectMemoryFiles(dir, "- [Note](note.md)", "rollback")
+	if len(docs) != 1 || !strings.Contains(docs[0].Content, "BODY") {
+		t.Fatal("preview truncated the indented scalar before its relevant metadata")
+	}
+}

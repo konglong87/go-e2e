@@ -105,3 +105,28 @@ behavior change. Copied credentials were removed after the failed run.
 Cleanup verified: task fixture directories/databases/transcripts, copied API settings
 and disposable CLI removed. Retained requested screenshots and compact evidence total
 approximately 385 KB. Global settings digest unchanged; native test app stopped.
+
+## Review and gateway revalidation - 2026-10-22
+
+Started from clean `f600a50`, pulled main. Scope: review the already-landed range
+`deec0c9..f600a50`, replace only the user's exact old gateway URL in local settings,
+and revalidate real recall. Four endpoint fields changed; model/credentials and
+the unrelated default Sensenova route were preserved. No credential enters Git.
+
+Review found a pre-existing metadata boundary defect affecting the claimed recall
+contract: ---suffix/----/---: were accepted as closing fences, while an indented
+--- in a valid block scalar prematurely ended the preview. Three negative and one
+positive regression fail before the fix. Minimal architecture: one shared closing
+fence predicate inside project-memory parsing; reuse the YAML parser and budgets.
+
+Ordered gate: focused/full Go, race and vet -> commit/push parser slice -> rebuild
+signed app -> rerun 20 real GLM 5.2 cases on the new gateway -> finalize evidence.
+The pre-fix new-gateway GLM 5.2 run passed 18/18; GLM 5.1 still returned HTTP 503.
+Post-fix real-provider validation remains pending until run against the new binary.
+
+The Python acceptance validator had the same prefix-fence issue; its two new
+negative variants also failed before correction. Its fence predicate now mirrors
+the Go parser. Two real-provider cases were added for block-scalar recall and
+invalid-fence exclusion, bringing the post-review gate to 20 cases.
+
+Post-review delimiter fix: full Go suite, focused race/vet and all seven Python tests passed. Parser/harness slice is ready for commit and immediate push.

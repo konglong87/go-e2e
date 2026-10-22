@@ -10,7 +10,10 @@ The recall path is intentionally conservative:
 
 - Only Markdown files linked from `MEMORY.md` are eligible.
 - Frontmatter is previewed for at most 12 lines and 25 KiB before scoring,
-  stopping at its closing delimiter. Top-level `name` and `description` use
+  stopping at an unindented `---` closing line (trailing spaces/tabs allowed).
+  Indented `---` inside YAML block scalars is content, not a closing fence.
+  Prefixes such as `---suffix` and `----` are not closing fences.
+  Top-level `name` and `description` use
   the existing YAML parser (including folded/quoted scalars); nested fields
   cannot replace them and malformed YAML is not recalled.
 - Lexical retrieval uses exact normalized words, snake/camel identifier components,

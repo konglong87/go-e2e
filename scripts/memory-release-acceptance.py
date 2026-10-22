@@ -16,6 +16,7 @@ WRITE_TOOLS = "Read,Grep,Write,Edit"
 NO_TOOLS = ""
 READ_TOOLS = "Read"
 TRUNCATION_MARKER = "[Memory truncated for prompt budget]"
+FRONTMATTER_FENCE = re.compile(r"^---[ \t]*$", re.MULTILINE)
 
 
 def write_private(path, content):
@@ -52,8 +53,9 @@ def validate_saved_memory(directory, code):
         if code not in content:
             continue
         assert content.startswith("---\n"), "missing generated YAML frontmatter"
-        header, separator, _ = content[4:].partition("\n---")
-        assert separator, "unterminated generated frontmatter"
+        closing = FRONTMATTER_FENCE.search(content[4:])
+        assert closing is not None, "unterminated generated frontmatter"
+        header = content[4:4 + closing.start()]
         assert code not in header, "answer must be in the memory body, not metadata"
         metadata = yaml.safe_load(header)
         assert isinstance(metadata, dict), "frontmatter must be a mapping"
@@ -278,6 +280,18 @@ class Gate:
                       "metadata:\n  type: project\n---\n" + self.code)
         self.check_readonly("english-word-boundary", "Name an art exhibition. Reply unavailable "
                             "if no relevant fact is provided.", False)
+
+        # Delimiter regressions must hold through a real model request too.
+        write_private(self.memory / "MEMORY.md", "- [Release](lexical.md) - policy\n")
+        write_private(self.memory / "lexical.md", "---\nname: Release\ndescription: |-\n"
+                      "  preflight\n  ---\n  rollback\nmetadata:\n  type: project\n---\n" + self.code)
+        self.check_readonly("yaml-block-scalar-recall", "For rollback, what is the saved "
+                            "confirmation code? Answer only from context.", True)
+        write_private(self.memory / "lexical.md", "---\nname: rollback\n"
+                      "description: release verification\nmetadata:\n  type: project\n"
+                      "---not-a-delimiter\n" + self.code)
+        self.check_readonly("invalid-frontmatter-fence", "For rollback, what is the saved "
+                            "confirmation code? Answer from context only; say unknown if unavailable.", False)
 
     def budget_case(self):
         marker = "BUDGET_PRIVATE_TAIL"
