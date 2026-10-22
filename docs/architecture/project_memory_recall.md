@@ -79,3 +79,10 @@ configuration directory. A new process with no transcript verifies index/body
 injection, lexical-miss Read fallback, readonly bytes, ignore, chat and other-project
 boundaries. Its model transport is a test double: real-model lifecycle acceptance
 is a separate gate, never inferred from this test.
+
+The expanded 18-case real-provider and native-window acceptance, including an
+explicit check that old task titles/transcripts cannot supply the expected answer,
+is recorded in [the October acceptance report](../deployment/2026-10-22-coding-file-memory-acceptance.md).
+File-memory forgetting does not erase other context sources such as session
+histories or runtime task notifications; the report separates that limitation
+from file lifecycle correctness.

@@ -15,9 +15,9 @@ owns write containment; memory owns bounded lexical ranking; query owns context.
 | P0 | Canonicalize missing writable roots safely | None | Real Write, fresh/existing symlink roots, escape denial, tool regressions/race | Committed/pushed `0c9c877` |
 | P1 | Chinese short-query and English-boundary retrieval; weighted index metadata | P0 | 25 multilingual cases; ranking, invalid metadata, scope/budget/security regressions | Committed/pushed `c0154b8` |
 | P1 | File write/index/cold-process and Read-fallback integration | Retrieval | Actual file contents and captured request; no tenant dependency | Verified; test-double transport only |
-| P1 | Real-model lifecycle E2E | Deterministic gates, isolated configured provider | Save, cold recall, paraphrase Read, update, forget, readonly, isolation; inspect disk/request/response independently | Pending |
-| P1 | Actual coding desktop entry acceptance | Current built app and isolated workspace | Native clicks and screenshots, new session recall; do not substitute browser/mocked model evidence | Pending |
-| P2 | Targeted corrective iteration | Any demonstrated lifecycle failure | Reproduce first, minimal fix, rerun affected and negative cases | Conditional |
+| P1 | Real-model lifecycle E2E | Deterministic gates, isolated configured provider | Save, cold recall, paraphrase Read, update, forget, readonly, isolation; inspect disk/request/response independently | Passed; see dated acceptance report |
+| P1 | Actual coding desktop entry acceptance | Current built app and isolated workspace | Native clicks and screenshots, new session recall; do not substitute browser/mocked model evidence | Passed; see dated acceptance report |
+| P2 | Targeted corrective iteration | Any demonstrated lifecycle failure | Reproduce first, minimal fix, rerun affected and negative cases | Harness pacing corrected; no additional memory runtime fix required |
 
 ## Verification policy
 
@@ -72,3 +72,36 @@ HTTP 429 (`inference exceeds tpm/rpm limit`); this is not a recall verdict.
 Added opt-in inter-scenario pacing to the existing runner, with an offline test.
 No automatic replay of mutating scenarios, no weakened assertions and no runtime
 behavior change. Copied credentials were removed after the failed run.
+
+## Acceptance closure
+
+- Offline: full Go suite (117 passing packages), targeted vet, focused race checks,
+  seven Python gate tests. No pre-existing user changes were overwritten.
+- Real provider: all 18 gates passed on deepseek-v4-pro with the signed app's
+  embedded service. GLM 5.2 429 and GLM 5.1 503 runs are failures, not passes.
+- Native scripted and autonomous-model gates: actual coding write/readback, app
+  shutdown/restart, then a fresh session/transcript store sharing the same physical
+  Markdown root. Native screenshot + first-request provenance + unchanged hashes.
+- Ordinary restart carried the answer in an old task title. This confounded run
+  and a database-only isolation attempt are excluded as file-only proof.
+- See `docs/deployment/2026-10-22-coding-file-memory-acceptance.md` for limitations,
+  artifact digests, model usage, retained screenshots and reproduction details.
+- Remaining outside the bounded file-memory plan: provider availability; strict
+  cross-source forgetting/task-status retention; embeddings only if justified.
+- Commits/pushes: `0c9c877`, `c0154b8`, `97d7b85`, `d870233` are on origin/main.
+  This acceptance report is the final documentation slice.
+
+### Explicit follow-ups (not silently counted as implemented)
+
+1. P1, external: default GLM service availability. Dependency: healthy provider
+   capacity/channel. Acceptance: rerun all 18 cases on that provider without 429/503.
+2. P1, separately scoped: strict forgetting across task status and session history.
+   Dependency: an explicit retention/context-source policy. Acceptance: normal new
+   desktop sessions cannot obtain a forgotten fact from a task title or transcript.
+   The current gate proves file lifecycle only; no cross-source deletion is claimed.
+3. P2, deferred: semantic embeddings/background consolidation. Dependency: measured
+   lexical/fallback failures justifying added cost. No service/index added speculatively.
+
+Cleanup verified: task fixture directories/databases/transcripts, copied API settings
+and disposable CLI removed. Retained requested screenshots and compact evidence total
+approximately 385 KB. Global settings digest unchanged; native test app stopped.
