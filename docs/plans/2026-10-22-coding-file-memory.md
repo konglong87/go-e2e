@@ -130,3 +130,21 @@ the Go parser. Two real-provider cases were added for block-scalar recall and
 invalid-fence exclusion, bringing the post-review gate to 20 cases.
 
 Post-review delimiter fix: full Go suite, focused race/vet and all seven Python tests passed. Parser/harness slice is ready for commit and immediate push.
+
+## Gateway and post-fix verification closure
+
+- Replaced the exact old gateway in four local fallback-provider endpoints, preserving
+  their credentials/models; the separate default GLM-5.2 provider remains on the
+  Sensenova host. Global settings are user data and remain outside Git. SHA-256
+  matches the recorded post-migration receipt; no credential values are recorded.
+- Authenticated `/models` on the new gateway returned 200 and listed glm-5.1 and
+  glm-5.2. GLM-5.1 inference itself still returned 503 (no available channel).
+- Isolated GLM-5.2 routing through the same migrated gateway completed 20/20 real
+  scenarios against the post-fix embedded app binary. Cold recall and valid YAML
+  block-scalar recall passed; malformed closing fence was excluded. Default route
+  and user global settings were not switched for this test.
+- Post-fix full suite: 117 Go package reports ok; focused race and vet; seven Python
+  harness tests. Signed release-candidate build digest recorded with the acceptance.
+- Native post-fix screenshot acceptance is BLOCKED by the host Mac being locked.
+  Earlier native acceptance belongs to the prior binary and is not represented as
+  post-fix evidence. Unlock and rerun on the actual app for that final surface.

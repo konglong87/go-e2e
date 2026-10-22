@@ -142,3 +142,34 @@ is unchanged; default model and real project memory were not edited.
 - Provider 429/503 availability and the separate task-context-source issue were
   not disguised as fixed. Formal Apple distribution signing and a physical second
   display remain deferred as previously directed by the user.
+
+## Review follow-up and new-gateway GLM rerun
+
+On 2026-10-22, the exact four local fallback endpoints previously using the old
+AILab host were changed to `https://ai-gateway.theunifiedcare.com/v1`. Provider
+models and credentials were preserved; local settings remain untracked user data.
+The separately configured default GLM-5.2 route still uses the Sensenova host.
+An authenticated `/models` call over Go HTTPS returned 200 and listed GLM-5.1 and
+GLM-5.2. Listing availability is not inference availability: GLM-5.1 still returned
+503, `No available channel for model glm-5.1 under group default (distributor)`.
+
+Isolated GLM-5.2 requests on the new gateway then passed all 20 real-model cases
+against post-review binary SHA-256
+`058e7602375dc6b6e8b8dda4fff7612514525c2c815784740fae7496ab51fe07` (source
+commit `c90a4ad11feccd1a86445400e02c8dc70f73600e`). No default-model route or
+workspace memory was changed. This extends the earlier cases with valid YAML block
+scalar recall containing an indented `---`, and rejection of a malformed
+`---not-a-delimiter` closing fence. Both behaved correctly in real requests.
+
+Review also found two real frontmatter parsing defects; regression tests reproduced
+both before their fix. Exact, unindented closing fences are now required; horizontal
+trailing whitespace remains valid. The fix and expanded real-provider runner are
+committed as `c90a4ad` and pushed to main. Full Go, focused race/vet, and Python
+acceptance tests passed after the change.
+
+A second native GUI pass on the post-fix binary was requested by the verification
+plan but the Mac was locked. It is explicitly blocked, not passed; no old screenshot
+is presented as new-build evidence. Original native screenshots above prove the
+prior build only. To complete that last surface, unlock the Mac and rerun the
+isolated native cold-session check. Existing GLM 5.1 availability and the default
+GLM 5.2 route migration also remain distinct follow-ups.
