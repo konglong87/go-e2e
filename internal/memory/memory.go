@@ -772,7 +772,7 @@ func loadClaudeCodeProjectMemoryPath(path, prompt string) ([]Document, error) {
 	return append(docs, recallProjectMemoryFilesFromRoot(root, content, prompt)...), nil
 }
 
-var projectMemoryLinkRE = regexp.MustCompile(`\[[^\]]+\]\(([^)#]+\.md)\)`)
+var projectMemoryLinkRE = regexp.MustCompile(`\[([^\]]+)\]\(([^)#]+\.md)\)`)
 
 func recallProjectMemoryFiles(memoryDir, indexContent, prompt string) []Document {
 	root, err := os.OpenRoot(memoryDir)
@@ -799,10 +799,10 @@ func recallProjectMemoryFilesFromRoot(root *os.Root, indexContent, prompt string
 	seen := map[string]bool{}
 	for _, line := range strings.Split(indexContent, "\n") {
 		match := projectMemoryLinkRE.FindStringSubmatch(line)
-		if len(match) != 2 {
+		if len(match) != 3 {
 			continue
 		}
-		relative := filepath.Clean(strings.TrimSpace(match[1]))
+		relative := filepath.Clean(strings.TrimSpace(match[2]))
 		if relative == "." || filepath.IsAbs(relative) || relative == "MEMORY.md" || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 			continue
 		}
@@ -816,8 +816,14 @@ func recallProjectMemoryFilesFromRoot(root *os.Root, indexContent, prompt string
 			continue
 		}
 		name, description := memoryFrontmatterSummary(string(data))
-		score := memoryRecallScore(queryTokens, name+" "+description)
-		if score > 0 {
+		// Index hints cannot turn malformed or missing metadata into eligible
+		// memory. Such files remain available through the model's Read path.
+		if strings.TrimSpace(name) == "" && strings.TrimSpace(description) == "" {
+			continue
+		}
+		_, hook, _ := strings.Cut(line, match[0])
+		score := memoryRecallCandidateScore(queryTokens, name, description, match[1]+" "+hook)
+		if score >= recallMinimumScore {
 			candidates = append(candidates, candidate{path: path, score: score})
 		}
 	}
@@ -941,42 +947,6 @@ func memoryFrontmatterSummary(content string) (name, description string) {
 		return "", ""
 	}
 	return strings.TrimSpace(summary.Name), strings.TrimSpace(summary.Description)
-}
-
-func memoryRecallTokens(text string) []string {
-	var tokens []string
-	for _, raw := range strings.Fields(strings.ToLower(text)) {
-		token := strings.Trim(raw, ".,:;!?()[]{}<>\"'`/\\")
-		if len([]rune(token)) < 3 || memoryRecallStopWords[token] {
-			continue
-		}
-		tokens = append(tokens, token)
-	}
-	return tokens
-}
-
-var memoryRecallStopWords = map[string]bool{
-	"the": true, "and": true, "for": true, "from": true, "with": true,
-	"this": true, "that": true, "please": true, "当前": true, "项目": true,
-	"记忆": true, "检查": true, "读取": true, "查看": true,
-}
-
-func memoryRecallScore(queryTokens []string, summary string) int {
-	summaryTokens := memoryRecallTokens(summary)
-	seen := map[string]bool{}
-	score := 0
-	for _, query := range queryTokens {
-		for _, candidate := range summaryTokens {
-			if query == candidate || strings.Contains(query, candidate) || strings.Contains(candidate, query) {
-				if !seen[candidate] {
-					seen[candidate] = true
-					score++
-				}
-				break
-			}
-		}
-	}
-	return score
 }
 
 func promptIgnoresMemory(prompt string) bool {

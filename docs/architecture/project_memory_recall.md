@@ -4,7 +4,7 @@
 
 Project memory keeps `MEMORY.md` as the always-loaded index. During code-mode
 context assembly, the runtime may additionally recall indexed memory files when
-their frontmatter `name` or `description` overlaps the current user prompt.
+their frontmatter and index hints match the current user prompt.
 
 The recall path is intentionally conservative:
 
@@ -13,6 +13,12 @@ The recall path is intentionally conservative:
   stopping at its closing delimiter. Top-level `name` and `description` use
   the existing YAML parser (including folded/quoted scalars); nested fields
   cannot replace them and malformed YAML is not recalled.
+- Lexical retrieval uses exact normalized words, snake/camel identifier components,
+  and Han bigrams (including two-character Chinese queries). Arbitrary English
+  substring matches such as `art` → `artifact` are not accepted.
+- Name, description and index label/hook matches have weights 4, 2 and 1.
+  Scores below 2 do not preload a body. Index hints cannot make missing or invalid
+  frontmatter eligible; one weak index-only word is insufficient.
 - At most 4 files are recalled.
 - Files outside the memory directory, including symlink targets, are rejected.
 - Index, preview and body reads share an opened `os.Root`. Final reads remain
@@ -39,7 +45,7 @@ reads retain their existing permission boundaries.
 
 `os.Root` is a path-traversal boundary, not a complete filesystem sandbox:
 hard links, mounted filesystems and special files are not excluded by it.
-Recall is keyword-based, not semantic retrieval; the native project slug
+Recall is lexical (words/identifiers/Han bigrams), not semantic retrieval; the native project slug
 encoding also is not a collision-free multi-tenant isolation mechanism.
 No new shared prompt, gate, tool permission or persistence format is introduced.
 Rollback is limited to the memory fix commit and does not remove saved memories.
@@ -64,3 +70,12 @@ scope, readonly hashes, ignore/missing/unindexed negative paths and byte budgets
 Evidence uses the runtime's logical pre-provider request dump plus the actual
 model response, not a claimed HTTP wire capture. See
 [the dated acceptance report](../deployment/2026-09-10-dependencies-memory-acceptance.md).
+
+## Coding file acceptance
+
+`TestCodingFileMemoryWriteAndColdProcess` executes the real Write tool using a
+code session's memory writable root, including a fresh root under a symlinked
+configuration directory. A new process with no transcript verifies index/body
+injection, lexical-miss Read fallback, readonly bytes, ignore, chat and other-project
+boundaries. Its model transport is a test double: real-model lifecycle acceptance
+is a separate gate, never inferred from this test.
