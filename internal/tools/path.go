@@ -120,11 +120,12 @@ func realPathWithin(target, root string) bool {
 	if err != nil {
 		return false
 	}
-	realRoot, err := filepath.EvalSymlinks(root)
-	if err != nil {
-		realRoot = root
-	}
-	realRoot, err = filepath.Abs(realRoot)
+	// A declared writable root may not exist yet (for example, first project
+	// memory creation). Resolve its nearest existing ancestor exactly as for
+	// the target; falling back to the lexical root mismatches symlink parents.
+	// Resolution errors still fail closed, and the caller's lexical containment
+	// check plus this real-path check continue to reject escaping child links.
+	realRoot, err := realWritePath(root)
 	if err != nil {
 		return false
 	}
