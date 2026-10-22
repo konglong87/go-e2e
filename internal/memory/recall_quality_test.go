@@ -87,3 +87,36 @@ func TestMemoryRecallScoreDoesNotAmplifyRepeatedQueryWords(t *testing.T) {
 		t.Fatalf("duplicate query changed score: %d != %d", a, b)
 	}
 }
+
+func TestProjectMemoryRecallKeepsIndexHintsWithTheirLink(t *testing.T) {
+	cases := []struct {
+		name, index string
+		want        string
+	}{
+		{"multiple links", "- [Build](build.md) - registry; [Release](release.md) - canary rollback", "release.md"},
+		{"later alias", "- [Release](release.md)\n- [Deployment](release.md) - canary rollback", "release.md"},
+		{"commented hook", "- [Build](build.md) <!-- canary rollback -->", ""},
+		{"commented entry", "<!--\n- [Build](build.md) - canary rollback\n-->", ""},
+		{"duplicate weak hint", "- [Build](build.md) - canary\n- [Build](build.md) - canary", ""},
+		{"disjoint weak aliases", "- [Build](build.md) - canary\n- [Build](build.md) - rollback", ""},
+		{"normalized later alias", "- [Release](release.md)\n- [Deployment](./release.md) - canary rollback", "release.md"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			for _, name := range []string{"build.md", "release.md"} {
+				mustWrite(t, filepath.Join(dir, name), "---\nname: Policy\ndescription: durable convention\n---\nbody")
+			}
+			docs := recallProjectMemoryFiles(dir, tc.index, "canary rollback")
+			if tc.want == "" {
+				if len(docs) != 0 {
+					t.Fatalf("commented hint recalled %v", docs)
+				}
+				return
+			}
+			if len(docs) != 1 || filepath.Base(docs[0].Path) != tc.want {
+				t.Fatalf("recalled %v, want only %s", docs, tc.want)
+			}
+		})
+	}
+}

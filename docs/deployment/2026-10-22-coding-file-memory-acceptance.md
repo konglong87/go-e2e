@@ -173,3 +173,35 @@ is presented as new-build evidence. Original native screenshots above prove the
 prior build only. To complete that last surface, unlock the Mac and rerun the
 isolated native cold-session check. Existing GLM 5.1 availability and the default
 GLM 5.2 route migration also remain distinct follow-ups.
+
+
+## Re-review: indexed-link hint ownership
+
+A second source review found that Markdown link matching assigned the remainder
+of a line to its first link, ignored later aliases for an already-seen path, and
+searched raw HTML comment text even though comments are removed from injected
+memory context. Repeated weak aliases could also have amplified an otherwise
+insufficient index-only score. These are fixed by binding each label/hook to its
+own link, stripping comments before extraction, normalizing paths before grouping,
+and using the strongest alias score rather than summing aliases. Rooted reads,
+frontmatter eligibility, score weights, candidate/body budgets, and path containment
+remain in place.
+
+The new regressions failed before the fix. After the fix, the full Go suite, focused
+race tests, `go vet`, and all seven Python acceptance harness tests passed. Six
+isolated GLM-5.2 requests through `https://ai-gateway.theunifiedcare.com/v1` also
+passed: same-line links, later normalized alias, commented hook, commented entry,
+duplicate weak hint, and two disjoint weak aliases. The request-context assertions
+confirmed that the unrelated decoy body was not preloaded. These are targeted
+model observations, not a claim of universal semantic recall.
+
+The isolated CLI binary digest was
+`a24f25f1958cc10b1865e33cdd6a773f2a8a4b0b7868ab66c9eff43c416f1ffd`. The global
+settings remained byte-identical, and the copied credential/private fixture was
+removed. The current task patch is distinct from the earlier 20-case post-frontmatter
+run; neither evidence set substitutes for a native screenshot on this patch.
+
+The native desktop was not launched for acceptance because CUA reported the Mac
+locked. Thus this patch has code, test, and real-provider evidence but no current
+post-patch native UI/screenshot evidence. Unlock the host and rerun the isolated
+cold-session test before claiming that final surface passed.

@@ -773,8 +773,6 @@ func loadClaudeCodeProjectMemoryPath(path, prompt string) ([]Document, error) {
 	return append(docs, recallProjectMemoryFilesFromRoot(root, content, prompt)...), nil
 }
 
-var projectMemoryLinkRE = regexp.MustCompile(`\[([^\]]+)\]\(([^)#]+\.md)\)`)
-
 func recallProjectMemoryFiles(memoryDir, indexContent, prompt string) []Document {
 	root, err := os.OpenRoot(memoryDir)
 	if err != nil {
@@ -797,21 +795,8 @@ func recallProjectMemoryFilesFromRoot(root *os.Root, indexContent, prompt string
 		score int
 	}
 	var candidates []candidate
-	seen := map[string]bool{}
-	for _, line := range strings.Split(indexContent, "\n") {
-		match := projectMemoryLinkRE.FindStringSubmatch(line)
-		if len(match) != 3 {
-			continue
-		}
-		relative := filepath.Clean(strings.TrimSpace(match[2]))
-		if relative == "." || filepath.IsAbs(relative) || relative == "MEMORY.md" || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-			continue
-		}
+	for relative, hints := range projectMemoryIndexHints(indexContent) {
 		path := filepath.Join(memoryDir, relative)
-		if seen[path] {
-			continue
-		}
-		seen[path] = true
 		data, err := readMemoryPreview(root, relative, defaultProjectMemoryPreviewLines)
 		if err != nil {
 			continue
@@ -822,8 +807,11 @@ func recallProjectMemoryFilesFromRoot(root *os.Root, indexContent, prompt string
 		if strings.TrimSpace(name) == "" && strings.TrimSpace(description) == "" {
 			continue
 		}
-		_, hook, _ := strings.Cut(line, match[0])
-		score := memoryRecallCandidateScore(queryTokens, name, description, match[1]+" "+hook)
+		// Repeated aliases may improve relevance but must not multiply evidence.
+		score := 0
+		for _, hint := range hints {
+			score = max(score, memoryRecallCandidateScore(queryTokens, name, description, hint))
+		}
 		if score >= recallMinimumScore {
 			candidates = append(candidates, candidate{path: path, score: score})
 		}

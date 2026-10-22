@@ -17,6 +17,7 @@ import (
 )
 
 const fileMemoryFixtureBody = "SYNTHETIC_BODY_ONLY_MEMORY_9274"
+const fileMemoryDecoyBody = "UNRELATED_FILE_MUST_NOT_PRELOAD_6401"
 const fileMemoryChildWorkspaceEnv = "GO_E2E_TEST_FILE_MEMORY_WORKSPACE"
 
 func TestCodingFileMemoryWriteAndColdProcess(t *testing.T) {
@@ -43,9 +44,10 @@ func TestCodingFileMemoryWriteAndColdProcess(t *testing.T) {
 	session := New(&systemStreamer{}, tools.NewRegistry(filewrite.New(), fileread.New()), Options{Model: "test", CWD: workspace, PromptMode: "code", MaxTurns: 1})
 	files := map[string]string{
 		"topic.md":  "---\nname: Deployment policy\ndescription: deployment verification checklist\nmetadata:\n  type: project\n---\n" + fileMemoryFixtureBody + "\n",
-		"MEMORY.md": "- [Deployment policy](topic.md) - release verification convention\n",
+		"decoy.md":  "---\nname: Build\ndescription: registry convention\n---\n" + fileMemoryDecoyBody + "\n",
+		"MEMORY.md": "- [Build](decoy.md) - registry; [Deployment policy](topic.md) - release verification convention\n",
 	}
-	for _, name := range []string{"topic.md", "MEMORY.md"} {
+	for _, name := range []string{"topic.md", "decoy.md", "MEMORY.md"} {
 		input, _ := json.Marshal(map[string]string{"file_path": filepath.Join(memdir, name), "content": files[name]})
 		result := filewrite.New().Run(context.Background(), input, tools.Context{CWD: workspace, WritableRoots: session.options.WritableRoots})
 		if result.IsError {
@@ -94,6 +96,9 @@ func TestCodingFileMemoryColdProcessChild(t *testing.T) {
 			t.Fatal(err)
 		}
 		text := string(raw)
+		if strings.Contains(text, fileMemoryDecoyBody) {
+			t.Fatal("another link's index hint preloaded the decoy body")
+		}
 		if got := strings.Contains(text, fileMemoryFixtureBody); got != wantBody {
 			t.Fatalf("body preload for %q: %t want %t", prompt, got, wantBody)
 		}
@@ -102,6 +107,7 @@ func TestCodingFileMemoryColdProcessChild(t *testing.T) {
 		}
 	}
 	check(workspace, "code", "deployment verification", true, true)
+	check(workspace, "code", "release verification", true, true)
 	check(workspace, "code", "What precautions should we take before shipping?", false, true)
 	input, _ := json.Marshal(map[string]string{"file_path": filepath.Join(memory.ClaudeCodeProjectMemoryDir(workspace), "topic.md")})
 	result := fileread.New().Run(context.Background(), input, tools.Context{CWD: workspace})

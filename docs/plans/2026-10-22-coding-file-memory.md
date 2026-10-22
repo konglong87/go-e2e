@@ -16,8 +16,8 @@ owns write containment; memory owns bounded lexical ranking; query owns context.
 | P1 | Chinese short-query and English-boundary retrieval; weighted index metadata | P0 | 25 multilingual cases; ranking, invalid metadata, scope/budget/security regressions | Committed/pushed `c0154b8` |
 | P1 | File write/index/cold-process and Read-fallback integration | Retrieval | Actual file contents and captured request; no tenant dependency | Verified; test-double transport only |
 | P1 | Real-model lifecycle E2E | Deterministic gates, isolated configured provider | Save, cold recall, paraphrase Read, update, forget, readonly, isolation; inspect disk/request/response independently | Passed; see dated acceptance report |
-| P1 | Actual coding desktop entry acceptance | Current built app and isolated workspace | Native clicks and screenshots, new session recall; do not substitute browser/mocked model evidence | Passed; see dated acceptance report |
-| P2 | Targeted corrective iteration | Any demonstrated lifecycle failure | Reproduce first, minimal fix, rerun affected and negative cases | Harness pacing corrected; no additional memory runtime fix required |
+| P1 | Actual coding desktop entry acceptance | Current built app and isolated workspace | Native clicks and screenshots, new session recall; do not substitute browser/mocked model evidence | Prior build passed; post-frontmatter build remains blocked by locked Mac |
+| P2 | Targeted corrective iteration | Any demonstrated lifecycle failure | Reproduce first, minimal fix, rerun affected and negative cases | Index-hint ownership defect reproduced and fixed in this review; six real-model cases pass |
 
 ## Verification policy
 
@@ -148,3 +148,27 @@ Post-review delimiter fix: full Go suite, focused race/vet and all seven Python 
 - Native post-fix screenshot acceptance is BLOCKED by the host Mac being locked.
   Earlier native acceptance belongs to the prior binary and is not represented as
   post-fix evidence. Unlock and rerun on the actual app for that final surface.
+
+## Re-review: index-hint ownership
+
+Base `4a5e64f`; clean main, pulled before review; no pre-existing dirty files.
+The new regressions failed before the fix: a later same-line link's hook
+selected the first file, a later alias was ignored, and commented hooks/entries
+could select an otherwise irrelevant body. Repeated weak hints could also add up
+and incorrectly preload a file. Fix index parsing independently from
+rooted reads/ranking, keep duplicate aliases separate and use their strongest
+score without amplification. No provider/global settings or tenant changes.
+
+- Intended/completed implementation: `project_memory_index.go`, recall caller.
+- Tests: regressions reproduced pre-fix. Post-fix full Go suite, focused race/vet,
+  Python harness and six isolated GLM-5.2 cases pass. Real-model probes cover
+  same-line link ownership, normalized duplicate aliases, comments and weak-hint
+  non-amplification; no unrelated file body entered the request context.
+- New isolated CLI SHA-256: `a24f25f1958cc10b1865e33cdd6a773f2a8a4b0b7868ab66c9eff43c416f1ffd`.
+  Global model settings stayed byte-identical; copied test credentials and fixture
+  directory were removed.
+- Remaining gate: rebuild and operate the actual native app for this source patch.
+  CUA confirmed that the Mac is locked; no post-patch screenshot or desktop pass is
+  claimed. Previous native evidence is for a different binary.
+- Explicit deferrals remain unchanged; older 20-case evidence is not proof of this
+  newly edited source. All generated validation outputs remain ignored/local.

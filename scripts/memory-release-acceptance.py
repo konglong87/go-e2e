@@ -293,6 +293,34 @@ class Gate:
         self.check_readonly("invalid-frontmatter-fence", "For rollback, what is the saved "
                             "confirmation code? Answer from context only; say unknown if unavailable.", False)
 
+    def index_hint_cases(self):
+        # The expected code is body-only; index parsing must select the right file.
+        self.code = "INDEX-" + secrets.token_hex(8).upper()
+        body = "---\nname: Policy\ndescription: durable convention\nmetadata:\n  type: project\n---\n"
+        write_private(self.memory / "entry.md", body + self.code)
+        write_private(self.memory / "decoy.md", body + "UNRELATED_BODY_ONLY")
+        prompt = "For canary rollback, what is the saved confirmation code? " \
+                 "Answer from context only; say unknown if unavailable."
+        cases = (
+            ("index-same-line-links", "- [Build](decoy.md) - registry; "
+             "[Release](entry.md) - canary rollback\n", True),
+            ("index-later-alias", "- [Release](entry.md)\n"
+             "- [Deployment](./entry.md) - canary rollback\n", True),
+            ("index-commented-hook", "- [Release](entry.md) <!-- canary rollback -->\n", False),
+            ("index-commented-entry", "<!--\n- [Release](entry.md) - canary rollback\n-->\n", False),
+            ("index-duplicate-weak-hint", "- [Release](entry.md) - canary\n"
+             "- [Release](entry.md) - canary\n", False),
+            ("index-disjoint-weak-aliases", "- [Release](entry.md) - canary\n"
+             "- [Release](entry.md) - rollback\n", False),
+        )
+        for name, index, expected in cases:
+            write_private(self.memory / "MEMORY.md", index)
+            self.check_readonly(name, prompt, expected)
+            dump = self.root / (name + ".prompt.jsonl")
+            first = json.loads(dump.read_text().splitlines()[0])
+            assert "UNRELATED_BODY_ONLY" not in request_context(first), \
+                name + ": another link's hint preloaded the decoy body"
+
     def budget_case(self):
         marker = "BUDGET_PRIVATE_TAIL"
         index = "".join(f"- [Budget {i}](budget-{i}.md)\n" for i in range(6))
@@ -358,6 +386,7 @@ def main():
         gate.activity_readonly_case()
         gate.lifecycle_cases()
         gate.lexical_cases()
+        gate.index_hint_cases()
         gate.budget_case()
         gate.finish()
     except Exception as error:

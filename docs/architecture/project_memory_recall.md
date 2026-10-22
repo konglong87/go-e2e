@@ -22,6 +22,10 @@ The recall path is intentionally conservative:
 - Name, description and index label/hook matches have weights 4, 2 and 1.
   Scores below 2 do not preload a body. Index hints cannot make missing or invalid
   frontmatter eligible; one weak index-only word is insufficient.
+- Each index link owns only its label and the hook before the next link. HTML
+  comments are ignored, just as in the injected index. Multiple aliases for one
+  normalized path use their maximum score, never a sum of weak hints. A 6-case
+  real-provider follow-up covers these boundaries; see the October acceptance report.
 - At most 4 files are recalled.
 - Files outside the memory directory, including symlink targets, are rejected.
 - Index, preview and body reads share an opened `os.Root`. Final reads remain
@@ -83,7 +87,7 @@ injection, lexical-miss Read fallback, readonly bytes, ignore, chat and other-pr
 boundaries. Its model transport is a test double: real-model lifecycle acceptance
 is a separate gate, never inferred from this test.
 
-The expanded 18-case real-provider and native-window acceptance, including an
+The real-provider and native-window acceptance, including an
 explicit check that old task titles/transcripts cannot supply the expected answer,
 is recorded in [the October acceptance report](../deployment/2026-10-22-coding-file-memory-acceptance.md).
 File-memory forgetting does not erase other context sources such as session
