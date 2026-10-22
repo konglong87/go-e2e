@@ -65,6 +65,28 @@ class MemoryGateTests(unittest.TestCase):
             GATE.write_private(root / "extra.md", "extra")
             self.assertNotEqual(before, GATE.memory_snapshot(root))
 
+    def test_read_fallback_requires_actual_read_evidence(self):
+        code = "SYNTHETIC_BODY"
+        result = {"response": code, "tool_calls": [{"name": "Read", "output": code}]}
+        GATE.validate_read_fallback(result, "index only", code)
+        for invalid, context in ((result, code),
+                                 ({"response": code, "tool_calls": []}, "index only"),
+                                 ({"response": "unknown", "tool_calls": result["tool_calls"]}, "index only"),
+                                 ({"response": code, "tool_calls": result["tool_calls"] + [{"name": "Write"}]}, "index only")):
+            with self.subTest(result=invalid, context=context):
+                with self.assertRaises(AssertionError):
+                    GATE.validate_read_fallback(invalid, context, code)
+
+    def test_forget_checks_unindexed_files_too(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            GATE.write_private(root / "MEMORY.md", "# Memory\n")
+            GATE.write_private(root / "unindexed.md", "SYNTHETIC_OLD_FACT")
+            with self.assertRaises(AssertionError):
+                GATE.validate_forgotten(root, ("SYNTHETIC_OLD_FACT",))
+            GATE.write_private(root / "unindexed.md", "no retained fact")
+            GATE.validate_forgotten(root, ("SYNTHETIC_OLD_FACT",))
+
 
 if __name__ == "__main__":
     unittest.main()

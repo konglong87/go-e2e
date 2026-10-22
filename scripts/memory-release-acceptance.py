@@ -14,6 +14,7 @@ import time
 PROVIDER = "sensenova-glm-5.2"
 WRITE_TOOLS = "Read,Grep,Write,Edit"
 NO_TOOLS = ""
+READ_TOOLS = "Read"
 TRUNCATION_MARKER = "[Memory truncated for prompt budget]"
 
 
@@ -64,6 +65,22 @@ def validate_saved_memory(directory, code):
     return matches[0]
 
 
+def validate_read_fallback(result, initial_context, code):
+    assert code not in initial_context, "fallback was already preloaded"
+    assert code in result["response"], "fallback did not return the stored value"
+    assert any(trace.get("name") == "Read" and code in trace.get("output", "")
+               for trace in result.get("tool_calls", [])), "no Read result supplied the value"
+    assert not any(trace.get("name") in {"Write", "Edit", "MultiEdit"}
+                   for trace in result.get("tool_calls", [])), "fallback wrote memory"
+
+
+def validate_forgotten(directory, codes):
+    for path in directory.rglob("*.md"):
+        assert directory.resolve() in path.resolve().parents, "memory escapes isolated root"
+        content = path.read_text()
+        assert not any(code in content for code in codes), "forgotten fact persists in a memory file"
+
+
 class Gate:
     def __init__(self, args):
         self.args = args
@@ -75,6 +92,10 @@ class Gate:
         self.config = self.home / "config"
         for path in (self.workspace_a, self.workspace_b, self.config, self.root / "tmp"):
             path.mkdir(parents=True, mode=0o700)
+        if args.symlink_config:
+            link = self.home / "config-link"
+            link.symlink_to(self.config, target_is_directory=True)
+            self.config = link
         self.reject_ambient_guidance()
         source = Path(args.settings).read_bytes()
         self.source_hash = hashlib.sha256(source).hexdigest()
@@ -88,7 +109,6 @@ class Gate:
             "fallback": {"providers": [selected]},
         }))
         self.memory = self.config / "projects" / str(self.workspace_a).replace("/", "-").replace(":", "").replace(" ", "-") / "memory"
-        self.memory.mkdir(parents=True, mode=0o700)
         self.code = "RELEASE-" + secrets.token_hex(8).upper()
         self.results = []
 
@@ -143,6 +163,8 @@ class Gate:
             "memory_documents": context.get("documents", 0),
             "elapsed_seconds": round(time.monotonic() - started, 3),
         })
+        print(f"case={name} turns={result['turns']} requests={len(records)} "
+              f"elapsed={self.results[-1]['elapsed_seconds']}s", file=sys.stderr, flush=True)
         return result, system, context
 
     def check_readonly(self, name, prompt, expected, *, workspace=None, tools=NO_TOOLS, turns=2,
@@ -161,7 +183,9 @@ class Gate:
     def save_and_restart(self):
         self.run("write", "Remember this durable project convention: for deployment verification, "
                  f"the pre-release confirmation code is {self.code}. Save it as a project memory "
-                 "with a descriptive name and description for deployment verification. "
+                 "with frontmatter name 'Deployment policy' and description "
+                 "'deployment verification checklist'. Use the index title 'Deployment policy' "
+                 "and hook 'release verification convention'. "
                  "Keep the code only in the memory body, never in the index or frontmatter. "
                  "This is a lasting release policy, not an activity summary. Reply saved when persisted.",
                  turns=6, tools=WRITE_TOOLS)
@@ -193,6 +217,57 @@ class Gate:
             write_private(saved, original_body)
             write_private(self.memory / "MEMORY.md", original_index)
         self.check_readonly("readonly-write-tools", prompt, True, tools=WRITE_TOOLS, turns=3)
+
+    def read_fallback_case(self):
+        before = memory_snapshot(self.memory)
+        result, initial, _ = self.run(
+            "read-fallback", "之前约定的上线确认口令是什么？请查阅已保存的笔记后只输出口令，不要修改文件。",
+            tools=READ_TOOLS, turns=4)
+        validate_read_fallback(result, initial, self.code)
+        assert memory_snapshot(self.memory) == before, "fallback changed memory"
+
+    def activity_readonly_case(self):
+        before = memory_snapshot(self.memory)
+        self.run("activity-no-write", "Read-only task: report that this isolated test workspace "
+                 "has no new implementation work. Do not save this temporary activity report "
+                 "as memory. Reply only readonly-ok.", tools=WRITE_TOOLS, turns=3)
+        assert memory_snapshot(self.memory) == before, "activity report changed memory"
+
+    def lifecycle_cases(self):
+        old_code = self.code
+        new_code = "RELEASE-" + secrets.token_hex(8).upper()
+        self.run("update", "Update the existing deployment verification convention: replace "
+                 f"its confirmation code with {new_code}. Keep one linked memory, not a duplicate. "
+                 "Keep the value only in the body, never in metadata or the index. Do not retain "
+                 "the previous value in active memory. Reply updated after saving.",
+                 tools=WRITE_TOOLS, turns=6)
+        updated = validate_saved_memory(self.memory, new_code)
+        assert old_code not in updated.read_text(), "old fact remains in active memory"
+        self.code = new_code
+        prompt = "For deployment verification, what is this project's pre-release confirmation " \
+                 "code? Answer only the code from context; say unknown if unavailable."
+        self.check_readonly("updated-cold-recall", prompt, True)
+        updated_dump = (self.root / "updated-cold-recall.prompt.jsonl").read_text()
+        assert old_code not in updated_dump, "old fact still entered the updated request"
+        self.run("forget", "Forget the deployment verification confirmation code. Remove that "
+                 "fact from memory files and remove its index entry if the note has no other "
+                 "useful content. Use Write/Edit to clear it; do not move the fact to another "
+                 "note. Reply forgotten after saving.", tools=WRITE_TOOLS, turns=6)
+        validate_forgotten(self.memory, (old_code, new_code))
+        self.check_readonly("forgotten-cold-recall", prompt, False)
+
+    def lexical_cases(self):
+        # Seeded fixtures measure retrieval, independently of model extraction.
+        self.code = "DEPLOY-" + secrets.token_hex(8).upper()
+        write_private(self.memory / "MEMORY.md", "- [部署规范](lexical.md) - 发布约定\n")
+        write_private(self.memory / "lexical.md", "---\nname: 部署规范\ndescription: 发布前的约定\n"
+                      "metadata:\n  type: project\n---\n部署确认口令：" + self.code)
+        self.check_readonly("chinese-short-recall", "部署：之前约定的确认口令是什么？只输出口令。", True)
+        write_private(self.memory / "MEMORY.md", "- [artifact](lexical.md) - registry\n")
+        write_private(self.memory / "lexical.md", "---\nname: artifact\ndescription: build output registry\n"
+                      "metadata:\n  type: project\n---\n" + self.code)
+        self.check_readonly("english-word-boundary", "Name an art exhibition. Reply unavailable "
+                            "if no relevant fact is provided.", False)
 
     def budget_case(self):
         marker = "BUDGET_PRIVATE_TAIL"
@@ -240,6 +315,7 @@ def main():
     parser.add_argument("--out-dir", required=True, help="New persistent directory outside the checkout; never /tmp")
     parser.add_argument("--settings", default=str(Path.home() / ".golang-cc/settings.json"))
     parser.add_argument("--provider", default=PROVIDER)
+    parser.add_argument("--symlink-config", action="store_true", help="Exercise first writes through a symlinked config root")
     parser.add_argument("--timeout", type=int, default=240, help="Per-process timeout in seconds")
     args = parser.parse_args()
     output = Path(args.out_dir).resolve()
@@ -250,6 +326,10 @@ def main():
     try:
         saved = gate.save_and_restart()
         gate.negative_cases(saved)
+        gate.read_fallback_case()
+        gate.activity_readonly_case()
+        gate.lifecycle_cases()
+        gate.lexical_cases()
         gate.budget_case()
         gate.finish()
     except Exception as error:
@@ -258,6 +338,9 @@ def main():
             "completed_cases": gate.results,
         }, indent=2))
         raise
+    finally:
+        # Preserve redacted evidence, never leave a copied provider credential.
+        (gate.config / "settings.json").unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

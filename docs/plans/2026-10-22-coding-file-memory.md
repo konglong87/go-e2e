@@ -13,7 +13,7 @@ owns write containment; memory owns bounded lexical ranking; query owns context.
 | Priority | Slice | Dependency | Acceptance | Status |
 |---|---|---|---|---|
 | P0 | Canonicalize missing writable roots safely | None | Real Write, fresh/existing symlink roots, escape denial, tool regressions/race | Committed/pushed `0c9c877` |
-| P1 | Chinese short-query and English-boundary retrieval; weighted index metadata | P0 | 25 multilingual cases; ranking, invalid metadata, scope/budget/security regressions | Verified; this retrieval commit |
+| P1 | Chinese short-query and English-boundary retrieval; weighted index metadata | P0 | 25 multilingual cases; ranking, invalid metadata, scope/budget/security regressions | Committed/pushed `c0154b8` |
 | P1 | File write/index/cold-process and Read-fallback integration | Retrieval | Actual file contents and captured request; no tenant dependency | Verified; test-double transport only |
 | P1 | Real-model lifecycle E2E | Deterministic gates, isolated configured provider | Save, cold recall, paraphrase Read, update, forget, readonly, isolation; inspect disk/request/response independently | Pending |
 | P1 | Actual coding desktop entry acceptance | Current built app and isolated workspace | Native clicks and screenshots, new session recall; do not substitute browser/mocked model evidence | Pending |
@@ -51,3 +51,13 @@ bytes. Full `go test -count=1 ./...`, memory and focused query race tests, and
 library/model/storage dependency; body/index caps and memory budgets are unchanged.
 Next: extend and run real-provider lifecycle acceptance, then build and inspect
 the actual native coding interface. No native or real-model completion claimed yet.
+
+## Real-provider harness slice
+
+The runner now starts without a precreated memory directory, optionally uses a
+symlinked config root, and adds Read fallback, activity readonly, update/cold recall,
+forget/cold recall, Chinese short-query and English-word-boundary scenarios.
+Fallback requires the actual Read output to contain the answer while the first
+request lacks it; forgetting scans unindexed Markdown too. Six offline harness
+unit tests pass. Copied provider credentials are deleted in finally. Real-provider
+execution remains pending; no claim is based on harness tests alone.
