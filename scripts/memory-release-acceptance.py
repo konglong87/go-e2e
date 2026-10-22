@@ -111,6 +111,7 @@ class Gate:
         self.memory = self.config / "projects" / str(self.workspace_a).replace("/", "-").replace(":", "").replace(" ", "-") / "memory"
         self.code = "RELEASE-" + secrets.token_hex(8).upper()
         self.results = []
+        self.last_completed_at = None
 
     def reject_ambient_guidance(self):
         if Path("/etc/claude-code/CLAUDE.md").exists():
@@ -134,7 +135,15 @@ class Gate:
         result.update(extra or {})
         return result
 
+    def pace(self):
+        # Do not retry a mutating scenario: earlier tool effects may have persisted.
+        if self.last_completed_at is not None:
+            delay = self.args.case_interval - (time.monotonic() - self.last_completed_at)
+            if delay > 0:
+                time.sleep(delay)
+
     def run(self, name, prompt, *, workspace=None, turns=2, tools=NO_TOOLS, extra=None, cli_args=()):
+        self.pace()
         dump = self.root / (name + ".prompt.jsonl")
         env = self.env(dict(extra or {}, GO_E2E_DUMP_PROMPT_JSON=str(dump)))
         command = [str(Path(self.args.binary).resolve()), "--cwd", str(workspace or self.workspace_a),
@@ -144,6 +153,7 @@ class Gate:
         started = time.monotonic()
         completed = subprocess.run(command, cwd=self.root, env=env, capture_output=True,
                                    text=True, timeout=self.args.timeout)
+        self.last_completed_at = time.monotonic()
         write_private(self.root / (name + ".stdout.json"), completed.stdout)
         write_private(self.root / (name + ".stderr.log"), completed.stderr)
         assert completed.returncode == 0, f"{name}: CLI failed; inspect private evidence"
@@ -303,6 +313,7 @@ class Gate:
         assert hashlib.sha256(Path(self.args.settings).read_bytes()).hexdigest() == self.source_hash
         report = {"ok": True, "provider": self.args.provider, "model": self.model,
                   "global_settings_unchanged": True,
+                  "case_interval_seconds": self.args.case_interval,
                   "binary_sha256": hashlib.sha256(Path(self.args.binary).read_bytes()).hexdigest(),
                   "cases": self.results}
         write_private(self.root / "summary.json", json.dumps(report, indent=2))
@@ -317,7 +328,10 @@ def main():
     parser.add_argument("--provider", default=PROVIDER)
     parser.add_argument("--symlink-config", action="store_true", help="Exercise first writes through a symlinked config root")
     parser.add_argument("--timeout", type=int, default=240, help="Per-process timeout in seconds")
+    parser.add_argument("--case-interval", type=int, default=0, help="Minimum seconds between completed and next scenarios; no automatic retries")
     args = parser.parse_args()
+    if args.case_interval < 0:
+        parser.error("case-interval must be nonnegative")
     output = Path(args.out_dir).resolve()
     if output == Path("/tmp") or Path("/tmp").resolve() in output.parents:
         parser.error("credentials and evidence must not be stored in /tmp")

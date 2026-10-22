@@ -61,3 +61,14 @@ Fallback requires the actual Read output to contain the answer while the first
 request lacks it; forgetting scans unindexed Markdown too. Six offline harness
 unit tests pass. Copied provider credentials are deleted in finally. Real-provider
 execution remains pending; no claim is based on harness tests alone.
+
+## Real-provider environment correction
+
+First launch correctly rejected inherited home-directory guidance before copying
+credentials. Retried under an owner-only `/Users/Shared` validation directory.
+The actual model successfully created the missing memory directory, body and
+index through the symlinked configuration root. The next cold process received
+HTTP 429 (`inference exceeds tpm/rpm limit`); this is not a recall verdict.
+Added opt-in inter-scenario pacing to the existing runner, with an offline test.
+No automatic replay of mutating scenarios, no weakened assertions and no runtime
+behavior change. Copied credentials were removed after the failed run.

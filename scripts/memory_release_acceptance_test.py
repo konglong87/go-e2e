@@ -4,6 +4,8 @@ import importlib.util
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
+from types import SimpleNamespace
 import yaml
 
 SPEC = importlib.util.spec_from_file_location(
@@ -13,6 +15,25 @@ SPEC.loader.exec_module(GATE)
 
 
 class MemoryGateTests(unittest.TestCase):
+    def test_pacing_never_replays_or_delays_first_scenario(self):
+        gate = GATE.Gate.__new__(GATE.Gate)
+        gate.args = SimpleNamespace(case_interval=65)
+        gate.last_completed_at = None
+        with patch.object(GATE.time, "monotonic", return_value=110), patch.object(GATE.time, "sleep") as sleep:
+            gate.pace()
+            sleep.assert_not_called()
+            gate.last_completed_at = 100
+            gate.pace()
+            sleep.assert_called_once_with(55)
+            sleep.reset_mock()
+            gate.last_completed_at = 40
+            gate.pace()
+            sleep.assert_not_called()
+            gate.args.case_interval = 0
+            gate.last_completed_at = 110
+            gate.pace()
+            sleep.assert_not_called()
+
     def test_context_includes_runtime_messages_and_system_blocks(self):
         context = GATE.request_context({"request": {
             "system": "SYSTEM",
