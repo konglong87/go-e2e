@@ -16,7 +16,7 @@ owns write containment; memory owns bounded lexical ranking; query owns context.
 | P1 | Chinese short-query and English-boundary retrieval; weighted index metadata | P0 | 25 multilingual cases; ranking, invalid metadata, scope/budget/security regressions | Committed/pushed `c0154b8` |
 | P1 | File write/index/cold-process and Read-fallback integration | Retrieval | Actual file contents and captured request; no tenant dependency | Verified; test-double transport only |
 | P1 | Real-model lifecycle E2E | Deterministic gates, isolated configured provider | Save, cold recall, paraphrase Read, update, forget, readonly, isolation; inspect disk/request/response independently | Passed; see dated acceptance report |
-| P1 | Actual coding desktop entry acceptance | Current built app and isolated workspace | Native clicks and screenshots, new session recall; do not substitute browser/mocked model evidence | Prior build passed; post-frontmatter build remains blocked by locked Mac |
+| P1 | Actual coding desktop entry acceptance | Current built app and isolated workspace | Native clicks and screenshots, new session recall; do not substitute browser/mocked model evidence | Passed 2026-10-23 on `05910fc`; screenshots and receipt recorded |
 | P2 | Targeted corrective iteration | Any demonstrated lifecycle failure | Reproduce first, minimal fix, rerun affected and negative cases | Index-hint ownership defect reproduced and fixed in this review; six real-model cases pass |
 
 ## Verification policy
@@ -170,8 +170,12 @@ score without amplification. No provider/global settings or tenant changes.
 - The current source was rebuilt as a signed, clean release-candidate app for
   `05910fc`; embedded service SHA-256 is
   `34e89e0db58203f68c063a6b7df3542effd0b53e013e72b1c83d82022d7f192e` and signature
-  verification passed. Remaining gate: operate the native app and capture the
-  cold-session UI. CUA confirmed the Mac is locked, so no post-patch screenshot or
-  desktop pass is claimed. Previous native evidence is for a different binary.
-- Explicit deferrals remain unchanged; older 20-case evidence is not proof of this
-  newly edited source. All generated validation outputs remain ignored/local.
+  verification passed. Native UI write plus fresh-process cold recall then passed
+  on that exact binary: see `native-acceptance-summary.json` and the two 2026-10-23
+  screenshots under `desktop-v2/build/validation/20261023/coding-memory-review/`.
+  The locked-host blocker is closed; no remaining native acceptance gate for this
+  coding-file-memory slice.
+- Explicit deferrals remain unchanged. The earlier 20-case suite predates the
+  index-hint patch; this patch has its own six real-model cases plus the native
+  write/cold-recall acceptance above. All generated validation outputs remain
+  ignored/local.

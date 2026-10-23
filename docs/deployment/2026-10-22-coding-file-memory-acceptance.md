@@ -167,12 +167,11 @@ trailing whitespace remains valid. The fix and expanded real-provider runner are
 committed as `c90a4ad` and pushed to main. Full Go, focused race/vet, and Python
 acceptance tests passed after the change.
 
-A second native GUI pass on the post-fix binary was requested by the verification
-plan but the Mac was locked. It is explicitly blocked, not passed; no old screenshot
-is presented as new-build evidence. Original native screenshots above prove the
-prior build only. To complete that last surface, unlock the Mac and rerun the
-isolated native cold-session check. Existing GLM 5.1 availability and the default
-GLM 5.2 route migration also remain distinct follow-ups.
+At the time of the 2026-10-22 review, a second native GUI pass on the post-fix binary
+was blocked because the Mac was locked; no old screenshot was presented as new-build
+evidence. That blocker was later closed by the isolated native acceptance recorded
+below on 2026-10-23. Existing GLM 5.1 availability and the default GLM 5.2 route
+migration remain distinct follow-ups.
 
 
 ## Re-review: indexed-link hint ownership
@@ -207,7 +206,23 @@ manifest records the same source commit, clean source flags, service SHA-256
 `34e89e0db58203f68c063a6b7df3542effd0b53e013e72b1c83d82022d7f192e`, and verified
 ad-hoc signature. This proves packaging/build integrity, not UI behavior.
 
-The native desktop was not launched for acceptance because CUA reported the Mac
-locked. Thus this patch has code, automated, and real-provider evidence but no
-current post-patch native UI/screenshot evidence. Unlock the host and rerun the
-isolated cold-session test before claiming that final surface passed.
+At the time this review note was first written, native acceptance was blocked by
+the locked Mac. The blocker was subsequently closed; see the 2026-10-23 native
+post-review acceptance below. This patch now has native screenshots, automated
+tests, and targeted real-provider evidence, with the stated single-run limitations.
+
+## Native post-review acceptance - 2026-10-23
+
+The actual Wails desktop app built from source commit `05910fcde2bcc80ea1533171ba16cec33fb9bf94` (embedded service SHA-256 `34e89e0db58203f68c063a6b7df3542effd0b53e013e72b1c83d82022d7f192e`) was operated through native UI. Test routing used GLM-5.2 on the migrated gateway in owner-only isolated settings; default model settings were not changed.
+
+The first app process used a fresh workspace/config and successfully invoked Write twice, saving a topic file and `MEMORY.md` index. Disk inspection confirmed that the synthetic value exists only in the topic body, not in its title, frontmatter or index; YAML parsed the literal block scalar including the indented `---`. Screenshot shows the actual native Write tool calls and `saved` reply.
+
+After closing the first app, a second process used a fresh desktop SQLite/session root and fresh config/transcript root; only the physical project-memory directory was shared through a symlink. The cold query did not contain the expected value, no old conversation or task-title records were available, and the first captured model request was turn 1/code mode with exactly the index and one topic-memory document. The answer was visible in the native window and matched the body-only value. The one request had zero model tool-result calls, and file hashes before/after were identical.
+
+Evidence (screenshots are real native window captures):
+
+- ![Native project-memory write](/Users/konglong/GolandProjects/go-e2e/desktop-v2/build/validation/20261023/coding-memory-review/native-01-write.png)
+- ![Fresh-session cold recall](/Users/konglong/GolandProjects/go-e2e/desktop-v2/build/validation/20261023/coding-memory-review/native-02-cold-recall.png)
+- Sanitized machine-readable receipt: `desktop-v2/build/validation/20261023/coding-memory-review/native-acceptance-summary.json`.
+
+The private fixture directory and isolated copied credential were removed; the user global settings file remained byte-identical. This acceptance demonstrates this specific native write-and-recall path, not general semantic recall for arbitrary paraphrases. Earlier concerns about task-history deletion and the unchanged default Sensenova route remain separate limitations.
