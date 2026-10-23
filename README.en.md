@@ -15,6 +15,10 @@
 </p>
 
 <p align="center">
+  Built for efficient execution: safe parallel reads · on-demand Skills · throttled streaming refresh · long-task context management
+</p>
+
+<p align="center">
   <a href="https://github.com/konglong87/go-e2e/releases/latest">Download</a> ·
   <a href="docs/getting-started.md">Get started in 5 minutes</a> ·
   <a href="docs/use-cases.md">Use cases</a> ·
@@ -38,7 +42,7 @@
   <a href="LICENSE">
     <img src="https://img.shields.io/github/license/konglong87/go-e2e" alt="License">
   </a>
-  <img src="https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go&logoColor=white" alt="Go 1.25+">
+  <img src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go&logoColor=white" alt="Go 1.26+">
 </p>
 
 <p align="center">
@@ -79,7 +83,7 @@ go run ./cmd/go-e2e --version
 go run ./cmd/go-e2e -p "Inspect the current project and identify the highest-value improvements"
 ```
 
-The source minimum is Go 1.25+. The default settings file is `~/.golang-cc/settings.json`. A minimal
+The source minimum is Go 1.26+. The default settings file is `~/.golang-cc/settings.json`. A minimal
 OpenAI-compatible configuration looks like this:
 
 ```json
@@ -104,6 +108,19 @@ See [Get started in 5 minutes](docs/getting-started.md) for installation, config
 | **Provider flexibility** | Custom Providers, compatible APIs, multiple models, and multimodal extensions. |
 | **Designed to extend** | Explicit extension boundaries for Skills, MCP, Tools, Profiles, permissions, and workflows. |
 | **Go runtime** | A straightforward runtime and deployment path for local tools and long-running services. |
+
+## Designed for efficient task execution
+
+go-e2e focuses on the parts of Agent performance it can control: reducing avoidable serial waits, redundant rendering, and context overhead—while keeping safety boundaries around side effects.
+
+| Efficiency mechanism | What it does | Why it helps |
+| --- | --- | --- |
+| **Parallel independent reads** | When permission and runtime conditions allow, explicitly parallel-safe read-only calls can run with up to 4 workers; results are committed in the model's original order. Writes and ineligible calls are not made parallel by this mechanism. | Independent checks can make progress together without relaxing side-effect boundaries. |
+| **On-demand Skills** | Skill names and compact descriptions are preloaded; full instructions are loaded only when a Skill is needed. | Avoids putting every specialized instruction into every prompt. |
+| **Throttled streaming refresh** | Coalesces bursts of text deltas and UI refreshes to reduce redundant full terminal redraws; the final content is still refreshed when the task completes. | Reduces repeated local rendering work while output streams. |
+| **Long-task context management** | Combines persistent Sessions, Checkpoints, context compaction, project instructions, and project-level Markdown Memory. | Supports cross-process continuation while helping bound accumulated history and tool output. |
+
+> These mechanisms optimize local scheduling, rendering, and context use. Model inference and end-to-end latency still depend on the selected Provider, network, model, and task. We do not advertise cross-Agent speed figures without measurements under comparable conditions.
 
 ## Which entry point should you choose?
 
